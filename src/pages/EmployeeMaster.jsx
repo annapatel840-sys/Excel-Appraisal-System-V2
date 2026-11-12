@@ -3867,6 +3867,8 @@ export function EmployeeMaster() {
   const [eligibilitySavedCriteria, setEligibilitySavedCriteria] = useState(null);
   const [eligibilityCriteriaHistory, setEligibilityCriteriaHistory] = useState([]);
   const [eligibilityBusy, setEligibilityBusy] = useState(false);
+  // The criteria panel on the left of the Eligibility List (open by default).
+  const [criteriaPanelOpen, setCriteriaPanelOpen] = useState(true);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState(
@@ -4559,34 +4561,42 @@ export function EmployeeMaster() {
       return found?.name ? `${found.name} (${empId})` : empId;
     };
     const listText = (items, mapper = (v) => v) => items.map(mapper).join(", ");
+    // One line per criteria section, always in the same order. A section with
+    // nothing applied shows "Null".
+    const SECTIONS = [
+      ["departments", "Department"],
+      ["designations", "Designation"],
+      ["statuses", "Employee status"],
+      ["excludedEmployees", "Specific employees"],
+    ];
     return eligibilityCriteriaHistory.map((entry) => {
       const stamp = entry.at ? formatAuditTime(String(entry.at).replace(" ", "T")) : "";
-      const lines = [];
-      if (entry.first) {
-        const c = entry.criteria || {};
-        if (c.departments?.length) lines.push(`Departments excluded: ${listText(c.departments)}`);
-        if (c.designations?.length) lines.push(`Designations excluded: ${listText(c.designations)}`);
-        if (c.excludedEmployees?.length)
-          lines.push(`Employees excluded: ${listText(c.excludedEmployees, nameOf)}`);
-        if (c.cutoffDate) lines.push(`Joining date cutoff: ${c.cutoffDate}`);
-        if (!lines.length) lines.push("No exclusions selected.");
-      } else if (!entry.changes?.length) {
-        lines.push("No change to the criteria.");
-      } else {
-        entry.changes.forEach((change) => {
-          if (change.field === "cutoffDate") {
-            lines.push(
-              `Joining date cutoff: ${change.from || "none"} → ${change.to || "none"}`,
-            );
-            return;
-          }
-          const mapper = change.field === "excludedEmployees" ? nameOf : (v) => v;
-          if (change.added?.length)
-            lines.push(`${change.label} excluded: + ${listText(change.added, mapper)}`);
-          if (change.removed?.length)
-            lines.push(`${change.label} no longer excluded: − ${listText(change.removed, mapper)}`);
-        });
-      }
+      const criteria = entry.criteria || {};
+      const lines = SECTIONS.map(([key, label]) => {
+        const mapper = key === "excludedEmployees" ? nameOf : (v) => v;
+        const current = criteria[key] || [];
+        const change = (entry.changes || []).find((item) => item.field === key);
+        if (!current.length) {
+          return `${label}: Null${
+            change?.removed?.length ? ` (removed: ${listText(change.removed, mapper)})` : ""
+          }`;
+        }
+        if (entry.first || !change) {
+          return `${label}: ${entry.first ? "" : "No change - "}${listText(current, mapper)}`;
+        }
+        const parts = [];
+        if (change.added?.length) parts.push(`+ ${listText(change.added, mapper)}`);
+        if (change.removed?.length) parts.push(`- ${listText(change.removed, mapper)}`);
+        return `${label}: ${parts.join("  ")}`;
+      });
+      const cutoffChange = (entry.changes || []).find((item) => item.field === "cutoffDate");
+      lines.push(
+        !criteria.cutoffDate
+          ? `Joining date cutoff: Null${cutoffChange?.from ? ` (was ${cutoffChange.from})` : ""}`
+          : cutoffChange && !entry.first
+            ? `Joining date cutoff: ${cutoffChange.from || "Null"} -> ${cutoffChange.to}`
+            : `Joining date cutoff: ${entry.first ? "" : "No change - "}${criteria.cutoffDate}`,
+      );
       return {
         title: entry.first ? "Criteria applied" : "Criteria changed",
         meta: `${entry.by || "Unknown user"} · ${stamp}`,
@@ -5744,6 +5754,7 @@ export function EmployeeMaster() {
   const applyEligibilityCriteria = async ({
     departments,
     designations,
+    statuses,
     excludedEmployees: excluded,
     cutoffDate,
     replaceCriteria = false,
@@ -5768,6 +5779,7 @@ export function EmployeeMaster() {
       const result = await applyEligibilityCriteriaToCycle(eligibilityCycleId, {
         departments,
         designations,
+        statuses,
         excludedEmployees: excluded,
         cutoffDate: toIsoDate(cutoffDate),
         replaceCriteria,
@@ -6199,7 +6211,11 @@ export function EmployeeMaster() {
               </div>
             ) : (
               <div
-                className="em-eligibility-layout"
+                className={`em-eligibility-layout${
+                  canEditEmployees && !criteriaPanelOpen
+                    ? " em-criteria-collapsed"
+                    : ""
+                }`}
                 style={
                   canEditEmployees
                     ? undefined
@@ -6217,6 +6233,8 @@ export function EmployeeMaster() {
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
                     savedCriteria={eligibilitySavedCriteria}
+                    open={criteriaPanelOpen}
+                    onOpenChange={setCriteriaPanelOpen}
                     onGenerateDelegation={
                       eligibilityShowingSnapshot
                         ? undefined

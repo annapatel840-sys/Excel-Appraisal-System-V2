@@ -830,6 +830,7 @@ export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
       cycleId,
       departments: criteria.departments || [],
       designations: criteria.designations || [],
+      statuses: criteria.statuses || [],
       excludedEmployees: criteria.excludedEmployees || [],
       cutoffDate: criteria.cutoffDate || "",
       replaceCriteria: Boolean(criteria.replaceCriteria),

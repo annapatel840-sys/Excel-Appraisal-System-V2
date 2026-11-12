@@ -248,3 +248,22 @@
 .app-header-location .em-location-dropdown { position: relative; }
 .app-header-location .em-location-select.app-header-location-trigger { height: 28px; min-width: 120px; max-width: 170px; padding: 0 8px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
 .app-header-location .em-location-menu { z-index: 2000; }
+
+/* ---- Criteria panel: header with close, folded tab, no dead space ---- */
+.employee-master-page .em-eligibility-layout > .em-criteria-pane{border-radius:12px;padding:0 12px 12px;gap:0}
+.em-criteria-head{display:flex;align-items:center;justify-content:space-between;padding:10px 0 6px;color:#102A43;font-size:13px;position:sticky;top:0;background:#fff;z-index:2}
+.em-criteria-head button{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;background:none;border-radius:6px;cursor:pointer;color:#6B7280}
+.em-criteria-head button:hover{background:#F1F5F9;color:#102A43}
+.em-criteria-pane .em-chk-list{flex:1 1 96px;min-height:84px}
+.em-criteria-pane .em-chips{flex:0 0 auto}
+.em-crit-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:14px}
+.em-crit-actions .em-btn.em-btn{flex:1 1 130px;width:auto;margin-top:0;justify-content:center}
+.em-criteria-folded{display:flex;align-items:center;justify-content:flex-start;height:100%;min-height:0}
+.em-criteria-tab{writing-mode:vertical-rl;background:var(--app-brand,#173b63);color:#fff;border:0;border-radius:0 8px 8px 0;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.em-criteria-tab:hover{opacity:.9}
+.employee-master-page .em-eligibility-layout.em-criteria-collapsed{grid-template-columns:30px minmax(0,1fr)}
+@media (max-width:900px){
+  .employee-master-page .em-eligibility-layout.em-criteria-collapsed{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .em-criteria-folded{height:auto}
+  .em-criteria-tab{writing-mode:horizontal-tb;border-radius:8px;padding:7px 14px}
+}

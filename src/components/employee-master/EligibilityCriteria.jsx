@@ -35,12 +35,15 @@ export function EligibilityCriteria({
   onApply,
   onGenerateDelegation,
   savedCriteria = null, // criteria saved by the last Apply Criteria (from the server)
+  open = true,
+  onOpenChange,
   criteriaApplied = false,
   delegationGenerated = false,
   readOnly = false,
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedDesignations, setSelectedDesignations] = useState([]);
+  const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [search, setSearch] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [cutoffDate, setCutoffDate] = useState("");
@@ -61,6 +64,7 @@ export function EligibilityCriteria({
     if (!savedCriteria || draftingRef.current) return;
     setSelectedDepartments(savedCriteria.departments || []);
     setSelectedDesignations(savedCriteria.designations || []);
+    setSelectedStatuses(savedCriteria.statuses || []);
     setExcludedEmployees(savedCriteria.excludedEmployees || []);
     setCutoffDate(savedCriteria.cutoffDate || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,6 +73,7 @@ export function EligibilityCriteria({
   const currentDraft = () => ({
     departments: selectedDepartments,
     designations: selectedDesignations,
+    statuses: selectedStatuses,
     excludedEmployees: [...excludedEmployees],
     cutoffDate,
   });
@@ -84,6 +89,7 @@ export function EligibilityCriteria({
     if (saved) {
       setSelectedDepartments(saved.departments);
       setSelectedDesignations(saved.designations);
+      setSelectedStatuses(saved.statuses || []);
       setExcludedEmployees(saved.excludedEmployees);
       setCutoffDate(saved.cutoffDate);
     }
@@ -152,6 +158,13 @@ export function EligibilityCriteria({
       .sort();
   }, [designationRows, activeEmployees]);
 
+  const statusValues = useMemo(() => {
+    const found = [...new Set(employees.map((employee) => employee.status))]
+      .filter(Boolean)
+      .sort();
+    return found.length ? found : ["Active", "Inactive"];
+  }, [employees]);
+
   const suggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return [];
@@ -172,8 +185,37 @@ export function EligibilityCriteria({
     setShowSuggest(false);
   };
 
+  // Folded: only a vertical tab is left, like the Eligibility List panel.
+  if (!open) {
+    return (
+      <div className="em-criteria-folded">
+        <button
+          type="button"
+          className="em-criteria-tab"
+          onClick={() => onOpenChange?.(true)}
+          title="Open the criteria panel"
+          aria-label="Open the criteria panel"
+        >
+          Criteria ›
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="em-criteria-pane">
+      <div className="em-criteria-head">
+        <b>Eligibility Criteria</b>
+        <button
+          type="button"
+          onClick={() => onOpenChange?.(false)}
+          aria-label="Fold the criteria panel"
+          title="Fold the criteria panel"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
       <div className="em-crit-h">Exclude by department</div>
       <CheckList
         values={departments}
@@ -187,6 +229,14 @@ export function EligibilityCriteria({
         values={designations}
         selected={selectedDesignations}
         setSelected={setSelectedDesignations}
+        disabled={readOnly || !isEditing}
+      />
+
+      <div className="em-crit-h">Exclude by employee status</div>
+      <CheckList
+        values={statusValues}
+        selected={selectedStatuses}
+        setSelected={setSelectedStatuses}
         disabled={readOnly || !isEditing}
       />
 
@@ -256,13 +306,12 @@ export function EligibilityCriteria({
         onChange={(event) => setCutoffDate(event.target.value)}
       />
 
-      <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginTop: 12, flexWrap: "wrap" }}>
+      <div className="em-crit-actions">
         {isEditing ? (
           <>
             <button
               type="button"
               className="em-btn em-btn-primary em-apply-btn"
-              style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
               disabled={readOnly || applying}
               onClick={applyDraft}
             >
@@ -273,7 +322,6 @@ export function EligibilityCriteria({
               <button
                 type="button"
                 className="em-btn em-btn-ghost"
-                style={{ flex: "1 1 120px", width: "auto", marginTop: 0 }}
                 disabled={applying}
                 onClick={cancelEdit}
               >
@@ -285,7 +333,6 @@ export function EligibilityCriteria({
           <button
             type="button"
             className="em-btn em-btn-primary em-apply-btn"
-            style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
             disabled={readOnly}
             onClick={beginEdit}
           >
