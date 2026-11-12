@@ -2489,6 +2489,10 @@ import {
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
+// Delegation audit trail: stored in the shared Appraisal_Audit table. HR Admin
+// reads every row; any other user reads only the rows they logged themselves.
+const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
+const DELEGATION_AUDIT_SOURCE = "Delegation - Changes";
 const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-ED" };
 const ST = {
   CF: "Carried forward",
@@ -2591,6 +2595,28 @@ const matchesFilter = (raw, f) => {
   return f.join === "or" ? first || second : first && second;
 };
 const nameOf = (value) => String(value || "").trim();
+/* Date + time for audit rows. Stored times are UTC without a zone suffix. */
+const parseAuditTime = (value) => {
+  const text = String(value || "").trim();
+  const iso = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(text)
+    ? text.replace(" ", "T") + "Z"
+    : text;
+  return new Date(iso);
+};
+const fmtAuditTime = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const d = parseAuditTime(text);
+  return isNaN(d)
+    ? text
+    : d.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+};
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
   const d = new Date(String(s).replace(" ", "T"));
@@ -2799,6 +2825,8 @@ export default function DelegationScreen({
     }));
   const [reqs, setReqs] = useState([]);
   const [audit, setAudit] = useState([]);
+  const [auditError, setAuditError] = useState("");
+  const auditSeq = useRef(0);
   const [locked, setLocked] = useState(false);
   const [colFilters, setColFilters] = useState(readSavedColFilters);
   const lastCycleRef = useRef("");
@@ -3082,11 +3110,127 @@ export default function DelegationScreen({
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);
   };
-  const log = (a) =>
-    setAudit((l) => [
-      { on: now(), by: user.name, role: user.role, ...a },
-      ...l,
-    ]);
+  const auditCycleName = activeCycleName || cycleName || "";
+  // Saved Delegation audit for this cycle. HR Admin gets every row, others
+  // only their own (the server filters by the signed-in user).
+  const loadAudit = useCallback(async () => {
+    if (!auditCycleName) return;
+    const seq = ++auditSeq.current;
+    try {
+      const url = new URL(AUDIT_API_URL);
+      url.searchParams.set("source", DELEGATION_AUDIT_SOURCE);
+      url.searchParams.set("appraisal_year", auditCycleName);
+      url.searchParams.set("limit", "500");
+      url.searchParams.set("_ts", String(Date.now()));
+      const response = await catalystFetch(url.toString(), {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.message || `Audit API failed with status ${response.status}`,
+        );
+      }
+      if (seq !== auditSeq.current) return;
+      const saved = (Array.isArray(result.data) ? result.data : [])
+        .map((record) => record?.Appraisal_Audit || record || {})
+        .map((row, index) => {
+          let d = {};
+          try {
+            d = row.details ? JSON.parse(row.details) : {};
+          } catch (_) {
+            d = {};
+          }
+          const empId = String(row.emp_id || "");
+          return {
+            id: String(row.ROWID || `audit-${index}`),
+            on: row.changed_at || row.CREATEDTIME || "",
+            emp: empId === "ALL" ? "" : empId,
+            empName: String(row.employee_name || ""),
+            count: Number(d.count) > 0 ? Number(d.count) : 1,
+            field: String(row.field_name || ""),
+            from: String(row.old_value || ""),
+            to: String(row.new_value || ""),
+            action: String(d.action || ""),
+            by: String(row.changed_by || ""),
+            role: String(d.role || ""),
+            why: String(d.reason || ""),
+            saved: true,
+          };
+        });
+      // Keep changes of this session that could not be saved yet.
+      setAudit((l) => [...l.filter((entry) => entry.saved === false), ...saved]);
+      setAuditError("");
+    } catch (error) {
+      if (seq !== auditSeq.current) return;
+      setAuditError(
+        `Saved audit could not be loaded (${error?.message || "unknown error"}). Showing this session's changes only.`,
+      );
+    }
+  }, [auditCycleName]);
+  useEffect(() => {
+    loadAudit();
+  }, [loadAudit]);
+
+  const log = (a) => {
+    const entry = {
+      id: `loc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      on: new Date().toISOString(),
+      by: user.name,
+      role: user.role,
+      count: 1,
+      saved: false,
+      ...a,
+    };
+    setAudit((l) => [entry, ...l]);
+    const person = a.emp ? allRows.find((r) => r.id === a.emp) : null;
+    (async () => {
+      try {
+        const response = await catalystFetch(AUDIT_API_URL, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify([
+            {
+              emp_id: a.emp || "ALL",
+              employee_name:
+                person?.name ||
+                (entry.count > 1 ? `${entry.count} employees` : ""),
+              field_name: a.field || a.action || "Delegation",
+              old_value: String(a.from || "").slice(0, 100),
+              new_value: String(a.to || "").slice(0, 100),
+              changed_by: user.name,
+              changed_at: entry.on,
+              source: DELEGATION_AUDIT_SOURCE,
+              appraisal_year: auditCycleName,
+              details: {
+                action: a.action || "",
+                reason: String(a.why || "").trim(),
+                role: user.role || "",
+                count: entry.count,
+              },
+            },
+          ]),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.message || "Audit save failed");
+        }
+        setAudit((l) =>
+          l.map((x) => (x.id === entry.id ? { ...x, saved: true } : x)),
+        );
+        loadAudit();
+      } catch (error) {
+        setAuditError(
+          `Some changes could not be saved to the audit trail (${error?.message || "unknown error"}).`,
+        );
+      }
+    })();
+  };
 
   /* derived */
   const pendingFor = (rid, reqList = reqs) =>
@@ -3506,7 +3650,8 @@ export default function DelegationScreen({
         action: "Changed",
         field: FIELDS.comp,
         to: source.label,
-        why: `${done.length} employee(s): ${why}`,
+        count: done.length,
+        why,
       });
       say(
         `Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the Delegation changes.`,
@@ -3632,7 +3777,8 @@ export default function DelegationScreen({
                 action: "Changed",
                 field: FIELDS[field],
                 to: nameOf(person),
-                why: `${done.length} employee(s): ${why.trim()}`,
+                count: done.length,
+                why: why.trim(),
               });
               say(
                 FIELDS[field] +
@@ -4106,6 +4252,28 @@ export default function DelegationScreen({
         .toLowerCase()
         .replace(/^./, (letter) => letter.toUpperCase()),
     );
+  // Audit tab (left panel): newest first. HR Admin sees every user's changes,
+  // everyone else only their own (the server filters the saved rows).
+  const panelTabs = isHR ? ["Pending", "Decided", "Audit"] : ["Audit"];
+  const activeTab = isHR ? reqTab : "Audit";
+  const auditSorted = audit
+    .slice()
+    .sort(
+      (a, b) =>
+        (parseAuditTime(b.on).getTime() || 0) -
+        (parseAuditTime(a.on).getTime() || 0),
+    );
+  const auditEmployeeCount = auditSorted.reduce(
+    (n, a) => n + (Number(a.count) > 0 ? Number(a.count) : 1),
+    0,
+  );
+  const auditEmployeeLabel = (a) => {
+    if (a.emp) {
+      const name = a.empName || allRows.find((r) => r.id === a.emp)?.name || "";
+      return name ? `${a.emp} · ${name}` : a.emp;
+    }
+    return `${a.count > 1 ? a.count : 1} employee(s)`;
+  };
   const shownReqs = myReqs
     .filter((q) =>
       reqTab === "Pending" ? isPendingRequest(q) : !isPendingRequest(q),
@@ -4591,19 +4759,27 @@ export default function DelegationScreen({
         </div>
 
         {/* HR approval panel only. Tech-Ed assignments are direct saves now. */}
-        {isHR && (
+        {(
           <div className={"dg-side" + (reqOpen ? " open" : "")}>
             {reqOpen ? (
               <div className="dg-panel">
                 <div className="ph">
                   <div>
                     <div className="tt">
-                      {isHR ? "Pending approvals" : "My requests"}
+                      {activeTab === "Audit"
+                        ? "Audit"
+                        : isHR
+                          ? "Pending approvals"
+                          : "My requests"}
                     </div>
                     <div className="ss">
-                      {isHR
-                        ? "Requests raised by Tech-EDs"
-                        : "Changes you sent to HR"}
+                      {activeTab === "Audit"
+                        ? isHR
+                          ? "Delegation changes by all users"
+                          : "Delegation changes you made"
+                        : isHR
+                          ? "Requests raised by Tech-EDs"
+                          : "Changes you sent to HR"}
                     </div>
                   </div>
                   <button
@@ -4618,11 +4794,11 @@ export default function DelegationScreen({
                 </div>
                 <div className="pb">
                   <div className="rtabs">
-                    {["Pending", "Decided"].map((t) => (
+                    {panelTabs.map((t) => (
                       <button
                         key={t}
                         type="button"
-                        className={"ptab" + (reqTab === t ? " on" : "")}
+                        className={"ptab" + (activeTab === t ? " on" : "")}
                         onClick={() => setReqTab(t)}
                       >
                         {t}
@@ -4630,7 +4806,7 @@ export default function DelegationScreen({
                     ))}
                     {isHR &&
                       canApprove &&
-                      reqTab === "Pending" &&
+                      activeTab === "Pending" &&
                       pending.length > 1 &&
                       !locked &&
                       !showingSaved && (
@@ -4642,10 +4818,71 @@ export default function DelegationScreen({
                         </>
                       )}
                   </div>
+                  {activeTab === "Audit" ? (
+                    <>
+                      <div className="aud-sum">
+                        <b>{auditEmployeeCount}</b> employee(s) changed ·{" "}
+                        <b>{auditSorted.length}</b> change(s)
+                      </div>
+                      {auditError && <div className="aud-err">{auditError}</div>}
+                      <div className="rq-list">
+                        {!auditSorted.length && (
+                          <div className="none">No changes yet.</div>
+                        )}
+                        {auditSorted.slice(0, 50).map((a) => (
+                          <div className="req" key={a.id}>
+                            <div className="n">
+                              <span>{auditEmployeeLabel(a)}</span>
+                              {a.action && (
+                                <span
+                                  className={
+                                    "tag " +
+                                    (a.action === "Rejected" ? "pd" : "cf")
+                                  }
+                                >
+                                  {a.action}
+                                </span>
+                              )}
+                            </div>
+                            <div className="m">
+                              {a.field}
+                              {a.from || a.to
+                                ? `: ${a.from || "—"} `
+                                : ""}
+                              {(a.from || a.to) && (
+                                <span className="ar">→ {a.to || "—"}</span>
+                              )}
+                              <br />
+                              {isHR && a.by && (
+                                <>
+                                  By <b>{a.by}</b>
+                                  {a.role ? ` (${a.role})` : ""} ·{" "}
+                                </>
+                              )}
+                              {fmtAuditTime(a.on)}
+                              <br />
+                              {String(a.why || "").trim() ? (
+                                <>Reason: {a.why}</>
+                              ) : (
+                                <span className="no-reason">No reason</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn p sm aud-full"
+                        onClick={() => setModal({ type: "audit" })}
+                      >
+                        View full audit trail
+                      </button>
+                    </>
+                  ) : (
                   <div className="rq-list">
                     {!shownReqs.length && (
                       <div className="none">
-                        {reqTab === "Pending"
+                        {activeTab === "Pending"
                           ? "No pending requests."
                           : "No decided requests yet."}
                       </div>
@@ -4749,6 +4986,7 @@ export default function DelegationScreen({
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -4757,11 +4995,14 @@ export default function DelegationScreen({
                   type="button"
                   className="dg-ptab"
                   onClick={() => setReqOpen(true)}
-                  title="Open pending approvals"
+                  title={
+                    isHR ? "Open pending approvals and audit" : "Open audit"
+                  }
                   aria-expanded="false"
                 >
-                  {isHR ? "Pending approvals" : "My requests"} ({pending.length}
-                  )
+                  {isHR
+                    ? `Pending approvals (${pending.length})`
+                    : `Audit (${auditSorted.length})`}
                 </button>
               </div>
             )}
@@ -4992,6 +5233,12 @@ export default function DelegationScreen({
             </button>
           }
         >
+          <div className="note" style={{ marginTop: 0, marginBottom: 8 }}>
+            {isHR
+              ? "Showing changes made by all users."
+              : "Showing only the changes you made."}
+          </div>
+          {auditError && <div className="aud-err">{auditError}</div>}
           {!audit.length ? (
             <div className="none">No entries yet.</div>
           ) : (
@@ -5012,10 +5259,10 @@ export default function DelegationScreen({
                 </tr>
               </thead>
               <tbody>
-                {audit.map((a, i) => (
-                  <tr key={i}>
-                    <td>{a.on}</td>
-                    <td>{a.emp}</td>
+                {auditSorted.map((a) => (
+                  <tr key={a.id}>
+                    <td>{fmtAuditTime(a.on)}</td>
+                    <td>{auditEmployeeLabel(a)}</td>
                     <td>{a.field}</td>
                     <td>
                       {a.from || a.to
@@ -5028,7 +5275,11 @@ export default function DelegationScreen({
                       <br />
                       <span className="note">{a.role}</span>
                     </td>
-                    <td>{a.why}</td>
+                    <td>
+                      {String(a.why || "").trim() || (
+                        <span className="no-reason">No reason</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -5319,6 +5570,10 @@ const CSS = `
 .dg .ar{color:#1a8a74;font-weight:700}
 .dg .req .fld{font-size:11.5px;margin-bottom:7px}
 .dg .none{color:#8591a0;font-size:12px;padding:10px 0}
+.dg .aud-sum{font-size:12px;color:#374151;background:#F3F6FB;border:1px solid #E1E8F2;border-radius:8px;padding:7px 10px;margin-bottom:9px}
+.dg .aud-err{font-size:11.5px;color:#8f1d14;background:#fde8e6;border:1px solid #f3b8b1;border-radius:6px;padding:6px 8px;margin-bottom:8px}
+.dg .no-reason{color:#8591a0;font-style:italic}
+.dg .aud-full{width:100%;margin-top:6px;justify-content:center}
 .dg-toast{position:fixed;right:16px;bottom:16px;max-width:460px;padding:11px 14px;border-radius:8px;font-weight:600;font-size:12.5px;box-shadow:0 6px 20px rgba(15,42,68,.18);z-index:60}
 .dg-toast.ok{background:#e8f5ee;color:#1e5c3a;border:1px solid #b9dcc4}
 .dg-toast.err{background:#fde8e6;color:#8f1d14;border:1px solid #f3b8b1}
