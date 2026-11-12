@@ -166,15 +166,17 @@ export function EligibilityCriteria({
   }, [employees]);
 
   const suggestions = useMemo(() => {
+    // Clicking the field lists the employees from the Employee Master;
+    // typing narrows the list by name or ID.
     const term = search.trim().toLowerCase();
-    if (!term) return [];
     return activeEmployees
       .filter(
         (employee) =>
           !excludedEmployees.includes(employee.empId) &&
-          `${employee.empId} ${employee.name}`.toLowerCase().includes(term),
+          (!term ||
+            `${employee.empId} ${employee.name}`.toLowerCase().includes(term)),
       )
-      .slice(0, 6);
+      .slice(0, 200);
   }, [search, activeEmployees, excludedEmployees]);
 
   const addExcluded = (empId) => {
@@ -245,6 +247,9 @@ export function EligibilityCriteria({
         <input
           value={search}
           disabled={readOnly || !isEditing}
+          onFocus={() => setShowSuggest(true)}
+          onClick={() => setShowSuggest(true)}
+          onBlur={() => setShowSuggest(false)}
           onChange={(event) => {
             setSearch(event.target.value);
             setShowSuggest(true);
@@ -253,11 +258,11 @@ export function EligibilityCriteria({
             if (event.key === "Enter" && suggestions[0])
               addExcluded(suggestions[0].empId);
           }}
-          placeholder="Type name or ID"
+          placeholder="Click to pick, or type name / ID"
         />
       </div>
 
-      {showSuggest && search.trim() && (
+      {showSuggest && !readOnly && isEditing && (
         <div className="em-suggest">
           {suggestions.length ? (
             suggestions.map((employee) => (
@@ -269,7 +274,7 @@ export function EligibilityCriteria({
               </div>
             ))
           ) : (
-            <div className="em-hint">No match</div>
+            <div className="em-hint em-suggest-empty">No match</div>
           )}
         </div>
       )}

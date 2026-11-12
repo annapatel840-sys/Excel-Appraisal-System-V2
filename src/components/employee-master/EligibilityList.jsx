@@ -686,6 +686,14 @@ const eligibilityDecisionOf = (employee) => {
   return "Pending";
 };
 
+// "Need Action": the employee's status in the Employee Master is not Active.
+const needsAction = (e) => {
+  const status = String(
+    e?.status ?? e?.rawEmployee?.emp_status ?? e?.rawEmployee?.status ?? "Active",
+  ).trim();
+  return status.toLowerCase() !== "active";
+};
+
 const updatedOf = (e) =>
   e.eligibilityUpdatedAt ||
   e.rawEmployee?.eligible_updated_at ||
@@ -860,6 +868,8 @@ export function EligibilityList({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
+  // Click a metric to filter the list: null | "notEligible" | "needAction"
+  const [quickFilter, setQuickFilter] = useState(null);
 
   const canEdit = Boolean(onChangeEligibility);
 
@@ -878,6 +888,8 @@ export function EligibilityList({
 
   const searchPre = useCallback(
     (e) => {
+      if (quickFilter === "notEligible" && eligibilityDecisionOf(e) !== "Not Eligible") return false;
+      if (quickFilter === "needAction" && !needsAction(e)) return false;
       const term = (search || "").trim().toLowerCase();
       if (!term) return true;
       return (
@@ -889,7 +901,7 @@ export function EligibilityList({
           .includes(term)
       );
     },
-    [search],
+    [search, quickFilter],
   );
 
   const locationFilteredEmployees = useMemo(() => {
@@ -918,6 +930,7 @@ export function EligibilityList({
   const notEligibleCount = counted.filter(
     (e) => eligibilityDecisionOf(e) === "Not Eligible",
   ).length;
+  const needActionCount = counted.filter(needsAction).length;
   const pendingCount = counted.filter(
     (e) => eligibilityDecisionOf(e) === "Pending",
   ).length;
@@ -930,7 +943,7 @@ export function EligibilityList({
   }, [page, pages]);
   useEffect(
     () => setPage(1),
-    [grid.filters, grid.sort, search, locationFilter],
+    [grid.filters, grid.sort, search, locationFilter, quickFilter],
   );
 
   const pageRows = useMemo(
@@ -1039,7 +1052,14 @@ export function EligibilityList({
       {/* ================= HEADER ================= */}
       <div className="em-eligibility-header">
         <div className="em-eligibility-stats">
-          <div>
+          <div
+            className={`em-stat-click${quickFilter === null ? " on" : ""}`}
+            role="button"
+            tabIndex={0}
+            title="Show all"
+            onClick={() => setQuickFilter(null)}
+            onKeyDown={(event) => event.key === "Enter" && setQuickFilter(null)}
+          >
             <strong>{counted.length}</strong>
             <span>Total</span>
           </div>
@@ -1047,10 +1067,30 @@ export function EligibilityList({
             <strong>{eligibleCount}</strong>
             <span>Eligible</span>
           </div>
-          <div>
-            <strong>{notEligibleCount}</strong>
-            <span>Not Eligible</span>
-          </div>
+          {[
+            ["notEligible", notEligibleCount, "Not Eligible"],
+            ["needAction", needActionCount, "Need Action"],
+          ].map(([key, count, label]) => (
+            <div
+              key={key}
+              className={`em-stat-click${quickFilter === key ? " on" : ""}`}
+              role="button"
+              tabIndex={0}
+              title={
+                quickFilter === key
+                  ? "Click to show all"
+                  : `Show only ${label.toLowerCase()} employees`
+              }
+              onClick={() => setQuickFilter((cur) => (cur === key ? null : key))}
+              onKeyDown={(event) =>
+                event.key === "Enter" &&
+                setQuickFilter((cur) => (cur === key ? null : key))
+              }
+            >
+              <strong>{count}</strong>
+              <span>{label}</span>
+            </div>
+          ))}
         </div>
 
         <div className="em-eligibility-actions">

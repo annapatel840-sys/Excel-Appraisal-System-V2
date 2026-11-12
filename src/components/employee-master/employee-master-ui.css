@@ -267,3 +267,12 @@
   .em-criteria-folded{height:auto}
   .em-criteria-tab{writing-mode:horizontal-tb;border-radius:8px;padding:7px 14px}
 }
+
+/* ---- Eligibility metrics: clickable filters ---- */
+.employee-master-page .em-eligibility-stats .em-stat-click{cursor:pointer;padding:2px 8px;border-radius:6px;border:1px solid transparent;user-select:none}
+.employee-master-page .em-eligibility-stats .em-stat-click:hover{background:#F1F5F9}
+.employee-master-page .em-eligibility-stats .em-stat-click.on{background:#EAF1FD;border-color:#2F6FED}
+.employee-master-page .em-eligibility-stats .em-stat-click.on span{color:#1d4f91;font-weight:700}
+
+.em-criteria-pane .em-suggest{max-height:180px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
+.em-criteria-pane .em-suggest .em-suggest-empty{cursor:default}
