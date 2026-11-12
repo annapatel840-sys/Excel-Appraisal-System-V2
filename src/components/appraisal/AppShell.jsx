@@ -575,7 +575,6 @@ export function AppShell({ children, headerActions, notifications }) {
       "location-master",
       "designation-master",
       "historical-import",
-      "change-mismatch",
     ].some((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
   // "View as": HR previewing another role sees that role's menu.
   const previewNav = isTechEd

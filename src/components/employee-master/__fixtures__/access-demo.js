@@ -21,7 +21,6 @@ export const screens = [
   S("feedbackRatingMaster", "Feedback & Rating Master", "HR Operations", null, { hrOnly: true }),
   S("designationMaster", "Designation Master", "HR Operations", null, { hrOnly: true }),
   S("historicalImport", "Historical Import", "HR Operations", null, { hrOnly: true }),
-  S("changeMismatch", "Change List & Mismatch", "HR Operations", null, { hrOnly: true }),
   S("cycleMaster", "Appraisal Cycle Master", "HR Operations", null, { hrOnly: true }),
   S("payroll", "Payroll Data · Payroll Upload", "HR Operations", null, { hrOnly: true }),
   S("settings", "Settings", "HR Operations", null, { hrOnly: true }),

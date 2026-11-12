@@ -30,7 +30,6 @@ const GROUPS = [
       ["payroll-upload", "Upload"],
       ["historical-import", "Historical Import"],
       ["team-changes", "Team Changes"],
-      ["change-mismatch", "Change List & Mismatch"],
       ["budget-distribution", "Budget Distribution"],
       ["delegation", "Delegation"],
       ["letters", "Letters"],

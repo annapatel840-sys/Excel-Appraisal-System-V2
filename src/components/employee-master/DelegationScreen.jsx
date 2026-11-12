@@ -4038,7 +4038,7 @@ export default function DelegationScreen({
           (sheetRows > 0
             ? " The Appraisal Sheet is updated."
             : isHR
-              ? " Generate the Appraisal Sheet to add employees who are not on it yet."
+              ? " Click Generate Appraisal Sheet to apply them to the sheet."
               : ""),
       );
     } catch (error) {
@@ -4273,7 +4273,7 @@ export default function DelegationScreen({
                   rosterLoading ||
                   !Object.keys(stagedChanges).length
                 }
-                title="Save delegation changes and update matching existing Appraisal Sheet rows"
+                title="Save the delegation changes"
                 onClick={() => {
                   setReason("");
                   setModal({ type: "saveReason" });

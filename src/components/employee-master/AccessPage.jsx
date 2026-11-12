@@ -31,7 +31,7 @@ const FIELD_SCREEN_OPTIONS = [
   ["employeeMaster", "Employee Master"], ["cycleMaster", "Appraisal Cycle Master"], ["locationMaster", "Location Master"],
   ["budgetMaster", "Budget Master"], ["payrollMaster", "Payroll Master"], ["feedbackRating", "Feedback & Rating Master"],
   ["designationMaster", "Designation Master"], ["eligibility", "Eligibility List"], ["payrollUpload", "Upload"],
-  ["historicalImport", "Historical Import"], ["teamChanges", "Team Changes"], ["changeMismatch", "Change List & Mismatch"],
+  ["historicalImport", "Historical Import"], ["teamChanges", "Team Changes"],
   ["budgetDistribution", "Budget Distribution"], ["delegation", "Delegation"], ["letters", "Letters"],
 ];
 const SCREEN_FIELDS = {
@@ -101,7 +101,7 @@ function roleClass(roleObj, key) {
    Model — a pure port of the design's access logic, over saved data + pending changes
    ===================================================================== */
 function buildModel(data, pending, today, cycleName) {
-  const SCREENS = data?.catalog?.screens || [];
+  const SCREENS = (data?.catalog?.screens || []).filter((s) => s.key !== "changeMismatch");
   const ACTIONS = data?.catalog?.actions || [];
   const FIELDS = (data?.catalog?.fields || []).map((f) => ({ ...f, deps: Array.isArray(f.deps) ? f.deps : [] }));
   const savedRoles = data?.roles || [];
