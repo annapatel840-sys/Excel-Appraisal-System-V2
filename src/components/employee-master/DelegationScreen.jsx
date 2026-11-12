@@ -2710,6 +2710,28 @@ export default function DelegationScreen({
   const resolveName = useMemo(() => makeResolver(rows), [rows]);
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
+  // The employee whose row was edited last. Kept in this browser's storage
+  // (per cycle) so the highlight survives refresh and re-login, and moves
+  // to the next employee that is edited.
+  const [lastEditedId, setLastEditedId] = useState("");
+  const lastEditedKey = `appraisal.delegation.lastEdited.v1:${activeCycleId || "none"}`;
+  useEffect(() => {
+    try {
+      setLastEditedId(window.localStorage.getItem(lastEditedKey) || "");
+    } catch (_) {
+      setLastEditedId("");
+    }
+  }, [lastEditedKey]);
+  const markEdited = (empId) => {
+    const id = String(empId || "").trim();
+    if (!id) return;
+    setLastEditedId(id);
+    try {
+      window.localStorage.setItem(lastEditedKey, id);
+    } catch (_) {
+      /* storage is optional */
+    }
+  };
   const [rosterLoading, setRosterLoading] = useState(false);
   const [showRosterLoading, setShowRosterLoading] = useState(false);
   // True while the last roster this user saw is on screen (read-only) and the
@@ -3334,6 +3356,7 @@ export default function DelegationScreen({
     const whyText = reason.trim() || `${FIELDS[field]} change`;
     if (directAssignment(field)) {
       await applyDirectChange(row, field, person.id, whyText);
+      markEdited(row.id);
       setRows((rs) =>
         applyTo(
           rs,
@@ -3406,6 +3429,7 @@ export default function DelegationScreen({
     let failed = false;
     // HR: show the new Comp Manager in the grid straight away, then save.
     if (directAssignment("comp")) {
+      if (targets.length) markEdited(targets[targets.length - 1].r.id);
       setRows((rs) =>
         targets.reduce(
           (acc, { r, value }) =>
@@ -3559,6 +3583,7 @@ export default function DelegationScreen({
               );
             }
             if (done.length) {
+              markEdited(done[done.length - 1].id);
               setRows((rs) =>
                 done.reduce(
                   (acc, r) =>
@@ -4454,7 +4479,10 @@ export default function DelegationScreen({
                               key={c.key}
                               className={
                                 (c.cls || "") +
-                                (fzLeft(c.key) !== undefined ? " fz" : "")
+                                (fzLeft(c.key) !== undefined ? " fz" : "") +
+                                (c.key === "employee" && r.id === lastEditedId
+                                  ? " last-edited"
+                                  : "")
                               }
                               style={
                                 fzLeft(c.key) !== undefined
@@ -5148,6 +5176,7 @@ const CSS = `
 .dg .g1 span{background:#eef1f5;color:#4b5563}.dg .g2 span{background:#e3f3ee;color:#146b5a}.dg .g3 span{background:#f3f4f6;color:#6b7280}
 .dg .dg-grid td{padding:6px 8px;border-right:1px solid #e0e5ec;border-bottom:1px solid #e0e5ec;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:38px}
 .dg td.ref{color:#6b7685}.dg td.nm{font-weight:700}
+.dg .dg-grid tbody tr td.last-edited{background:#7FB995!important;color:#0f3d25}
 /* Row colours as on the Appraisal Sheet: banded rows, blue when selected, no hover change */
 .dg .dg-grid tbody tr:nth-child(odd) td{background:#fbfcfe}
 .dg .dg-grid tbody tr:nth-child(even) td{background:#f2f5f9}

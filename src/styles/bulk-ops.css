@@ -768,7 +768,7 @@
 /* white bar removed; its More button now lives in the blue bar */
 .bo .wshead{display:none!important}
 .bo #ws{row-gap:0}
-.bo .topbar{position:relative;z-index:50}
+.bo .topbar{position:relative;z-index:40}
 .bo .tb-more{position:relative;margin-left:auto}
 .bo .tb-more>#bMore{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;height:32px;padding:0 14px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:#fff;font-size:13px;font-weight:700;letter-spacing:.02em;cursor:pointer}
 .bo .tb-more>#bMore:hover:not(:disabled){background:rgba(255,255,255,.14)}
