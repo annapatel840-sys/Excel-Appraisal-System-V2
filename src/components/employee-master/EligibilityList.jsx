@@ -652,8 +652,9 @@
 // }
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, History, Menu, Plus, Search, Upload } from "lucide-react";
+import { Download, History, Info, Menu, Plus, Search, Upload } from "lucide-react";
 
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
 import { PanelTab, SidePanel } from "./SidePanel";
 import { AddEmployeeModal } from "./AddEmployeeModal";
@@ -685,6 +686,47 @@ const eligibilityDecisionOf = (employee) => {
   }
   return "Pending";
 };
+
+// "i" button next to the Need Action metric: opens on hover (desktop) or tap.
+function NeedActionInfo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="About Need Action"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: 0,
+            border: 0,
+            background: "none",
+            color: "#64748B",
+            cursor: "pointer",
+          }}
+        >
+          <Info size={11} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        className="w-56 p-2 text-xs"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={(event) => event.stopPropagation()}
+      >
+        These employees' status needs attention.
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // "Need Action": the employee's status in the Employee Master is not Active.
 const needsAction = (e) => {
@@ -1086,7 +1128,16 @@ export function EligibilityList({
               }
             >
               <strong>{count}</strong>
-              <span>{label}</span>
+              {key === "needAction" ? (
+                <div
+                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                >
+                  <span>{label}</span>
+                  <NeedActionInfo />
+                </div>
+              ) : (
+                <span>{label}</span>
+              )}
             </div>
           ))}
         </div>

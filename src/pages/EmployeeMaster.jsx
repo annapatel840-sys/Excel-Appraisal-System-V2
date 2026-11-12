@@ -4592,7 +4592,7 @@ export function EmployeeMaster() {
         !criteria.cutoffDate
           ? `Joining date cutoff: Null${cutoffChange?.from ? ` (was ${cutoffChange.from})` : ""}`
           : cutoffChange && !entry.first
-            ? `Joining date cutoff: ${cutoffChange.from || "Null"} -> ${cutoffChange.to}`
+            ? `Joining date cutoff: ${cutoffChange.from ? `${cutoffChange.from} -> ${cutoffChange.to}` : cutoffChange.to}`
             : `Joining date cutoff: ${entry.first ? "" : "No change - "}${criteria.cutoffDate}`,
       );
       return {
