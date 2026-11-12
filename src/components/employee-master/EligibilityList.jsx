@@ -1285,7 +1285,7 @@ export function EligibilityList({
           grid={grid}
           stats={stats}
           audit={auditEntries}
-          auditHint="Every manual change: user, date and time, employee, previous and new value."
+          auditHint="Latest Apply Criteria changes: who applied them, when, and what changed in the criteria."
           onFullAudit={onAuditHistory}
         />
         <PanelTab

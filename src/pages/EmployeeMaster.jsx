@@ -3862,7 +3862,10 @@ export function EmployeeMaster() {
   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] =
     useState(false);
   const [delegationGenerated, setDelegationGenerated] = useState(false);
-  const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
+  // Criteria saved by the last Apply Criteria + one history entry per Apply
+  // (both come from the server, so they survive a reload).
+  const [eligibilitySavedCriteria, setEligibilitySavedCriteria] = useState(null);
+  const [eligibilityCriteriaHistory, setEligibilityCriteriaHistory] = useState([]);
   const [eligibilityBusy, setEligibilityBusy] = useState(false);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
@@ -4480,6 +4483,7 @@ export function EmployeeMaster() {
         setEligibilityCriteriaApplied(
           Boolean(firstPage?.cycle?.criteriaApplied),
         );
+        applyCriteriaMeta(firstPage?.cycle);
         const freshEligibilityEmployees = Array.isArray(firstPage?.data)
           ? firstPage.data
           : [];
@@ -4537,6 +4541,59 @@ export function EmployeeMaster() {
       }
     };
   }, [activeTab, eligibilityReloadKey]);
+
+  // Keep the saved criteria + their history (from the server) in state.
+  const applyCriteriaMeta = (cycleMeta) => {
+    setEligibilitySavedCriteria(cycleMeta?.criteria || null);
+    setEligibilityCriteriaHistory(
+      Array.isArray(cycleMeta?.criteriaHistory) ? cycleMeta.criteriaHistory : [],
+    );
+  };
+
+  // One Audit-tab entry per Apply Criteria: who, when and what changed.
+  const eligibilityCriteriaAuditEntries = useMemo(() => {
+    const nameOf = (empId) => {
+      const found = [...eligibilityMasterEmployees, ...eligibilityEmployees].find(
+        (item) => normalizeEmpId(item.empId) === normalizeEmpId(empId),
+      );
+      return found?.name ? `${found.name} (${empId})` : empId;
+    };
+    const listText = (items, mapper = (v) => v) => items.map(mapper).join(", ");
+    return eligibilityCriteriaHistory.map((entry) => {
+      const stamp = entry.at ? formatAuditTime(String(entry.at).replace(" ", "T")) : "";
+      const lines = [];
+      if (entry.first) {
+        const c = entry.criteria || {};
+        if (c.departments?.length) lines.push(`Departments excluded: ${listText(c.departments)}`);
+        if (c.designations?.length) lines.push(`Designations excluded: ${listText(c.designations)}`);
+        if (c.excludedEmployees?.length)
+          lines.push(`Employees excluded: ${listText(c.excludedEmployees, nameOf)}`);
+        if (c.cutoffDate) lines.push(`Joining date cutoff: ${c.cutoffDate}`);
+        if (!lines.length) lines.push("No exclusions selected.");
+      } else if (!entry.changes?.length) {
+        lines.push("No change to the criteria.");
+      } else {
+        entry.changes.forEach((change) => {
+          if (change.field === "cutoffDate") {
+            lines.push(
+              `Joining date cutoff: ${change.from || "none"} → ${change.to || "none"}`,
+            );
+            return;
+          }
+          const mapper = change.field === "excludedEmployees" ? nameOf : (v) => v;
+          if (change.added?.length)
+            lines.push(`${change.label} excluded: + ${listText(change.added, mapper)}`);
+          if (change.removed?.length)
+            lines.push(`${change.label} no longer excluded: − ${listText(change.removed, mapper)}`);
+        });
+      }
+      return {
+        title: entry.first ? "Criteria applied" : "Criteria changed",
+        meta: `${entry.by || "Unknown user"} · ${stamp}`,
+        lines,
+      };
+    });
+  }, [eligibilityCriteriaHistory, eligibilityMasterEmployees, eligibilityEmployees]);
 
   // Force the Eligibility List to reload from Catalyst on its next view.
   const invalidateEligibilityList = () => {
@@ -5770,6 +5827,7 @@ export function EmployeeMaster() {
             Array.isArray(recovered.data) ? recovered.data : [],
           );
           setEligibilityCriteriaApplied(true);
+          applyCriteriaMeta(recovered?.cycle);
           showBanner(
             "Criteria applied",
             "The eligibility list was saved successfully and has been loaded on screen.",
@@ -5805,6 +5863,7 @@ export function EmployeeMaster() {
     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
+    applyCriteriaMeta(reloaded?.cycle);
     setEligibilityShowingSnapshot(false);
     eligibilityFreshAppliedRef.current = true;
     void writeEligibilitySnapshot(eligibilityCacheKey, {
@@ -5836,6 +5895,7 @@ export function EmployeeMaster() {
     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
+    applyCriteriaMeta(reloaded?.cycle);
     setEligibilityMasterEmployees(masterEmployees);
     setEligibilityShowingSnapshot(false);
     eligibilityFreshAppliedRef.current = true;
@@ -5848,46 +5908,6 @@ export function EmployeeMaster() {
       ),
       criteriaApplied,
     });
-  };
-
-  const regenerateEligibility = () => {
-    if (!canEditEmployees || !eligibilityCycleId) return;
-    setEligibilityResetConfirm(true);
-  };
-
-  const confirmEditRegenerateEligibility = async () => {
-    setEligibilityResetConfirm(false);
-    setEligibilityBusy(true);
-    try {
-      const result = await payrollCycleRequest("eligibility", {
-        method: "POST",
-        body: { action: "reset-criteria", cycleId: eligibilityCycleId },
-      });
-      setEligibilityEmployees([]);
-      setEligibilityCriteriaApplied(false);
-      setDelegationGenerated(false);
-      setBanner(null);
-      showBanner(
-        "Eligibility list cleared",
-        "The current cycle's generated eligibility records were removed. Update the criteria and select Apply Criteria again.",
-      );
-      window.dispatchEvent(
-        new CustomEvent("appraisal:eligibility-reset", {
-          detail: {
-            cycleId: eligibilityCycleId,
-            removed: result?.removed || 0,
-          },
-        }),
-      );
-    } catch (error) {
-      showBanner(
-        "Unable to reset eligibility",
-        error?.message || "Please try again.",
-        true,
-      );
-    } finally {
-      setEligibilityBusy(false);
-    }
   };
 
   const generateDelegationFromEligibility = async () => {
@@ -6196,7 +6216,7 @@ export function EmployeeMaster() {
                     excludedEmployees={excludedEmployees}
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
-                    onRegenerate={regenerateEligibility}
+                    savedCriteria={eligibilitySavedCriteria}
                     onGenerateDelegation={
                       eligibilityShowingSnapshot
                         ? undefined
@@ -6240,6 +6260,7 @@ export function EmployeeMaster() {
                       : undefined
                   }
                   criteriaApplied={eligibilityCriteriaApplied}
+                  auditEntries={eligibilityCriteriaAuditEntries}
                   onGenerateDelegation={
                     eligibilityShowingSnapshot
                       ? undefined
@@ -6481,75 +6502,6 @@ export function EmployeeMaster() {
             ====================================================== */}
 
         <ProcessingOverlay open={eligibilityBusy} />
-        {eligibilityResetConfirm && (
-          <div
-            role="presentation"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget)
-                setEligibilityResetConfirm(false);
-            }}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "rgba(15, 23, 42, 0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 20,
-            }}
-          >
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="eligibility-reset-title"
-              style={{
-                width: "min(480px, 100%)",
-                background: "#fff",
-                borderRadius: 12,
-                padding: 24,
-                boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
-              }}
-            >
-              <h2
-                id="eligibility-reset-title"
-                style={{ margin: "0 0 10px", fontSize: 18 }}
-              >
-                Regenerate Eligibility List
-              </h2>
-              <p
-                style={{
-                  margin: "0 0 22px",
-                  color: "#475569",
-                  lineHeight: 1.5,
-                }}
-              >
-                This permanently clears the generated Eligibility List for the
-                active cycle. Your current criteria selections remain available.
-                You can then apply criteria again to generate a fresh list.
-              </p>
-              <div
-                style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}
-              >
-                <button
-                  type="button"
-                  className="em-btn"
-                  onClick={() => setEligibilityResetConfirm(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="em-btn em-btn-primary"
-                  onClick={confirmEditRegenerateEligibility}
-                >
-                  Clear List &amp; Regenerate
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
         <AuditHistoryPanel
           open={employeeMasterAuditOpen}
           title="Employee Master Audit History"

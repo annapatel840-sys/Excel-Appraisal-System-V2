@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, X, RefreshCw } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
 
 function CheckList({ values, selected, setSelected, disabled }) {
@@ -33,8 +33,8 @@ export function EligibilityCriteria({
   excludedEmployees,
   setExcludedEmployees,
   onApply,
-  onRegenerate,
   onGenerateDelegation,
+  savedCriteria = null, // criteria saved by the last Apply Criteria (from the server)
   criteriaApplied = false,
   delegationGenerated = false,
   readOnly = false,
@@ -47,10 +47,24 @@ export function EligibilityCriteria({
   const [isEditing, setIsEditing] = useState(!criteriaApplied);
   const [applying, setApplying] = useState(false);
   const savedDraftRef = useRef(null);
+  // true while the user is changing an already-applied criteria set
+  const draftingRef = useRef(false);
 
   useEffect(() => {
     setIsEditing(!criteriaApplied);
   }, [criteriaApplied]);
+
+  // Show the selections saved by the last Apply Criteria, so they are still
+  // there after a reload and when Edit Criteria is opened. A draft being
+  // edited right now is never overwritten.
+  useEffect(() => {
+    if (!savedCriteria || draftingRef.current) return;
+    setSelectedDepartments(savedCriteria.departments || []);
+    setSelectedDesignations(savedCriteria.designations || []);
+    setExcludedEmployees(savedCriteria.excludedEmployees || []);
+    setCutoffDate(savedCriteria.cutoffDate || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCriteria]);
 
   const currentDraft = () => ({
     departments: selectedDepartments,
@@ -61,6 +75,7 @@ export function EligibilityCriteria({
 
   const beginEdit = () => {
     savedDraftRef.current = currentDraft();
+    draftingRef.current = true;
     setIsEditing(true);
   };
 
@@ -72,6 +87,7 @@ export function EligibilityCriteria({
       setExcludedEmployees(saved.excludedEmployees);
       setCutoffDate(saved.cutoffDate);
     }
+    draftingRef.current = false;
     setIsEditing(false);
   };
 
@@ -84,6 +100,7 @@ export function EligibilityCriteria({
       });
       if (succeeded) {
         savedDraftRef.current = currentDraft();
+        draftingRef.current = false;
         setIsEditing(false);
       }
     } finally {
@@ -273,18 +290,6 @@ export function EligibilityCriteria({
             onClick={beginEdit}
           >
             Edit Criteria
-          </button>
-        )}
-        {criteriaApplied && (
-          <button
-            type="button"
-            className="em-btn em-btn-ghost"
-            style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
-            disabled={readOnly || applying}
-            onClick={onRegenerate}
-          >
-            <RefreshCw size={14} />
-            Regenerate List
           </button>
         )}
       </div>

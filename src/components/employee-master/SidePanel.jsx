@@ -7,7 +7,7 @@ export function SidePanel({
   defs,
   grid,
   stats, // { summary: [[label, n]], sections: [{ title, rows: [[label, n]] }] }  (optional)
-  audit, // [{ title, meta, detail }]  (optional)
+  audit, // [{ title, meta, detail, lines }]  (optional)
   auditHint,
   onFullAudit, // opens your existing audit history (optional)
 }) {
@@ -138,6 +138,12 @@ export function SidePanel({
                   <div className="a1">{a.title}</div>
                   {a.meta && <div className="a2">{a.meta}</div>}
                   {a.detail && <div className="a2">{a.detail}</div>}
+                  {Array.isArray(a.lines) &&
+                    a.lines.map((line, n) => (
+                      <div className="a2" key={n}>
+                        {line}
+                      </div>
+                    ))}
                 </div>
               ))
             ) : (

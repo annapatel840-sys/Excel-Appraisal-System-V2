@@ -2764,6 +2764,11 @@ export function AppraisalGrid({
 
     promise
       .then((data) => {
+        // Do not remember an empty answer: the next time the panel opens for
+        // this employee it asks the server again instead of showing "nothing"
+        // for the rest of the session.
+        if (!data.length) historyPromiseRef.current.delete(key);
+
         setHistoryByEmpId((previous) => ({
           ...previous,
           [key]: { loading: false, data, error: "" },

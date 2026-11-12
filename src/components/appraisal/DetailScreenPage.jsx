@@ -1363,6 +1363,11 @@ export function DetailScreenPage({
     historyPromiseRef.current.set(key, promise);
     promise
       .then((data) => {
+        // Never keep an empty answer; ask the server again next time.
+        if (!data.length) {
+          historyPromiseRef.current.delete(key);
+          detailHistoryPromises.delete(key);
+        }
         setHistoryByEmpId((prev) => ({
           ...prev,
           [key]: { loading: false, data, error: "" },
