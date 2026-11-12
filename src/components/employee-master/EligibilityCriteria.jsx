@@ -50,6 +50,45 @@ export function EligibilityCriteria({
   const [isEditing, setIsEditing] = useState(!criteriaApplied);
   const [applying, setApplying] = useState(false);
   const savedDraftRef = useRef(null);
+  const searchBoxRef = useRef(null);
+  const [menuPos, setMenuPos] = useState(null);
+
+  // The employee picker floats under the search box like a menu (it does not
+  // take space in the panel). Position it from the box on open, and close it
+  // if the panel or page scrolls so it never drifts away from the box.
+  useEffect(() => {
+    if (!showSuggest) {
+      setMenuPos(null);
+      return undefined;
+    }
+    const place = () => {
+      const rect = searchBoxRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const maxHeight = 220;
+      const below = window.innerHeight - rect.bottom - 8;
+      const flip = below < 120 && rect.top > below;
+      setMenuPos({
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.min(maxHeight, Math.max(120, flip ? rect.top - 12 : below)),
+        ...(flip
+          ? { bottom: window.innerHeight - rect.top + 4 }
+          : { top: rect.bottom + 4 }),
+      });
+    };
+    place();
+    const close = (event) => {
+      // Scrolling the menu itself must not close it.
+      if (event?.target?.closest?.(".em-suggest-menu")) return;
+      setShowSuggest(false);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showSuggest]);
   // true while the user is changing an already-applied criteria set
   const draftingRef = useRef(false);
 
@@ -243,7 +282,7 @@ export function EligibilityCriteria({
       />
 
       <div className="em-crit-h">Exclude specific employees</div>
-      <div className="em-search-field">
+      <div className="em-search-field" ref={searchBoxRef}>
         <input
           value={search}
           disabled={readOnly || !isEditing}
@@ -262,8 +301,19 @@ export function EligibilityCriteria({
         />
       </div>
 
-      {showSuggest && !readOnly && isEditing && (
-        <div className="em-suggest">
+      {showSuggest && !readOnly && isEditing && menuPos && (
+        <div
+          className="em-suggest em-suggest-menu"
+          style={{
+            position: "fixed",
+            left: menuPos.left,
+            width: menuPos.width,
+            maxHeight: menuPos.maxHeight,
+            ...(menuPos.top !== undefined
+              ? { top: menuPos.top }
+              : { bottom: menuPos.bottom }),
+          }}
+        >
           {suggestions.length ? (
             suggestions.map((employee) => (
               <div
