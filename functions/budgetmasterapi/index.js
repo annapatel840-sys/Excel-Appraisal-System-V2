@@ -3118,19 +3118,23 @@ async function calculateBudgetBases(
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
     // second lookup can disagree with the already-generated rows and change the
     // budget total while the Appraisal Sheet's Total row stays the same.
-    const cycleFilteredEmployees = appraisalSheetEmployees.filter(
-      (employee) => {
-        const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-        const employeeStatus = String(employee.master_status || employee.status)
-          .trim()
-          .toLowerCase();
-        const active = !employeeStatus || employeeStatus === "active";
-        return (
-          active &&
-          (cycleEligibility ? cycleEligibility.eligible : employee.eligible)
-        );
-      },
-    );
+    // Appraisal_Sheet is already the generated eligible roster for this
+    // cycle. Budget base must equal the sum of the exact Previous Total Rewards
+    // cells shown in that sheet; re-applying Employee_Master/Eligibility_List
+    // here silently drops rows and makes Org Base differ from the sheet total.
+    const cycleFilteredEmployees = appraisalSheetEmployees.map((employee) => {
+      const sheetValue = employee.sheet_previous_appraisal_ctc;
+      const sheetBase =
+        sheetValue === null || sheetValue === undefined || String(sheetValue).trim() === ""
+          ? 0
+          : n(sheetValue);
+      return {
+        ...employee,
+        base: sheetBase,
+        previous_appraisal_total_ctc_with_rewards: sheetBase,
+        Previous_Appraisal_total_CTC_with_Rewards: sheetBase,
+      };
+    });
     // Keep the legacy explicit sheet/master eligibility roster for the
     // existing count and allocation calculations below. Budget base itself
     // uses cycleFilteredEmployees so it follows the exact cycle eligibility.
@@ -3168,7 +3172,7 @@ async function calculateBudgetBases(
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "active cycle-eligible Appraisal Sheet Previous Total CTC with Rewards mapped values",
+        "sum of Previous Total Rewards cells stored on this Active cycle's Appraisal_Sheet rows (no Payroll_Data fallback)",
       budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: cycleFilteredEmployees.length,
