@@ -773,6 +773,7 @@ app.get(
       })),
       matrix: m,
       people: Object.values(people),
+      usersLoaded: users !== null, // false = Catalyst user list could not be read
       deleg: { techEd: deleg.techEd, compMgr: deleg.compMgr },
       listCycleId,
       listCycleActive: !!cycleId && listCycleId === cycleId,
@@ -1724,9 +1725,20 @@ app.post(
     });
   }),
 );
+// Unexpected failures in Generate Delegation are returned with their reason (rule messages
+// are untouched) so the screen can say what went wrong instead of "Server error".
+const withReason = (label, fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    console.error(label, err);
+    throw new HttpError(500, label + ": " + ((err && err.message) || "unexpected error"));
+  }
+};
 app.post(
   "/delegation/fill",
-  asyncRoute(async (req, res) => {
+  asyncRoute(withReason("Delegation generation failed", async (req, res) => {
     const ap = apps(req);
     const me = await requireHR(ap);
     const zcql = ap.admin.zcql(),
@@ -1768,12 +1780,35 @@ app.post(
     // Keep Employee_Master for manager-name resolution, but query Appraisal_Sheet
     // only for this cycle's eligible employees. The previous fallback fetched
     // every historical appraisal row when cycle-column filters returned none.
-    const sheetWhere = requestedEligibleIds
-      .map((id) => s.empId + " = '" + q(id) + "'")
-      .join(" OR ");
+    // ZCQL allows at most 10 conditions in a WHERE clause (selectAll adds one more for
+    // paging), so one condition per employee cannot be used. Look employees up with IN
+    // lists (a single condition each); if IN is not accepted, fall back to OR groups of 8.
+    const selectSheetRows = async () => {
+      const out = [];
+      const IN_CHUNK = 25,
+        OR_CHUNK = 8;
+      for (let i = 0; i < requestedEligibleIds.length; i += IN_CHUNK) {
+        const ids = requestedEligibleIds.slice(i, i + IN_CHUNK);
+        try {
+          const where =
+            s.empId + " IN (" + ids.map((id) => "'" + q(id) + "'").join(", ") + ")";
+          out.push(...(await selectAll(zcql, s.table, where)));
+        } catch (err) {
+          console.error("sheet IN lookup failed, using OR groups", err);
+          for (let j = 0; j < ids.length; j += OR_CHUNK) {
+            const where = ids
+              .slice(j, j + OR_CHUNK)
+              .map((id) => s.empId + " = '" + q(id) + "'")
+              .join(" OR ");
+            out.push(...(await selectAll(zcql, s.table, where)));
+          }
+        }
+      }
+      return out;
+    };
     const [emRows, sheetRows] = await Promise.all([
       selectAll(zcql, e.table),
-      selectAll(zcql, s.table, sheetWhere),
+      selectSheetRows(),
     ]);
     // Employee_Master indexes
     const em = {},
@@ -1996,7 +2031,7 @@ app.post(
       ambiguous: { compManager: Array.from(ambiguousComp.values()) },
       version,
     });
-  }),
+  })),
 );
 
 module.exports = app;

@@ -857,30 +857,6 @@ async function writeAudit(auditTable, {
   });
 }
 
-// Reads only the signed-in user's own Employee_Master row (matched by email),
-// so login stays fast. An Active row wins over an inactive duplicate.
-async function sessionHomeLocation(req, identity) {
-  const email = String(identity?.email || "").trim();
-  if (!email || !/^[^\s'"\\]+@[^\s'"\\]+$/.test(email)) return { location: "", empId: "" };
-  const adminApp = catalyst.initialize(req, { scope: "admin" });
-  const candidates = [...new Set([email, email.toLowerCase()])]
-    .map((value) => "email_id = '" + value + "'")
-    .join(" OR ");
-  const result = await fastReadQuery(
-    adminApp.zcql(),
-    "SELECT emp_id, location, emp_status FROM Employee_Master WHERE " + candidates + " LIMIT 10",
-    "session home location",
-  );
-  const rows = (result || []).map((item) => unwrapZcqlRow(item, "Employee_Master")).filter(Boolean);
-  const row =
-    rows.find((r) => String(r.emp_status || "Active").trim().toLowerCase() === "active" && String(r.location || "").trim()) ||
-    rows.find((r) => String(r.location || "").trim());
-  return {
-    location: row ? String(row.location || "").trim() : "",
-    empId: row ? String(row.emp_id || "").trim() : "",
-  };
-}
-
 async function requireIdentity(req) {
   const userApp = catalyst.initialize(req);
   const user = await userApp.userManagement().getCurrentUser();
@@ -1077,9 +1053,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
-  if (await eligibilityCriteriaWasApplied(tables, cycleId)) {
-    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. It is locked for this cycle.", 409);
-  }
+  // Apply Criteria can be run again for the Active cycle (Edit Criteria → Apply):
+  // rows are re-evaluated against the new criteria and manual decisions are kept.
 
   // Ensure all active employees have an initial Eligible row and retain
   // existing inactive employees as visible Not Eligible rows.
@@ -1109,6 +1084,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const toUpdate = [];
   const added = [];
   const updated = [];
+  const removedRows = [];
   let evaluated = 0;
   let excluded = 0;
   let manualKept = 0;
@@ -1170,6 +1146,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
       if (existing && String(existing.eligibility_source || "").trim().toLowerCase() !== "manual") {
         await deleteEligibilityRowsById(tables, [rowId(existing)]);
         existingByMasterId.delete(masterId);
+        removedRows.push({ empId, name });
       }
       continue;
     }
@@ -1222,6 +1199,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
       evaluated,
       added: added.length,
       excluded,
+      removed: removedRows.length,
     },
   });
   return {
@@ -1235,8 +1213,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
     manualKept,
     addedRows: added,
     updatedRows: updated,
-    removed: 0,
-    removedRows: [],
+    removed: removedRows.length,
+    removedRows,
   };
 }
 
@@ -3299,13 +3277,7 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
   }
   if (resource === "session") {
-    // The signed-in user's own Employee Master location, so the app can open on
-    // that location instead of All Locations. "" when they are not in Employee Master.
-    const home = await sessionHomeLocation(req, identity).catch((error) => {
-      console.warn("Session location lookup failed:", error && error.message);
-      return { location: "", empId: "" };
-    });
-    return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role, location: home.location, empId: home.empId } });
+    return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
   }
   const techEdUser = !enforced && isTechEd(identity.user);
 
@@ -3399,6 +3371,14 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "POST") {
     const body = await readBody(req);
+    // Access -> Fields -> Eligibility List: every change here changes Eligibility; a reason
+    // also needs the Reason field.
+    {
+      const withReason = (item) => Boolean(item && (item.reason || item.eligibility_reason || item.eligibleReason || item.eligible_reason));
+      const labels = ["Eligibility"];
+      if (withReason(body) || (Array.isArray(body.records) && body.records.some(withReason))) labels.push("Reason");
+      access.guard(a, () => access.requireEditFields(a, "eligibility", labels));
+    }
     if (String(body.action || "").trim().toLowerCase() === "reset-criteria") {
       const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
       if (!cycleId) throw new ApiError("Appraisal cycle is required.", 400);
@@ -3480,6 +3460,19 @@ async function routeRequest(req, res, identity, resource, a) {
     if (duplicate) return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
     const status = String(body.status || "Active").trim().toLowerCase() === "inactive" ? "Inactive" : "Active";
     const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode, status };
+    {
+      // Access -> Fields -> Location Master: only changed fields need Edit.
+      const labels = { location_name: "Location Name", location_code: "Location Code", address: "Address", currency_code: "Currency Code", status: "Status" };
+      const prior = locationId
+        ? rows.find((row) => String(row.ROWID || row.rowid || row.id || "") === locationId)
+        : null;
+      const changed = Object.keys(labels)
+        .filter((key) => (prior
+          ? String(prior[key] ?? "").trim() !== String(payload[key] ?? "").trim()
+          : String(payload[key] ?? "").trim() !== ""))
+        .map((key) => labels[key]);
+      access.guard(a, () => access.requireEditFields(a, "locationMaster", changed));
+    }
     if (locationId) {
       const existing = rows.find((row) => String(row.ROWID || row.rowid || row.id || "") === locationId);
       if (!existing) return sendJson(res, 404, { success: false, message: "Location not found." });
@@ -3836,6 +3829,25 @@ async function routeRequest(req, res, identity, resource, a) {
     const appendRemark = (current, entry) => (current ? `${current} | ${entry}` : entry);
     // Only one cycle may be Active: access scoping follows the Active cycle.
     const otherActiveCycle = (id) => cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
+
+    // Access -> Fields -> Appraisal Cycle Master: create / update need Edit on the fields they set
+    // (an update only on the ones that changed).
+    if (action === "create" || action === "update") {
+      const sent = readCycleFields(existing || {});
+      const labelled = [
+        ["Cycle Name", sent.name, existing && existing.name],
+        ["Cycle Type", sent.type, existing && existing.type],
+        ["Process", sent.process, existing && existing.process],
+        ["Start Date", sent.start, existing && existing.start],
+        ["Close Date", sent.end, existing && existing.end],
+        ["Effective Date", sent.effective, existing && existing.effective],
+      ];
+      const changed = labelled
+        .filter(([, now, before]) => (existing ? String(now ?? "") !== String(before ?? "") : String(now ?? "") !== ""))
+        .map(([label]) => label);
+      if (body.remarks !== undefined && String(body.remarks || "").trim() !== "") changed.push("Remarks");
+      access.guard(a, () => access.requireEditFields(a, "cycleMaster", changed));
+    }
 
     if (action === "create") {
       // The screen always sends a location; older callers that do not are All Locations.

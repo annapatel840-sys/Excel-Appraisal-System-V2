@@ -159,6 +159,28 @@ const ALLOWED_FIELDS = [
   "emp_id",
 ];
 
+// Employee_Master column -> field name in Access -> Fields -> Employee Master.
+const FIELD_ACCESS_LABEL = {
+  emp_name: "Employee Name",
+  designation: "Designation",
+  department: "Department",
+  repo_manager: "Reporting Manager",
+  director: "Director",
+  appraiser_tech_ed: "Appraiser Tech-ED",
+  email_id: "Email ID",
+  date_of_join: "Date of Joining",
+  emp_status: "Employee Status",
+  status: "Employee Status",
+  emp_type: "Employee Type",
+  wissen_experience: "Organization Experience",
+  total_experience: "Total Experience",
+  cost_center: "Cost Center",
+  current_salary: "Current Salary",
+  location: "Location",
+  last_appraisal_month_year: "Last Appraisal Month/Year",
+  exit_date: "Exit Date",
+};
+
 const NUMERIC_FIELDS = new Set([
   "wissen_experience",
   "total_experience",
@@ -906,8 +928,20 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
 // UPDATE EMPLOYEE MASTER EMPLOYEE
 // ============================================================
 
-async function updateRosterEmployee(req, res, table, employeesTable, afterWrite) {
+async function updateRosterEmployee(req, res, table, employeesTable, afterWrite, a) {
   const body = await readRequestBody(req);
+
+  // Only fields the role may edit (Access -> Fields -> Employee Master) can be changed.
+  if (a) {
+    const changed = Array.from(new Set(
+      Object.keys(body)
+        .filter(function (key) { return FIELD_ACCESS_LABEL[key]; })
+        .map(function (key) { return FIELD_ACCESS_LABEL[key]; }),
+    ));
+    access.guard(a, function () {
+      access.requireEditFields(a, "employeeMaster", changed);
+    });
+  }
 
   const empId = String(body.emp_id || "").trim();
 
@@ -1113,7 +1147,7 @@ module.exports = async function (req, res) {
 
     // PUT / PATCH updates Employee_Master.
     if (req.method === "PUT" || req.method === "PATCH") {
-      await updateRosterEmployee(req, res, table, employeesTable, afterWrite);
+      await updateRosterEmployee(req, res, table, employeesTable, afterWrite, a);
       return;
     }
 

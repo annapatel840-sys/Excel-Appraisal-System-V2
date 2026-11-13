@@ -79,7 +79,7 @@ const T = {
 // Built-in roles. Their keys are fixed; labels can be changed in AccessRole.
 const BUILT_IN_ROLES = [
   { key: 'hr', label: 'HR Admin', source: 'catalyst', catalystRole: 'HR', seesAll: true, fixed: true },
-  { key: 'techEd', label: 'Tech ED', source: 'delegation', seesAll: false, fixed: true },
+  { key: 'techEd', label: 'Tech-ED', source: 'delegation', seesAll: false, fixed: true },
   { key: 'compMgr', label: 'Comp Manager', source: 'delegation', seesAll: false, fixed: true }
 ];
 
@@ -89,16 +89,48 @@ const scr = (key, label, group, hrOnly, d) => ({ type: 'screen', key, label, gro
 const act = (key, label, group, fixed, d) => ({ type: 'action', key, label, group, hrOnly: false, fixed: fixed || '', note: '', d });
 const fld = (key, label, kind, extra) => Object.assign({ type: 'field', key, label, group: '', hrOnly: false, fixed: '', note: '', kind, deps: [], pairOf: '' }, extra || {});
 const CMP = 'Compensation', HRO = 'HR Operations';
+/* Fields of the other screens (group = screen key). m = shown/system value (read-only), otherwise an input. */
+const fslug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+const SCREEN_FIELD_SPEC = {
+  employeeMaster: [['Employee ID', 'm'], 'Employee Name', 'Designation', 'Department', 'Reporting Manager', 'Director', 'Appraiser Tech-ED', 'Employee Type', 'Email ID', 'Date of Joining', 'Location', 'Cost Center', 'Organization Experience', 'Total Experience', 'Current Salary', 'Last Appraisal Month/Year', 'Employee Status', 'Exit Date', 'Remark'],
+  cycleMaster: ['Cycle Name', 'Cycle Type', 'Year', 'Process', 'Start Date', 'Close Date', 'Effective Date', ['Status', 'm'], 'Letters to Send', ['Mismatch', 'm'], 'Remarks'],
+  locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Status'],
+  budgetMaster: [['Tech-ED', 'm'], 'Budget %', 'Reason for Change', ['Allocated', 'm'], ['Updated', 'm'], ['Team Size', 'm'], 'Allotted to Comp Managers', ['Buffer', 'm']],
+  payrollMaster: [['Employee ID', 'm'], ['Employee Name', 'm'], ['Appraisal Cycle Name', 'm'], 'Effective Date', 'FY Year', 'Current Annual Base Pay', 'Joining Bonus', 'Performance Bonus', 'Retention Bonus', 'Hike %', 'Hike Amount', 'Total CTC with Rewards', 'Total Reward Hike Amount', 'Total Reward Hike %', 'Target Performance Bonus for Next Year', 'Target PB Criteria', 'Total Bonus', 'New Base Pay', 'RB to be Paid', 'Month (RB)', 'PB to be Paid', 'Month (PB)', 'TB to be Paid', 'Month (TB)'],
+  feedbackRating: [['Employee', 'm'], ['Department', 'm'], ['Band', 'm'], ['Cycle', 'm'], 'Effective Date', 'Manager Rating', 'Manager Feedback', 'RR%', 'YoE Ratio', 'Interview Count', 'Gross Margin', 'Cost Center/Client', 'Client Manager', 'Client Rating', 'Client Feedback', 'At Risk', ['Comp Manager', 'm'], ['Tech-ED', 'm'], ['Upload Batch', 'm']],
+  designationMaster: ['Designation', 'Department', 'Band', 'Next Type', 'Next Designations', 'Status', 'Group Name', 'Mapped Designations'],
+  eligibility: [['Employee', 'm'], ['Location', 'm'], ['Department', 'm'], ['Date of Joining', 'm'], ['Tech-ED/BU Head Name', 'm'], ['Employee Status', 'm'], 'Eligibility', 'Reason', ['Set By', 'm'], ['Change Tag', 'm'], ['Last Updated', 'm']],
+  payrollUpload: ['Cycle to Upload Into', 'Upload File'],
+  historicalImport: ['Cycle', 'Data to Import', 'File'],
+  teamChanges: ['Manager', 'Employee Name or ID'],
+  budgetDistribution: [['Level', 'm'], ['Tech-ED', 'm'], 'Budget %', ['Original Budget', 'm'], 'Additional Budget', ['Updated Budget', 'm'], ['Utilised', 'm'], ['Remaining', 'm'], ['Utilisation %', 'm'], ['Original Count', 'm'], ['Current Count', 'm'], ['Status', 'm'], 'Access'],
+  delegation: [['Employee', 'm'], ['Reporting Manager', 'm'], ['Director', 'm'], ['Tech-ED', 'm'], 'Comp. Manager', 'Appraiser Tech-ED', ['Previous Comp. Manager', 'm'], ['Previous Appraiser Tech-ED', 'm'], 'HR Remarks'],
+  letters: [['Employee', 'm'], ['Appraisal Cycle', 'm'], ['Cycle Type', 'm'], ['Promotion', 'm'], 'Letter Type', 'Template', ['Status', 'm'], ['Alert', 'm'], ['Sent On', 'm'], ['Sent By', 'm'], ['Sent To', 'm'], ['Resend Count', 'm'], ['Last Resent On', 'm'], 'Remarks']
+};
+/* Screens only HR can open: other roles get Hidden on their fields by default. */
+const HR_FIELD_GROUPS = new Set(['employeeMaster', 'cycleMaster', 'locationMaster', 'budgetMaster', 'payrollMaster', 'feedbackRating', 'designationMaster', 'eligibility', 'payrollUpload', 'historicalImport']);
+const SCREEN_FIELD_CATALOG = [].concat(...Object.keys(SCREEN_FIELD_SPEC).map((scr) => SCREEN_FIELD_SPEC[scr].map((it) => {
+  const label = Array.isArray(it) ? it[0] : it, m = Array.isArray(it) && it[1] === 'm';
+  return fld(scr + '_' + fslug(label), label, m ? 'master' : 'input', { group: scr });
+})));
+
 const START_CATALOG = [
   scr('dashboard', 'Dashboard', CMP, false, ['view', 'view', 'view']),
   scr('appraisalSheet', 'Appraisal Sheet', CMP, false, ['edit', 'edit', 'edit']),
   scr('detailScreen', 'Detailed Screen', CMP, false, ['edit', 'edit', 'edit']),
+  scr('bulkEditScreen', 'Bulk Edit', CMP, false, ['edit', 'edit', 'edit']),
   scr('budgetAllocation', 'Budget Master', CMP, false, ['edit', 'edit', 'edit']),
   scr('budgetDistribution', 'Budget Distribution', CMP, false, ['edit', 'edit', 'edit']),
   scr('teamChanges', 'Team Changes', CMP, false, ['view', 'view', 'view']),
   scr('delegation', 'Delegation', CMP, false, ['edit', 'edit', 'none']),
   scr('employeeMaster', 'Employee Master · Eligibility List', HRO, true),
+  scr('hrDashboard', 'HR Dashboard', HRO, true),
   scr('cycleMaster', 'Appraisal Cycle Master', HRO, true),
+  scr('locationMaster', 'Location Master', HRO, true),
+  scr('feedbackRatingMaster', 'Feedback & Rating Master', HRO, true),
+  scr('designationMaster', 'Designation Master', HRO, true),
+  scr('historicalImport', 'Historical Import', HRO, true),
+  scr('letters', 'Letters', HRO, true),
   scr('payroll', 'Payroll Data · Payroll Upload', HRO, true),
   scr('settings', 'Settings', HRO, true),
   scr('access', 'Access', HRO, true),
@@ -152,7 +184,7 @@ const START_CATALOG = [
   fld('totalBonusHikePct', 'Total Bonus Hike %', 'calc', { deps: ['totalBonus', 'rbToBePaid', 'pbToBePaid'] }),
   fld('totalRewardsHikeAmount', 'Total Rewards Hike Amount', 'calc', { deps: ['hikeAmount', 'totalBonusHikeAmount'] }),
   fld('totalRewardsHikePct', 'Total Rewards Hike %', 'calc', { deps: ['totalRewardsHikeAmount', 'currentAnnualBasePay'] })
-].map((c, i) => Object.assign(c, { sort: i + 1 }));
+].concat(SCREEN_FIELD_CATALOG).map((c, i) => Object.assign(c, { sort: i + 1 }));
 
 /* Field key → Appraisal_Sheet column. Calculated fields have no column (computed). */
 const FIELD_COLUMNS = {
@@ -304,7 +336,7 @@ async function loadMatrix(zcql, C, roles) {
     m.screens[r.key] = {}; m.actions[r.key] = {}; m.fields[r.key] = {};
     C.screens.forEach((x) => { m.screens[r.key][x.key] = defaultLevel(C, x, r.key); });
     C.actions.forEach((x) => { m.actions[r.key][x.key] = defaultAllowed(x, r.key); });
-    C.fields.forEach((x) => { const d = defaultLimit(x, r.key); if (d) m.fields[r.key][x.key] = d; });
+    C.fields.forEach((x) => { let d = defaultLimit(x, r.key); if (d && HR_FIELD_GROUPS.has(x.group) && r.key !== 'hr') d = 'hidden'; if (d) m.fields[r.key][x.key] = d; });
   });
   s.forEach((x) => { const it = C.screenBy[x.screen_key]; if (!it || !m.screens[x.role_key]) return; m.rowids.screen[x.role_key + '|' + x.screen_key] = x.ROWID; if (!it.hrOnly && LEVELS.indexOf(x.level) > -1) m.screens[x.role_key][x.screen_key] = x.level; });
   a.forEach((x) => { const it = C.actionBy[x.action_key]; if (!it || !m.actions[x.role_key]) return; m.rowids.action[x.role_key + '|' + x.action_key] = x.ROWID; if (!it.fixed) m.actions[x.role_key][x.action_key] = bool(x.allowed); });
@@ -373,8 +405,40 @@ async function loadDelegation(zcql, cycleId) {
     selectAll(z, e.table),
     selectAll(z, s.table),
   ]);
-  const cycleOf = (r) => String(r.cycle_id == null ? '' : r.cycle_id).trim();
-  const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
+  // A lookup value as text: Catalyst may return a ROWID or an object. Defined
+  // before cycleOf, which uses it straight away (a later const throws
+  // "Cannot access 'lookupText' before initialization").
+  const lookupText = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      return lookupText(
+        value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+        value.id ?? value.value ?? value.display_value ?? value.name ?? ''
+      );
+    }
+    return String(value).trim();
+  };
+  // Appraisal_Sheet schemas use appraisal_cycle_id in the current app, while
+  // older imports may use cycle_id / camelCase aliases. Resolve the first
+  // populated value so active-cycle rows are not silently omitted from scope.
+  const cycleOf = (r) => {
+    for (const value of [
+      r.cycle_id,
+      r.appraisal_cycle_id,
+      r.appraisalCycleId,
+      r.cycleId,
+      r.appraisal_cycle,
+      r.appraisal_cycle_name,
+      r.cycle_name,
+    ]) {
+      const resolved = lookupText(value);
+      if (resolved) return resolved;
+    }
+    return '';
+  };
+  const cycleSheetRows = cycleId
+    ? sheetRows.filter((r) => cycleOf(r) === String(cycleId))
+    : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
   // Employee_Master people, reachable by employee ID and by ROWID (lookup
@@ -396,7 +460,7 @@ async function loadDelegation(zcql, cycleId) {
   // name) -> normalized employee ID. Exact matches only: a partial match could
   // put an employee in the wrong manager's team ("EMP001" is inside "EMP0012").
   const person = (value) => {
-    const raw = String(value == null ? '' : value).trim();
+    const raw = lookupText(value);
     if (!raw) return null;
     const viaId = byId.get(norm(raw)) || byRowId.get(raw);
     if (viaId) return viaId;
@@ -410,28 +474,58 @@ async function loadDelegation(zcql, cycleId) {
   // Managers not in Employee_Master keep their own normalized value.
   const managerKey = (value) => {
     const p = person(value);
-    return p ? norm(p.empId) : norm(value);
+    return p ? norm(p.empId) : norm(lookupText(value));
   };
   const employeeOf = (value) => {
     const p = person(value);
-    return p ? p.empId : String(value == null ? '' : value).trim();
+    return p ? p.empId : lookupText(value);
+  };
+
+  // Assignment columns differ between older imports and newer generated sheets.
+  // Prefer a value that resolves to a real Employee_Master person; a stale but
+  // non-empty alias must not mask a valid assignment in another populated column.
+  const managerValue = (values) => {
+    const candidates = (Array.isArray(values) ? values : [values])
+      .filter((value) => value !== null && value !== undefined && String(lookupText(value)).trim());
+    const resolved = candidates.find((value) => !!person(value));
+    return resolved !== undefined ? resolved : (candidates[0] ?? '');
   };
 
   // Pick, per employee, the first source that names each manager.
-  const assign = (emp, techEdValue, compMgrValue) => {
+  const assign = (emp, techEdValues, compMgrValues) => {
     if (!emp) return;
     const k = norm(emp);
     const cur = out.byEmp[k] || (out.byEmp[k] = { empId: emp, techEd: '', compMgr: '' });
-    if (!cur.techEd) cur.techEd = managerKey(techEdValue);
-    if (!cur.compMgr) cur.compMgr = managerKey(compMgrValue);
+    if (!cur.techEd) cur.techEd = managerKey(managerValue(techEdValues));
+    if (!cur.compMgr) cur.compMgr = managerKey(managerValue(compMgrValues));
   };
-  rows.forEach((r) => assign(employeeOf(r[d.empId]), r[d.appraiserTechEdId], r[d.compManagerId]));
-  [cycleSheetRows, noCycleSheetRows].forEach((list) => list.forEach((r) => assign(
+  // The active-cycle Appraisal_Sheet is the same assignment source shown to
+  // reviewers in the app. It must win when it conflicts with an older/stale
+  // Delegation row; otherwise the UI can show an employee under one Tech-Ed
+  // while the access scope silently assigns that employee to another.
+  cycleSheetRows.forEach((r) => assign(
     employeeOf(r[s.empId]),
-    r.appraiser_tech_ed || r.appraiser_tech_ed1,
-    r.comp_manager || r.comp_manager_id,
-  )));
-  masterRows.forEach((r) => assign(String(r[e.empId] || '').trim(), r.appraiser_tech_ed, r.comp_manager));
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
+  // Delegation remains the fallback for employees without an active-cycle
+  // Appraisal_Sheet assignment.
+  rows.forEach((r) => assign(
+    employeeOf(r[d.empId]),
+    [r[d.appraiserTechEdId], r.appraiser_tech_ed_id, r.appraiser_teched, r.tech_ed, r.tech_ed_id],
+    [r[d.compManagerId], r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
+  // Legacy / imported rows are fallback-only and cannot override this cycle.
+  noCycleSheetRows.forEach((r) => assign(
+    employeeOf(r[s.empId]),
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
+  masterRows.forEach((r) => assign(
+    String(r[e.empId] || '').trim(),
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
 
   Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
     if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
@@ -442,14 +536,7 @@ async function loadDelegation(zcql, cycleId) {
 function hasTeam(deleg, empId) { const k = norm(empId); return deleg.techEd[k] != null || deleg.compMgr[k] != null; }
 function emRow(r) {
   const e = SETTINGS.employeeMaster;
-  return {
-    row_id: String(r.ROWID || r.rowid || '').trim(),
-    empId: String(r[e.empId] || '').trim(),
-    name: r[e.name] || String(r[e.empId]),
-    email: String(r[e.email] || '').trim().toLowerCase(),
-    active: String(r[e.status] || '').trim().toLowerCase() === e.activeValue.toLowerCase(),
-    inEM: true
-  };
+  return { empId: String(r[e.empId] || '').trim(), name: r[e.name] || String(r[e.empId]), email: String(r[e.email] || '').trim().toLowerCase(), active: String(r[e.status] || '').trim().toLowerCase() === e.activeValue.toLowerCase(), inEM: true };
 }
 async function findEmployee(zcql, by, value) {
   const e = SETTINGS.employeeMaster, z = zq(zcql);
@@ -610,16 +697,7 @@ async function get(cat, opts) {
   const ro = base.roles.find((r) => r.key === a.role);
   return {
     version: base.version,
-    // Keep the Employee_Master ROWID as well as empId. Legacy
-    // Budget_Distribution_Comp rows may store the manager lookup ROWID in
-    // comp_manager; budgetmasterapi uses this identity to resolve that child
-    // allocation before following budget_distribution_id to its Tech-Ed parent.
-    user: {
-      email,
-      empId: person ? person.empId : '',
-      row_id: person ? person.row_id : '',
-      name: person ? person.name : email
-    },
+    user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
     screens: a.screens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
   };
@@ -672,6 +750,19 @@ function requireEditColumns(a, columns) {
 }
 function fieldOfColumn(column) { return COLUMN_FIELDS[column] || null; }
 
+/* Fields of the screens other than the Appraisal Sheet (Fields tab, one group per screen).
+   Key = <screen>_<slug of the field label>. A field the catalogue does not know stays editable
+   (nothing to restrict), exactly like the screens' own front-end. */
+function fieldKeyOf(screen, label) { return screen + '_' + fslug(label); }
+function fieldLimitOf(a, screen, label) {
+  const v = a && a.fields ? a.fields[fieldKeyOf(screen, label)] : undefined;
+  return v === 'read' || v === 'hidden' ? v : 'edit';
+}
+function requireEditFields(a, screen, labels) {
+  const bad = (labels || []).filter((l) => fieldLimitOf(a, screen, l) !== 'edit');
+  if (bad.length) throw new HttpError(403, 'You cannot edit: ' + bad.join(', ') + '.');
+}
+
 const scopeSets = new WeakMap();
 function inScope(a, rowOrEmpId) {
   if (!a || !a.scope) return false;
@@ -716,6 +807,6 @@ module.exports = {
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
   whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
   loadOverrides, live, baseRoleOf, accessOf, scopeOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
-  fieldOfColumn, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
+  fieldOfColumn, fieldKeyOf, fieldLimitOf, requireEditFields, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE
 };

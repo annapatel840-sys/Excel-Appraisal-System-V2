@@ -218,7 +218,7 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     assert.strictEqual(n.ok, false); assert.strictEqual(n.status, 403); assert.strictEqual(n._http, 200);
     const h = await call('GET', '/admin/state', U.hr);
     assert.strictEqual(h.ok, true, JSON.stringify(h));
-    assert.strictEqual(h.catalog.screens.length, 12);
+    assert.strictEqual(h.catalog.screens.length, 19);
     assert.ok(h.people.some((p) => p.empId === 'EMP0051'));
     assert.strictEqual(typeof h.enforced, 'boolean');
   });
