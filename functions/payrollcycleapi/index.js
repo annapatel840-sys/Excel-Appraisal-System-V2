@@ -48,12 +48,25 @@ const cycleLocationKey = (cycle) => {
     ? ""
     : value.toLowerCase();
 };
-const employeeLocationKey = (master) =>
-  String((master && (master.location || master.work_location)) || "").trim().toLowerCase();
+const normalizeLocationToken = (value) =>
+  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+const employeeLocationKey = (master, locations = []) => {
+  const raw = String(
+    master?.location || master?.work_location || master?.workLocation ||
+    master?.location_name || master?.location_code || master?.location_id || "",
+  ).trim();
+  if (!raw) return "";
+  const token = normalizeLocationToken(raw);
+  const matched = (locations || []).find((item) =>
+    [item.location_name, item.location_code, item.ROWID, item.rowid, item.id]
+      .some((value) => normalizeLocationToken(value) === token),
+  );
+  return normalizeLocationToken(matched?.location_name || raw);
+};
 // True when the employee belongs to the cycle's location (always true for an All cycle).
-const inCycleLocation = (cycle, master) => {
-  const key = cycleLocationKey(cycle);
-  return !key || employeeLocationKey(master) === key;
+const inCycleLocation = (cycle, master, locations = []) => {
+  const key = normalizeLocationToken(cycleLocationKey(cycle));
+  return !key || employeeLocationKey(master, locations) === key;
 };
 
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
@@ -1092,9 +1105,10 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const excludedEmployees = lowerList(body.excludedEmployees);
   const cutoff = isoDateOf(body.cutoffDate);
 
-  const [masters, allEligibility] = await Promise.all([
+  const [masters, allEligibility, locationRows] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
+    getAllRows(tables.locations),
   ]);
   const existingByMasterId = new Map(
     allEligibility
@@ -1117,7 +1131,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
     const empId = String(master.emp_id || "").trim();
     if (!masterId || !empId) continue;
     // A location cycle lists only that location's employees.
-    if (!inCycleLocation(cycle, master)) continue;
+    if (!inCycleLocation(cycle, master, locationRows)) continue;
     const existing = existingByMasterId.get(masterId);
     const active = String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active";
 
@@ -1227,8 +1241,17 @@ async function applyEligibilityCriteria(tables, body, actor) {
   });
   return {
     cycleId,
+    cycleName: cycle.name,
+    cycleLocation: cycle.location,
     criteriaApplied: true,
     evaluated,
+    locationMatchedActiveEmployees: evaluated,
+    availableActiveEmployees: masters.filter((master) =>
+      String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active"
+    ).length,
+    employeeLocationValues: [...new Set(masters.map((master) =>
+      String(master.location || master.work_location || master.workLocation || "").trim()
+    ).filter(Boolean))].slice(0, 30),
     added: added.length,
     updated: updated.length,
     excluded,
