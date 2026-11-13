@@ -632,7 +632,21 @@ const BANNER_BTN =
    [tag] [marquee] [View budget — only for a budget notice] [Got it].
    "Got it" hides what has been read; a new change brings a new notice. */
 function BudgetBanner({ notices, onGotIt, onViewBudget }) {
-  if (!notices || notices.length === 0) return null;
+  // The bar is always shown; with nothing new it says so (no scrolling).
+  if (!notices || notices.length === 0) {
+    return (
+      <div className="flex h-full items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+        <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+          <span className="text-[#0b7a75]">●</span>
+          Notices
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12px] text-[#5f7482]">
+          No new notices for this cycle. Budget changes, bulk edits, uploads and
+          status changes will appear here.
+        </span>
+      </div>
+    );
+  }
 
   const first = notices[0];
   const label =
@@ -1785,15 +1799,14 @@ export function DetailScreenPage({
         >
           {/* Notice (half width) + budget summary bar beside it */}
           <div className="flex items-stretch gap-2">
-            {liveNotices.length > 0 && (
-              <div className="w-[calc(50%-4px)] min-w-0">
-                <BudgetBanner
-                  notices={liveNotices}
-                  onGotIt={dismissLiveNotices}
-                  onViewBudget={handleViewBudget}
-                />
-              </div>
-            )}
+            {/* Always shown: notices scroll here, or "No new notices". */}
+            <div className="w-[calc(50%-4px)] min-w-0">
+              <BudgetBanner
+                notices={liveNotices}
+                onGotIt={dismissLiveNotices}
+                onViewBudget={handleViewBudget}
+              />
+            </div>
             <BudgetStatsBar
               className="ml-auto w-[calc(50%-4px)]"
               allocated={budgetAllocated}
