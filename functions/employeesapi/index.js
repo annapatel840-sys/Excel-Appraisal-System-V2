@@ -1760,6 +1760,26 @@ async function enrichPreviousAppraisalValues(
       return cycleLocationKey === selectedLocationKey;
     }) || null;
   const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
+  const cycleNameWithoutLocation = (name) => {
+    const value = String(name || "").trim();
+    const match = value.match(/^(.+?)\s+-\s+(.+)$/);
+    return match && /^(annual|mid-year|exceptional|new joiner)\b/i.test(match[2])
+      ? match[2].trim().toLowerCase()
+      : value.toLowerCase();
+  };
+  const sourceCycleForFeedback = currentCycle && selectedLocationKey !== "all"
+    ? cycleRows.find((cycle) =>
+        cycleIdOf(cycle) !== currentCycleId &&
+        !String(cycle.location || "").trim() &&
+        cycleNameWithoutLocation(historyCycleName(cycle)) ===
+          cycleNameWithoutLocation(historyCycleName(currentCycle))
+      ) || null
+    : null;
+  const feedbackCycleIds = new Set(
+    [currentCycleId, sourceCycleForFeedback ? cycleIdOf(sourceCycleForFeedback) : ""]
+      .filter(Boolean)
+      .map(String),
+  );
   const eligibilityByEmployee = new Map();
   eligibilityRows.forEach((record) => {
     // Lookup columns may be returned as foreign-key objects, not plain strings.
@@ -1876,7 +1896,7 @@ async function enrichPreviousAppraisalValues(
     );
     const cycle =
       cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
-    if (!empKey || !cycle || cycleIdOf(cycle) !== currentCycleId) return;
+    if (!empKey || !cycle || !feedbackCycleIds.has(cycleIdOf(cycle))) return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -3771,12 +3791,14 @@ async function getEmployees(req, res) {
     };
     // A location switch selects that location's Active cycle. It never
     // changes cycle status and never falls back to another location.
-    const activeCycle = allLocationsSelected
-      ? cycleRows.find(isAvailableActiveCycle)
-      : cycleRows.find((cycle) =>
-          isAvailableActiveCycle(cycle) &&
-          String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
-        );
+    const activeCycle = cycleRows.find((cycle) => {
+      if (!isAvailableActiveCycle(cycle)) return false;
+      const rawLocation = String(cycle?.location || "All").trim().toLowerCase();
+      const cycleLocation = !rawLocation || ["all", "all locations"].includes(rawLocation)
+        ? "all"
+        : rawLocation;
+      return cycleLocation === (allLocationsSelected ? "all" : selectedLocation.toLowerCase());
+    });
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
