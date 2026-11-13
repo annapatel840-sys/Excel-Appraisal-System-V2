@@ -4140,7 +4140,10 @@ module.exports = async function (req, res) {
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
       : "";
-    if (!activeCycleIdForWrite || !cycleHasBudgetMasterForWrite(activeCycleForWrite)) {
+    if (
+      !activeCycleIdForWrite ||
+      (!cycleHasBudgetMasterForWrite(activeCycleForWrite) && resource !== "master")
+    ) {
       throw new access.HttpError(
         409,
         "Budget changes require the selected location's Active cycle and Budget_Master allocation.",
