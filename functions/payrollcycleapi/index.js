@@ -1856,6 +1856,14 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
 
   const eligibilityResult = await getEligibilityRows(tables, cycle, actor);
   const cycleEligibilityRows = eligibilityResult.records;
+  // A completed cycle is read from its saved Appraisal_Sheet rows. If its
+  // eligibility list is later empty (for example after switching locations),
+  // treat Generate as an idempotent no-op instead of demanding the setup flow
+  // again or overwriting the existing cycle data.
+  const savedCycleSheetRows = (await getAllRows(tables.employees)).filter(
+    (row) => String(row.cycle_id || row.appraisal_cycle_id || "") === String(cycle.id),
+  );
+  const existingCycleWasGenerated = savedCycleSheetRows.length > 0;
   // Only employees whose decision is still Pending should block generation.
   // Explicit Not Eligible decisions are valid and are intentionally excluded
   // from the generated sheet; legacy eligible_status/eligibility aliases are
@@ -1879,6 +1887,22 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     (row) => eligibilityStatusOf(row) === "Eligible",
   );
   if (!eligibleRows.length) {
+    if (existingCycleWasGenerated) {
+      return {
+        cycleId: cycle.id,
+        cycleName: cycle.name,
+        created: 0,
+        updated: 0,
+        unchanged: savedCycleSheetRows.length,
+        removedStaleRows: 0,
+        eligible: savedCycleSheetRows.length,
+        alreadyGenerated: true,
+        upToDate: true,
+        remaining: 0,
+        partial: false,
+        message: "This cycle already has a generated Appraisal Sheet. Existing data was kept; no regeneration was needed.",
+      };
+    }
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
   // Eligibility sync already loaded the complete Employee_Master roster.
