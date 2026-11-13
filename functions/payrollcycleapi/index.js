@@ -3381,19 +3381,21 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
-    const activeCycle = cycles.find((item) =>
+    const isAvailableActiveCycle = (item) =>
       String(item.status || "").trim().toLowerCase() === "active" &&
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.archived === "string" ? item.archived.trim().toLowerCase() : item.archived,
       ) &&
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.hidden === "string" ? item.hidden.trim().toLowerCase() : item.hidden,
-      )
-    );
-    // Explicit old cycle IDs must not bypass the Active-cycle boundary.
-    const cycle = activeCycle && (!queryCycleId || queryCycleId === activeCycle.id)
-      ? activeCycle
-      : null;
+      );
+    // Location-wise cycles can be Active together. When the caller supplies
+    // a cycle ID, resolve that exact Active cycle instead of whichever one
+    // happens to appear first in Cycle Master.
+    const cycle = queryCycleId
+      ? cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item)) || null
+      : cycles.find(isAvailableActiveCycle) || null;
+    const activeCycle = cycle || cycles.find(isAvailableActiveCycle) || null;
     // ?count=1: read-only status for Cycle Master, without the sync below
     // (which writes). criteriaApplied is what "generated" means: the list is
     // created by Apply Criteria, which is allowed once per cycle.
@@ -3900,8 +3902,19 @@ async function routeRequest(req, res, identity, resource, a) {
     // date in start_date (the screen shows start as the effective date).
     const storedStart = (fields) => fields.start || (!columns.has("effective_date") && fields.process === "None" ? fields.effective : null);
     const appendRemark = (current, entry) => (current ? `${current} | ${entry}` : entry);
-    // Only one cycle may be Active: access scoping follows the Active cycle.
-    const otherActiveCycle = (id) => cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
+    // Active cycles are independent by location. "All" (Global) is its
+    // own cycle scope; it does not block a country-specific cycle.
+    const otherActiveCycle = (id) => {
+      const target = cycles.find((cycle) => cycle.id === id);
+      if (!target) return null;
+      const targetLocation = cycleLocationKey(target);
+      return cycles.find((cycle) =>
+        cycle.status === "Active" &&
+        cycle.id !== id &&
+        !cycle.archived &&
+        cycleLocationKey(cycle) === targetLocation
+      );
+    };
 
     // Access -> Fields -> Appraisal Cycle Master: create / update need Edit on the fields they set
     // (an update only on the ones that changed).
