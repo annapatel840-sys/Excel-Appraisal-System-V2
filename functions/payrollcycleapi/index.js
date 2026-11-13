@@ -4070,9 +4070,19 @@ async function routeRequest(req, res, identity, resource, a) {
           return false;
         }
         const otherLocation = cycleLocationKey(cycle);
-        // A legacy cycle with no location (All Locations) covers every
-        // country. Once it is Closed, separate location cycles can activate.
-        return !targetLocation || !otherLocation || otherLocation === targetLocation;
+        // The existing org-wide cycle is the source/configuration cycle for
+        // its location children. Permit that parent and its matching location
+        // cycles to remain Active together; unrelated global cycles still
+        // block activation, and two cycles for the same location still clash.
+        if (!targetLocation || !otherLocation) {
+          const sameSourceCycle =
+            cycleNameWithoutLocation(target.name).trim().toLowerCase() ===
+              cycleNameWithoutLocation(cycle.name).trim().toLowerCase() &&
+            cycleYear(target) === cycleYear(cycle) &&
+            cycleTypeOf(target.name) === cycleTypeOf(cycle.name);
+          return !sameSourceCycle;
+        }
+        return otherLocation === targetLocation;
       });
     };
 
