@@ -274,30 +274,6 @@ export function EligibilityCriteria({
     setShowSuggest(false);
   };
 
-  /* ----- "If applied now": uses the same rules as Apply, so the numbers match the list ----- */
-  const impact = useMemo(() => {
-    const all = previewCounts(employees, {
-      statuses: withAlways(selectedStatuses),
-      departments: selectedDepartments,
-      designations: selectedDesignations,
-      excludedEmployees,
-      cutoffDate,
-      extraParameters,
-    });
-    // Each criterion counted on its own (one employee can match several).
-    const only = (patch) => previewCounts(employees, patch).notEligible;
-    const by = [
-      ["Employee status", only({ statuses: selectedStatuses })],
-      ["Department", only({ departments: selectedDepartments })],
-      ["Designation", only({ designations: selectedDesignations })],
-      ["Specific employees", only({ excludedEmployees })],
-      ["Joining date cutoff", only({ cutoffDate })],
-      ...extraParameters.map((p) => [p.label, only({ extraParameters: [p] })]),
-    ].filter(([, n]) => n > 0);
-    return { all, by };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, selectedStatuses, selectedDepartments, selectedDesignations, excludedEmployees, cutoffDate, extraParameters]);
-
   /* ----- state message ----- */
   const cycle = cycleName || "this cycle";
   let strip;
@@ -757,48 +733,7 @@ export function EligibilityCriteria({
             </div>
           )}
         </div>
-        <div className="elx-cr">
-          {pane}
-          <div className="elx-sum">
-            <div className="elx-sum-h">
-              If applied now
-              <span>{locked ? "saved criteria" : "your draft"}</span>
-            </div>
-            <div className="elx-sum-grid">
-              <div className="ok">
-                <b>{impact.all.eligible}</b>
-                <span>Eligible</span>
-              </div>
-              <div className="no">
-                <b>{impact.all.notEligible}</b>
-                <span>Left out by criteria</span>
-              </div>
-              <div>
-                <b>{impact.all.total}</b>
-                <span>Active employees</span>
-              </div>
-              {currentCounts && (
-                <div className="cur">
-                  <b>
-                    {currentCounts.eligible}
-                    <i> / {currentCounts.notEligible}</i>
-                  </b>
-                  <span>In the list now (eligible / not)</span>
-                </div>
-              )}
-            </div>
-            {impact.by.length > 0 && (
-              <div className="elx-sum-by">
-                {impact.by.map(([label, n]) => (
-                  <span key={label}>
-                    {label}: <b>{n}</b>
-                  </span>
-                ))}
-                <em>Each criterion counted on its own; one employee can match several.</em>
-              </div>
-            )}
-          </div>
-        </div>
+        <div className="elx-cr">{pane}</div>
       </div>
 
       <div className="elx-foot">

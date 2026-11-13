@@ -297,19 +297,19 @@
 .elx-tabs{display:flex;align-items:center;gap:2px;border-bottom:1px solid var(--em-border,#d9dee7);padding:0 9px;flex:none;background:#FAFAFB}
 .elx-tabs button{border:0;background:none;cursor:pointer;padding:9px 14px;font:inherit;font-size:13px;font-weight:600;color:#6B7280;border-bottom:2px solid transparent;margin-bottom:-1px}
 .elx-tabs button.on{color:#111827;font-weight:800;border-bottom-color:#102A43}
-.elx-crit-scroll{flex:1;min-height:0;overflow:auto;padding:10px 9px 0}
+.elx-crit-scroll{flex:1;min-height:0;overflow:auto;padding:10px 9px 6px;display:flex;flex-direction:column}
 .elx-empty{margin:10px 9px;border:1px solid #c9d8ec;border-radius:8px;text-align:center;color:#6b7280;padding:44px 20px;line-height:1.7}
 .elx-empty b{display:block;color:#111827;font-size:14px;margin-bottom:4px}
 .elx-crit,.elx-crit *{font-family:Inter,"Segoe UI",Arial,sans-serif}
-.elx-crit{display:flex;flex-direction:column;min-height:100%}
+.elx-crit{display:flex;flex-direction:column;height:100%;min-height:0}
 .elx-strip{background:#DCEBFF;border:1px solid #B9D3F5;border-radius:10px;padding:8px 12px;color:#102A43;font-weight:600;margin-bottom:10px;line-height:1.5}
 .elx-strip.amber{background:#FEF6E7;border-color:#F0D9A8;color:#7A5413}
 .elx-imp{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;padding:9px 14px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;font-size:12.5px;color:#334155}
 .elx-imp b{font-size:16px;color:#17365d}
 .elx-imp .dot{color:#9ca3af}
 .elx-none{color:#9ca3af;font-size:11.5px}
-.elx-cwrap{display:flex;gap:14px;align-items:stretch;min-height:340px;flex:1 1 auto}
-.elx-cl{width:240px;flex:none;border:1px solid #E5E7EB;border-radius:10px;background:#FBFCFE;padding:6px;display:flex;flex-direction:column;gap:2px;align-self:stretch}
+.elx-cwrap{display:flex;gap:14px;align-items:stretch;min-height:0;flex:1 1 auto}
+.elx-cl{width:240px;flex:none;border:1px solid #E5E7EB;border-radius:10px;background:#FBFCFE;padding:6px;display:flex;flex-direction:column;gap:2px;align-self:stretch;overflow:auto}
 .elx-ni{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:0;border-radius:8px;background:none;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;color:#334155;text-align:left}
 .elx-ni:hover{background:#eef3fb}
 .elx-ni.on{background:#E6EEF8;color:#17365d;box-shadow:inset 3px 0 0 #17365d}
@@ -318,7 +318,7 @@
 .elx-nb{min-width:22px;text-align:center;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;background:#eef1f5;color:#9ca3af}
 .elx-nb.on{background:#dcebff;color:#1d4fa8}
 .elx-nb.lk{background:#eef1f5;color:#6b7280}
-.elx-cr{flex:1;min-width:0;border:1px solid #E5E7EB;border-radius:10px;background:#fff;padding:14px 16px;display:flex;flex-direction:column}
+.elx-cr{flex:1;min-width:0;min-height:0;border:1px solid #E5E7EB;border-radius:10px;background:#fff;padding:14px 16px;display:flex;flex-direction:column}
 .elx-rh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .elx-rt{font-size:15px;font-weight:800;color:#102a43}
 .elx-rsel{color:#1d4fa8;font-weight:700;font-size:12px;white-space:nowrap}
@@ -326,7 +326,7 @@
 .elx-rtool .em-search-field{flex:1;max-width:340px}
 .elx-lnk{background:none;border:0;color:#2F6FED;font-weight:700;cursor:pointer;padding:0;font-size:12px}
 .elx-lnk:disabled{opacity:.45;cursor:not-allowed}
-.elx-rlist{display:grid;align-content:start;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 18px;max-height:calc(100vh - 520px);min-height:200px;overflow:auto;border-top:1px solid #eef1f5}
+.elx-rlist{display:grid;align-content:start;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 18px;flex:1;min-height:120px;overflow:auto;border-top:1px solid #eef1f5}
 .elx-ri{display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #eef1f5;cursor:pointer;font-weight:500}
 .elx-ri.dis{cursor:not-allowed;color:#9ca3af}
 .elx-ri .elx-rn{flex:1}
@@ -371,18 +371,4 @@
 .elx-tabs .elx-tabs-right button.em-btn{padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px;border:1px solid #CBD5E1;background:#fff;color:#17365d}
 .elx-tabs .elx-tabs-right button.em-btn-primary{background:#2F6FED;border-color:#2F6FED;color:#fff}
 .elx-tabs .elx-tabs-right button.em-btn-primary:disabled{background:#A9C1F2;border-color:#A9C1F2}
-.elx-foot{margin-top:12px;padding:8px 2px;color:#6B7280}
-.elx-crit-scroll{padding-bottom:10px}
-.elx-sum{margin-top:auto;border:1px solid #DCE6F2;border-radius:10px;background:#F6F9FE;padding:12px 14px}
-.elx-sum-h{display:flex;align-items:center;gap:8px;font-weight:700;color:#102A43;margin-bottom:10px}
-.elx-sum-h span{font-size:11px;font-weight:600;color:#486581;background:#E3ECF8;border-radius:8px;padding:1px 8px}
-.elx-sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.elx-sum-grid>div{background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
-.elx-sum-grid b{font-size:22px;line-height:1.1;color:#102A43}
-.elx-sum-grid b i{font-style:normal;font-size:14px;font-weight:600;color:#6B7280}
-.elx-sum-grid span{font-size:11.5px;color:#6B7280}
-.elx-sum-grid .ok b{color:#0B7A4B}
-.elx-sum-grid .no b{color:#B42318}
-.elx-sum-by{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:#486581}
-.elx-sum-by b{color:#102A43}
-.elx-sum-by em{font-style:normal;color:#9CA3AF;flex-basis:100%}
+.elx-foot{flex:none;margin-top:8px;padding:6px 2px;color:#6B7280}
