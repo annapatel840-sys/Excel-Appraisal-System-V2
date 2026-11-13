@@ -3323,8 +3323,10 @@ function filterEmployees(
      LOCATION FILTER
      ========================================================== */
 
-  if (location) {
-    const locationValue = String(location).trim().toLowerCase();
+  // "All" / "All Locations" (what the header sends by default) means no
+  // location filter; treating it as a location name returned 0 employees.
+  const locationValue = String(location || "").trim().toLowerCase();
+  if (locationValue && locationValue !== "all" && locationValue !== "all locations") {
     filtered = filtered.filter(function (employee) {
       return (
         String(employee.location || employee.work_location || "")
