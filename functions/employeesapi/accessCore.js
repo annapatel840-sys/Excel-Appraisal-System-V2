@@ -366,18 +366,29 @@ function resolveFields(C, lim) {
 /* ---------------------------------------------------------------------
    People: Employee_Master + Delegation + Catalyst roles
    --------------------------------------------------------------------- */
-async function activeCycleId(zcql) {
+async function activeCycleId(zcql, context = {}) {
   const c = SETTINGS.cycle;
   const rows = await selectAll(zq(zcql), c.table);
   const isTruthyFlag = (value) =>
     [true, 1, "true", "1", "yes"].includes(
       typeof value === "string" ? value.trim().toLowerCase() : value,
     );
-  const active = rows.find((row) =>
+  const activeRows = rows.filter((row) =>
     String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
     !isTruthyFlag(row.archived) &&
     !isTruthyFlag(row.hidden)
   );
+  const requestedCycleId = norm(context.cycleId);
+  const requestedLocation = norm(context.location);
+  const isAllLocations = !requestedLocation || requestedLocation === "all" || requestedLocation === "all locations";
+  const active = requestedCycleId
+    ? activeRows.find((row) =>
+        norm(row[c.idColumn]) === requestedCycleId ||
+        norm(row[c.nameColumn]) === requestedCycleId
+      )
+    : isAllLocations
+      ? activeRows[0]
+      : activeRows.find((row) => norm(row.location) === requestedLocation);
   return active ? String(active[c.idColumn] || "") || null : null;
 }
 /* Delegation of a cycle:
@@ -597,15 +608,23 @@ function accessOf(C, roles, m, person, roleKey, ovs) {
 /* ---------------------------------------------------------------------
    Per-instance cache, keyed by AccessVersion (Data Store read limit!)
    --------------------------------------------------------------------- */
-const CACHE = { version: null, checkedAt: 0, base: null, loading: null, emails: new Map() };
-function resetCache() { CACHE.version = null; CACHE.checkedAt = 0; CACHE.base = null; CACHE.loading = null; CACHE.emails = new Map(); }
+const CACHE = { version: null, checkedAt: 0, base: null, loading: null, loadingScopeKey: "", scopeKey: "", emails: new Map() };
+function resetCache() {
+  CACHE.version = null;
+  CACHE.checkedAt = 0;
+  CACHE.base = null;
+  CACHE.loading = null;
+  CACHE.loadingScopeKey = "";
+  CACHE.scopeKey = "";
+  CACHE.emails = new Map();
+}
 
 async function getVersion(zcql) {
   const rows = await selectAll(zq(zcql), T.version, "version_key = 'ACCESS'");
   return rows[0] ? { version: Number(rows[0].version) || 1, rowid: rows[0].ROWID } : { version: 1, rowid: null };
 }
-async function loadBase(z, version) {
-  const [C, roles, cycleId, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleId(z), selectAll(z, T.override)]);
+async function loadBase(z, version, context = {}) {
+  const [C, roles, cycleId, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleId(z, context), selectAll(z, T.override)]);
   const [deleg, m] = await Promise.all([loadDelegation(z, cycleId), loadMatrix(z, C, roles)]);
   const overridesBy = {};
   ovRows.filter((o) => !bool(o.removed)).map(overrideRow).forEach((o) => { const k = norm(o.empId); (overridesBy[k] = overridesBy[k] || []).push(o); });
@@ -613,19 +632,40 @@ async function loadBase(z, version) {
 }
 /* Returns the cached base data; at most one query (the version row) when warm,
    and none when the version was checked less than 30 s ago. */
-async function ensureCache(zcql) {
+async function ensureCache(zcql, context = {}) {
   const z = zq(zcql);
+  const scopeKey = norm(context.cycleId) || norm(context.location) || "all";
   const now = Date.now();
-  if (CACHE.base && now - CACHE.checkedAt < SETTINGS.versionCheckMs) return CACHE.base;
-  if (CACHE.loading) return CACHE.loading;
-  CACHE.loading = (async () => {
+  if (CACHE.base && CACHE.scopeKey === scopeKey && now - CACHE.checkedAt < SETTINGS.versionCheckMs) {
+    return CACHE.base;
+  }
+  if (CACHE.loading && CACHE.loadingScopeKey === scopeKey) return CACHE.loading;
+  const loading = (async () => {
     const v = await getVersion(z);
-    if (CACHE.base && CACHE.version === v.version) { CACHE.checkedAt = Date.now(); return CACHE.base; }
-    const base = await loadBase(z, v.version);
-    CACHE.base = base; CACHE.version = v.version; CACHE.checkedAt = Date.now(); CACHE.emails = new Map();
+    if (CACHE.base && CACHE.scopeKey === scopeKey && CACHE.version === v.version) {
+      CACHE.checkedAt = Date.now();
+      return CACHE.base;
+    }
+    const base = await loadBase(z, v.version, context);
+    if (CACHE.loading === loading) {
+      CACHE.base = base;
+      CACHE.version = v.version;
+      CACHE.scopeKey = scopeKey;
+      CACHE.checkedAt = Date.now();
+      CACHE.emails = new Map();
+    }
     return base;
   })();
-  try { return await CACHE.loading; } finally { CACHE.loading = null; }
+  CACHE.loading = loading;
+  CACHE.loadingScopeKey = scopeKey;
+  try {
+    return await loading;
+  } finally {
+    if (CACHE.loading === loading) {
+      CACHE.loading = null;
+      CACHE.loadingScopeKey = "";
+    }
+  }
 }
 /* Version number for GET /version — uses the cache (≤1 query per 30 s). */
 async function currentVersion(zcql) {
@@ -674,7 +714,7 @@ function scopeOf(base, ro, a, person) {
   });
   return { all: false, cycleId: base.cycleId, empIds, rowIds };
 }
-async function get(cat, opts) {
+async function get(cat, opts, context = {}) {
   // getCurrentUser() throws when the request carries no user credentials.
   let u = null;
   try { u = await cat.userManagement().getCurrentUser(); } catch (e) { u = null; }
@@ -683,7 +723,7 @@ async function get(cat, opts) {
   const fail = (status, msg) => { const e = new HttpError(status, msg); e.email = email; return e; };
   const catalystRole = u.role_details && u.role_details.role_name;
   const z = zq(adminOf(cat, opts));
-  const base = await ensureCache(z);
+  const base = await ensureCache(z, context);
   const person = await cachedEmployeeByEmail(z, email);
   const b = baseRoleOf(base.roles, person, catalystRole, base.deleg);
   const viaCatalyst = b.from === 'Catalyst role' || b.from === 'Catalyst bootstrap';
@@ -707,10 +747,10 @@ async function get(cat, opts) {
    Enforced (ACCESS_ENFORCE='true'): returns access with enforced:true, dryRun:false; rethrows HttpError.
    Dry run: never throws an HttpError. Returns the access with enforced:false, dryRun:true, or
    { dryRun:true, enforced:false, denied:HttpError } when the person would be refused (logged). */
-async function check(cat, opts) {
+async function check(cat, opts, context = {}) {
   const enforced = isEnforced();
   try {
-    const a = await get(cat, opts);
+    const a = await get(cat, opts, context);
     return Object.assign(a, { enforced, dryRun: !enforced });
   } catch (err) {
     if (enforced) throw err;
