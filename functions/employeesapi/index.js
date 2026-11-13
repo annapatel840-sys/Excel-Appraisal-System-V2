@@ -3942,7 +3942,11 @@ async function getEmployees(req, res) {
           const decision =
             (masterId && eligibilityByMasterId.get(masterId)) ||
             (empId && eligibilityByEmployeeId.get(empId));
-          if (!decision?.eligible) return false;
+          // An existing Appraisal_Sheet row is already generated cycle data.
+          // Do not hide it merely because Eligibility_List was cleared, not
+          // regenerated, or has no matching row after a location switch.
+          // An explicit Not Eligible decision still excludes the employee.
+          if (decision && !decision.eligible) return false;
 
           const master =
             (masterId && masterByRowIdForEligibility.get(masterId)) ||
@@ -3967,7 +3971,11 @@ async function getEmployees(req, res) {
           const decision =
             (masterId && eligibilityByMasterId.get(masterId)) ||
             (empId && eligibilityByEmployeeId.get(empId));
-          return { ...row, eligible_status: decision.status };
+          return {
+            ...row,
+            eligible_status:
+              decision?.status || row.eligible_status || row.eligibility_status || "Eligible",
+          };
         });
 
       // Delegation runs before Generate Appraisal Sheet. Eligible employees
