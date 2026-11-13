@@ -489,17 +489,23 @@ export function AppraisalCycleMasterPage({
   // A cycle marked All Locations is visible under every selected location.
   // Location-specific cycles are shown only when they match the global header
   // location selection. This is display filtering only; it never changes access.
-  const locationCycles = useMemo(
-    () =>
-      cycles.filter(
-        (cycle) =>
-          isAllCycleLocation(selectedLocation)
-            ? true
-            : !isAllCycleLocation(cycle.location) &&
-              matchesLocation(cycle.location, selectedLocation),
-      ),
-    [cycles, selectedLocation],
-  );
+  const locationCycles = useMemo(() => {
+    if (isAllCycleLocation(selectedLocation)) return cycles;
+    const matching = cycles.filter((cycle) =>
+      !isAllCycleLocation(cycle.location) &&
+      matchesLocation(cycle.location, selectedLocation),
+    );
+    // Keep the configured global Annual 2027 visible until its location cycle
+    // exists. After the split, show only the selected location's cycle.
+    const hasAnnualLocationCycle = matching.some((cycle) =>
+      cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027",
+    );
+    const sourceAnnual = hasAnnualLocationCycle ? [] : cycles.filter((cycle) =>
+      isAllCycleLocation(cycle.location) &&
+      cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027",
+    );
+    return [...matching, ...sourceAnnual];
+  }, [cycles, selectedLocation]);
 
   const gridRows = useMemo(() => {
     const s = q.toLowerCase();
