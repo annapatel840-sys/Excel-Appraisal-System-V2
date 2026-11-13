@@ -48,25 +48,12 @@ const cycleLocationKey = (cycle) => {
     ? ""
     : value.toLowerCase();
 };
-const normalizeLocationToken = (value) =>
-  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-const employeeLocationKey = (master, locations = []) => {
-  const raw = String(
-    master?.location || master?.work_location || master?.workLocation ||
-    master?.location_name || master?.location_code || master?.location_id || "",
-  ).trim();
-  if (!raw) return "";
-  const token = normalizeLocationToken(raw);
-  const matched = (locations || []).find((item) =>
-    [item.location_name, item.location_code, item.ROWID, item.rowid, item.id]
-      .some((value) => normalizeLocationToken(value) === token),
-  );
-  return normalizeLocationToken(matched?.location_name || raw);
-};
+const employeeLocationKey = (master) =>
+  String((master && (master.location || master.work_location)) || "").trim().toLowerCase();
 // True when the employee belongs to the cycle's location (always true for an All cycle).
-const inCycleLocation = (cycle, master, locations = []) => {
-  const key = normalizeLocationToken(cycleLocationKey(cycle));
-  return !key || employeeLocationKey(master, locations) === key;
+const inCycleLocation = (cycle, master) => {
+  const key = cycleLocationKey(cycle);
+  return !key || employeeLocationKey(master) === key;
 };
 
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
@@ -1007,13 +994,14 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
 
   // The Eligibility List is cycle-specific. Remove only stale-cycle rows and
   // rows whose employee no longer exists in Employee_Master.
-  // Eligibility_List is shared by all location cycles. Never delete rows
-  // belonging to a different cycle while syncing the selected cycle.
+  const staleRows = existingRows.filter(
+    (row) => String(row.appraisal_cycle_id || "") !== String(cycle.id),
+  );
   const orphanRows = cycleRows.filter((row) => {
     const empId = String(row.emp_id || "").trim().toLowerCase();
     return !masterByRowId.has(String(row.employee_master_id || "")) && !masterByEmpId.has(empId);
   });
-  const toDelete = [...orphanRows, ...unqualifiedSeedRows];
+  const toDelete = [...staleRows, ...orphanRows, ...unqualifiedSeedRows];
   await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
   // Opening the Eligibility List must never pre-populate employees.
@@ -1032,7 +1020,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   return {
     created: 0,
     removed: orphanRows.length,
-    staleRemoved: 0, // Other-cycle eligibility rows are intentionally preserved.
+    staleRemoved: staleRows.length,
     unqualifiedSeedRowsRemoved: unqualifiedSeedRows.length,
     repairedReferences,
     inactiveMarked,
@@ -1254,7 +1242,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
     const empId = String(master.emp_id || "").trim();
     if (!masterId || !empId) continue;
     // A location cycle lists only that location's employees.
-    if (!inCycleLocation(cycle, master, locationRows)) continue;
+    if (!inCycleLocation(cycle, master)) continue;
     const existing = existingByMasterId.get(masterId);
     const active = String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active";
 
@@ -1521,10 +1509,7 @@ async function saveEligibilityRow(tables, body, actor) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
-  const [masters, locationRows] = await Promise.all([
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.locations),
-  ]);
+  const masters = await getAllRows(tables.employeeMaster);
   const master = masters.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
   if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
   if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
@@ -1537,7 +1522,7 @@ async function saveEligibilityRow(tables, body, actor) {
     String(row.appraisal_cycle_id || "") === cycleId &&
     String(row.employee_master_id || "") === masterId
   );
-  if (!existing && !inCycleLocation(cycle, master, locationRows)) {
+  if (!existing && !inCycleLocation(cycle, master)) {
     throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
   }
   const rawEligible = String(body.eligible_status || body.eligible || "").trim().toLowerCase();
@@ -1583,10 +1568,9 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
-  const [masters, allEligibility, locationRows] = await Promise.all([
+  const [masters, allEligibility] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
-    getAllRows(tables.locations),
   ]);
   const masterByEmpId = new Map(
     masters.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
@@ -1611,7 +1595,7 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
       }
       if (
         !existingByMasterId.has(String(master.ROWID || master.rowid || "")) &&
-        !inCycleLocation(cycle, master, locationRows)
+        !inCycleLocation(cycle, master)
       ) {
         throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
       }
@@ -2032,14 +2016,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
 
   const eligibilityResult = await getEligibilityRows(tables, cycle, actor);
   const cycleEligibilityRows = eligibilityResult.records;
-  // A completed cycle is read from its saved Appraisal_Sheet rows. If its
-  // eligibility list is later empty (for example after switching locations),
-  // treat Generate as an idempotent no-op instead of demanding the setup flow
-  // again or overwriting the existing cycle data.
-  const savedCycleSheetRows = (await getAllRows(tables.employees)).filter(
-    (row) => String(row.cycle_id || row.appraisal_cycle_id || "") === String(cycle.id),
-  );
-  const existingCycleWasGenerated = savedCycleSheetRows.length > 0;
   // Only employees whose decision is still Pending should block generation.
   // Explicit Not Eligible decisions are valid and are intentionally excluded
   // from the generated sheet; legacy eligible_status/eligibility aliases are
@@ -2063,22 +2039,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     (row) => eligibilityStatusOf(row) === "Eligible",
   );
   if (!eligibleRows.length) {
-    if (existingCycleWasGenerated) {
-      return {
-        cycleId: cycle.id,
-        cycleName: cycle.name,
-        created: 0,
-        updated: 0,
-        unchanged: savedCycleSheetRows.length,
-        removedStaleRows: 0,
-        eligible: savedCycleSheetRows.length,
-        alreadyGenerated: true,
-        upToDate: true,
-        remaining: 0,
-        partial: false,
-        message: "This cycle already has a generated Appraisal Sheet. Existing data was kept; no regeneration was needed.",
-      };
-    }
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
   // Eligibility sync already loaded the complete Employee_Master roster.
@@ -3608,7 +3568,6 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
-    const queryLocation = String(query.location || "").trim();
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const isAvailableActiveCycle = (item) =>
       String(item.status || "").trim().toLowerCase() === "active" &&
@@ -3618,22 +3577,13 @@ async function routeRequest(req, res, identity, resource, a) {
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.hidden === "string" ? item.hidden.trim().toLowerCase() : item.hidden,
       );
-    const selectedLocationKey = normalizeLocationToken(queryLocation);
-    const matchesSelectedLocation = (item) => {
-      const itemLocationKey = normalizeLocationToken(cycleLocationKey(item));
-      const allSelected = !selectedLocationKey ||
-        ["all", "alllocations"].includes(selectedLocationKey);
-      return allSelected ? !itemLocationKey : itemLocationKey === selectedLocationKey;
-    };
-    // Never substitute the first Active cycle when a location was selected.
+    // Location-wise cycles can be Active together. When the caller supplies
+    // a cycle ID, resolve that exact Active cycle instead of whichever one
+    // happens to appear first in Cycle Master.
     const cycle = queryCycleId
       ? cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item)) || null
-      : query.location !== undefined
-        ? cycles.find((item) => isAvailableActiveCycle(item) && matchesSelectedLocation(item)) || null
-        : cycles.find(isAvailableActiveCycle) || null;
-    const activeCycle = cycle || (query.location === undefined
-      ? cycles.find(isAvailableActiveCycle) || null
-      : null);
+      : cycles.find(isAvailableActiveCycle) || null;
+    const activeCycle = cycle || cycles.find(isAvailableActiveCycle) || null;
     // ?count=1: read-only status for Cycle Master, without the sync below
     // (which writes). criteriaApplied is what "generated" means: the list is
     // created by Apply Criteria, which is allowed once per cycle.
