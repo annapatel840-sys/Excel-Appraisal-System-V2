@@ -21,7 +21,6 @@
 // const CURRENT_USER = "Unknown user";
 // // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
 // let APPRAISAL_YEAR = "";
-let APPRAISAL_CYCLE_ID = "";
 // // The browser copy of the audit trail belongs to one signed-in user (it holds
 // // salary changes) and is removed on sign-out (see clearBrowserData).
 // export const AUDIT_LOCAL_STORAGE_PREFIX = "appraisal.auditTrail.v2:";
@@ -1236,14 +1235,14 @@ let APPRAISAL_CYCLE_ID = "";
 //       // The employeesapi roster already includes current-cycle feedback
 //       // fields. Avoid a second full Feedback_And_Rating API request.
 //       const viewAs = getViewAsSelected();
-//       const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation });
+//       const roster = await fetchAppraisalRoster({ viewAs });
 
 //       if (requestId !== loadSeqRef.current) {
 //         return;
 //       }
 
 //       freshAppliedRef.current = true;
-//       loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs) + "::" + String(selectedLocation || "All").trim().toLowerCase();
+//       loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs);
 //       setShowingSaved(false);
 
 //       const activeCycle = roster.activeCycle;
@@ -1297,7 +1296,7 @@ let APPRAISAL_CYCLE_ID = "";
 //       }
 //     }
 //   // }, [isHRUser, updateRows]);
-//   }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation]);
+//   }, [isHRUser, updateRows, viewAsId, rosterCacheScope]);
 
 //   /* ==========================================================
 //   INITIAL EMPLOYEE LOAD
@@ -1315,7 +1314,7 @@ let APPRAISAL_CYCLE_ID = "";
 
 //   // Show the saved copy while the first roster loads. Same key as the roster
 //   // request: the signed-in user and the View-as choice it was loaded under.
-//   const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected()) + "::" + String(selectedLocation || "All").trim().toLowerCase();
+//   const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected());
 //   useEffect(() => {
 //     if (!dataWanted || freshAppliedRef.current) return undefined;
 //     let cancelled = false;
@@ -2386,7 +2385,7 @@ import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
-import { filterByLocation, getSelectedLocation, useSelectedLocation } from "./location-store";
+import { filterByLocation, useSelectedLocation } from "./location-store";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -2508,12 +2507,6 @@ function formatClientRating(rating) {
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
-const employeeWriteUrl = () => {
-  const url = new URL(EMPLOYEE_API_URL);
-  url.searchParams.set("location", getSelectedLocation());
-  if (APPRAISAL_CYCLE_ID) url.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
-  return url.toString();
-};
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
@@ -2951,7 +2944,6 @@ const fetchEmployeePageFromCatalyst = async (
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
-  url.searchParams.set("location", getSelectedLocation());
   // Re-read cycle-specific payroll history after a payroll upload instead of
   // allowing an intermediary/browser cache to reuse the previous appraisal row.
   url.searchParams.set("_ts", String(Date.now()));
@@ -3000,7 +2992,6 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
     const url = new URL(EMPLOYEE_API_URL);
 
     url.searchParams.set("search", targetId);
-    url.searchParams.set("location", getSelectedLocation());
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", "100");
 
@@ -3043,7 +3034,7 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) 
 
   const catalystValue = normalizeValueForCatalyst(key, newValue);
 
-  const response = await catalystFetch(employeeWriteUrl(), {
+  const response = await catalystFetch(EMPLOYEE_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -3051,7 +3042,6 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) 
     },
     body: JSON.stringify({
       emp_id: String(empId),
-      cycle_id: APPRAISAL_CYCLE_ID,
       [catalystField]: catalystValue,
       expected: { [catalystField]: normalizeValueForCatalyst(key, oldValue) },
     }),
@@ -3082,11 +3072,8 @@ const savePreviousAppraisalChangeToCatalyst = async ({
   }
 
   const historyValue = normalizeHistoryValue(key, newValue);
-  const historyUrl = new URL(APPRAISAL_HISTORY_API_URL);
-  historyUrl.searchParams.set("location", getSelectedLocation());
-  historyUrl.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
 
-  const response = await catalystFetch(historyUrl.toString(), {
+  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -3094,7 +3081,6 @@ const savePreviousAppraisalChangeToCatalyst = async ({
     },
     body: JSON.stringify({
       emp_id: String(empId),
-      cycle_id: APPRAISAL_CYCLE_ID,
       appraisal_year: APPRAISAL_YEAR,
       [historyField]: historyValue,
     }),
@@ -3119,7 +3105,6 @@ const savePreviousAppraisalChangesToCatalyst = async ({
 
   const historyPayload = {
     emp_id: String(empId),
-    cycle_id: APPRAISAL_CYCLE_ID,
     appraisal_year: APPRAISAL_YEAR,
   };
 
@@ -3141,10 +3126,7 @@ const savePreviousAppraisalChangesToCatalyst = async ({
     return null;
   }
 
-  const historyUrl = new URL(APPRAISAL_HISTORY_API_URL);
-  historyUrl.searchParams.set("location", getSelectedLocation());
-  historyUrl.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
-  const response = await catalystFetch(historyUrl.toString(), {
+  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -3282,9 +3264,6 @@ const fetchAuditHistoryFromCatalyst = async (empId = "", extra = null) => {
   if (extra && extra.appraisalYear) {
     url.searchParams.set("appraisal_year", String(extra.appraisalYear));
   }
-  if (APPRAISAL_CYCLE_ID) {
-    url.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
-  }
 
   if (String(empId).trim()) {
     url.searchParams.set("emp_id", String(empId).trim());
@@ -3353,7 +3332,6 @@ const createAuditRecordsInCatalyst = async (entries) => {
     batch_id: String(entry.batchId || ""),
 
     appraisal_year: String(entry.appraisalYear || APPRAISAL_YEAR),
-    cycle_id: APPRAISAL_CYCLE_ID,
   }));
 
   const response = await catalystFetch(AUDIT_API_URL, {
@@ -3514,7 +3492,6 @@ PROVIDER
 
 export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
-  const [selectedLocation] = useSelectedLocation();
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
 
@@ -3629,18 +3606,17 @@ export function AppraisalProvider({ children }) {
       // The employeesapi roster already includes current-cycle feedback
       // fields. Avoid a second full Feedback_And_Rating API request.
       const viewAs = getViewAsSelected();
-      const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation });
+      const roster = await fetchAppraisalRoster({ viewAs });
 
       if (requestId !== loadSeqRef.current) {
         return;
       }
 
       freshAppliedRef.current = true;
-      loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs) + "::" + String(selectedLocation || "All").trim().toLowerCase();
+      loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs);
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
-      APPRAISAL_CYCLE_ID = String(activeCycle?.id || activeCycle?.ROWID || "").trim();
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
       if (!activeCycle || !APPRAISAL_YEAR) {
         updateRows(() => []);
@@ -3691,7 +3667,7 @@ export function AppraisalProvider({ children }) {
       }
     }
   // }, [isHRUser, updateRows]);
-  }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation]);
+  }, [isHRUser, updateRows, viewAsId, rosterCacheScope]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD
@@ -3709,7 +3685,7 @@ export function AppraisalProvider({ children }) {
 
   // Show the saved copy while the first roster loads. Same key as the roster
   // request: the signed-in user and the View-as choice it was loaded under.
-  const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected()) + "::" + String(selectedLocation || "All").trim().toLowerCase();
+  const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected());
   useEffect(() => {
     if (!dataWanted || freshAppliedRef.current) return undefined;
     let cancelled = false;
@@ -4235,7 +4211,7 @@ export function AppraisalProvider({ children }) {
               normalizeValueForCatalyst(key, targetRow[key]);
           });
 
-          const response = await catalystFetch(employeeWriteUrl(), {
+          const response = await catalystFetch(EMPLOYEE_API_URL, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -4243,7 +4219,6 @@ export function AppraisalProvider({ children }) {
             },
             body: JSON.stringify({
               emp_id: String(empId),
-              cycle_id: APPRAISAL_CYCLE_ID,
               ...catalystPayload,
               expected,
             }),
@@ -4416,7 +4391,7 @@ export function AppraisalProvider({ children }) {
         return currentEmployee;
       }
 
-      const response = await catalystFetch(employeeWriteUrl(), {
+      const response = await catalystFetch(EMPLOYEE_API_URL, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -4424,7 +4399,6 @@ export function AppraisalProvider({ children }) {
         },
         body: JSON.stringify({
           emp_id: String(empId),
-          cycle_id: APPRAISAL_CYCLE_ID,
           status: normalizedStatus,
         }),
       });
@@ -4684,6 +4658,7 @@ export function AppraisalProvider({ children }) {
   // (Appraisal Sheet, Detail Screen, Bulk Edit, Dashboard, Budget screens,
   // Tech-ED / Comp Manager logins). The full list stays in rowsRef so saves,
   // imports and audit keep working on the complete data.
+  const [selectedLocation] = useSelectedLocation();
   const locationRows = useMemo(
     () => filterByLocation(rows, selectedLocation),
     [rows, selectedLocation],
