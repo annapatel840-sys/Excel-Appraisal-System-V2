@@ -6,7 +6,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { useSelectedLocation } from "@/lib/location-store";
+import { matchesLocation, useSelectedLocation } from "@/lib/location-store";
 import {
   cycleNameLocation,
   cycleNameWithoutLocation,
@@ -485,9 +485,23 @@ export function AppraisalCycleMasterPage({
     return out;
   })();
 
+  // A cycle marked All Locations is visible under every selected location.
+  // Location-specific cycles are shown only when they match the global header
+  // location selection. This is display filtering only; it never changes access.
+  const locationCycles = useMemo(
+    () =>
+      cycles.filter(
+        (cycle) =>
+          isAllCycleLocation(selectedLocation) ||
+          isAllCycleLocation(cycle.location) ||
+          matchesLocation(cycle.location, selectedLocation),
+      ),
+    [cycles, selectedLocation],
+  );
+
   const gridRows = useMemo(() => {
     const s = q.toLowerCase();
-    return cycles
+    return locationCycles
       .filter((c) => c.type === type)
       .filter((c) => showHidden || !isHidden(c))
       .filter(
@@ -502,25 +516,28 @@ export function AppraisalCycleMasterPage({
           (isOpenCycle(a) ? 0 : 1) - (isOpenCycle(b) ? 0 : 1) ||
           String(b.start || "").localeCompare(String(a.start || "")),
       );
-  }, [cycles, type, showHidden, q]);
+  }, [locationCycles, type, showHidden, q]);
 
-  // keep a valid selection
+  // Keep the selected cycle inside the currently visible location scope.
   useEffect(() => {
-    if (!cycles.length) return;
-    if (!current || current.type !== type) {
-      const first =
-        cycles.find((c) => c.type === type && isOpenCycle(c)) ||
-        cycles.find((c) => c.type === type && !isHidden(c));
-      if (first) setSel(first.id);
+    if (!locationCycles.length) {
+      setSel(null);
+      return;
     }
-  }, [cycles, type, current]);
+    if (!current || current.type !== type || !locationCycles.some((c) => c.id === sel)) {
+      const first =
+        locationCycles.find((c) => c.type === type && isOpenCycle(c)) ||
+        locationCycles.find((c) => c.type === type && !isHidden(c));
+      setSel(first?.id || null);
+    }
+  }, [locationCycles, type, current, sel]);
 
   const pages = Math.max(1, Math.ceil(gridRows.length / size));
   const safePage = Math.min(page, pages);
   const pageRows = gridRows.slice((safePage - 1) * size, safePage * size);
 
   const typeCount = (t) => {
-    const a = cycles.filter((c) => c.type === t && c.status !== "Deleted");
+    const a = locationCycles.filter((c) => c.type === t && c.status !== "Deleted");
     return { open: a.filter(isOpenCycle).length, total: a.length };
   };
 
