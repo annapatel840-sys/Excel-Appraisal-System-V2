@@ -5950,8 +5950,19 @@ export function EmployeeMaster() {
   };
 
   const generateDelegationFromEligibility = async () => {
-    if (!canEditEmployees || !eligibilityCycleId || !eligibilityCriteriaApplied)
+    if (eligibilityBusy) return;
+    if (!canEditEmployees) {
+      showBanner("Delegation generation unavailable", "Your HR role does not have permission to generate Delegation.", true);
       return;
+    }
+    if (!eligibilityCycleId) {
+      showBanner("Delegation generation unavailable", "The active appraisal cycle ID is missing. Refresh the Eligibility List and try again.", true);
+      return;
+    }
+    if (!eligibilityCriteriaApplied) {
+      showBanner("Apply Eligibility Criteria first", "The current cycle has an Eligibility List, but the server has not confirmed that Apply Criteria was completed for this cycle. Refresh the list, then apply or verify the criteria before generating Delegation.", true);
+      return;
+    }
     setEligibilityBusy(true);
     try {
       const response = await catalystFetch(
@@ -5971,11 +5982,21 @@ export function EmployeeMaster() {
           payload.error || payload.message || "Delegation generation failed.",
         );
       }
+      const generatedCount = Number(payload.inserted ?? payload.employees ?? 0);
+      if (!generatedCount) {
+        throw new Error(
+          `The server completed the request but created no Delegation rows. Eligible: ${payload.employees ?? 0}; skipped: ${payload.skipped ?? 0}. Check the employee ID and Employee Master references for this cycle.`,
+        );
+      }
       setDelegationGenerated(true);
       window.dispatchEvent(
         new CustomEvent("appraisal:delegation-generated", {
-          detail: { cycleId: eligibilityCycleId },
+          detail: { cycleId: eligibilityCycleId, inserted: generatedCount },
         }),
+      );
+      showBanner(
+        "Delegation generated",
+        `${generatedCount} employee Delegation row(s) generated. ${payload.techEdSet ?? 0} Tech-ED and ${payload.compManagerSet ?? 0} Comp. Manager assignments were resolved.`,
       );
       goToTab("delegation");
     } catch (error) {
