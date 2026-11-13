@@ -2119,45 +2119,30 @@ async function calculateBudgetBases(
       firstValue(current, ["location", "cycle_location", "cycleLocation"]) || "",
     ).trim();
     const currentName = cycleNameOf(current);
-    const canonicalName = currentLocation
-      ? currentName.replace(new RegExp("^" + currentLocation.replace(/[.*+?^${}()|[\]\\]/g, "\\  const previousCycleFor = (cycleId) => {
-    const current = currentCycleFor(cycleId);
-    const currentRank = current
-      ? cycleRank(current)
-      : cycleRank({ cycle_name: cycleId });
-    const earlier = cycleRows
-      .filter((cycle) => isHistoricalCycle(cycle))
-      .filter(
-        (cycle) =>
-          cycleRank(cycle) > 0 &&
-          currentRank > 0 &&
-          cycleRank(cycle) < currentRank,
-      )
-      .sort((a, b) => cycleRank(b) - cycleRank(a));
-    return earlier[0] || null;
-  };") + "\\s+-\\s*", "i"), "")
+    const canonicalName = currentLocation && currentName.toLowerCase().startsWith((currentLocation + " - ").toLowerCase())
+      ? currentName.slice(currentLocation.length + 3)
       : currentName;
-    // A location-specific Annual 2027 cycle is a continuation of the closed,
-    // original Annual 2027 source cycle, not Annual 2026. Reuse that exact
-    // same-year source history first for CTC, bonus and assignment enrichment.
+    // A location-specific Annual 2027 cycle continues the original Annual 2027
+    // source cycle. Reuse that same-year source before considering older cycles.
     if (currentLocation && canonicalName) {
-      const sameYearSource = cycleRows.find((candidate) =>
-        isHistoricalCycle(candidate) &&
-        !String(firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "").trim() &&
-        cycleYearOf(candidate) === cycleYearOf(current) &&
-        cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
-      );
+      const sameYearSource = cycleRows.find((candidate) => {
+        const candidateLocation = String(
+          firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
+        ).trim().toLowerCase();
+        const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation);
+        return (
+          isHistoricalCycle(candidate) &&
+          candidateIsUnscoped &&
+          cycleYearOf(candidate) === cycleYearOf(current) &&
+          cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
+        );
+      });
       if (sameYearSource) return sameYearSource;
     }
     const currentRank = cycleRank(current);
     const earlier = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
-      .filter(
-        (cycle) =>
-          cycleRank(cycle) > 0 &&
-          currentRank > 0 &&
-          cycleRank(cycle) < currentRank,
-      )
+      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
   };
@@ -3990,6 +3975,7 @@ module.exports = async function (req, res) {
         readSource("eligibilityRows", "Eligibility_List", true),
       ]);
       await readSource("cycleRows", "Appraisal_Cycle_Master", false);
+      await readSource("locationRows", "Location_Master", true);
       const techEdOwners = await readTechEdOwners(app, sourceRows);
       logBudgetStage("Tech-Ed owners resolved", {
         owners: techEdOwners.length,
