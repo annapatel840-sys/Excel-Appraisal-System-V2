@@ -1958,8 +1958,12 @@ async function calculateBudgetBases(
     const normalizedCycleLocation =
       !cycleLocation || ["all", "all locations"].includes(cycleLocation)
         ? "all"
-        : cycleLocation;
-    if (normalizedCycleLocation !== selectedLocationKey) return false;
+        : normalizeLocationKey(cycleLocation);
+    if (
+      allLocationsSelected
+        ? normalizedCycleLocation !== "all"
+        : !locationAliases.has(normalizedCycleLocation)
+    ) return false;
     return hasBudgetMaster(cycle);
   }) || null;
   const activeSheetCycleId = activeSheetCycle
@@ -2047,9 +2051,13 @@ async function calculateBudgetBases(
       const candidateLocation = String(
         firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
       ).trim();
+      const candidateLocationKey = normalizeLocationKey(candidateLocation);
+      const candidateIsUnscoped =
+        !candidateLocation ||
+        ["all", "alllocations"].includes(candidateLocationKey);
       return (
         isHistoricalCycle(candidate) &&
-        !candidateLocation &&
+        candidateIsUnscoped &&
         cycleYearOf(candidate) === cycleYearOf(activeSheetCycle) &&
         cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
       );
