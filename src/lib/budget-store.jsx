@@ -1331,15 +1331,11 @@ export function BudgetProvider({ children }) {
       setActiveBudgetCycleId(activeCycleId);
       const normalizedTechEd = techEdRows
         .map(normalizeRow)
-        .filter((row) => {
-          if (!activeCycleId) return false;
-          const childCycle = String(row.appraisal_cycle_id || "").trim();
-          if (childCycle) return childCycle === activeCycleId;
-          const parent = normalizedTechEd.find(
-            (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
-          );
-          return String(parent?.appraisal_cycle_id || "").trim() === activeCycleId;
-        });
+        .filter(
+          (row) =>
+            Boolean(activeCycleId) &&
+            String(row.appraisal_cycle_id || "").trim() === activeCycleId,
+        );
       const normalizedMaster = masterRows
         .map(normalizeRow)
         .filter(
@@ -1364,11 +1360,15 @@ export function BudgetProvider({ children }) {
                 100
               : 0,
         }))
-        .filter(
-          (row) =>
-            Boolean(activeCycleId) &&
-            String(row.appraisal_cycle_id || "").trim() === activeCycleId,
-        );
+        .filter((row) => {
+          if (!activeCycleId) return false;
+          const childCycle = String(row.appraisal_cycle_id || "").trim();
+          if (childCycle) return childCycle === activeCycleId;
+          const parent = normalizedTechEd.find(
+            (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
+          );
+          return String(parent?.appraisal_cycle_id || "").trim() === activeCycleId;
+        });
       // Keep the existing budgetRows API shape for current screens, while
       // exposing the three relational levels to every budget consumer.
       setBudgetRows(normalizedTechEd);
