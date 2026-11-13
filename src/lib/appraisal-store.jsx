@@ -2508,6 +2508,12 @@ function formatClientRating(rating) {
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
+const employeeWriteUrl = () => {
+  const url = new URL(EMPLOYEE_API_URL);
+  url.searchParams.set("location", getSelectedLocation());
+  if (APPRAISAL_CYCLE_ID) url.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
+  return url.toString();
+};
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
@@ -3037,7 +3043,7 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) 
 
   const catalystValue = normalizeValueForCatalyst(key, newValue);
 
-  const response = await catalystFetch(EMPLOYEE_API_URL, {
+  const response = await catalystFetch(employeeWriteUrl(), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -4229,7 +4235,7 @@ export function AppraisalProvider({ children }) {
               normalizeValueForCatalyst(key, targetRow[key]);
           });
 
-          const response = await catalystFetch(EMPLOYEE_API_URL, {
+          const response = await catalystFetch(employeeWriteUrl(), {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -4410,7 +4416,7 @@ export function AppraisalProvider({ children }) {
         return currentEmployee;
       }
 
-      const response = await catalystFetch(EMPLOYEE_API_URL, {
+      const response = await catalystFetch(employeeWriteUrl(), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
