@@ -2107,9 +2107,7 @@ async function calculateBudgetBases(
   // The active / previous cycle is the same for every row: work it out once
   // (it was recomputed - a cycle sort included - for each of thousands of rows).
   const activeCycleRow = activeSheetCycle;
-  const currentCycleId =
-    cycleIdOf(activeCycleRow) ||
-    String(bundle.master[0]?.appraisal_cycle_id || "");
+  const currentCycleId = cycleIdOf(activeCycleRow);
   const previousCycle = previousCycleFor(currentCycleId);
   const previousCycleId = previousCycle
     ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
