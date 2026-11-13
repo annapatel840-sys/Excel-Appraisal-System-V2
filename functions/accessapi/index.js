@@ -1462,26 +1462,61 @@ app.get(
     if (!ID_RE.test(cycleId)) throw new HttpError(422, "Invalid cycle id.");
     const d = SETTINGS.delegation,
       e = SETTINGS.employeeMaster;
-    const [rows, emRows] = await Promise.all([
-      selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
+    const [cycleRows, emRows] = await Promise.all([
+      selectAll(zcql, c.table, c.idColumn + " = " + cycleId),
       selectAll(zcql, e.table),
     ]);
-    const names = {};
+    const cycleRowId = String(cycleRows[0]?.[c.idColumn] || cycleId).trim();
+    const lookupId = (value) => {
+      if (value === undefined || value === null) return "";
+      if (typeof value === "object") {
+        return String(
+          value.ROWID || value.rowid || value.id || value.ID ||
+          value.value || value.lookup_id || ""
+        ).trim();
+      }
+      return String(value).trim();
+    };
+    // Lookup columns may be returned by Catalyst as either a ROWID string
+    // or an expanded object. Query by cycle first; if ZCQL returns no rows
+    // for a lookup comparison, safely filter the Delegation rows by the
+    // resolved cycle ROWID instead of showing an empty screen.
+    let rows = await selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleRowId) + "'");
+    if (!rows.length) {
+      const allDelegationRows = await selectAll(zcql, d.table);
+      rows = allDelegationRows.filter((row) => lookupId(row[d.cycleColumn]) === cycleRowId);
+    }
+    const masterByRowId = new Map();
+    const masterByEmpId = new Map();
     emRows.forEach((r) => {
-      names[norm(r[e.empId])] = r[e.name] || "";
+      const empId = String(r[e.empId] || "").trim();
+      const rowId = String(r.ROWID || r.rowid || "").trim();
+      if (rowId) masterByRowId.set(rowId, r);
+      if (empId) masterByEmpId.set(norm(empId), r);
     });
-    const nm = (id) => (id ? names[norm(id)] || "" : "");
+    const employeeFor = (value) =>
+      masterByRowId.get(lookupId(value)) ||
+      masterByEmpId.get(norm(lookupId(value))) ||
+      null;
+    const displayId = (value) => {
+      const master = employeeFor(value);
+      return master ? String(master[e.empId] || "").trim() : lookupId(value);
+    };
+    const displayName = (value) => {
+      const master = employeeFor(value);
+      return master ? String(master[e.name] || "") : "";
+    };
     send(res, {
       cycleId,
       rows: rows.map((r) => ({
         id: String(r.ROWID),
-        cycleId: String(r[d.cycleColumn]),
-        empId: r[d.empId] || "",
-        empName: nm(r[d.empId]),
-        compManagerId: r[d.compManagerId] || "",
-        compManagerName: nm(r[d.compManagerId]),
-        appraiserTechEdId: r[d.appraiserTechEdId] || "",
-        appraiserTechEdName: nm(r[d.appraiserTechEdId]),
+        cycleId: lookupId(r[d.cycleColumn]),
+        empId: displayId(r[d.empId]),
+        empName: displayName(r[d.empId]),
+        compManagerId: lookupId(r[d.compManagerId]),
+        compManagerName: displayName(r[d.compManagerId]),
+        appraiserTechEdId: lookupId(r[d.appraiserTechEdId]),
+        appraiserTechEdName: displayName(r[d.appraiserTechEdId]),
         updatedBy: r.updated_by || "",
         updatedAt: r.updated_at || "",
       })),
