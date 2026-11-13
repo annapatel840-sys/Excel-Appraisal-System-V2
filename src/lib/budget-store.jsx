@@ -1109,15 +1109,11 @@ export function BudgetProvider({ children }) {
         : []
   )
     .map(normalizeRow)
-    .filter((row) => {
-      if (!initialCycleId) return false;
-      const childCycle = String(row.appraisal_cycle_id || "").trim();
-      if (childCycle) return childCycle === initialCycleId;
-      const parent = initialTechEd.find(
-        (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
-      );
-      return String(parent?.appraisal_cycle_id || "").trim() === initialCycleId;
-    });
+    .filter(
+      (row) =>
+        initialCycleId &&
+        String(row.appraisal_cycle_id || "").trim() === initialCycleId,
+    );
   const initialMaster = (
     Array.isArray(initialBudget?.master) ? initialBudget.master : []
   )
@@ -1145,11 +1141,15 @@ export function BudgetProvider({ children }) {
           ? (number(row.total_utilization) / number(row.applied_budget)) * 100
           : 0,
     }))
-    .filter(
-      (row) =>
-        initialCycleId &&
-        String(row.appraisal_cycle_id || "").trim() === initialCycleId,
-    );
+    .filter((row) => {
+      if (!initialCycleId) return false;
+      const childCycle = String(row.appraisal_cycle_id || "").trim();
+      if (childCycle) return childCycle === initialCycleId;
+      const parent = initialTechEd.find(
+        (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
+      );
+      return String(parent?.appraisal_cycle_id || "").trim() === initialCycleId;
+    });
 
   const roleText = String(currentUser.role || "")
     .trim()
@@ -1202,15 +1202,10 @@ export function BudgetProvider({ children }) {
           : []
     )
       .map(normalizeRow)
-      .filter((row) => {
-        if (!cycleId) return false;
-        const childCycle = String(row.appraisal_cycle_id || "").trim();
-        if (childCycle) return childCycle === cycleId;
-        const parent = techEd.find(
-          (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
-        );
-        return String(parent?.appraisal_cycle_id || "").trim() === cycleId;
-      });
+      .filter(
+        (row) =>
+          cycleId && String(row.appraisal_cycle_id || "").trim() === cycleId,
+      );
     const master = (
       Array.isArray(initialBudget.master) ? initialBudget.master : []
     )
@@ -1237,10 +1232,15 @@ export function BudgetProvider({ children }) {
             ? (number(row.total_utilization) / number(row.applied_budget)) * 100
             : 0,
       }))
-      .filter(
-        (row) =>
-          cycleId && String(row.appraisal_cycle_id || "").trim() === cycleId,
-      );
+      .filter((row) => {
+        if (!cycleId) return false;
+        const childCycle = String(row.appraisal_cycle_id || "").trim();
+        if (childCycle) return childCycle === cycleId;
+        const parent = techEd.find(
+          (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
+        );
+        return String(parent?.appraisal_cycle_id || "").trim() === cycleId;
+      });
     setActiveBudgetCycleId(cycleId);
     setBudgetRows(techEd);
     setBudgetMasterRows(master);
