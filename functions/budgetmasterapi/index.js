@@ -1912,13 +1912,20 @@ async function calculateBudgetBases(
   const allLocationsSelected =
     !requestedLocation ||
     ["all", "all locations"].includes(requestedLocation.toLowerCase());
+  const selectedLocationKey =
+    !requestedLocation || ["all", "all locations"].includes(requestedLocation.toLowerCase())
+      ? "all"
+      : requestedLocation.toLowerCase();
   const activeSheetCycle = cycleRows.find((cycle) => {
     if (!isActiveCycle(cycle)) return false;
-    if (
-      !allLocationsSelected &&
-      String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
-        .trim().toLowerCase() !== requestedLocation.toLowerCase()
-    ) return false;
+    const cycleLocation = String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
+    ).trim().toLowerCase();
+    const normalizedCycleLocation =
+      !cycleLocation || ["all", "all locations"].includes(cycleLocation)
+        ? "all"
+        : cycleLocation;
+    if (normalizedCycleLocation !== selectedLocationKey) return false;
     return hasBudgetMaster(cycle);
   }) || null;
   const activeSheetCycleId = activeSheetCycle
@@ -1962,11 +1969,13 @@ async function calculateBudgetBases(
   // that do not exactly match the cycle master ID/name. If strict matching yields
   // no rows, do not silently treat the roster as empty (which zeroes Org Budget
   // Base and team headcounts); use the available generated sheet rows instead.
-  const currentAppraisalRows = cycleScopedSheetRows.length
-    ? cycleScopedSheetRows
-    : unscopedSheetRows.length
-      ? unscopedSheetRows
-      : appraisalRows;
+  const currentAppraisalRows = !activeSheetCycle
+    ? []
+    : cycleScopedSheetRows.length
+      ? cycleScopedSheetRows
+      : !hasCycleTaggedSheetRows
+        ? unscopedSheetRows
+        : [];
 
   const employeeKeyFor = (raw) => {
     const identity = normalizedIdentity(raw);
@@ -2829,8 +2838,17 @@ async function calculateBudgetBases(
       // Joiners payroll, latest closed prior-cycle payroll, then current sheet
       // Total CTC. The stored previous-CTC sheet cell can be stale and is not
       // the value displayed after employeesapi enriches the row.
-      const base =
-        newJoinerCtc !== null
+      // The Appraisal Sheet's Previous Total Rewards cell is the
+      // source of truth for Org/Tech-Ed/Comp Manager budget bases. Only use
+      // payroll history when that sheet cell is genuinely blank (legacy row).
+      const storedSheetBase = employee.sheet_previous_appraisal_ctc;
+      const hasStoredSheetBase =
+        storedSheetBase !== null &&
+        storedSheetBase !== undefined &&
+        String(storedSheetBase).trim() !== "";
+      const base = hasStoredSheetBase
+        ? n(storedSheetBase)
+        : newJoinerCtc !== null
           ? newJoinerCtc
           : priorCtc !== null
             ? priorCtc
