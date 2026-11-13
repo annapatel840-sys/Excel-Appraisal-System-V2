@@ -1,4 +1,5 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
+import { getSelectedLocation } from "./location-store";
 
 /* ============================================================
    SHARED APPRAISAL ROSTER
@@ -58,7 +59,7 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidateEmployeeRoster));
 }
 
-async function fetchRosterPage(page, viewAs) {
+async function fetchRosterPage(page, viewAs, location) {
   const url = new URL(catalystFunctionUrl("employeesapi"));
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(ROSTER_LIMIT));
@@ -66,6 +67,7 @@ async function fetchRosterPage(page, viewAs) {
   url.searchParams.set("status", "all");
   url.searchParams.set("eligible", "all");
   if (viewAs) url.searchParams.set("viewAs", viewAs);
+  url.searchParams.set("location", String(location || "All"));
   // Ask employeesapi to gzip the (several MB) response.
   url.searchParams.set("gz", "1");
   url.searchParams.set("_ts", String(Date.now()));
@@ -94,12 +96,12 @@ async function fetchRosterPage(page, viewAs) {
   };
 }
 
-async function loadRoster(viewAs) {
-  const first = await fetchRosterPage(1, viewAs);
+async function loadRoster(viewAs, location) {
+  const first = await fetchRosterPage(1, viewAs, location);
   const totalPages = Math.max(1, Number(first.pagination.totalPages || 1));
   const rest = totalPages > 1
     ? await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs)),
+        Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs, location)),
       )
     : [];
   return {
@@ -116,12 +118,13 @@ async function loadRoster(viewAs) {
 // Each caller gets its own copy of the shared result.
 const copyOf = (roster) => JSON.parse(JSON.stringify(roster));
 
-export function fetchAppraisalRoster({ viewAs = "" } = {}) {
-  const key = String(viewAs || "");
+export function fetchAppraisalRoster({ viewAs = "", location = getSelectedLocation() } = {}) {
+  const selected = String(location || "All");
+  const key = String(viewAs || "") + "::" + selected.toLowerCase();
   const shared = inFlight.get(key);
   if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise.then(copyOf);
   const entry = { startedAt: Date.now(), promise: null, settled: false };
-  entry.promise = loadRoster(key).then(
+  entry.promise = loadRoster(String(viewAs || ""), selected).then(
     (roster) => {
       entry.settled = true;
       return roster;
@@ -138,8 +141,8 @@ export function fetchAppraisalRoster({ viewAs = "" } = {}) {
 }
 
 // Starts the roster request early; the screens that need it share it.
-export function prefetchAppraisalRoster({ viewAs = "" } = {}) {
-  fetchAppraisalRoster({ viewAs }).catch(() => {
+export function prefetchAppraisalRoster({ viewAs = "", location = getSelectedLocation() } = {}) {
+  fetchAppraisalRoster({ viewAs, location }).catch(() => {
     /* the screen's own load reports the error */
   });
 }
