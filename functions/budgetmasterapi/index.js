@@ -4113,27 +4113,42 @@ module.exports = async function (req, res) {
       );
       return status === "active" && !archived && !hidden;
     });
-    // Budget writes must target the Active cycle linked to the selected
-    // Budget_Master row, keeping every location's budget isolated.
-    const activeCycleForWrite =
-      activeCyclesForWrite.find((cycle) => hasBudgetMaster(cycle)) ||
-      activeCyclesForWrite[0] ||
-      null;
+    // Resolve the write target from the cycle explicitly supplied by the
+    // location-scoped Budget screen. Never fall through to another location's
+    // first Active cycle when the requested cycle is missing or inactive.
+    const budgetMasterRowsForWrite = await getAllRows(app, "Budget_Master");
+    const budgetCycleRefsForWrite = new Set(
+      budgetMasterRowsForWrite
+        .map((row) => cycleReference(value(row, "appraisal_cycle_id")).toLowerCase())
+        .filter(Boolean),
+    );
+    const cycleHasBudgetMasterForWrite = (cycle) =>
+      [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
+        budgetCycleRefsForWrite.has(String(ref || "").trim().toLowerCase()),
+      );
+    const requestedCycleId = String(
+      body.appraisal_cycle_id || body.cycle_id || "",
+    ).trim();
+    const requestedCycleKey = requestedCycleId.toLowerCase();
+    const activeCycleForWrite = requestedCycleId
+      ? activeCyclesForWrite.find((cycle) =>
+          [cycleIdOf(cycle), cycleNameOf(cycle)].some(
+            (ref) => String(ref || "").trim().toLowerCase() === requestedCycleKey,
+          ),
+        ) || null
+      : activeCyclesForWrite.find(cycleHasBudgetMasterForWrite) || null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
       : "";
-    if (!activeCycleIdForWrite) {
+    if (!activeCycleIdForWrite || !cycleHasBudgetMasterForWrite(activeCycleForWrite)) {
       throw new access.HttpError(
         409,
-        "Budget changes require an Active appraisal cycle.",
+        "Budget changes require the selected location's Active cycle and Budget_Master allocation.",
       );
     }
     const activeCycleNameForWrite = cycleNameOf(activeCycleForWrite)
       .trim()
       .toLowerCase();
-    const requestedCycleId = String(
-      body.appraisal_cycle_id || body.cycle_id || "",
-    ).trim();
     if (
       requestedCycleId &&
       requestedCycleId !== activeCycleIdForWrite &&
