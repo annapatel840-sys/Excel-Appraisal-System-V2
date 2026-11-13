@@ -658,8 +658,15 @@ async function writeRowsInBatches(table, rows, kind, deadline) {
       batch.forEach((_, i) => results.push({ ok: true, row: Array.isArray(saved) ? saved[i] : undefined }));
     } catch (batchError) {
       console.warn("Batch " + kind + " failed; writing the rows one by one:", batchError?.message || batchError);
-      for (const row of batch) {
+      for (let rowIndex = 0; rowIndex < batch.length; rowIndex += 1) {
+        if (deadline && Date.now() > deadline) {
+          for (let skippedIndex = rowIndex; skippedIndex < batch.length; skippedIndex += 1) {
+            results.push({ ok: false, skipped: true });
+          }
+          break;
+        }
         try {
+          const row = batch[rowIndex];
           const saved = kind === "insert" ? await table.insertRow(row) : await table.updateRow(row);
           results.push({ ok: true, row: saved });
         } catch (error) {
@@ -1859,12 +1866,19 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows, allCycles, delegationRows] = await Promise.all([
+  // Eligibility sync already loaded the complete Employee_Master roster.
+  // The route also loaded the cycle master to resolve this cycle. Reuse both
+  // snapshots instead of scanning those large tables a second time.
+  const employeeMasterRows = Array.isArray(eligibilityResult.masterRecords)
+    ? eligibilityResult.masterRecords
+    : await getAllRows(tables.employeeMaster);
+  const allCycles = Array.isArray(options.allCycles)
+    ? options.allCycles
+    : (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const [sheetRows, payrollRows, feedbackRows, delegationRows] = await Promise.all([
     getAllRows(tables.employees),
-    getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
     getAllRows(tables.feedback),
-    getAllRows(tables.cycles),
     getAllRows(tables.delegation),
   ]);
   const cycleKeys = new Set(
@@ -1895,7 +1909,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
   const payrollByMasterId = new Map();
   const payrollBaseSourceByMasterId = new Map();
-  const normalizedCycles = allCycles.map(normalizeCycle);
+  const normalizedCycles = allCycles;
   const cycleByReference = new Map();
   normalizedCycles.forEach((item) => {
     if (item.id) cycleByReference.set(item.id.toLowerCase(), item);
@@ -3474,6 +3488,7 @@ async function routeRequest(req, res, identity, resource, a) {
     if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
     const result = await generateAppraisalSheet(tables, cycle, actor, writeDeadline, {
       reuseExistingCycleData: body.reuseExistingCycleData === true,
+      allCycles: cycles,
     });
     return sendJson(res, 200, { success: true, data: result });
   }
