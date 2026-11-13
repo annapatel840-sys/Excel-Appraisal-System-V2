@@ -474,7 +474,7 @@
 //     // Before any screen has asked for budget data there is nothing to
 //     // refresh; the first load reads current data anyway.
 //     const refreshBudget = () => {
-//       invalidateBudgetSnapshot(budgetCacheScope);
+//       invalidateBudgetSnapshot(budgetSnapshotScope);
 //       if (dataWantedRef.current) load();
 //     };
 //     const refreshForCycleChange = () => {
@@ -1320,7 +1320,7 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      saveBudgetSnapshot(budgetCacheScope, budgetJson);
+      saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
@@ -2283,7 +2283,7 @@ export function BudgetProvider({ children }) {
       }
       return result;
     },
-    [load, budgetCacheScope],
+    [load, budgetSnapshotScope, activeBudgetCycleId, selectedLocation],
   );
 
   return (
