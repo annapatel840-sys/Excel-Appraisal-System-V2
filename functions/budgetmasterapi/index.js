@@ -3126,6 +3126,11 @@ async function calculateBudgetBases(
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
+    // Shared value resolver for Org, Tech-Ed and Comp Manager budget bases.
+    // employee.base is the mapped Previous Total CTC with Rewards value
+    // produced by employeesForBudgetCycle for this exact cycle.
+    const sheetBaseValue = (employee) => n(employee?.base);
+
     // Sum the same Previous Total CTC with Rewards value exposed in the
     // Appraisal Sheet/Budget roster. The canonical sheet field is preferred;
     // when a legacy generated row has that field blank, employeesForBudgetCycle
