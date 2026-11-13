@@ -3568,6 +3568,7 @@ function HRApplyBudget() {
     loading: budgetLoading,
     error: budgetError = "",
     budgetWarning = "",
+    selectedLocation = "All",
   } = useBudget();
   // Dashboard is the source of truth for live Active + Eligible appraisal rows.
   const { rows: dashboardRows = [] } = useAppraisal();
@@ -3644,6 +3645,31 @@ function HRApplyBudget() {
     [budgetMasterRows],
   );
   const [selectedCycle, setSelectedCycle] = useState("");
+  const activeCycleForLocation = (cycles) => {
+    const selected = String(selectedLocation || "All").trim();
+    const selectedKey = selected.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const isAll = !selectedKey || ["all", "alllocations"].includes(selectedKey);
+    return (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+      const status = String(cycle.status ?? cycle.cycle_status ?? "")
+        .trim().toLowerCase();
+      const archived = [true, 1, "true", "1", "yes"].includes(
+        typeof cycle.archived === "string"
+          ? cycle.archived.trim().toLowerCase()
+          : cycle.archived,
+      );
+      if (status !== "active" || archived || cycle.hidden) return false;
+      if (isAll) return true;
+      const rawLocation = String(
+        cycle.location ?? cycle.cycle_location ?? cycle.cycleLocation ?? "",
+      ).trim();
+      const cycleName = String(
+        cycle.name ?? cycle.cycle_name ?? cycle.appraisal_cycle_name ?? "",
+      ).trim();
+      const locationKey = rawLocation.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const nameHasLocation = cycleName.toLowerCase().startsWith(selected.toLowerCase() + " - ");
+      return locationKey ? locationKey === selectedKey : nameHasLocation;
+    }) || null;
+  };
   const selectedMaster =
     budgetMasterRows.find(
       (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
@@ -3659,18 +3685,7 @@ function HRApplyBudget() {
     payrollCycleRequest("cycles")
       .then((cycles) => {
         if (!mounted) return;
-        const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-          const status = String(cycle.status ?? cycle.cycle_status ?? "")
-            .trim()
-            .toLowerCase();
-          const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle.archived === "string"
-              ? cycle.archived.trim().toLowerCase()
-              : cycle.archived,
-          );
-          return status === "active" && !archived && !cycle.hidden;
-        });
-        setActiveCycle(active || null);
+        setActiveCycle(activeCycleForLocation(cycles));
       })
       .catch((cycleError) => {
         console.error("Failed to load active appraisal cycle:", cycleError);
@@ -3682,7 +3697,7 @@ function HRApplyBudget() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [selectedLocation]);
 
   useEffect(() => {
     const refreshActiveCycle = () => {
@@ -3691,18 +3706,7 @@ function HRApplyBudget() {
       setCycleLoading(true);
       payrollCycleRequest("cycles")
         .then((cycles) => {
-          const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-            const status = String(cycle.status ?? cycle.cycle_status ?? "")
-              .trim()
-              .toLowerCase();
-            const archived = [true, 1, "true", "1", "yes"].includes(
-              typeof cycle.archived === "string"
-                ? cycle.archived.trim().toLowerCase()
-                : cycle.archived,
-            );
-            return status === "active" && !archived && !cycle.hidden;
-          });
-          setActiveCycle(active || null);
+          setActiveCycle(activeCycleForLocation(cycles));
         })
         .catch(() => setActiveCycle(null))
         .finally(() => setCycleLoading(false));
@@ -3718,7 +3722,7 @@ function HRApplyBudget() {
         );
       }
     };
-  }, []);
+  }, [selectedLocation]);
   useEffect(() => {
     if (cycleLoading) return;
     setSelectedCycle(activeCycle?.id ? String(activeCycle.id) : "");
