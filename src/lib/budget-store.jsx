@@ -211,7 +211,7 @@
 //     setBudgetCompManagerRows(comp);
 //     setEmployeeRows(Array.isArray(initialBudget.employeeRoster) ? initialBudget.employeeRoster : []);
 //     setTechEdOwners(Array.isArray(initialBudget.techEdOwners) ? initialBudget.techEdOwners : []);
-//   }, [budgetSnapshotScope, initialBudget]);
+//   }, [budgetCacheScope, initialBudget]);
 
 //   const runLoad = useCallback(async () => {
 //     setLoading(!initialBudget);
@@ -250,7 +250,7 @@
 //         throw new Error(statusText);
 //       }
 
-//       saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
+//       saveBudgetSnapshot(budgetCacheScope, budgetJson);
 //       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
 //         ? budgetJson.techEd
 //         : Array.isArray(budgetJson && budgetJson.data)
@@ -474,7 +474,7 @@
 //     // Before any screen has asked for budget data there is nothing to
 //     // refresh; the first load reads current data anyway.
 //     const refreshBudget = () => {
-//       invalidateBudgetSnapshot(budgetSnapshotScope);
+//       invalidateBudgetSnapshot(budgetCacheScope);
 //       if (dataWantedRef.current) load();
 //     };
 //     const refreshForCycleChange = () => {
@@ -833,13 +833,7 @@
 //         {
 //           method: "PUT",
 //           headers: { "Content-Type": "application/json" },
-//           body: JSON.stringify({
-            id,
-            resource,
-            ...payload,
-            appraisal_cycle_id: activeBudgetCycleId,
-            location: selectedLocation,
-          }),
+//           body: JSON.stringify({ id, resource, ...payload }),
 //         },
 //       );
 //       const result = await response.json();
@@ -883,12 +877,12 @@
 //             // The fresh request below is still required after a failed old GET.
 //           }
 //         }
-//         invalidateBudgetSnapshot(budgetSnapshotScope);
+//         invalidateBudgetSnapshot(budgetCacheScope);
 //         await load();
 //       }
 //       return result;
 //     },
-//     [load, budgetCacheScope, activeBudgetCycleId, selectedLocation],
+//     [load, budgetCacheScope],
 //   );
 
 //   return (
@@ -1068,15 +1062,14 @@ function ownerMatches(owner, identities) {
 // authorized for the Employee Master screen, so the roster is the Appraisal
 // view (the signed-in user's normal appraisal scope). The request is shared
 // with the Appraisal Sheet store when both load at the same time.
-async function fetchAllEligibleEmployees(cacheScope, location) {
-  const roster = await fetchAppraisalRoster({ cacheScope, location });
+async function fetchAllEligibleEmployees(cacheScope) {
+  const roster = await fetchAppraisalRoster({ cacheScope });
   return roster.employees;
 }
 
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const [selectedLocation] = useSelectedLocation();
   const isCompManagerPreview =
     effectiveId === "compmanager" && actualId === "teched";
   const currentUser = useMemo(
@@ -1101,12 +1094,9 @@ export function BudgetProvider({ children }) {
   )
     .trim()
     .toLowerCase();
-  const budgetSnapshotScope = budgetCacheScope
-    ? budgetCacheScope + "::" + String(selectedLocation || "All").trim().toLowerCase()
-    : "";
   const initialBudget = useMemo(
-    () => (budgetSnapshotScope ? readBudgetSnapshot(budgetSnapshotScope) : null),
-    [budgetSnapshotScope],
+    () => (budgetCacheScope ? readBudgetSnapshot(budgetCacheScope) : null),
+    [budgetCacheScope],
   );
   const initialCycleId = String(
     initialBudget?.active_appraisal_cycle_id || "",
@@ -1266,7 +1256,7 @@ export function BudgetProvider({ children }) {
         ? initialBudget.techEdOwners
         : [],
     );
-  }, [budgetSnapshotScope, initialBudget]);
+  }, [budgetCacheScope, initialBudget]);
 
   const runLoad = useCallback(async () => {
     setLoading(!initialBudget);
@@ -1279,7 +1269,6 @@ export function BudgetProvider({ children }) {
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
       budgetUrl.searchParams.set("gz", "1");
-      budgetUrl.searchParams.set("location", String(selectedLocation || "All"));
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
       const employeeResultPromise = fetchAllEligibleEmployees(
@@ -1291,7 +1280,6 @@ export function BudgetProvider({ children }) {
         )
           .trim()
           .toLowerCase(),
-        selectedLocation,
       ).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
@@ -1320,7 +1308,7 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
+      saveBudgetSnapshot(budgetCacheScope, budgetJson);
       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
@@ -1527,46 +1515,22 @@ export function BudgetProvider({ children }) {
     authenticatedUser?.id,
     authenticatedUser?.user_id,
     budgetCacheScope,
-    budgetSnapshotScope,
     initialBudget,
-    selectedLocation,
   ]);
 
   // Keep one shared load promise for the entire time a budget refresh is
   // running. Every screen and refresh event receives the same result instead
   // of starting another budgetmasterapi GET and roster request.
   const loadRef = useRef(null);
-  const loadLocationRef = useRef(String(selectedLocation || "All"));
-  const previousLocationRef = useRef(String(selectedLocation || "All"));
-  useEffect(() => {
-    const nextLocation = String(selectedLocation || "All");
-    if (previousLocationRef.current === nextLocation) return;
-    previousLocationRef.current = nextLocation;
-    if (!dataWantedRef.current) return;
-    // Do not leave the previous location's budget visible while the newly
-    // selected location's Active cycle and allocations are loading.
-    setActiveBudgetCycleId("");
-    setBudgetRows([]);
-    setBudgetMasterRows([]);
-    setBudgetDistributionRows([]);
-    setBudgetCompManagerRows([]);
-    setEmployeeRows([]);
-    setTechEdOwners([]);
-    setBudgetWarning("");
-  }, [selectedLocation]);
   const load = useCallback(() => {
-    const locationKey = String(selectedLocation || "All").trim().toLowerCase();
-    if (loadRef.current && loadLocationRef.current === locationKey) {
-      return loadRef.current;
-    }
+    if (loadRef.current) return loadRef.current;
 
     const promise = runLoad().finally(() => {
       if (loadRef.current === promise) loadRef.current = null;
     });
-    loadLocationRef.current = locationKey;
     loadRef.current = promise;
     return promise;
-  }, [runLoad, selectedLocation]);
+  }, [runLoad]);
 
   // All callers use the same in-flight load. A new load starts only after
   // the current one has finished (or when a later refresh is requested).
@@ -1594,7 +1558,7 @@ export function BudgetProvider({ children }) {
     // Before any screen has asked for budget data there is nothing to
     // refresh; the first load reads current data anyway.
     const refreshBudget = () => {
-      invalidateBudgetSnapshot(budgetSnapshotScope);
+      invalidateBudgetSnapshot(budgetCacheScope);
       if (dataWantedRef.current) load();
     };
     const refreshForCycleChange = () => {
@@ -1650,6 +1614,7 @@ export function BudgetProvider({ children }) {
   // employeeRows stays complete (it identifies the signed-in Tech-ED / Comp
   // Manager and their hierarchy). locationEmployeeRows is the same roster
   // narrowed to the selected location, for team counts and team lists.
+  const [selectedLocation] = useSelectedLocation();
   const locationEmployeeRows = useMemo(
     () => filterByLocation(employeeRows, selectedLocation),
     [employeeRows, selectedLocation],
@@ -2184,23 +2149,12 @@ export function BudgetProvider({ children }) {
     async (id, changes, resource = "master", refresh = true) => {
       // audit_reason is for the local audit trail only; it is not sent to the API.
       const { audit_reason: auditReason, ...payload } = changes || {};
-      const budgetWriteUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
-      budgetWriteUrl.searchParams.set("location", String(selectedLocation || "All"));
-      if (activeBudgetCycleId) {
-        budgetWriteUrl.searchParams.set("cycle_id", activeBudgetCycleId);
-      }
       const response = await catalystFetch(
-        budgetWriteUrl.toString(),
+        catalystFunctionUrl("budgetmasterapi"),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id,
-            resource,
-            ...payload,
-            appraisal_cycle_id: activeBudgetCycleId,
-            location: selectedLocation,
-          }),
+          body: JSON.stringify({ id, resource, ...payload }),
         },
       );
       const result = await response.json();
@@ -2283,12 +2237,12 @@ export function BudgetProvider({ children }) {
             // The fresh request below is still required after a failed old GET.
           }
         }
-        invalidateBudgetSnapshot(budgetSnapshotScope);
+        invalidateBudgetSnapshot(budgetCacheScope);
         await load();
       }
       return result;
     },
-    [load, budgetSnapshotScope, activeBudgetCycleId, selectedLocation],
+    [load, budgetCacheScope],
   );
 
   return (
