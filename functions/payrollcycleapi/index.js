@@ -1079,6 +1079,127 @@ async function eligibilityCriteriaWasApplied(tables, cycleId, eligibilityRows = 
   return hasAuditMarker || hasCriteriaRows;
 }
 
+/* ---------- Eligibility criteria: saved with every Apply Criteria ----------
+ * The criteria of each Apply are stored in the details of the cycle's
+ * "eligibility_criteria" audit row, so the last Apply is always what the screen
+ * shows again (and what Edit Criteria starts from). Older rows without criteria
+ * are ignored. */
+const CRITERIA_LISTS = ["departments", "designations", "statuses", "excludedEmployees"];
+
+function cleanCriteria(body) {
+  const list = (value) => [...new Set(
+    (Array.isArray(value) ? value : []).map((item) => String(item ?? "").trim()).filter(Boolean),
+  )];
+  const extra = (Array.isArray(body.extraParameters) ? body.extraParameters : [])
+    .filter((p) => p && typeof p === "object" && p.field)
+    .map((p) => ({
+      id: String(p.id || "").slice(0, 60),
+      master: String(p.master || "EM").slice(0, 10),
+      field: String(p.field || "").slice(0, 80),
+      label: String(p.label || "").slice(0, 80),
+      type: ["list", "number", "date"].includes(p.type) ? p.type : "list",
+      values: list(p.values),
+      op: p.op === "before" ? "before" : "after",
+      value: p.value == null ? "" : String(p.value).slice(0, 40),
+    }));
+  return {
+    departments: list(body.departments),
+    designations: list(body.designations),
+    statuses: list(body.statuses),
+    excludedEmployees: list(body.excludedEmployees),
+    cutoffDate: isoDateOf(body.cutoffDate) || "",
+    extraParameters: extra,
+  };
+}
+
+// What changed between the previous Apply and this one (shown on the Audit tab).
+function criteriaChanges(prev, next) {
+  const changes = [];
+  CRITERIA_LISTS.forEach((field) => {
+    const before = (prev && prev[field]) || [];
+    const after = next[field] || [];
+    const added = after.filter((v) => !before.includes(v));
+    const removed = before.filter((v) => !after.includes(v));
+    if (added.length || removed.length) changes.push({ field, added, removed });
+  });
+  if (((prev && prev.cutoffDate) || "") !== (next.cutoffDate || "")) {
+    changes.push({ field: "cutoffDate", from: (prev && prev.cutoffDate) || "", to: next.cutoffDate || "" });
+  }
+  const sig = (c) => JSON.stringify((c && c.extraParameters) || []);
+  if (sig(prev) !== sig(next)) changes.push({ field: "extraParameters" });
+  return changes;
+}
+
+// Latest criteria of this cycle + the history of every Apply. A cycle that has
+// never been applied starts from the last criteria used by another cycle of the
+// same location (cutoff date is per cycle, so it is not carried over).
+async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
+  const rows = auditRows || await getAllRows(tables.audit);
+  const applies = rows
+    .filter((row) => String(row.source || "").trim().toLowerCase() === "eligibility_criteria")
+    .map((row) => ({ row, details: auditDetails(row) }))
+    .filter(({ details }) => details && details.criteria);
+  const sortByTime = (a, b) => String(a.row.changed_at || a.row.CREATEDTIME || "")
+    .localeCompare(String(b.row.changed_at || b.row.CREATEDTIME || ""));
+  const own = applies
+    .filter(({ row }) => String(row.batch_id || "") === String(cycle.id))
+    .sort(sortByTime);
+  const criteriaHistory = own.map(({ row, details }, index) => ({
+    at: row.changed_at || "",
+    by: row.changed_by || "",
+    first: index === 0,
+    criteria: details.criteria,
+    changes: Array.isArray(details.changes) ? details.changes : [],
+  }));
+  if (own.length) {
+    return { criteria: own[own.length - 1].details.criteria, criteriaHistory, inherited: false };
+  }
+  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const sameLocation = new Set(
+    cycles.filter((item) => cycleLocationKey(item) === cycleLocationKey(cycle)).map((item) => item.id),
+  );
+  const other = applies
+    .filter(({ row }) => sameLocation.has(String(row.batch_id || "")) && String(row.batch_id || "") !== String(cycle.id))
+    .sort(sortByTime);
+  if (!other.length) return { criteria: null, criteriaHistory, inherited: false };
+  return {
+    criteria: { ...other[other.length - 1].details.criteria, cutoffDate: "" },
+    criteriaHistory,
+    inherited: true,
+  };
+}
+
+// "Add parameter" rules: Employee Master column behind each field the screen offers.
+const PARAM_COLUMN = {
+  empType: ["emp_type"], organization: ["department", "organization"], band: ["band"],
+  skillType: ["skill_type"], orgExp: ["wissen_experience", "org_experience"],
+  exitDate: ["exit_date"], designationGroup: ["designation_group"],
+  bandMaster: ["band"], skillMaster: ["skill_type"],
+};
+function paramValueOf(param, master) {
+  const field = String(param.field || "");
+  const columns = field.startsWith("raw:") ? [field.slice(4)] : (PARAM_COLUMN[field] || []);
+  for (const column of columns) {
+    const value = master[column];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+// Same rule as failsParam() on the screen: true = the employee is left out.
+function failsCriteriaParam(param, master) {
+  const value = paramValueOf(param, master);
+  if (param.type === "list") {
+    const text = String(value ?? "").trim().toLowerCase();
+    return Boolean(text) && (param.values || []).some((v) => String(v).trim().toLowerCase() === text);
+  }
+  if (param.value === "" || param.value == null || value === "" || value == null) return false;
+  if (param.type === "number") return Number(value) < Number(param.value);
+  const day = isoDateOf(value);
+  const limit = isoDateOf(param.value);
+  if (!day || !limit) return false;
+  return param.op === "before" ? day <= limit : day > limit;
+}
+
 async function applyEligibilityCriteria(tables, body, actor) {
   const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
   if (!cycleId) throw new ApiError("Appraisal cycle is required.", 400);
@@ -1104,6 +1225,9 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const designations = lowerList(body.designations);
   const excludedEmployees = lowerList(body.excludedEmployees);
   const cutoff = isoDateOf(body.cutoffDate);
+  const criteria = cleanCriteria(body);
+  const statuses = lowerList(criteria.statuses);
+  const extraParameters = criteria.extraParameters;
 
   const [masters, allEligibility, locationRows] = await Promise.all([
     getAllRows(tables.employeeMaster),
@@ -1167,6 +1291,15 @@ async function applyEligibilityCriteria(tables, body, actor) {
       reasons.push("Designation excluded");
     }
     if (excludedEmployees.includes(empId.toLowerCase())) reasons.push("Employee excluded");
+    if (statuses.length && statuses.includes(String(master.emp_status || master.status || "Active").trim().toLowerCase())) {
+      reasons.push("Status excluded");
+    }
+    for (const param of extraParameters) {
+      if (failsCriteriaParam(param, master)) {
+        reasons.push(`${param.label || param.field} excluded`);
+        break;
+      }
+    }
     if (cutoff) {
       const doj = isoDateOf(master.joining_date || master.date_of_join);
       if (!doj) reasons.push("Missing DOJ");
@@ -1222,23 +1355,40 @@ async function applyEligibilityCriteria(tables, body, actor) {
   }
   // Persist a cycle-specific marker so the lock survives refreshes and
   // remains associated with this cycle after its eligibility rows are cleared.
-  await writeAudit(tables.audit, {
-    actor,
-    source: "eligibility_criteria",
-    batchId: cycleId,
-    cycle,
+  const previousCriteria = (await readEligibilityCriteriaMeta(tables, cycle).catch(() => null));
+  const previousOwn = previousCriteria && !previousCriteria.inherited ? previousCriteria.criteria : null;
+  const auditDetailsBase = {
+    kind: "eligibility-criteria-applied",
     action: "Apply Criteria completed",
-    details: {
-      kind: "eligibility-criteria-applied",
+    cycleId,
+    cycleName: cycle.name,
+    evaluated,
+    added: added.length,
+    excluded,
+    removed: removedRows.length,
+  };
+  try {
+    await writeAudit(tables.audit, {
+      actor,
+      source: "eligibility_criteria",
+      batchId: cycleId,
+      cycle,
       action: "Apply Criteria completed",
-      cycleId,
-      cycleName: cycle.name,
-      evaluated,
-      added: added.length,
-      excluded,
-      removed: removedRows.length,
-    },
-  });
+      details: { ...auditDetailsBase, criteria, changes: criteriaChanges(previousOwn, criteria) },
+    });
+  } catch (criteriaSaveError) {
+    // The rows are already written: never fail the Apply because the criteria
+    // copy did not fit. Keep the lock marker without it.
+    console.error("Could not store the applied criteria:", criteriaSaveError);
+    await writeAudit(tables.audit, {
+      actor,
+      source: "eligibility_criteria",
+      batchId: cycleId,
+      cycle,
+      action: "Apply Criteria completed",
+      details: auditDetailsBase,
+    });
+  }
   return {
     cycleId,
     cycleName: cycle.name,
@@ -3501,6 +3651,10 @@ async function routeRequest(req, res, identity, resource, a) {
       });
     }
     const data = await getEligibilityRows(tables, cycle, actor);
+    const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch((error) => {
+      console.error("Could not read the saved criteria:", error);
+      return { criteria: null, criteriaHistory: [] };
+    });
     return sendJson(res, 200, {
       success: true,
       data: {
@@ -3511,6 +3665,8 @@ async function routeRequest(req, res, identity, resource, a) {
           cycleName: cycle.name,
           total: data.records.length,
           criteriaApplied: data.criteriaApplied,
+          criteria: criteriaMeta.criteria,
+          criteriaHistory: criteriaMeta.criteriaHistory,
         },
       },
     }, req);

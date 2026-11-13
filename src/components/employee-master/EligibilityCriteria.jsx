@@ -21,6 +21,25 @@ const fmtDate = (iso) => {
   return y && m && d ? `${Number(d)} ${months[Number(m) - 1]} ${y}` : iso;
 };
 
+// The last applied criteria are also kept on this device, so Edit Criteria always starts
+// from them even when the server did not send them back. The server copy wins when present.
+const localKey = (cycleName, locationLabel) => `elx-criteria:${cycleName}|${locationLabel}`;
+const readLocalCriteria = (key) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+const writeLocalCriteria = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable: the server copy still applies */
+  }
+};
+
 export function EligibilityCriteria({
   employees,
   excludedEmployees,
@@ -65,15 +84,16 @@ export function EligibilityCriteria({
   // Selections saved by the last Apply Criteria (server). A draft being edited is never overwritten.
   useEffect(() => {
     if (draftingRef.current) return;
-    setSelectedDepartments(savedCriteria?.departments || []);
-    setSelectedDesignations(savedCriteria?.designations || []);
-    setSelectedStatuses(savedCriteria?.statuses || []);
-    setExcludedEmployees(savedCriteria?.excludedEmployees || []);
-    setExtraParameters(savedCriteria?.extraParameters || []);
+    const source = savedCriteria || (criteriaApplied ? readLocalCriteria(localKey(cycleName, locationLabel)) : null);
+    setSelectedDepartments(source?.departments || []);
+    setSelectedDesignations(source?.designations || []);
+    setSelectedStatuses(source?.statuses || []);
+    setExcludedEmployees(source?.excludedEmployees || []);
+    setExtraParameters(source?.extraParameters || []);
     // Rule 7: no saved date -> start from the cycle default
-    setCutoffDate(savedCriteria?.cutoffDate || defaultCutoff);
+    setCutoffDate(source?.cutoffDate || defaultCutoff);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedCriteria, defaultCutoff]);
+  }, [savedCriteria, defaultCutoff, criteriaApplied, cycleName, locationLabel]);
 
   const locked = readOnly || !isEditing || delegationGenerated;
 
@@ -113,6 +133,7 @@ export function EligibilityCriteria({
     try {
       const ok = await onApply({ ...currentDraft(), replaceCriteria: criteriaApplied });
       if (ok) {
+        writeLocalCriteria(localKey(cycleName, locationLabel), currentDraft());
         savedDraftRef.current = currentDraft();
         draftingRef.current = false;
         setIsEditing(false);
@@ -253,6 +274,30 @@ export function EligibilityCriteria({
     setShowSuggest(false);
   };
 
+  /* ----- "If applied now": uses the same rules as Apply, so the numbers match the list ----- */
+  const impact = useMemo(() => {
+    const all = previewCounts(employees, {
+      statuses: withAlways(selectedStatuses),
+      departments: selectedDepartments,
+      designations: selectedDesignations,
+      excludedEmployees,
+      cutoffDate,
+      extraParameters,
+    });
+    // Each criterion counted on its own (one employee can match several).
+    const only = (patch) => previewCounts(employees, patch).notEligible;
+    const by = [
+      ["Employee status", only({ statuses: selectedStatuses })],
+      ["Department", only({ departments: selectedDepartments })],
+      ["Designation", only({ designations: selectedDesignations })],
+      ["Specific employees", only({ excludedEmployees })],
+      ["Joining date cutoff", only({ cutoffDate })],
+      ...extraParameters.map((p) => [p.label, only({ extraParameters: [p] })]),
+    ].filter(([, n]) => n > 0);
+    return { all, by };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, selectedStatuses, selectedDepartments, selectedDesignations, excludedEmployees, cutoffDate, extraParameters]);
+
   /* ----- state message ----- */
   const cycle = cycleName || "this cycle";
   let strip;
@@ -288,12 +333,8 @@ export function EligibilityCriteria({
       </>
     );
   } else if (isEditing) {
-    strip = (
-      <>
-        <b>Regenerating {cycle}.</b> Apply Criteria rebuilds the list (manual decisions are kept) and
-        saves the criteria as the {locationLabel} default.
-      </>
-    );
+    // Editing an applied list: no banner, the Apply / Cancel buttons say it all.
+    strip = null;
   } else {
     strip = (
       <>
@@ -644,7 +685,7 @@ export function EligibilityCriteria({
   return (
     <div className="elx-crit">
       {actionsHost ? createPortal(actionButtons, actionsHost) : <div className="elx-actions">{actionButtons}</div>}
-      <div className={`elx-strip${amber ? " amber" : ""}`}>{strip}</div>
+      {strip && <div className={`elx-strip${amber ? " amber" : ""}`}>{strip}</div>}
 
       <div className="elx-cwrap">
         <div className="elx-cl">
@@ -716,7 +757,48 @@ export function EligibilityCriteria({
             </div>
           )}
         </div>
-        <div className="elx-cr">{pane}</div>
+        <div className="elx-cr">
+          {pane}
+          <div className="elx-sum">
+            <div className="elx-sum-h">
+              If applied now
+              <span>{locked ? "saved criteria" : "your draft"}</span>
+            </div>
+            <div className="elx-sum-grid">
+              <div className="ok">
+                <b>{impact.all.eligible}</b>
+                <span>Eligible</span>
+              </div>
+              <div className="no">
+                <b>{impact.all.notEligible}</b>
+                <span>Left out by criteria</span>
+              </div>
+              <div>
+                <b>{impact.all.total}</b>
+                <span>Active employees</span>
+              </div>
+              {currentCounts && (
+                <div className="cur">
+                  <b>
+                    {currentCounts.eligible}
+                    <i> / {currentCounts.notEligible}</i>
+                  </b>
+                  <span>In the list now (eligible / not)</span>
+                </div>
+              )}
+            </div>
+            {impact.by.length > 0 && (
+              <div className="elx-sum-by">
+                {impact.by.map(([label, n]) => (
+                  <span key={label}>
+                    {label}: <b>{n}</b>
+                  </span>
+                ))}
+                <em>Each criterion counted on its own; one employee can match several.</em>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="elx-foot">

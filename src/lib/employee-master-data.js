@@ -838,6 +838,7 @@ export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
       statuses: criteria.statuses || [],
       excludedEmployees: criteria.excludedEmployees || [],
       cutoffDate: criteria.cutoffDate || "",
+      extraParameters: criteria.extraParameters || [],
       replaceCriteria: Boolean(criteria.replaceCriteria),
     },
   });

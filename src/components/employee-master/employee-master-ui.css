@@ -308,8 +308,8 @@
 .elx-imp b{font-size:16px;color:#17365d}
 .elx-imp .dot{color:#9ca3af}
 .elx-none{color:#9ca3af;font-size:11.5px}
-.elx-cwrap{display:flex;gap:14px;align-items:stretch;min-height:340px}
-.elx-cl{width:240px;flex:none;border:1px solid #E5E7EB;border-radius:10px;background:#FBFCFE;padding:6px;display:flex;flex-direction:column;gap:2px;align-self:flex-start}
+.elx-cwrap{display:flex;gap:14px;align-items:stretch;min-height:340px;flex:1 1 auto}
+.elx-cl{width:240px;flex:none;border:1px solid #E5E7EB;border-radius:10px;background:#FBFCFE;padding:6px;display:flex;flex-direction:column;gap:2px;align-self:stretch}
 .elx-ni{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:0;border-radius:8px;background:none;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;color:#334155;text-align:left}
 .elx-ni:hover{background:#eef3fb}
 .elx-ni.on{background:#E6EEF8;color:#17365d;box-shadow:inset 3px 0 0 #17365d}
@@ -372,3 +372,17 @@
 .elx-tabs .elx-tabs-right button.em-btn-primary{background:#2F6FED;border-color:#2F6FED;color:#fff}
 .elx-tabs .elx-tabs-right button.em-btn-primary:disabled{background:#A9C1F2;border-color:#A9C1F2}
 .elx-foot{margin-top:12px;padding:8px 2px;color:#6B7280}
+.elx-crit-scroll{padding-bottom:10px}
+.elx-sum{margin-top:auto;border:1px solid #DCE6F2;border-radius:10px;background:#F6F9FE;padding:12px 14px}
+.elx-sum-h{display:flex;align-items:center;gap:8px;font-weight:700;color:#102A43;margin-bottom:10px}
+.elx-sum-h span{font-size:11px;font-weight:600;color:#486581;background:#E3ECF8;border-radius:8px;padding:1px 8px}
+.elx-sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.elx-sum-grid>div{background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.elx-sum-grid b{font-size:22px;line-height:1.1;color:#102A43}
+.elx-sum-grid b i{font-style:normal;font-size:14px;font-weight:600;color:#6B7280}
+.elx-sum-grid span{font-size:11.5px;color:#6B7280}
+.elx-sum-grid .ok b{color:#0B7A4B}
+.elx-sum-grid .no b{color:#B42318}
+.elx-sum-by{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:#486581}
+.elx-sum-by b{color:#102A43}
+.elx-sum-by em{font-style:normal;color:#9CA3AF;flex-basis:100%}

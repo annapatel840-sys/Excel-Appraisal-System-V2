@@ -5778,10 +5778,16 @@ export function EmployeeMaster() {
     statuses,
     excludedEmployees: excluded,
     cutoffDate,
+    extraParameters = [],
     replaceCriteria = false,
   }) => {
     if (!canEditEmployees) {
-      return;
+      showBanner(
+        "Criteria not applied",
+        "Your access to this screen is view-only, so the criteria cannot be applied.",
+        true,
+      );
+      return false;
     }
 
     // Full-screen loading screen (logo + percentage) while criteria are applied
@@ -5803,6 +5809,7 @@ export function EmployeeMaster() {
         statuses,
         excludedEmployees: excluded,
         cutoffDate: toIsoDate(cutoffDate),
+        extraParameters,
         replaceCriteria,
       });
 
