@@ -3114,19 +3114,18 @@ async function calculateBudgetBases(
     // column was populated by the mapping/fallback path.
     // Org and team bases must use the same active, cycle-eligible sheet roster
     // shown in the grid; a stale Eligible decision must not include inactive staff.
-    const sheetBaseValue = (employee) =>
-      n(
-        employee.previous_appraisal_total_ctc_with_rewards ??
-          employee.Previous_Appraisal_total_CTC_with_rewards ??
-          employee.sheet_previous_appraisal_ctc ??
-          employee.base,
-      );
+    // Org Budget Base must exactly equal the sum of the previous total
+    // CTC with rewards stored on the generated Appraisal_Sheet rows. Do not
+    // silently substitute Payroll_Data history or current CTC when this
+    // Appraisal_Sheet value is missing.
     const orgBaseRows = eligibleEmployees.map((employee) => {
       const rawCtc = employee.sheet_previous_appraisal_ctc;
+      const hasStoredCtc =
+        rawCtc !== null && rawCtc !== undefined && String(rawCtc).trim() !== "";
       return {
         employeeId: String(employee.employeeId || employee.emp_id || "").trim(),
-        ctc: sheetBaseValue(employee),
-        hasStoredCtc: rawCtc !== null && rawCtc !== undefined,
+        ctc: hasStoredCtc ? n(rawCtc) : 0,
+        hasStoredCtc,
       };
     });
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
