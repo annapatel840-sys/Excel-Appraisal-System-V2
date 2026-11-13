@@ -12,6 +12,7 @@ const TABLES = {
   payroll: "74008000000035326", // Payroll_Data
   cycles: "74008000000034190", // Appraisal_Cycle_Master
   eligibility: "74008000000057046", // Eligibility_List
+  locations: "74008000000022481", // Location_Master
 };
 
 // CORS headers come from Catalyst (Authorized Domains); setting them here too
@@ -1825,6 +1826,7 @@ async function calculateBudgetBases(
     payrollRows,
     cycleRows,
     eligibilityRows,
+    locationRows = [],
   } = sourceRows;
   if (!appraisalRows.length) {
     throw new Error(
@@ -1909,13 +1911,45 @@ async function calculateBudgetBases(
   // Every cycle is location-scoped. Select the Active cycle linked to its own
   // Budget_Master record; do not privilege a legacy unscoped cycle.
   const requestedLocation = String(selectedLocation || "All").trim();
+  const normalizeLocationKey = (value) =>
+    String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const allLocationsSelected =
     !requestedLocation ||
     ["all", "all locations"].includes(requestedLocation.toLowerCase());
-  const selectedLocationKey =
-    !requestedLocation || ["all", "all locations"].includes(requestedLocation.toLowerCase())
-      ? "all"
-      : requestedLocation.toLowerCase();
+  const selectedLocationKey = allLocationsSelected
+    ? "all"
+    : normalizeLocationKey(requestedLocation);
+  const locationAliases = new Set(
+    [requestedLocation].map(normalizeLocationKey).filter(Boolean),
+  );
+  const activeCycleLocationRaw = String(
+    firstValue(
+      cycleRows.find((cycle) =>
+        cycleIdOf(cycle) === activeSheetCycleId
+      ) || {},
+      ["location", "cycle_location", "cycleLocation"],
+    ) || "",
+  ).trim();
+  if (activeCycleLocationRaw) {
+    locationAliases.add(normalizeLocationKey(activeCycleLocationRaw));
+  }
+  // Location Master may store the selected location as a name, code or ROWID.
+  // Resolve all aliases before filtering a reused source-cycle roster.
+  const matchedLocation = locationRows.find((location) => {
+    const aliases = [
+      firstValue(location, ["location_name", "name", "location"]),
+      firstValue(location, ["location_code", "code", "short_code"]),
+      idOf(location),
+    ].map(normalizeLocationKey).filter(Boolean);
+    return aliases.some((alias) => locationAliases.has(alias));
+  });
+  if (matchedLocation) {
+    [
+      firstValue(matchedLocation, ["location_name", "name", "location"]),
+      firstValue(matchedLocation, ["location_code", "code", "short_code"]),
+      idOf(matchedLocation),
+    ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => locationAliases.add(alias));
+  }
   const activeSheetCycle = cycleRows.find((cycle) => {
     if (!isActiveCycle(cycle)) return false;
     const cycleLocation = String(
@@ -1969,13 +2003,69 @@ async function calculateBudgetBases(
   // that do not exactly match the cycle master ID/name. If strict matching yields
   // no rows, do not silently treat the roster as empty (which zeroes Org Budget
   // Base and team headcounts); use the available generated sheet rows instead.
-  const currentAppraisalRows = !activeSheetCycle
+  let currentAppraisalRows = !activeSheetCycle
     ? []
     : cycleScopedSheetRows.length
       ? cycleScopedSheetRows
       : !hasCycleTaggedSheetRows
         ? unscopedSheetRows
         : [];
+
+  // Location cycles created from an already-configured Annual cycle reuse that
+  // original cycle's Appraisal_Sheet/payroll history. If the new cycle has no
+  // separately tagged sheet rows yet, reuse only the matching location's rows
+  // from the unscoped source cycle; never borrow another location's employees.
+  if (
+    activeSheetCycle &&
+    !currentAppraisalRows.length &&
+    !allLocationsSelected
+  ) {
+    const cycleLocation = String(
+      firstValue(activeSheetCycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    const currentName = cycleNameOf(activeSheetCycle);
+    const canonicalName = cycleLocation
+      ? currentName.replace(new RegExp("^" + cycleLocation.replace(/[.*+?^${}()|[\]\\]/g, "\\  const currentAppraisalRows = !activeSheetCycle
+    ? []
+    : cycleScopedSheetRows.length
+      ? cycleScopedSheetRows
+      : !hasCycleTaggedSheetRows
+        ? unscopedSheetRows
+        : [];") + "\\s+-\\s*", "i"), "")
+      : currentName;
+    const sourceCycle = cycleRows.find((candidate) => {
+      const candidateLocation = String(
+        firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
+      ).trim();
+      return (
+        isHistoricalCycle(candidate) &&
+        !candidateLocation &&
+        cycleYearOf(candidate) === cycleYearOf(activeSheetCycle) &&
+        cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
+      );
+    });
+    if (sourceCycle) {
+      const sourceId = cycleIdOf(sourceCycle);
+      const sourceName = cycleNameOf(sourceCycle).toLowerCase();
+      currentAppraisalRows = appraisalRows.filter((row) => {
+        const reference = cycleReference(firstValue(row, sheetCycleFields));
+        if (
+          reference !== sourceId &&
+          reference.toLowerCase() !== sourceName
+        ) return false;
+        const empId = employeeKeyFor(
+          firstValue(row, ["emp_id", "empId", "employee_id", "employeeId"]),
+        );
+        const masterRow = masterByEmployee.get(empId) || {};
+        const rawEmployeeLocation = firstValue(row, [
+          "location", "work_location", "location_name", "location_code",
+        ]) || firstValue(masterRow, [
+          "location", "work_location", "location_name", "location_code",
+        ]);
+        return locationAliases.has(normalizeLocationKey(rawEmployeeLocation));
+      });
+    }
+  }
 
   const employeeKeyFor = (raw) => {
     const identity = normalizedIdentity(raw);
@@ -2028,9 +2118,42 @@ async function calculateBudgetBases(
     null;
   const previousCycleFor = (cycleId) => {
     const current = currentCycleFor(cycleId);
+    if (!current) return null;
+    const currentLocation = String(
+      firstValue(current, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    const currentName = cycleNameOf(current);
+    const canonicalName = currentLocation
+      ? currentName.replace(new RegExp("^" + currentLocation.replace(/[.*+?^${}()|[\]\\]/g, "\\  const previousCycleFor = (cycleId) => {
+    const current = currentCycleFor(cycleId);
     const currentRank = current
       ? cycleRank(current)
       : cycleRank({ cycle_name: cycleId });
+    const earlier = cycleRows
+      .filter((cycle) => isHistoricalCycle(cycle))
+      .filter(
+        (cycle) =>
+          cycleRank(cycle) > 0 &&
+          currentRank > 0 &&
+          cycleRank(cycle) < currentRank,
+      )
+      .sort((a, b) => cycleRank(b) - cycleRank(a));
+    return earlier[0] || null;
+  };") + "\\s+-\\s*", "i"), "")
+      : currentName;
+    // A location-specific Annual 2027 cycle is a continuation of the closed,
+    // original Annual 2027 source cycle, not Annual 2026. Reuse that exact
+    // same-year source history first for CTC, bonus and assignment enrichment.
+    if (currentLocation && canonicalName) {
+      const sameYearSource = cycleRows.find((candidate) =>
+        isHistoricalCycle(candidate) &&
+        !String(firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "").trim() &&
+        cycleYearOf(candidate) === cycleYearOf(current) &&
+        cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
+      );
+      if (sameYearSource) return sameYearSource;
+    }
+    const currentRank = cycleRank(current);
     const earlier = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
       .filter(
