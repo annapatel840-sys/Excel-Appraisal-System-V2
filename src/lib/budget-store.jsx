@@ -2184,8 +2184,13 @@ export function BudgetProvider({ children }) {
     async (id, changes, resource = "master", refresh = true) => {
       // audit_reason is for the local audit trail only; it is not sent to the API.
       const { audit_reason: auditReason, ...payload } = changes || {};
+      const budgetWriteUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
+      budgetWriteUrl.searchParams.set("location", String(selectedLocation || "All"));
+      if (activeBudgetCycleId) {
+        budgetWriteUrl.searchParams.set("cycle_id", activeBudgetCycleId);
+      }
       const response = await catalystFetch(
-        catalystFunctionUrl("budgetmasterapi"),
+        budgetWriteUrl.toString(),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
