@@ -1020,18 +1020,22 @@ export function useDistributionBudget() {
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
   );
   const liveComps = useMemo(() => {
-    if (!liveTech) return [];
-    // budgetmasterapi already returns only this manager's own child rows, so a
-    // Comp Manager login sums across every parent Tech-Ed instead of one.
-    if (isCompManagerLogin)
+    // budgetmasterapi authenticates and scopes Budget_Distribution_Comp to the
+    // signed-in Comp Manager. Resolve that child allocation directly: requiring
+    // liveTech first incorrectly hides a valid child row when its parent row is
+    // temporarily absent from the role-scoped response or its cycle reference
+    // is represented differently by the cycle endpoint.
+    if (isCompManagerLogin) {
       return budgetCompManagerRows.filter(
-        (r) =>
+        (row) =>
           !activeCycleId ||
-          String(r.appraisal_cycle_id || "") === String(activeCycleId) ||
-          String(r.budget_distribution_id) === String(liveTech.id),
+          String(row.appraisal_cycle_id || "") === String(activeCycleId),
       );
+    }
+
+    if (!liveTech) return [];
     return budgetCompManagerRows.filter(
-      (r) => String(r.budget_distribution_id) === String(liveTech.id),
+      (row) => String(row.budget_distribution_id) === String(liveTech.id),
     );
   }, [budgetCompManagerRows, liveTech, isCompManagerLogin, activeCycleId]);
   const liveMaster = useMemo(
