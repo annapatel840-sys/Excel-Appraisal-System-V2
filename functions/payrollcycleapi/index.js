@@ -243,22 +243,7 @@ async function checkAccess(req) {
   const adminApp = catalyst.initialize(req, { scope: "admin" });
 
   try {
-    const params = req.queryParams || req.query || {};
-    const urlParams = new URL(String(req.url || "/"), "http://local").searchParams;
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const context = {
-      location: params.location || urlParams.get("location") || body.location || "",
-      cycleId:
-        body.cycle_id ||
-        body.appraisal_cycle_id ||
-        body.cycleId ||
-        params.cycleId ||
-        params.cycle_id ||
-        urlParams.get("cycleId") ||
-        urlParams.get("cycle_id") ||
-        "",
-    };
-    return await access.check(userApp, adminApp, context);
+    return await access.check(userApp, adminApp);
   } catch (error) {
     if (access.isEnforced()) throw error;
     // Dry run must never change legacy behaviour, even if access data is unreadable.
@@ -2067,12 +2052,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const keys = Object.keys(row || {});
     for (const name of names) {
       const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
-      if (
-        actual !== undefined &&
-        row[actual] !== null &&
-        row[actual] !== undefined &&
-        !(typeof row[actual] === "string" && row[actual].trim() === "")
-      ) {
+      if (actual !== undefined && row[actual] !== null && row[actual] !== undefined) {
         return row[actual];
       }
     }
@@ -2410,14 +2390,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
         {
           destinationAliases: ["manager_rating", "managerRating"],
           sourceAliases: ["manager_rating", "managerRating"],
-        },
-        {
-          destinationAliases: ["manager_feedback", "managerFeedback"],
-          sourceAliases: ["manager_feedback", "managerFeedback"],
-        },
-        {
-          destinationAliases: ["client_feedback", "clientFeedback"],
-          sourceAliases: ["client_feedback", "clientFeedback"],
         },
         {
           destinationAliases: ["rr_percent", "rr", "revenue_released"],
