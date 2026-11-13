@@ -2386,7 +2386,7 @@ import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
-import { filterByLocation, useSelectedLocation } from "./location-store";
+import { filterByLocation, getSelectedLocation, useSelectedLocation } from "./location-store";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -2945,6 +2945,7 @@ const fetchEmployeePageFromCatalyst = async (
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+  url.searchParams.set("location", getSelectedLocation());
   // Re-read cycle-specific payroll history after a payroll upload instead of
   // allowing an intermediary/browser cache to reuse the previous appraisal row.
   url.searchParams.set("_ts", String(Date.now()));
@@ -2993,6 +2994,7 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
     const url = new URL(EMPLOYEE_API_URL);
 
     url.searchParams.set("search", targetId);
+    url.searchParams.set("location", getSelectedLocation());
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", "100");
 
