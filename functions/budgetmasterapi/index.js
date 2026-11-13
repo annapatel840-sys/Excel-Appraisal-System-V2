@@ -2890,10 +2890,9 @@ async function calculateBudgetBases(
           : cycle.hidden,
       ),
   );
-  const activeRosterCycle =
-    activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
-    activeRosterCycles[0] ||
-    null;
+  const activeRosterCycle = activeSheetCycleId
+    ? activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) || null
+    : null;
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
   // row: when all cycles are closed, current working data must be empty.
