@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataGrid, useGridState, useGridView } from "./DataGrid";
 import { PanelTab, SidePanel } from "./SidePanel";
 import { InactiveModal, ChangeModal } from "./EmployeeMasterModal";
+import { useScreenFields } from "@/lib/access-store";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
 import "./employee-master-ui.css";
@@ -177,6 +178,25 @@ const DEFS = [
 
 const LEGACY_KEYS = PLAIN.map((p) => p[0]);
 
+// Column → field name in Access → Fields → Employee Master. Columns not listed here are not
+// access-controlled fields and are always shown.
+const ROSTER_FIELD_LABEL = {
+  employee: "Employee Name",
+  type: "Employee Type",
+  dept: "Department",
+  reportingManager: "Reporting Manager",
+  director: "Director",
+  appraiser: "Appraiser Tech-ED",
+  totalExp: "Total Experience",
+  orgExp: "Organization Experience",
+  email: "Email ID",
+  doj: "Date of Joining",
+  status: "Employee Status",
+  location: "Location",
+  lastAppraisal: "Last Appraisal Month/Year",
+  exitDate: "Exit Date",
+};
+
 export function EmployeeRosterTable({
   rows = [],
   filters = {}, // legacy string filters from the parent (still honoured)
@@ -193,6 +213,15 @@ export function EmployeeRosterTable({
   auditEntries, // optional: [{ title, meta, detail }]
 }) {
   const grid = useGridState(DEFS);
+  // Access → Fields → Employee Master: Hidden columns are not shown; Read only fields cannot
+  // be changed from this screen.
+  const fieldAccess = useScreenFields("employeeMaster");
+  const defs = useMemo(
+    () => DEFS.filter((d) => !ROSTER_FIELD_LABEL[d.key] || !fieldAccess.hidden(ROSTER_FIELD_LABEL[d.key])),
+    [fieldAccess],
+  );
+  const canChangeStatus = fieldAccess.canEdit("Employee Status");
+  const canChangeAny = Object.values(ROSTER_FIELD_LABEL).some((label) => fieldAccess.canEdit(label));
   const [panel, updatePanel] = usePanel("em");
   const [selected, setSelected] = useState(new Set());
   const [modal, setModal] = useState(null); // "inactive" | "change"
@@ -210,7 +239,7 @@ export function EmployeeRosterTable({
     [filters],
   );
 
-  const view = useGridView(list, DEFS, grid, legacy);
+  const view = useGridView(list, defs, grid, legacy);
 
   /* drop selections that are no longer on this page */
   useEffect(() => {
@@ -279,23 +308,27 @@ export function EmployeeRosterTable({
         {canEdit && selectedRows.length > 0 && (
           <div className="emx-selbar">
             <b>{selectedRows.length} selected</b>
-            <button
-              type="button"
-              className="emx-mini"
-              disabled={bulkStatusUpdating}
-              onClick={() => setModal("inactive")}
-            >
-              Set Inactive
-            </button>
-            <button
-              type="button"
-              className="emx-mini"
-              disabled={bulkStatusUpdating}
-              onClick={() => bulkStatus("Active")}
-            >
-              Set Active
-            </button>
-            {onBulkFieldChange && (
+            {canChangeStatus && (
+              <>
+                <button
+                  type="button"
+                  className="emx-mini"
+                  disabled={bulkStatusUpdating}
+                  onClick={() => setModal("inactive")}
+                >
+                  Set Inactive
+                </button>
+                <button
+                  type="button"
+                  className="emx-mini"
+                  disabled={bulkStatusUpdating}
+                  onClick={() => bulkStatus("Active")}
+                >
+                  Set Active
+                </button>
+              </>
+            )}
+            {onBulkFieldChange && canChangeAny && (
               <button
                 type="button"
                 className="emx-mini p"
@@ -315,7 +348,7 @@ export function EmployeeRosterTable({
         )}
 
         <DataGrid
-          defs={DEFS}
+          defs={defs}
           grid={grid}
           allRows={list}
           rows={view}
@@ -334,6 +367,7 @@ export function EmployeeRosterTable({
             const id = getEmployeeId(employee);
             const active = normalizeStatus(employee?.status) === "active";
             const busy = statusUpdatingIds?.has?.(id) || bulkStatusUpdating;
+            if (!canChangeStatus) return null;
             return (
               <button
                 type="button"
@@ -396,7 +430,7 @@ export function EmployeeRosterTable({
         tab={panel.tab}
         onTab={(tab) => updatePanel({ tab })}
         onClose={() => updatePanel({ open: false })}
-        defs={DEFS}
+        defs={defs}
         grid={grid}
         audit={auditEntries}
         auditHint="Uploads and changes made on this screen: user, date and time, employee, previous and new value."

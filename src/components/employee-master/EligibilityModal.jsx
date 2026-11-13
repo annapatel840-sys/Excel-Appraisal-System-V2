@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useScreenFields } from "@/lib/access-store";
 
 const ELIGIBLE_REASONS = ["ML", "Withdrew resignation", "Others"];
 const NOT_ELIGIBLE_REASONS = ["PIP", "ML", "Resigned", "Other"];
@@ -13,6 +14,8 @@ export function EligibilityModal({ employee, onClose, onSave }) {
   const [reason, setReason] = useState("");
   const [otherReason, setOtherReason] = useState("");
   const [error, setError] = useState("");
+  // Access → Fields → Eligibility List: Reason can be hidden or read only.
+  const fieldAccess = useScreenFields("eligibility");
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -88,10 +91,12 @@ export function EligibilityModal({ employee, onClose, onSave }) {
             </div>
           </div>
 
+          {!fieldAccess.hidden("Reason") && (
           <div className="em-field">
             <label>Reason</label>
             <select
               className="em-date-input"
+              {...fieldAccess.lock("Reason")}
               value={reason}
               onChange={(event) => {
                 setReason(event.target.value);
@@ -106,12 +111,14 @@ export function EligibilityModal({ employee, onClose, onSave }) {
               ))}
             </select>
           </div>
+          )}
 
-          {isOther && (
+          {isOther && !fieldAccess.hidden("Reason") && (
             <div className="em-field">
               <label>Details</label>
               <input
                 className={`em-date-input ${error && !otherReason.trim() ? "em-bad" : ""}`}
+                {...fieldAccess.lock("Reason")}
                 value={otherReason}
                 onChange={(event) => {
                   setOtherReason(event.target.value);

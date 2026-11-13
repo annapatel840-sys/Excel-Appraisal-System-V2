@@ -67,6 +67,11 @@ export const PATH_SCREENS = {
 
 const AccessContext = createContext(null);
 
+// Fields of the HR Operations / master screens (Access → Fields tab, one group per screen).
+// Key = <screen>_<label in lower case with _>, the same rule as functions/*/accessCore.js.
+const fieldSlug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+export const screenFieldKey = (screen, label) => `${screen}_${fieldSlug(label)}`;
+
 function readCache(cacheId) {
   try {
     const cached = JSON.parse(window.sessionStorage.getItem(CACHE_KEY) || "null");
@@ -179,6 +184,8 @@ export function AccessProvider({ children }) {
       fieldLimit,
       canEditField: (key) => fieldLimit(key) === "edit",
       isHidden: (key) => fieldLimit(key) === "hidden",
+      // Limit of one field of a screen: "edit" | "read" | "hidden" (see screenFieldKey).
+      screenFieldLimit: (screen, label) => fieldLimit(screenFieldKey(screen, label)),
       reload,
     };
   }, [state, reload]);
@@ -203,12 +210,31 @@ const PERMISSIVE = {
   fieldLimit: () => "edit",
   canEditField: () => true,
   isHidden: () => false,
+  screenFieldLimit: () => "edit",
   reload: () => {},
 };
 
 // Outside a provider (or before it exists) everything is allowed.
 export function useAccess() {
   return useContext(AccessContext) || PERMISSIVE;
+}
+
+// Field limits of one screen: const f = useScreenFields("locationMaster");
+//   f.canEdit("Location Name")  → the input can be changed
+//   f.hidden("Address")         → do not show it at all
+//   f.limit("Address")          → "edit" | "read" | "hidden"
+export function useScreenFields(screen) {
+  const access = useAccess();
+  return useMemo(() => {
+    const limit = (label) => access.screenFieldLimit(screen, label);
+    return {
+      limit,
+      canEdit: (label) => limit(label) === "edit",
+      hidden: (label) => limit(label) === "hidden",
+      // Props for an <input>/<select>: read-only fields cannot be changed.
+      lock: (label) => (limit(label) === "edit" ? {} : { disabled: true, title: "You can view this field but not change it." }),
+    };
+  }, [access, screen]);
 }
 
 export function NoAccessPage({ message }) {

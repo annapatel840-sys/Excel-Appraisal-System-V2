@@ -605,6 +605,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Settings2, X } from "lucide-react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { registerLocations } from "@/lib/location-store";
+import { useScreenFields } from "@/lib/access-store";
 import "./employee-master-ui.css";
 
 const blank = {
@@ -633,6 +634,8 @@ export function LocationMasterControl({
   // View-only (Access level "View"): no add / edit / activate controls.
   readOnly = false,
 }) {
+  // Access -> Fields -> Location Master: Hidden fields are not shown, Read only ones are locked.
+  const lf = useScreenFields("locationMaster");
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menu, setMenu] = useState(false);
@@ -798,9 +801,10 @@ export function LocationMasterControl({
                 save({ ...form, status: "Active" });
               }}
             >
-              <label>
+              <label style={lf.hidden("Location Name") ? { display: "none" } : undefined}>
                 Location Name *
                 <input
+{...lf.lock("Location Name")}
                   required
                   maxLength={120}
                   value={form.location_name}
@@ -809,9 +813,10 @@ export function LocationMasterControl({
                   }
                 />
               </label>
-              <label>
+              <label style={lf.hidden("Location Code") ? { display: "none" } : undefined}>
                 Location Code *
                 <input
+{...lf.lock("Location Code")}
                   required
                   maxLength={30}
                   value={form.location_code}
@@ -823,9 +828,10 @@ export function LocationMasterControl({
                   }
                 />
               </label>
-              <label>
+              <label style={lf.hidden("Address") ? { display: "none" } : undefined}>
                 Address
                 <input
+{...lf.lock("Address")}
                   maxLength={250}
                   value={form.address}
                   onChange={(e) =>
@@ -833,9 +839,10 @@ export function LocationMasterControl({
                   }
                 />
               </label>
-              <label>
+              <label style={lf.hidden("Currency Code") ? { display: "none" } : undefined}>
                 Currency Code
                 <input
+{...lf.lock("Currency Code")}
                   maxLength={10}
                   value={form.currency_code}
                   onChange={(e) =>
@@ -1115,9 +1122,10 @@ export function LocationMasterControl({
                   save({ ...form, status: "Active" });
                 }}
               >
-                <label>
+                <label style={lf.hidden("Location Name") ? { display: "none" } : undefined}>
                   Location Name *
                   <input
+{...lf.lock("Location Name")}
                     required
                     maxLength={120}
                     value={form.location_name}
@@ -1126,9 +1134,10 @@ export function LocationMasterControl({
                     }
                   />
                 </label>
-                <label>
+                <label style={lf.hidden("Location Code") ? { display: "none" } : undefined}>
                   Location Code *
                   <input
+{...lf.lock("Location Code")}
                     required
                     maxLength={30}
                     value={form.location_code}
@@ -1140,9 +1149,10 @@ export function LocationMasterControl({
                     }
                   />
                 </label>
-                <label>
+                <label style={lf.hidden("Address") ? { display: "none" } : undefined}>
                   Address
                   <input
+{...lf.lock("Address")}
                     maxLength={250}
                     value={form.address}
                     onChange={(e) =>
@@ -1150,9 +1160,10 @@ export function LocationMasterControl({
                     }
                   />
                 </label>
-                <label>
+                <label style={lf.hidden("Currency Code") ? { display: "none" } : undefined}>
                   Currency Code
                   <input
+{...lf.lock("Currency Code")}
                     maxLength={10}
                     value={form.currency_code}
                     onChange={(e) =>

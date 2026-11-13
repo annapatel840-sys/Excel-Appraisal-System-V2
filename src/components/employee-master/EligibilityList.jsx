@@ -659,6 +659,7 @@ import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
 import { PanelTab, SidePanel } from "./SidePanel";
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { usePanel } from "./panelStore";
+import { useScreenFields } from "@/lib/access-store";
 import { fmtDoj } from "@/lib/employee-master-utils";
 import { LocationMasterControl } from "./LocationMasterControl";
 import { matchesLocation, isAllLocations } from "@/lib/location-store";
@@ -905,6 +906,13 @@ export function EligibilityList({
   const menuRef = useRef(null);
 
   const grid = useGridState(DEFS);
+  // Access → Fields → Eligibility List: Hidden columns are not shown, and the list cannot
+  // be changed when Eligibility is Read only.
+  const fieldAccess = useScreenFields("eligibility");
+  const defs = useMemo(
+    () => DEFS.filter((d) => !fieldAccess.hidden(d.label)),
+    [fieldAccess],
+  );
   const [panel, updatePanel] = usePanel("el");
   const [menuOpen, setMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -913,7 +921,7 @@ export function EligibilityList({
   // Click a metric to filter the list: null | "eligible" | "notEligible" | "needAction"
   const [quickFilter, setQuickFilter] = useState(null);
 
-  const canEdit = Boolean(onChangeEligibility);
+  const canEdit = Boolean(onChangeEligibility) && fieldAccess.canEdit("Eligibility");
 
   useEffect(() => {
     const outside = (event) => {
@@ -960,7 +968,7 @@ export function EligibilityList({
     );
   }, [employees, locationFilter]);
 
-  const view = useGridView(locationFilteredEmployees, DEFS, grid, searchPre);
+  const view = useGridView(locationFilteredEmployees, defs, grid, searchPre);
 
   /* counts (Removed rows are not counted) */
   const counted = useMemo(
@@ -1307,7 +1315,7 @@ export function EligibilityList({
           )}
 
           <DataGrid
-            defs={DEFS}
+            defs={defs}
             grid={grid}
             allRows={employees}
             rows={pageRows}
@@ -1372,7 +1380,7 @@ export function EligibilityList({
           tab={panel.tab}
           onTab={(tab) => updatePanel({ tab })}
           onClose={() => updatePanel({ open: false })}
-          defs={DEFS}
+          defs={defs}
           grid={grid}
           stats={stats}
           audit={auditEntries}

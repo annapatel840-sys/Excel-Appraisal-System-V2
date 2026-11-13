@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useScreenFields } from "@/lib/access-store";
 
 function Shell({ title, sub, onClose, children, footer }) {
   useEffect(() => {
@@ -32,6 +33,7 @@ function Shell({ title, sub, onClose, children, footer }) {
 export function InactiveModal({ count, onClose, onApply }) {
   const [exitDate, setExitDate] = useState("");
   const [remark, setRemark] = useState("");
+  const fieldAccess = useScreenFields("employeeMaster");
 
   return (
     <Shell
@@ -47,41 +49,49 @@ export function InactiveModal({ count, onClose, onApply }) {
         </>
       }
     >
-      <div className="em-field">
-        <label>Exit Date (optional)</label>
-        <input type="date" className="em-date-input" value={exitDate} onChange={(e) => setExitDate(e.target.value)} />
-      </div>
-      <div className="em-field">
-        <label>Remark (optional)</label>
-        <input className="em-date-input" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" />
-      </div>
+      {!fieldAccess.hidden("Exit Date") && (
+        <div className="em-field">
+          <label>Exit Date (optional)</label>
+          <input type="date" className="em-date-input" {...fieldAccess.lock("Exit Date")} value={exitDate} onChange={(e) => setExitDate(e.target.value)} />
+        </div>
+      )}
+      {!fieldAccess.hidden("Remark") && (
+        <div className="em-field">
+          <label>Remark (optional)</label>
+          <input className="em-date-input" {...fieldAccess.lock("Remark")} value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" />
+        </div>
+      )}
       <div className="em-hint">Inactive employees leave the Appraisal Sheet but stay in history.</div>
     </Shell>
   );
 }
 
+// access = the field's name in Access → Fields → Employee Master (only fields set to Edit are offered).
 const FIELDS = [
-  { key: "status", label: "Employee Status", kind: "status", multi: true },
-  { key: "name", label: "Employee Name", multi: false },
-  { key: "designation", label: "Designation", multi: true },
-  { key: "dept", label: "Department", multi: true },
-  { key: "reportingManager", label: "Reporting Manager", multi: true },
-  { key: "director", label: "Director", multi: true },
-  { key: "appraiser", label: "Appraiser Tech-ED", multi: true },
-  { key: "type", label: "Employee Type", multi: true },
-  { key: "email", label: "Email ID", multi: false },
-  { key: "doj", label: "Date of Joining", kind: "date", multi: false },
-  { key: "location", label: "Location", multi: true },
-  { key: "costCenter", label: "Cost Center", multi: true },
-  { key: "orgExp", label: "Wissen Experience", multi: true },
-  { key: "totalExp", label: "Total Experience", multi: true },
-  { key: "currentSalary", label: "Current Salary", multi: true },
-  { key: "lastAppraisal", label: "Last Appraisal Month/Year", multi: true },
+  { key: "status", label: "Employee Status", access: "Employee Status", kind: "status", multi: true },
+  { key: "name", label: "Employee Name", access: "Employee Name", multi: false },
+  { key: "designation", label: "Designation", access: "Designation", multi: true },
+  { key: "dept", label: "Department", access: "Department", multi: true },
+  { key: "reportingManager", label: "Reporting Manager", access: "Reporting Manager", multi: true },
+  { key: "director", label: "Director", access: "Director", multi: true },
+  { key: "appraiser", label: "Appraiser Tech-ED", access: "Appraiser Tech-ED", multi: true },
+  { key: "type", label: "Employee Type", access: "Employee Type", multi: true },
+  { key: "email", label: "Email ID", access: "Email ID", multi: false },
+  { key: "doj", label: "Date of Joining", access: "Date of Joining", kind: "date", multi: false },
+  { key: "location", label: "Location", access: "Location", multi: true },
+  { key: "costCenter", label: "Cost Center", access: "Cost Center", multi: true },
+  { key: "orgExp", label: "Wissen Experience", access: "Organization Experience", multi: true },
+  { key: "totalExp", label: "Total Experience", access: "Total Experience", multi: true },
+  { key: "currentSalary", label: "Current Salary", access: "Current Salary", multi: true },
+  { key: "lastAppraisal", label: "Last Appraisal Month/Year", access: "Last Appraisal Month/Year", multi: true },
 ];
 
 export function ChangeModal({ count, suggestionsFor, onClose, onApply }) {
-  const [field, setField] = useState("status");
-  const [value, setValue] = useState("Active");
+  const fieldAccess = useScreenFields("employeeMaster");
+  const editable = FIELDS.filter((f) => fieldAccess.canEdit(f.access));
+  const firstKey = (editable[0] || FIELDS[0]).key;
+  const [field, setField] = useState(firstKey);
+  const [value, setValue] = useState(firstKey === "status" ? "Active" : "");
   const [remark, setRemark] = useState("");
   const [error, setError] = useState("");
 
@@ -117,7 +127,7 @@ export function ChangeModal({ count, suggestionsFor, onClose, onApply }) {
       <div className="em-field">
         <label>Field</label>
         <select className="em-date-input" value={field} onChange={(e) => changeField(e.target.value)}>
-          {FIELDS.map((f) => (
+          {editable.map((f) => (
             <option key={f.key} value={f.key} disabled={count > 1 && !f.multi}>
               {f.label}{count > 1 && !f.multi ? " (one employee at a time)" : ""}
             </option>
