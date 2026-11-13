@@ -3076,8 +3076,11 @@ const savePreviousAppraisalChangeToCatalyst = async ({
   }
 
   const historyValue = normalizeHistoryValue(key, newValue);
+  const historyUrl = new URL(APPRAISAL_HISTORY_API_URL);
+  historyUrl.searchParams.set("location", getSelectedLocation());
+  historyUrl.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
 
-  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
+  const response = await catalystFetch(historyUrl.toString(), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -3132,7 +3135,10 @@ const savePreviousAppraisalChangesToCatalyst = async ({
     return null;
   }
 
-  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
+  const historyUrl = new URL(APPRAISAL_HISTORY_API_URL);
+  historyUrl.searchParams.set("location", getSelectedLocation());
+  historyUrl.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
+  const response = await catalystFetch(historyUrl.toString(), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
