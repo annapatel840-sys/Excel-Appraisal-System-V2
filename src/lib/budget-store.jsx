@@ -883,7 +883,7 @@
 //             // The fresh request below is still required after a failed old GET.
 //           }
 //         }
-//         invalidateBudgetSnapshot(budgetCacheScope);
+//         invalidateBudgetSnapshot(budgetSnapshotScope);
 //         await load();
 //       }
 //       return result;
@@ -1594,7 +1594,7 @@ export function BudgetProvider({ children }) {
     // Before any screen has asked for budget data there is nothing to
     // refresh; the first load reads current data anyway.
     const refreshBudget = () => {
-      invalidateBudgetSnapshot(budgetCacheScope);
+      invalidateBudgetSnapshot(budgetSnapshotScope);
       if (dataWantedRef.current) load();
     };
     const refreshForCycleChange = () => {
@@ -2278,7 +2278,7 @@ export function BudgetProvider({ children }) {
             // The fresh request below is still required after a failed old GET.
           }
         }
-        invalidateBudgetSnapshot(budgetCacheScope);
+        invalidateBudgetSnapshot(budgetSnapshotScope);
         await load();
       }
       return result;
