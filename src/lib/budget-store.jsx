@@ -141,7 +141,8 @@
 //   const budgetCacheScope = String(
 //     authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "",
 //   ).trim().toLowerCase();
-//   const initialBudget = useMemo(
+//   const [selectedLocation] = useSelectedLocation();
+  const initialBudget = useMemo(
 //     () => budgetCacheScope ? readBudgetSnapshot(budgetCacheScope) : null,
 //     [budgetCacheScope],
 //   );
@@ -222,6 +223,7 @@
 //       // first paint on both Sheet and Detailed Screen and couples two requests.
 //       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
 //       budgetUrl.searchParams.set("_ts", String(Date.now()));
+      budgetUrl.searchParams.set("location", String(selectedLocation || "All"));
 //       // Start both independent requests immediately, but do not make the
 //       // Budget cards wait for the employee roster request to finish.
 //       const employeeResultPromise = fetchAllEligibleEmployees(
@@ -432,7 +434,8 @@
 //     authenticatedUser?.user_id,
 //     budgetCacheScope,
 //     initialBudget,
-//   ]);
+//   
+    selectedLocation,]);
 
 //   // Keep one shared load promise for the entire time a budget refresh is
 //   // running. Every screen and refresh event receives the same result instead
@@ -833,7 +836,7 @@
 //         {
 //           method: "PUT",
 //           headers: { "Content-Type": "application/json" },
-//           body: JSON.stringify({ id, resource, ...payload }),
+//           body: JSON.stringify({ id, resource, appraisal_cycle_id: activeBudgetCycleId, ...payload }),
 //         },
 //       );
 //       const result = await response.json();
@@ -1614,7 +1617,7 @@ export function BudgetProvider({ children }) {
   // employeeRows stays complete (it identifies the signed-in Tech-ED / Comp
   // Manager and their hierarchy). locationEmployeeRows is the same roster
   // narrowed to the selected location, for team counts and team lists.
-  const [selectedLocation] = useSelectedLocation();
+
   const locationEmployeeRows = useMemo(
     () => filterByLocation(employeeRows, selectedLocation),
     [employeeRows, selectedLocation],
