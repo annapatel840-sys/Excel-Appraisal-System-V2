@@ -1815,6 +1815,7 @@ async function calculateBudgetBases(
   bundle,
   techEdOwners = [],
   sourceRows,
+  selectedLocation = "",
 ) {
   // Reuse the single serialized source-table read set for both calculations
   // and owner/employee roster construction. Do not start parallel Data Store
@@ -1909,39 +1910,44 @@ async function calculateBudgetBases(
     );
   // Every cycle is location-scoped. Select the Active cycle linked to its own
   // Budget_Master record; do not privilege a legacy unscoped cycle.
-  const requestedLocation = String(selectedLocation || "All").trim();
+  const requestedLocation = String(selectedLocation || "").trim();
+  const hasLocationSelection = Boolean(requestedLocation);
+  const allLocationsSelected =
+    hasLocationSelection &&
+    ["all", "all locations"].includes(requestedLocation.toLowerCase());
   const normalizeLocationKey = (value) =>
     String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const allLocationsSelected =
-    !requestedLocation ||
-    ["all", "all locations"].includes(requestedLocation.toLowerCase());
-  const selectedLocationKey = allLocationsSelected
-    ? "all"
-    : normalizeLocationKey(requestedLocation);
   const locationAliases = new Set(
-    [requestedLocation].map(normalizeLocationKey).filter(Boolean),
+    hasLocationSelection && !allLocationsSelected
+      ? [requestedLocation].map(normalizeLocationKey).filter(Boolean)
+      : [],
   );
-  // Do not derive the selected location from the active cycle here: the
-  // cycle is resolved below. Location Master aliases are the source of truth.
-  // Location Master may store the selected location as a name, code or ROWID.
-  // Resolve all aliases before filtering a reused source-cycle roster.
-  const matchedLocation = locationRows.find((location) => {
+  // Resolve Location Master aliases when the caller explicitly selects a
+  // location. If it does not, the single Active cycle linked to Budget_Master
+  // is authoritative; this keeps the one-Active-cycle workflow working even
+  // when the budget request does not carry a location query parameter.
+  const addLocationAliases = (location) => {
+    if (!location) return;
     const aliases = [
       firstValue(location, ["location_name", "name", "location"]),
       firstValue(location, ["location_code", "code", "short_code"]),
       idOf(location),
     ].map(normalizeLocationKey).filter(Boolean);
-    return aliases.some((alias) => locationAliases.has(alias));
-  });
-  if (matchedLocation) {
-    [
-      firstValue(matchedLocation, ["location_name", "name", "location"]),
-      firstValue(matchedLocation, ["location_code", "code", "short_code"]),
-      idOf(matchedLocation),
-    ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => locationAliases.add(alias));
+    aliases.forEach((alias) => locationAliases.add(alias));
+  };
+  if (hasLocationSelection && !allLocationsSelected) {
+    const matchedLocation = locationRows.find((location) => {
+      const aliases = [
+        firstValue(location, ["location_name", "name", "location"]),
+        firstValue(location, ["location_code", "code", "short_code"]),
+        idOf(location),
+      ].map(normalizeLocationKey).filter(Boolean);
+      return aliases.some((alias) => locationAliases.has(alias));
+    });
+    addLocationAliases(matchedLocation);
   }
   const activeSheetCycle = cycleRows.find((cycle) => {
-    if (!isActiveCycle(cycle)) return false;
+    if (!isActiveCycle(cycle) || !hasBudgetMaster(cycle)) return false;
     const cycleLocation = String(
       firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
     ).trim().toLowerCase();
@@ -1949,13 +1955,29 @@ async function calculateBudgetBases(
       !cycleLocation || ["all", "all locations"].includes(cycleLocation)
         ? "all"
         : normalizeLocationKey(cycleLocation);
-    if (
-      allLocationsSelected
-        ? normalizedCycleLocation !== "all"
-        : !locationAliases.has(normalizedCycleLocation)
-    ) return false;
-    return hasBudgetMaster(cycle);
+    if (!hasLocationSelection) return true;
+    if (allLocationsSelected) return normalizedCycleLocation === "all";
+    return locationAliases.has(normalizedCycleLocation);
   }) || null;
+  const activeCycleLocation = String(
+    firstValue(activeSheetCycle, ["location", "cycle_location", "cycleLocation"]) || "",
+  ).trim();
+  const activeCycleIsLocationScoped =
+    Boolean(activeCycleLocation) &&
+    !["all", "all locations"].includes(activeCycleLocation.toLowerCase());
+  if (!hasLocationSelection && activeCycleIsLocationScoped) {
+    const normalizedActiveLocation = normalizeLocationKey(activeCycleLocation);
+    locationAliases.add(normalizedActiveLocation);
+    const matchedLocation = locationRows.find((location) => {
+      const aliases = [
+        firstValue(location, ["location_name", "name", "location"]),
+        firstValue(location, ["location_code", "code", "short_code"]),
+        idOf(location),
+      ].map(normalizeLocationKey).filter(Boolean);
+      return aliases.includes(normalizedActiveLocation);
+    });
+    addLocationAliases(matchedLocation);
+  }
   const activeSheetCycleId = activeSheetCycle
     ? cycleIdOf(activeSheetCycle)
     : "";
@@ -2028,7 +2050,7 @@ async function calculateBudgetBases(
   if (
     activeSheetCycle &&
     !currentAppraisalRows.length &&
-    !allLocationsSelected
+    (activeCycleIsLocationScoped || (hasLocationSelection && !allLocationsSelected))
   ) {
     const cycleLocation = String(
       firstValue(activeSheetCycle, ["location", "cycle_location", "cycleLocation"]) || "",
@@ -3996,11 +4018,17 @@ module.exports = async function (req, res) {
       });
       let calculatedBundle = rawBundle;
       try {
+        const requestUrl = new URL(String(req.url || "/"), "http://local");
+        const requestParams = req.queryParams || req.query || {};
+        const requestedBudgetLocation = String(
+          requestParams.location || requestUrl.searchParams.get("location") || "",
+        ).trim();
         calculatedBundle = await calculateBudgetBases(
           app,
           rawBundle,
           techEdOwners,
           sourceRows,
+          requestedBudgetLocation,
         );
         logBudgetStage("budget calculations and persistence complete", {
           techEdRows: calculatedBundle.techEd.length,
