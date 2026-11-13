@@ -477,7 +477,7 @@
 //     // Before any screen has asked for budget data there is nothing to
 //     // refresh; the first load reads current data anyway.
 //     const refreshBudget = () => {
-//       invalidateBudgetSnapshot(budgetCacheScope);
+//       invalidateBudgetSnapshot(budgetSnapshotScope);
 //       if (dataWantedRef.current) load();
 //     };
 //     const refreshForCycleChange = () => {
@@ -880,7 +880,7 @@
 //             // The fresh request below is still required after a failed old GET.
 //           }
 //         }
-//         invalidateBudgetSnapshot(budgetCacheScope);
+//         invalidateBudgetSnapshot(budgetSnapshotScope);
 //         await load();
 //       }
 //       return result;
@@ -1097,9 +1097,11 @@ export function BudgetProvider({ children }) {
   )
     .trim()
     .toLowerCase();
+  const [selectedLocation] = useSelectedLocation();
+  const budgetSnapshotScope = budgetCacheScope + "::" + String(selectedLocation || "All").trim().toLowerCase();
   const initialBudget = useMemo(
-    () => (budgetCacheScope ? readBudgetSnapshot(budgetCacheScope) : null),
-    [budgetCacheScope],
+    () => (budgetCacheScope ? readBudgetSnapshot(budgetSnapshotScope) : null),
+    [budgetSnapshotScope],
   );
   const initialCycleId = String(
     initialBudget?.active_appraisal_cycle_id || "",
@@ -1312,7 +1314,7 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      saveBudgetSnapshot(budgetCacheScope, budgetJson);
+      saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
@@ -1563,7 +1565,7 @@ export function BudgetProvider({ children }) {
     // Before any screen has asked for budget data there is nothing to
     // refresh; the first load reads current data anyway.
     const refreshBudget = () => {
-      invalidateBudgetSnapshot(budgetCacheScope);
+      invalidateBudgetSnapshot(budgetSnapshotScope);
       if (dataWantedRef.current) load();
     };
     const refreshForCycleChange = () => {
@@ -2242,7 +2244,7 @@ export function BudgetProvider({ children }) {
             // The fresh request below is still required after a failed old GET.
           }
         }
-        invalidateBudgetSnapshot(budgetCacheScope);
+        invalidateBudgetSnapshot(budgetSnapshotScope);
         await load();
       }
       return result;
