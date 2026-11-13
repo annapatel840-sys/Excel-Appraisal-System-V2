@@ -250,7 +250,7 @@
 //         throw new Error(statusText);
 //       }
 
-//       saveBudgetSnapshot(budgetCacheScope, budgetJson);
+//       saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
 //       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
 //         ? budgetJson.techEd
 //         : Array.isArray(budgetJson && budgetJson.data)
@@ -1062,14 +1062,15 @@ function ownerMatches(owner, identities) {
 // authorized for the Employee Master screen, so the roster is the Appraisal
 // view (the signed-in user's normal appraisal scope). The request is shared
 // with the Appraisal Sheet store when both load at the same time.
-async function fetchAllEligibleEmployees(cacheScope) {
-  const roster = await fetchAppraisalRoster({ cacheScope });
+async function fetchAllEligibleEmployees(cacheScope, location) {
+  const roster = await fetchAppraisalRoster({ cacheScope, location });
   return roster.employees;
 }
 
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
+  const [selectedLocation] = useSelectedLocation();
   const isCompManagerPreview =
     effectiveId === "compmanager" && actualId === "teched";
   const currentUser = useMemo(
@@ -1094,9 +1095,12 @@ export function BudgetProvider({ children }) {
   )
     .trim()
     .toLowerCase();
+  const budgetSnapshotScope = budgetCacheScope
+    ? budgetCacheScope + "::" + String(selectedLocation || "All").trim().toLowerCase()
+    : "";
   const initialBudget = useMemo(
-    () => (budgetCacheScope ? readBudgetSnapshot(budgetCacheScope) : null),
-    [budgetCacheScope],
+    () => (budgetSnapshotScope ? readBudgetSnapshot(budgetSnapshotScope) : null),
+    [budgetSnapshotScope],
   );
   const initialCycleId = String(
     initialBudget?.active_appraisal_cycle_id || "",
@@ -1269,6 +1273,7 @@ export function BudgetProvider({ children }) {
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
       budgetUrl.searchParams.set("gz", "1");
+      budgetUrl.searchParams.set("location", String(selectedLocation || "All"));
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
       const employeeResultPromise = fetchAllEligibleEmployees(
@@ -1280,7 +1285,7 @@ export function BudgetProvider({ children }) {
         )
           .trim()
           .toLowerCase(),
-      ).then(
+      , selectedLocation).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
       );
@@ -1515,7 +1520,9 @@ export function BudgetProvider({ children }) {
     authenticatedUser?.id,
     authenticatedUser?.user_id,
     budgetCacheScope,
+    budgetSnapshotScope,
     initialBudget,
+    selectedLocation,
   ]);
 
   // Keep one shared load promise for the entire time a budget refresh is
@@ -1614,7 +1621,6 @@ export function BudgetProvider({ children }) {
   // employeeRows stays complete (it identifies the signed-in Tech-ED / Comp
   // Manager and their hierarchy). locationEmployeeRows is the same roster
   // narrowed to the selected location, for team counts and team lists.
-  const [selectedLocation] = useSelectedLocation();
   const locationEmployeeRows = useMemo(
     () => filterByLocation(employeeRows, selectedLocation),
     [employeeRows, selectedLocation],
