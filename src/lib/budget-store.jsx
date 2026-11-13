@@ -888,7 +888,7 @@
 //       }
 //       return result;
 //     },
-//     [load, budgetCacheScope],
+//     [load, budgetCacheScope, activeBudgetCycleId, selectedLocation],
 //   );
 
 //   return (
@@ -1266,7 +1266,7 @@ export function BudgetProvider({ children }) {
         ? initialBudget.techEdOwners
         : [],
     );
-  }, [budgetCacheScope, initialBudget]);
+  }, [budgetSnapshotScope, initialBudget]);
 
   const runLoad = useCallback(async () => {
     setLoading(!initialBudget);
@@ -2189,7 +2189,13 @@ export function BudgetProvider({ children }) {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, resource, ...payload }),
+          body: JSON.stringify({
+            id,
+            resource,
+            ...payload,
+            appraisal_cycle_id: activeBudgetCycleId,
+            location: selectedLocation,
+          }),
         },
       );
       const result = await response.json();
