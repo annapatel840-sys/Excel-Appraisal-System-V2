@@ -1717,7 +1717,15 @@ async function enrichPreviousAppraisalValues(
       .map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle])
       .filter(([name]) => name),
   );
+  // Use the exact cycle selected by getEmployees (especially important
+  // when several location cycles are Active at the same time). Falling back
+  // to the first Active cycle can hide freshly generated Delegation rows
+  // belonging to another location/cycle.
+  const requestedCurrentCycleId = String(
+    options.cycleId || options.appraisalCycleId || "",
+  ).trim();
   const currentCycle =
+    (requestedCurrentCycleId && cycleById.get(requestedCurrentCycleId)) ||
     cycleRows.find(
       (cycle) =>
         cycleStatusOf(cycle) === "active" &&
@@ -4090,6 +4098,9 @@ async function getEmployees(req, res) {
         requestedView !== "appraisal" &&
         requestedView !== "delegation",
       view: requestedView,
+      // Keep Delegation enrichment aligned with the cycle selected above,
+      // rather than whichever Active cycle happens to be first in Data Store.
+      cycleId: responseActiveCycle?.id || params.cycleId || params.appraisal_cycle_id || "",
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
