@@ -4,7 +4,8 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
-import { invalidatePayrollCycleReads, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { generateAppraisalSheet, invalidatePayrollCycleReads, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { fillDelegation } from "@/lib/access-admin-api";
 import { cycleNameWithoutLocation, withCycleLocation } from "@/lib/cycle-name";
 
 export function SettingsPage() {
@@ -29,54 +30,118 @@ export function SettingsPage() {
         cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027" &&
         !cycle.archived && !["Cancelled", "Deleted"].includes(cycle.status),
       );
-      if (!annual2027.length) throw new Error("Existing Annual 2027 cycle was not found. No data was changed.");
-      const source = annual2027.find((cycle) => !cycle.location || ["all", "all locations"].includes(String(cycle.location).trim().toLowerCase())) || annual2027[0];
+      const source = annual2027.find((cycle) =>
+        !cycle.location || ["all", "all locations"].includes(String(cycle.location).trim().toLowerCase()),
+      );
+      if (!source) throw new Error("The original all-location Annual 2027 cycle was not found. No location cycles were changed.");
+
       const locations = (Array.isArray(locationRows) ? locationRows : [])
         .filter((location) => String(location.status || "Active").trim().toLowerCase() !== "inactive")
         .map((location) => String(location.location_name || "").trim())
         .filter(Boolean);
       if (!locations.length) throw new Error("No active locations were found in Location Master.");
-      const created = [];
-      const existing = [];
+
+      const sourceEligibility = await payrollCycleRequest("eligibility", {
+        query: { cycleId: source.id, count: 1, _ts: Date.now() },
+        fresh: true,
+      });
+      const sourceRecords = Array.isArray(sourceEligibility?.records) ? sourceEligibility.records : [];
+      if (!sourceRecords.length || sourceEligibility.criteriaApplied !== true) {
+        throw new Error("The original Annual 2027 Eligibility List has no applied criteria. Apply criteria to the original cycle first.");
+      }
+
+      const completed = [];
+      const skipped = [];
       const failed = [];
       for (const location of locations) {
         const name = withCycleLocation("Annual 2027", location, false);
-        const found = annual2027.find((cycle) =>
-          String(cycle.name || "").trim().toLowerCase() === name.toLowerCase() ||
-          (String(cycle.location || "").trim().toLowerCase() === location.toLowerCase() &&
-            cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027"),
-        );
-        if (found) { existing.push(name); continue; }
         try {
-          await payrollCycleRequest("cycles/create", {
+          let target = annual2027.find((cycle) =>
+            String(cycle.name || "").trim().toLowerCase() === name.toLowerCase() ||
+            (String(cycle.location || "").trim().toLowerCase() === location.toLowerCase() &&
+              cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027"),
+          );
+
+          if (!target) {
+            await payrollCycleRequest("cycles/create", {
+              method: "POST",
+              body: {
+                name,
+                type: source.type || "Annual",
+                process: source.process || "Annual",
+                effective: source.effective || source.start,
+                start: source.start,
+                end: source.end,
+                location,
+                remarks: `Generated from existing Annual 2027 configuration. Source cycle ID: ${source.id}. Payroll, feedback and rating records are reused by employee ID; no source rows are copied.`,
+              },
+            });
+            const refreshed = await payrollCycleRequest("cycles", { fresh: true });
+            target = (Array.isArray(refreshed) ? refreshed : []).find((cycle) =>
+              String(cycle.name || "").trim().toLowerCase() === name.toLowerCase() ||
+              String(cycle.location || "").trim().toLowerCase() === location.toLowerCase() &&
+                cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027",
+            );
+          }
+          if (!target?.id) throw new Error("Cycle was created but its ID could not be resolved.");
+
+          if (String(target.status || "").toLowerCase() !== "active") {
+            await payrollCycleRequest(`cycles/status/${target.id}`, {
+              method: "POST",
+              body: { status: "Active", remark: "Activated for location-wise Annual 2027 appraisal." },
+            });
+          }
+
+          const locationKey = location.trim().toLowerCase();
+          const locationRecords = sourceRecords.filter((record) => {
+            const employeeLocation = String(record.location || record.work_location || "").trim().toLowerCase();
+            const active = String(record.emp_status || record.status || "Active").trim().toLowerCase() === "active";
+            return active && employeeLocation === locationKey &&
+              ["eligible", "not eligible"].includes(String(record.eligibility_status || record.eligible_status || "").trim().toLowerCase());
+          });
+          if (!locationRecords.length) throw new Error("No employees with completed eligibility decisions were found for this location in the source cycle.");
+
+          const eligibilitySave = await payrollCycleRequest("eligibility", {
             method: "POST",
             body: {
-              name,
-              type: source.type || "Annual",
-              process: source.process || "Annual",
-              effective: source.effective || source.start,
-              start: source.start,
-              end: source.end,
-              location,
-              remarks: `Generated from existing Annual 2027 configuration. Source cycle ID: ${source.id}. Original payroll, feedback and rating records remain unchanged.`,
+              cycleId: target.id,
+              source: "Criteria",
+              records: locationRecords.map((record) => ({
+                empId: String(record.empId || record.emp_id || "").trim(),
+                eligible_status: record.eligibility_status || record.eligible_status,
+                reason: record.eligibility_reason || record.eligibleReason || "",
+                source: String(record.eligibility_source || record.eligibilitySource || "Criteria").toLowerCase() === "manual" ? "Manual" : "Criteria",
+              })),
             },
           });
-          created.push(name);
+          if (Number(eligibilitySave?.saved || 0) !== locationRecords.length || Number(eligibilitySave?.failed || 0) > 0) {
+            throw new Error(`Eligibility setup was incomplete (${eligibilitySave?.saved || 0}/${locationRecords.length} saved).`);
+          }
+
+          const delegation = await fillDelegation(target.id);
+          if (Number(delegation?.matched || 0) + Number(delegation?.unmatched || 0) === 0) {
+            throw new Error("Delegation generation returned no employee assignments.");
+          }
+
+          const generated = await generateAppraisalSheet(target.id, { reuseExistingCycleData: true });
+          completed.push(`${location}: ${generated?.created || 0} created, ${generated?.updated || 0} updated`);
+          if (target.status === "Active" && generated?.upToDate) skipped.push(location);
         } catch (error) {
-          failed.push(`${name}: ${error?.message || "creation failed"}`);
+          failed.push(`${location}: ${error?.message || "setup failed"}`);
         }
       }
+
       invalidatePayrollCycleReads();
       window.dispatchEvent(new CustomEvent("appraisal:cycle-updated"));
       if (failed.length) {
         setSplitError(true);
-        setSplitMessage(`${created.length} created; ${existing.length} already existed. Failed: ${failed.join("; ")}`);
+        setSplitMessage(`${completed.length} location(s) completed. Failed: ${failed.join("; ")}`);
       } else {
-        setSplitMessage(`${created.length} location cycle(s) created; ${existing.length} already existed. Original Annual 2027 data was not changed.`);
+        setSplitMessage(`Completed location-wise activation and Appraisal Sheet generation for ${completed.length} location(s). ${completed.join("; ")}`);
       }
     } catch (error) {
       setSplitError(true);
-      setSplitMessage(error?.message || "Could not create location-wise cycles.");
+      setSplitMessage(error?.message || "Could not generate location-wise appraisal cycles.");
     } finally {
       setSplittingCycles(false);
     }
@@ -121,10 +186,10 @@ export function SettingsPage() {
         {isHR && (
           <section className="rounded-lg border border-amber-300 bg-card p-4">
             <h3 className="text-sm font-semibold">Temporary: Generate Location-wise Annual 2027 Cycles</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Creates one Annual 2027 cycle for each active Location Master location. Existing cycles are skipped; the original Annual 2027 data is not copied or deleted.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Creates or reuses each location's Annual 2027 cycle, activates it, builds its Eligibility List and Delegation from the original cycle, then generates its Appraisal Sheet using existing payroll, feedback and rating data by employee ID. No source payroll rows are copied.</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button type="button" disabled={splittingCycles} onClick={generateLocationCycles}>
-                {splittingCycles ? "Generating..." : "Generate Location-wise Cycles"}
+                {splittingCycles ? "Activating & Generating..." : "Generate Location-wise Cycles"}
               </Button>
               {splitMessage && <span className={splitError ? "text-xs text-red-600" : "text-xs text-green-700"}>{splitMessage}</span>}
             </div>
