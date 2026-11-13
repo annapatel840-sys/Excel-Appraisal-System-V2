@@ -1033,7 +1033,7 @@ export function LocationMasterControl({
             >
               <span>
                 {value === "All"
-                  ? "Global"
+                  ? "All Locations"
                   : locations.find(isSelected)?.location_name || value}
                 {showCurrencyCode &&
                   value !== "All" &&
@@ -1057,7 +1057,7 @@ export function LocationMasterControl({
                     setMenu(false);
                   }}
                 >
-                  <span>Global</span>
+                  <span>All Locations</span>
                   {value === "All" && <Check size={14} />}
                 </button>
                 {active.map((loc) => (
