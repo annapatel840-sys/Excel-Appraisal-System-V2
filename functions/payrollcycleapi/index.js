@@ -1916,7 +1916,12 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const keys = Object.keys(row || {});
     for (const name of names) {
       const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
-      if (actual !== undefined && row[actual] !== null && row[actual] !== undefined) {
+      if (
+        actual !== undefined &&
+        row[actual] !== null &&
+        row[actual] !== undefined &&
+        !(typeof row[actual] === "string" && row[actual].trim() === "")
+      ) {
         return row[actual];
       }
     }
@@ -2254,6 +2259,14 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
         {
           destinationAliases: ["manager_rating", "managerRating"],
           sourceAliases: ["manager_rating", "managerRating"],
+        },
+        {
+          destinationAliases: ["manager_feedback", "managerFeedback"],
+          sourceAliases: ["manager_feedback", "managerFeedback"],
+        },
+        {
+          destinationAliases: ["client_feedback", "clientFeedback"],
+          sourceAliases: ["client_feedback", "clientFeedback"],
         },
         {
           destinationAliases: ["rr_percent", "rr", "revenue_released"],
