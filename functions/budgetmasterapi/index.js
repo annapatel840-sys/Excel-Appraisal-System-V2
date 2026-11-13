@@ -3965,19 +3965,21 @@ module.exports = async function (req, res) {
     const requestUrl = new URL(String(req.url || "/"), "http://local");
     const selectedLocation = String(requestUrl.searchParams.get("location") || body.location || "All").trim();
     const requestedCycleIdForWrite = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
+    const isSelectedWriteLocation = (cycle) => {
+      const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
+        .trim().toLowerCase();
+      return ["", "all", "all locations"].includes(selectedLocation.toLowerCase())
+        ? true
+        : location === selectedLocation.toLowerCase();
+    };
     const activeCycleForWrite =
       activeCyclesForWrite.find((cycle) =>
+        isSelectedWriteLocation(cycle) &&
         requestedCycleIdForWrite &&
         (cycleIdOf(cycle) === requestedCycleIdForWrite ||
           cycleNameOf(cycle).toLowerCase() === requestedCycleIdForWrite.toLowerCase())
       ) ||
-      activeCyclesForWrite.find((cycle) => {
-        const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
-          .trim().toLowerCase();
-        return ["", "all", "all locations"].includes(selectedLocation.toLowerCase())
-          ? true
-          : location === selectedLocation.toLowerCase();
-      }) ||
+      activeCyclesForWrite.find(isSelectedWriteLocation) ||
       null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
