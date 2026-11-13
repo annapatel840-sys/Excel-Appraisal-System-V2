@@ -434,7 +434,7 @@
 //       // list: catalystFetch runs at most two requests at a time.
 //       // The first load joins the request the sign-in prefetch already started
 //       // (if any); explicit reloads always ask the server again.
-//       const firstPromise = fetchDelegationRoster({ fresh: !initial });
+//       const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
 //       firstPromise.catch(() => {}); // reported where it is awaited below
 //       const cyclesPromise = payrollCycleRequest("cycles");
 //       const cycles = await cyclesPromise;
@@ -516,7 +516,7 @@
 //     // Load the active cycle's roster when the Delegation screen is mounted.
 //     // eslint-disable-next-line react-hooks/exhaustive-deps
 //     return () => window.removeEventListener("appraisal:cycle-updated", refreshRoster);
-//   }, [initialRows]);
+//   }, [initialRows, selectedLocation]);
 //   const say = (msg, err) => {
 //     setToast({ msg, err });
 //     setTimeout(() => setToast(null), err ? 6000 : 3500);
@@ -2963,6 +2963,7 @@ export default function DelegationScreen({
     const startedGeneration = delegationGeneration();
     const savedKey = delegationSnapshotKey(
       catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "",
+      selectedLocation,
     );
     let freshApplied = false;
     try {
@@ -2988,16 +2989,22 @@ export default function DelegationScreen({
       firstPromise.catch(() => {}); // reported where it is awaited below
       const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
+      const allLocationsSelected =
+        !selectedLocation ||
+        ["all", "all locations"].includes(String(selectedLocation).trim().toLowerCase());
       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
         const status = String(cycle.status ?? cycle.cycle_status ?? "")
           .trim()
           .toLowerCase();
         const archived = ["true", "1", "yes"].includes(
-          String(cycle.archived ?? "")
-            .trim()
-            .toLowerCase(),
+          String(cycle.archived ?? "").trim().toLowerCase(),
         );
-        return status === "active" && !archived && !cycle.hidden;
+        const hidden = ["true", "1", "yes"].includes(
+          String(cycle.hidden ?? "").trim().toLowerCase(),
+        );
+        const cycleLocation = String(cycle.location || "").trim().toLowerCase();
+        return status === "active" && !archived && !hidden &&
+          (allLocationsSelected || cycleLocation === String(selectedLocation).trim().toLowerCase());
       });
       if (!active) {
         freshApplied = true;
