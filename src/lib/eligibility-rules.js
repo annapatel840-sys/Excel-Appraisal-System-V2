@@ -136,7 +136,7 @@ const RAW_PREFIX = "raw:";
 
 const FIELD_LABELS = {
   repo_manager: "Reporting Manager",
-  director: "Comp Manager",
+  director: "Director",
   appraiser_tech_ed: "Appraiser (Tech Ed)",
   wissen_experience: "Org Experience (years)",
   total_experience: "Total Experience (years)",
