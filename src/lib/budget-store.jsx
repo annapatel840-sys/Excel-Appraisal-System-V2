@@ -833,7 +833,13 @@
 //         {
 //           method: "PUT",
 //           headers: { "Content-Type": "application/json" },
-//           body: JSON.stringify({ id, resource, ...payload }),
+//           body: JSON.stringify({
+            id,
+            resource,
+            ...payload,
+            appraisal_cycle_id: activeBudgetCycleId,
+            location: selectedLocation,
+          }),
 //         },
 //       );
 //       const result = await response.json();
@@ -1530,15 +1536,20 @@ export function BudgetProvider({ children }) {
   // running. Every screen and refresh event receives the same result instead
   // of starting another budgetmasterapi GET and roster request.
   const loadRef = useRef(null);
+  const loadLocationRef = useRef(String(selectedLocation || "All"));
   const load = useCallback(() => {
-    if (loadRef.current) return loadRef.current;
+    const locationKey = String(selectedLocation || "All").trim().toLowerCase();
+    if (loadRef.current && loadLocationRef.current === locationKey) {
+      return loadRef.current;
+    }
 
     const promise = runLoad().finally(() => {
       if (loadRef.current === promise) loadRef.current = null;
     });
+    loadLocationRef.current = locationKey;
     loadRef.current = promise;
     return promise;
-  }, [runLoad]);
+  }, [runLoad, selectedLocation]);
 
   // All callers use the same in-flight load. A new load starts only after
   // the current one has finished (or when a later refresh is requested).
