@@ -363,3 +363,12 @@
 .elx-addmenu .elx-addopt:hover{background:#EAF2FF}
 .elx-addmenu .elx-addopt i{font-style:normal;font-weight:500;font-size:10.5px;color:#9ca3af}
 .elx-addmenu .elx-addempty{padding:12px;color:#9ca3af;font-size:12px}
+
+/* ---- Tab-bar actions (right): Add an Employee / Apply / Edit / Cancel ---- */
+.elx-tabs .elx-tabs-right{gap:8px}
+.elx-tabs .elx-tabs-right button{margin:0;border-bottom-width:1px}
+.elx-tabs .elx-tabs-right button.elx-addemp{border:1px dashed #9db4d3;background:#fff}
+.elx-tabs .elx-tabs-right button.em-btn{padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px;border:1px solid #CBD5E1;background:#fff;color:#17365d}
+.elx-tabs .elx-tabs-right button.em-btn-primary{background:#2F6FED;border-color:#2F6FED;color:#fff}
+.elx-tabs .elx-tabs-right button.em-btn-primary:disabled{background:#A9C1F2;border-color:#A9C1F2}
+.elx-foot{margin-top:12px;padding:8px 2px;color:#6B7280}

@@ -6274,7 +6274,7 @@ export function EmployeeMaster() {
                       : generateDelegationFromEligibility
                   }
                   delegationGenerated={delegationGenerated}
-                  criteriaSlot={({ goList, currentCounts }) => (
+                  criteriaSlot={({ goList, currentCounts, actionsHost }) => (
                     <EligibilityCriteria
                       employees={
                         eligibilityMasterEmployees.length
@@ -6301,6 +6301,7 @@ export function EmployeeMaster() {
                       }
                       currentCounts={currentCounts}
                       onApplied={goList}
+                      actionsHost={actionsHost}
                     />
                   )}
                 />

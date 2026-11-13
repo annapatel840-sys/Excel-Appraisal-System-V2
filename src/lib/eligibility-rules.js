@@ -168,6 +168,8 @@ const SKIP_COLUMNS = new Set([
   "eligible_updated_at", "change_tag", "manual_override", "next_step",
   "location",
 ]);
+// Not useful as a "distinct values" parameter: cost center, salary, email.
+const SKIP_PATTERN = /cost[_ ]?cent|salary|e?-?mail/i;
 
 const DATE_LIKE = /^\d{4}-\d{2}-\d{2}|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/;
 
@@ -186,7 +188,7 @@ export function employeeMasterFields(employees) {
     const raw = e?.rawEmployee;
     if (!raw || typeof raw !== "object") return;
     Object.keys(raw).forEach((col) => {
-      if (SKIP_COLUMNS.has(col.toLowerCase())) return;
+      if (SKIP_COLUMNS.has(col.toLowerCase()) || SKIP_PATTERN.test(col)) return;
       const v = raw[col];
       if (v !== null && typeof v === "object") return;
       const text = String(v ?? "").trim();

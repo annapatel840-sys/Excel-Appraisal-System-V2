@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
 import {
@@ -34,6 +35,7 @@ export function EligibilityCriteria({
   hasCycle = true,
   currentCounts = null, // { eligible, notEligible, total } of the generated list
   onApplied, // called after a successful Apply (screen jumps to the list tab)
+  actionsHost = null, // element in the tab bar where Apply / Edit / Cancel are shown
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedDesignations, setSelectedDesignations] = useState([]);
@@ -232,15 +234,6 @@ export function EligibilityCriteria({
     if (!nav.some(([id]) => id === sel)) setSel("st");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraParameters]);
-
-  /* ----- impact strip ----- */
-  const preview = useMemo(
-    () => previewCounts(employees, { ...currentDraft() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [employees, selectedDepartments, selectedDesignations, selectedStatuses, excludedEmployees, cutoffDate, extraParameters],
-  );
-  const showCurrent = criteriaApplied && !isEditing && currentCounts;
-  const shown = showCurrent ? currentCounts : preview;
 
   /* ----- employee picker ----- */
   const suggestions = useMemo(() => {
@@ -616,17 +609,42 @@ export function EligibilityCriteria({
   else if (lists[sel]) pane = renderList(sel);
   else if (selectedParam) pane = renderParamValue(selectedParam);
 
+  const actionButtons = (
+    <>
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              className="em-btn em-btn-primary elx-apply"
+              disabled={readOnly || applying || delegationGenerated || !hasCycle}
+              onClick={applyDraft}
+            >
+              <Check size={14} />
+              {applying ? "Applying..." : "Apply Criteria"}
+            </button>
+            {criteriaApplied && (
+              <button type="button" className="em-btn em-btn-ghost" disabled={applying} onClick={cancelEdit}>
+                Cancel Edit
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            className="em-btn em-btn-primary elx-apply"
+            disabled={readOnly || delegationGenerated}
+            onClick={beginEdit}
+          >
+            Edit Criteria
+          </button>
+        )}
+    </>
+  );
+
   return (
     <div className="elx-crit">
+      {actionsHost ? createPortal(actionButtons, actionsHost) : <div className="elx-actions">{actionButtons}</div>}
       <div className={`elx-strip${amber ? " amber" : ""}`}>{strip}</div>
-
-      <div className="elx-imp">
-        <span>{showCurrent ? "Current list" : "If applied now"}</span>
-        <b>{shown.eligible}</b> eligible <span className="dot">·</span>
-        <b>{shown.notEligible}</b> not eligible <span className="dot">·</span>
-        {shown.total} employees
-        {!hasCycle && <span className="elx-none"> (preview only)</span>}
-      </div>
 
       <div className="elx-cwrap">
         <div className="elx-cl">
@@ -701,34 +719,7 @@ export function EligibilityCriteria({
         <div className="elx-cr">{pane}</div>
       </div>
 
-      <div className="elx-actions">
-        {isEditing ? (
-          <>
-            <button
-              type="button"
-              className="em-btn em-btn-primary em-apply-btn elx-apply"
-              disabled={readOnly || applying || delegationGenerated || !hasCycle}
-              onClick={applyDraft}
-            >
-              <Check size={14} />
-              {applying ? "Applying..." : "Apply Criteria"}
-            </button>
-            {criteriaApplied && (
-              <button type="button" className="em-btn em-btn-ghost" disabled={applying} onClick={cancelEdit}>
-                Cancel Edit
-              </button>
-            )}
-          </>
-        ) : (
-          <button
-            type="button"
-            className="em-btn em-btn-primary em-apply-btn elx-apply"
-            disabled={readOnly || delegationGenerated}
-            onClick={beginEdit}
-          >
-            Edit Criteria
-          </button>
-        )}
+      <div className="elx-foot">
         <span className="em-hint">
           {delegationGenerated
             ? `Locked: Delegation is generated for ${cycle}.`

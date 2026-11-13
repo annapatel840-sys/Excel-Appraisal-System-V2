@@ -902,6 +902,8 @@ export function EligibilityList({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [delegationPrompt, setDelegationPrompt] = useState(null);
+  // Tab-bar slot (right side): Add an Employee on the list, Apply / Edit / Cancel on the criteria.
+  const [actionsHost, setActionsHost] = useState(null);
   // Tabs: crit | list (Eligible only) | ne (Not Eligible only) | act (pending step)
   const [tab, setTab] = useState(criteriaApplied ? "list" : "crit");
   const tabTouched = useRef(false);
@@ -1247,17 +1249,18 @@ export function EligibilityList({
             {key === "act" && actionTabCount > 0 ? ` (${actionTabCount})` : ""}
           </button>
         ))}
-        {tab === "list" && onAddEmployee && canEdit && (
-          <div className="elx-tabs-right">
+        <div className="elx-tabs-right" ref={setActionsHost}>
+          {tab === "list" && onAddEmployee && canEdit && (
             <button
               type="button"
+              className="elx-addemp"
               disabled={!criteriaApplied}
               onClick={() => setAddOpen(true)}
             >
               <Plus size={14} /> Add an Employee
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ================= BODY + PANEL ================= */}
@@ -1267,6 +1270,7 @@ export function EligibilityList({
             <div className="elx-crit-scroll">
               {criteriaSlot?.({
                 goList: () => pickTab("list"),
+                actionsHost,
                 currentCounts: criteriaApplied
                   ? {
                       eligible: eligibleCount,
