@@ -1303,7 +1303,7 @@
 //         eligibilityLoadedKeyRef.current = null;
 //       }
 //     };
-//   }, [activeTab, eligibilityReloadKey, locationFilter]);
+//   }, [activeTab, eligibilityReloadKey]);
 
 //   // Force the Eligibility List to reload from Catalyst on its next view.
 //   const invalidateEligibilityList = () => {
@@ -4468,18 +4468,11 @@ export function EmployeeMaster() {
       return;
     }
 
-    const eligibilityLocationKey = String(locationFilter || "All").trim().toLowerCase();
-    if (eligibilityLoadedKeyRef.current === eligibilityLocationKey) {
+    if (eligibilityLoadedKeyRef.current === "loaded") {
       return;
     }
 
-    eligibilityLoadedKeyRef.current = eligibilityLocationKey;
-    // Clear the previous location's cycle immediately so writes cannot target
-    // the location we just left while the new location is loading.
-    setEligibilityCycleId("");
-    setEligibilityEmployees([]);
-    setEligibilityCriteriaApplied(false);
-
+    eligibilityLoadedKeyRef.current = "loaded";
     let cancelled = false;
     let finished = false;
 
@@ -4496,7 +4489,6 @@ export function EmployeeMaster() {
           page: 1,
           limit: 100000,
           search: "",
-          location: locationFilter,
         });
         if (cancelled) return;
 
@@ -4563,7 +4555,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
       // Allow a retry if this load was interrupted before it finished.
-      if (!finished && eligibilityLoadedKeyRef.current === eligibilityLocationKey) {
+      if (!finished && eligibilityLoadedKeyRef.current === "loaded") {
         eligibilityLoadedKeyRef.current = null;
       }
     };
@@ -5905,7 +5897,6 @@ export function EmployeeMaster() {
       limit: 100000,
       search: "",
       cycleId: eligibilityCycleId,
-      location: locationFilter,
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
