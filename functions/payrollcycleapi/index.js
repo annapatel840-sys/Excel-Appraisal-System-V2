@@ -3908,12 +3908,15 @@ async function routeRequest(req, res, identity, resource, a) {
       const target = cycles.find((cycle) => cycle.id === id);
       if (!target) return null;
       const targetLocation = cycleLocationKey(target);
-      return cycles.find((cycle) =>
-        cycle.status === "Active" &&
-        cycle.id !== id &&
-        !cycle.archived &&
-        cycleLocationKey(cycle) === targetLocation
-      );
+      return cycles.find((cycle) => {
+        if (cycle.status !== "Active" || cycle.id === id || cycle.archived) {
+          return false;
+        }
+        const otherLocation = cycleLocationKey(cycle);
+        // A legacy cycle with no location (All Locations) covers every
+        // country. Once it is Closed, separate location cycles can activate.
+        return !targetLocation || !otherLocation || otherLocation === targetLocation;
+      });
     };
 
     // Access -> Fields -> Appraisal Cycle Master: create / update need Edit on the fields they set
