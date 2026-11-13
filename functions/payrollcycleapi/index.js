@@ -1032,7 +1032,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   return {
     created: 0,
     removed: orphanRows.length,
-    staleRemoved: staleRows.length,
+    staleRemoved: 0, // Other-cycle eligibility rows are intentionally preserved.
     unqualifiedSeedRowsRemoved: unqualifiedSeedRows.length,
     repairedReferences,
     inactiveMarked,
