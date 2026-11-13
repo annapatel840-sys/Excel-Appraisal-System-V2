@@ -1216,10 +1216,9 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const statuses = lowerList(criteria.statuses);
   const extraParameters = criteria.extraParameters;
 
-  const [masters, allEligibility, locationRows] = await Promise.all([
+  const [masters, allEligibility] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
-    getAllRows(tables.locations),
   ]);
   const existingByMasterId = new Map(
     allEligibility
@@ -1379,16 +1378,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
   return {
     cycleId,
     cycleName: cycle.name,
-    cycleLocation: cycle.location,
     criteriaApplied: true,
     evaluated,
-    locationMatchedActiveEmployees: evaluated,
-    availableActiveEmployees: masters.filter((master) =>
-      String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active"
-    ).length,
-    employeeLocationValues: [...new Set(masters.map((master) =>
-      String(master.location || master.work_location || master.workLocation || "").trim()
-    ).filter(Boolean))].slice(0, 30),
     added: added.length,
     updated: updated.length,
     excluded,
