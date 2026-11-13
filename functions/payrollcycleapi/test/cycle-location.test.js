@@ -203,6 +203,24 @@ async function t(name, fn) {
     assert.match(r.json.message, /only be changed while the cycle is Upcoming/);
   });
 
+  await t('legacy All Locations cycle blocks every location until it is Closed', async () => {
+    const allLocations = await byName('Annual 2027 Org');
+    const india = await byName('Annual 2027 Legacy');
+    for (const active of (await cycles()).filter((item) => item.status === 'Active')) {
+      const closed = await post('cycles/status/' + active.id, { status: 'Closed' });
+      assert.strictEqual(closed.status, 200, JSON.stringify(closed.json));
+    }
+    const allActive = await post('cycles/status/' + allLocations.id, { status: 'Active' });
+    assert.strictEqual(allActive.status, 200, JSON.stringify(allActive.json));
+    const blockedIndia = await post('cycles/status/' + india.id, { status: 'Active' });
+    assert.strictEqual(blockedIndia.status, 409);
+    assert.match(blockedIndia.json.message, /Annual 2027 Org/);
+    const closeAll = await post('cycles/status/' + allLocations.id, { status: 'Closed' });
+    assert.strictEqual(closeAll.status, 200, JSON.stringify(closeAll.json));
+    const activateIndia = await post('cycles/status/' + india.id, { status: 'Active' });
+    assert.strictEqual(activateIndia.status, 200, JSON.stringify(activateIndia.json));
+  });
+
   await t('Apply Criteria lists only the cycle location\'s employees', async () => {
     const c = await byName('Annual 2027 Dubai');
     const r = await call(api, 'POST', 'eligibility', { action: 'apply-criteria', cycleId: c.id });
