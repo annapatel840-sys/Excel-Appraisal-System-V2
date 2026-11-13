@@ -387,7 +387,10 @@ async function activeCycleId(zcql, context = {}) {
         norm(row[c.nameColumn]) === requestedCycleId
       )
     : isAllLocations
-      ? activeRows[0]
+      ? activeRows.find((row) => {
+          const location = norm(row.location);
+          return !location || location === "all" || location === "all locations";
+        })
       : activeRows.find((row) => norm(row.location) === requestedLocation);
   return active ? String(active[c.idColumn] || "") || null : null;
 }
