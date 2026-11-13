@@ -1740,17 +1740,25 @@ async function enrichPreviousAppraisalValues(
       .map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle])
       .filter(([name]) => name),
   );
+  const requestedLocation = String(options.location || "All").trim().toLowerCase();
+  const selectedLocationKey =
+    !requestedLocation || ["all", "all locations"].includes(requestedLocation)
+      ? "all"
+      : requestedLocation;
   const currentCycle =
-    cycleRows.find(
-      (cycle) =>
-        cycleStatusOf(cycle) === "active" &&
-        cycle.archived !== true &&
-        cycle.archived !== "true",
-    ) ||
-    cycleRows
-      .slice()
-      .sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] ||
-    null;
+    cycleRows.find((cycle) => {
+      if (
+        cycleStatusOf(cycle) !== "active" ||
+        ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
+        ["true", "1", "yes"].includes(String(cycle.hidden ?? "").trim().toLowerCase())
+      ) return false;
+      const rawLocation = String(cycle.location || "All").trim().toLowerCase();
+      const cycleLocationKey =
+        !rawLocation || ["all", "all locations"].includes(rawLocation)
+          ? "all"
+          : rawLocation;
+      return cycleLocationKey === selectedLocationKey;
+    }) || null;
   const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
   const eligibilityByEmployee = new Map();
   eligibilityRows.forEach((record) => {
@@ -4105,6 +4113,7 @@ async function getEmployees(req, res) {
         requestedView !== "appraisal" &&
         requestedView !== "delegation",
       view: requestedView,
+      location,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
