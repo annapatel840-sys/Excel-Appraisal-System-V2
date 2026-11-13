@@ -6299,8 +6299,8 @@ export function EmployeeMaster() {
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
                   cycleStats={null}
-                  onGenerateSheet={async (cycle) => {
-                    const result = await generateAppraisalSheet(cycle.id);
+                  onGenerateSheet={async (cycle, options) => {
+                    const result = await generateAppraisalSheet(cycle.id, options);
                     await refreshEmployees();
                     return result;
                   }}
