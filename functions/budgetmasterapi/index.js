@@ -1799,6 +1799,7 @@ async function calculateBudgetBases(
   bundle,
   techEdOwners = [],
   sourceRows,
+  selectedLocation = "All",
 ) {
   // Reuse the single serialized source-table read set for both calculations
   // and owner/employee roster construction. Do not start parallel Data Store
@@ -1892,9 +1893,19 @@ async function calculateBudgetBases(
     );
   // Every cycle is location-scoped. Select the Active cycle linked to its own
   // Budget_Master record; do not privilege a legacy unscoped cycle.
-  const activeSheetCycle =
-    cycleRows.find((cycle) => isActiveCycle(cycle) && hasBudgetMaster(cycle)) ||
-    cycleRows.find(isActiveCycle);
+  const requestedLocation = String(selectedLocation || "All").trim();
+  const allLocationsSelected =
+    !requestedLocation ||
+    ["all", "all locations"].includes(requestedLocation.toLowerCase());
+  const activeSheetCycle = cycleRows.find((cycle) => {
+    if (!isActiveCycle(cycle)) return false;
+    if (
+      !allLocationsSelected &&
+      String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
+        .trim().toLowerCase() !== requestedLocation.toLowerCase()
+    ) return false;
+    return hasBudgetMaster(cycle);
+  }) || null;
   const activeSheetCycleId = activeSheetCycle
     ? cycleIdOf(activeSheetCycle)
     : "";
@@ -2080,17 +2091,7 @@ async function calculateBudgetBases(
 
   // The active / previous cycle is the same for every row: work it out once
   // (it was recomputed - a cycle sort included - for each of thousands of rows).
-  const activeCycleRow =
-    cycleRows.find(
-      (cycle) =>
-        String(cycle.status || "")
-          .trim()
-          .toLowerCase() === "active" &&
-        cycle.archived !== true &&
-        cycle.archived !== "true",
-    ) ||
-    cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] ||
-    null;
+  const activeCycleRow = activeSheetCycle;
   const currentCycleId =
     cycleIdOf(activeCycleRow) ||
     String(bundle.master[0]?.appraisal_cycle_id || "");
@@ -3824,6 +3825,8 @@ module.exports = async function (req, res) {
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
       // Avoid overlapping multiple datastore scans on the same request.
+      const requestUrl = new URL(String(req.url || "/"), "http://local");
+      const selectedLocation = String(requestUrl.searchParams.get("location") || "All").trim();
       const rawBundle = await readBundle(app);
       logBudgetStage("budget tables loaded", {
         masterRows: rawBundle.master.length,
@@ -3862,6 +3865,7 @@ module.exports = async function (req, res) {
           rawBundle,
           techEdOwners,
           sourceRows,
+          selectedLocation,
         );
         logBudgetStage("budget calculations and persistence complete", {
           techEdRows: calculatedBundle.techEd.length,
@@ -3946,9 +3950,22 @@ module.exports = async function (req, res) {
     });
     // Budget writes must target the Active cycle linked to the selected
     // Budget_Master row, keeping every location's budget isolated.
+    const requestUrl = new URL(String(req.url || "/"), "http://local");
+    const selectedLocation = String(requestUrl.searchParams.get("location") || body.location || "All").trim();
+    const requestedCycleIdForWrite = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
     const activeCycleForWrite =
-      activeCyclesForWrite.find((cycle) => hasBudgetMaster(cycle)) ||
-      activeCyclesForWrite[0] ||
+      activeCyclesForWrite.find((cycle) =>
+        requestedCycleIdForWrite &&
+        (cycleIdOf(cycle) === requestedCycleIdForWrite ||
+          cycleNameOf(cycle).toLowerCase() === requestedCycleIdForWrite.toLowerCase())
+      ) ||
+      activeCyclesForWrite.find((cycle) => {
+        const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
+          .trim().toLowerCase();
+        return ["", "all", "all locations"].includes(selectedLocation.toLowerCase())
+          ? hasBudgetMaster(cycle)
+          : location === selectedLocation.toLowerCase() && hasBudgetMaster(cycle);
+      }) ||
       null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
