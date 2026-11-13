@@ -3963,8 +3963,8 @@ module.exports = async function (req, res) {
         const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
           .trim().toLowerCase();
         return ["", "all", "all locations"].includes(selectedLocation.toLowerCase())
-          ? hasBudgetMaster(cycle)
-          : location === selectedLocation.toLowerCase() && hasBudgetMaster(cycle);
+          ? true
+          : location === selectedLocation.toLowerCase();
       }) ||
       null;
     const activeCycleIdForWrite = activeCycleForWrite
