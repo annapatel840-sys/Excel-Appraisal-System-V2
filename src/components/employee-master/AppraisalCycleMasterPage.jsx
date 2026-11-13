@@ -51,13 +51,12 @@ const isAllCycleLocation = (value) => {
 };
 const locationLabel = (value) =>
   isAllCycleLocation(value) ? "All Locations" : String(value).trim();
-// Two cycles cover the same people when either is for All Locations or both are
-// for the same location.
-const sameLocationScope = (a, b) => {
-  const left = isAllCycleLocation(a) ? "global" : String(a).trim().toLowerCase();
-  const right = isAllCycleLocation(b) ? "global" : String(b).trim().toLowerCase();
-  return left === right;
-};
+// A legacy All Locations cycle covers every location. Otherwise only
+// cycles for the same named location share a validation scope.
+const sameLocationScope = (a, b) =>
+  isAllCycleLocation(a) ||
+  isAllCycleLocation(b) ||
+  String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
 const MON = [
   "Jan",
