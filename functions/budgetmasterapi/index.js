@@ -1886,18 +1886,28 @@ async function calculateBudgetBases(
       .map((master) => cycleReference(master.appraisal_cycle_id).toLowerCase())
       .filter(Boolean),
   );
+  const isGlobalBudgetCycle = (cycle) => {
+    const location = String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim().toLowerCase();
+    return !location || ["all", "all locations", "global"].includes(location);
+  };
+  const hasBudgetMaster = (cycle) =>
+    [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
+      budgetCycleRefs.has(String(ref || "").trim().toLowerCase()),
+    );
+  // If HR reopens the Global cycle while country-specific cycles are also
+  // Active, prefer Global for the shared Budget Master context. Otherwise
+  // Data Store order can silently select another location's roster.
   const activeSheetCycle =
     cycleRows.find(
-      (cycle) =>
-        isActiveCycle(cycle) &&
-        [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
-          budgetCycleRefs.has(
-            String(ref || "")
-              .trim()
-              .toLowerCase(),
-          ),
-        ),
-    ) || cycleRows.find(isActiveCycle);
+      (cycle) => isActiveCycle(cycle) && isGlobalBudgetCycle(cycle) && hasBudgetMaster(cycle),
+    ) ||
+    cycleRows.find(
+      (cycle) => isActiveCycle(cycle) && hasBudgetMaster(cycle),
+    ) ||
+    cycleRows.find((cycle) => isActiveCycle(cycle) && isGlobalBudgetCycle(cycle)) ||
+    cycleRows.find(isActiveCycle);
   const activeSheetCycleId = activeSheetCycle
     ? cycleIdOf(activeSheetCycle)
     : "";
@@ -3099,43 +3109,33 @@ async function calculateBudgetBases(
         );
       },
     );
-    const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
-      const employeeStatus = String(employee.status || employee.master_status)
-        .trim()
-        .toLowerCase();
-      return employeeStatus === "active" && Boolean(employee.eligible);
-    });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
-    // Use the same mapped per-employee base that is returned to the Appraisal
-    // Sheet/Budget roster. The visible Previous Total CTC with Rewards column can
-    // be resolved from the sheet snapshot or the established previous-cycle mapping;
-    // summing only the raw stored field incorrectly returned zero when that displayed
-    // column was populated by the mapping/fallback path.
-    // Org and team bases must use the same active, cycle-eligible sheet roster
-    // shown in the grid; a stale Eligible decision must not include inactive staff.
-    // Org Budget Base must exactly equal the sum of the previous total
-    // CTC with rewards stored on the generated Appraisal_Sheet rows. Do not
-    // silently substitute Payroll_Data history or current CTC when this
-    // Appraisal_Sheet value is missing.
-    const orgBaseRows = eligibleEmployees.map((employee) => {
-      const rawCtc = employee.sheet_previous_appraisal_ctc;
-      const hasStoredCtc =
+    // Sum the same Previous Total CTC with Rewards value exposed in the
+    // Appraisal Sheet/Budget roster. The canonical sheet field is preferred;
+    // when a legacy generated row has that field blank, employeesForBudgetCycle
+    // resolves the displayed value from the employee's previous-cycle payroll
+    // mapping (and the established new-joiner fallback). Summing only the raw
+    // snapshot property made a valid displayed base become zero.
+    // Keep the exact same active + cycle-eligible roster as the Appraisal Sheet.
+    const orgBaseRows = cycleFilteredEmployees.map((employee) => {
+      const rawCtc = employee.base;
+      const hasMappedCtc =
         rawCtc !== null && rawCtc !== undefined && String(rawCtc).trim() !== "";
       return {
         employeeId: String(employee.employeeId || employee.emp_id || "").trim(),
-        ctc: hasStoredCtc ? n(rawCtc) : 0,
-        hasStoredCtc,
+        ctc: hasMappedCtc ? n(rawCtc) : 0,
+        hasStoredCtc: hasMappedCtc,
       };
     });
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "eligible Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
+        "active cycle-eligible Appraisal Sheet Previous Total CTC with Rewards mapped values",
       budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
-      budgetBaseEligibleRows: eligibleEmployees.length,
+      budgetBaseEligibleRows: cycleFilteredEmployees.length,
       budgetBaseCycleEligibilityRows: cycleFilteredEmployees.length,
       budgetBaseEligibilityFilterDelta:
         cycleFilteredEmployees.length - eligibleEmployees.length,
