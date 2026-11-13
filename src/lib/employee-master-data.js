@@ -828,7 +828,7 @@ export async function updateEligibilityRecords(records, cycleId, source = "Crite
  */
 export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
   if (!cycleId) throw new Error("Select an appraisal cycle before applying criteria.");
-  return payrollCycleRequest("eligibility", {
+  const result = await payrollCycleRequest("eligibility", {
     method: "POST",
     body: {
       action: "apply-criteria",
@@ -841,6 +841,13 @@ export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
       replaceCriteria: Boolean(criteria.replaceCriteria),
     },
   });
+
+  // Apply Criteria writes Eligibility_List. The page immediately reloads the
+  // same cycle, so discard the module-level GET promise/cache first; otherwise
+  // reloadEligibilityRows can receive the pre-apply empty list for 60 seconds.
+  eligibilityRead = null;
+  invalidatePayrollCycleReads();
+  return result;
 }
 
 /* ============================================================
