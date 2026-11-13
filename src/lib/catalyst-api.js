@@ -99,20 +99,6 @@ export async function catalystFetch(input, options = {}) {
     );
   }
 
-  let authResponse;
-  try {
-    authResponse = await generateAuthTokenWithTimeout(auth);
-  } catch (error) {
-    if (error?.message === SESSION_ENDED_MESSAGE) notifySessionExpired();
-    throw error;
-  }
-  if (!authResponse?.access_token) {
-    throw new Error("Catalyst did not return an authentication token.");
-  }
-
-  const headers = new Headers(options.headers);
-  headers.set("Authorization", authResponse.access_token);
-
   const method = String(options.method || "GET").toUpperCase();
   const isWrite = method !== "GET" && method !== "HEAD";
   if (isWrite) notifyWrite();
@@ -126,6 +112,22 @@ export async function catalystFetch(input, options = {}) {
   try {
     if (!skipQueue) await acquireCatalystSlot();
     try {
+      // Generate the token only after obtaining a request slot. Previously it
+      // was generated before queueing, so a busy initial page load could leave
+      // queued requests holding an expired token and produce avoidable 401s.
+      let authResponse;
+      try {
+        authResponse = await generateAuthTokenWithTimeout(auth);
+      } catch (error) {
+        if (error?.message === SESSION_ENDED_MESSAGE) notifySessionExpired();
+        throw error;
+      }
+      if (!authResponse?.access_token) {
+        throw new Error("Catalyst did not return an authentication token.");
+      }
+      const headers = new Headers(options.headers);
+      headers.set("Authorization", authResponse.access_token);
+
       for (let attempt = 0; ; attempt += 1) {
         try {
           response = await fetch(input, {
