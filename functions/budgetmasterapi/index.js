@@ -2011,6 +2011,22 @@ async function calculateBudgetBases(
         ? unscopedSheetRows
         : [];
 
+  const employeeKeyFor = (raw) => {
+    const identity = normalizedIdentity(raw);
+    if (!identity) return "";
+    const master =
+      masterByRowId.get(identity) ||
+      masterByEmployee.get(identity) ||
+      masterByName.get(identity);
+    return String(
+      master
+        ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master)
+        : identity,
+    )
+      .trim()
+      .toLowerCase();
+  };
+
   // Location cycles created from an already-configured Annual cycle reuse that
   // original cycle's Appraisal_Sheet/payroll history. If the new cycle has no
   // separately tagged sheet rows yet, reuse only the matching location's rows
@@ -2024,14 +2040,8 @@ async function calculateBudgetBases(
       firstValue(activeSheetCycle, ["location", "cycle_location", "cycleLocation"]) || "",
     ).trim();
     const currentName = cycleNameOf(activeSheetCycle);
-    const canonicalName = cycleLocation
-      ? currentName.replace(new RegExp("^" + cycleLocation.replace(/[.*+?^${}()|[\]\\]/g, "\\  const currentAppraisalRows = !activeSheetCycle
-    ? []
-    : cycleScopedSheetRows.length
-      ? cycleScopedSheetRows
-      : !hasCycleTaggedSheetRows
-        ? unscopedSheetRows
-        : [];") + "\\s+-\\s*", "i"), "")
+    const canonicalName = currentName.toLowerCase().startsWith((cycleLocation + " - ").toLowerCase())
+      ? currentName.slice(cycleLocation.length + 3)
       : currentName;
     const sourceCycle = cycleRows.find((candidate) => {
       const candidateLocation = String(
@@ -2067,21 +2077,7 @@ async function calculateBudgetBases(
     }
   }
 
-  const employeeKeyFor = (raw) => {
-    const identity = normalizedIdentity(raw);
-    if (!identity) return "";
-    const master =
-      masterByRowId.get(identity) ||
-      masterByEmployee.get(identity) ||
-      masterByName.get(identity);
-    return String(
-      master
-        ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master)
-        : identity,
-    )
-      .trim()
-      .toLowerCase();
-  };
+
   // Scope roster membership to this function's Appraisal_Sheet read. The
   // similarly named appraisalById map belongs to readEmployeeRoster and is
   // not in scope here.
@@ -2269,23 +2265,24 @@ async function calculateBudgetBases(
     ).trim();
     const employeeId = employeeKeyFor(rawEmployeeId);
     if (!employeeId) return;
+    const techEdFields = [
+      "appraiser_tech_ed1",
+      "appraiser_tech_ed_row_id",
+      "appraiser_tech_ed_id",
+      "appraiser_tech_ed",
+      "appraiser_teched",
+      "appraiserTechED",
+      "appraiserTechEd",
+      "tech_ed",
+      "tech_ed_id",
+      "techED",
+      "techEd",
+    ];
+    const masterRow = masterByEmployee.get(employeeId) || {};
     const rawTechEd = String(
-      firstValue(row, [
-        "appraiser_tech_ed1",
-        "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed_id",
-        "appraiser_tech_ed",
-        "appraiser_teched",
-        "appraiserTechED",
-        "appraiserTechEd",
-        "tech_ed",
-        "tech_ed_id",
-        "techED",
-        "techEd",
-      ]) || "",
+      firstValue(row, techEdFields) || firstValue(masterRow, techEdFields) || "",
     ).trim();
     const techEd = resolvePersonId(rawTechEd);
-    const masterRow = masterByEmployee.get(employeeId) || {};
     const rawCompManager = String(
       firstValue(row, [
         "comp_manager",
