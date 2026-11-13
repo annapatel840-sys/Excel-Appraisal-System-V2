@@ -2942,13 +2942,17 @@ async function calculateBudgetBases(
       // Joiners payroll, latest closed prior-cycle payroll, then current sheet
       // Total CTC. The stored previous-CTC sheet cell can be stale and is not
       // the value displayed after employeesapi enriches the row.
-      // Match the Appraisal Sheet's displayed Previous Total Rewards source
-      // order exactly: same-year New Joiner payroll, latest closed prior-cycle
-      // payroll, then current sheet CTC for new joiners/legacy rows. The stored
-      // previous-CTC cell can be stale because employeesapi enriches the live
-      // grid from payroll history on every read.
-      const base =
-        newJoinerCtc !== null
+      // The Appraisal Sheet's Previous Total Rewards cell is the
+      // source of truth for Org/Tech-Ed/Comp Manager budget bases. Only use
+      // payroll history when that sheet cell is genuinely blank (legacy row).
+      const storedSheetBase = employee.sheet_previous_appraisal_ctc;
+      const hasStoredSheetBase =
+        storedSheetBase !== null &&
+        storedSheetBase !== undefined &&
+        String(storedSheetBase).trim() !== "";
+      const base = hasStoredSheetBase
+        ? n(storedSheetBase)
+        : newJoinerCtc !== null
           ? newJoinerCtc
           : priorCtc !== null
             ? priorCtc
@@ -3218,18 +3222,21 @@ async function calculateBudgetBases(
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
     // second lookup can disagree with the already-generated rows and change the
     // budget total while the Appraisal Sheet's Total row stays the same.
-    // Match the visible Appraisal Sheet roster exactly: Active employees
-    // with an explicit Eligible decision. Do not re-read Eligibility_List here;
-    // the generated sheet row already contains that decision.
-    const cycleFilteredEmployees = appraisalSheetEmployees.filter((employee) => {
+    // Appraisal_Sheet is already the generated eligible roster for this
+    // cycle. Use every generated row and its resolved Previous Total Rewards
+    // value (stored sheet cell first, same prior-payroll mapping as the Sheet
+    // when the legacy cell is blank). Re-applying Eligibility_List here drops
+    // rows and makes Org Base differ from the Appraisal Sheet total.
+    const cycleFilteredEmployees = appraisalSheetEmployees;
+    // Keep the legacy explicit sheet/master eligibility roster for the
+    // existing count and allocation calculations below. Budget base itself
+    // uses cycleFilteredEmployees so it follows the exact cycle eligibility.
+    const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
       const employeeStatus = String(employee.status || employee.master_status)
         .trim()
         .toLowerCase();
       return employeeStatus === "active" && Boolean(employee.eligible);
     });
-    // Org, Tech-Ed and Comp Manager all use this same cycle-specific roster.
-    // This keeps the sum of distributed team bases equal to Org Budget Base.
-    const eligibleEmployees = cycleFilteredEmployees;
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
     // Shared value resolver for Org, Tech-Ed and Comp Manager budget bases.
