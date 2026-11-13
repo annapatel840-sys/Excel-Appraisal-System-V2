@@ -612,7 +612,13 @@ async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
   ]);
   const masterMap = buildEmployeeMasterMap(masterRows);
   const myRowId = currentUserMasterRowId(a.user, masterRows);
-  mergeEmployeeMasterIntoAppraisal(appraisalRows, masterMap).forEach(
+  const scopedCycleId = String(a.scope?.cycleId || "").trim();
+  const scopedAppraisalRows = scopedCycleId
+    ? appraisalRows.filter((row) =>
+        String(row.cycle_id || row.appraisal_cycle_id || "").trim() === scopedCycleId
+      )
+    : appraisalRows;
+  mergeEmployeeMasterIntoAppraisal(scopedAppraisalRows, masterMap).forEach(
     function (employee) {
       if (employeeBelongsToCurrentUser(employee, a.user, myRowId)) {
         owned.add(
