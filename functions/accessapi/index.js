@@ -1757,17 +1757,41 @@ app.post(
 
     // Read the two cycle-scoped tables first. Appraisal_Sheet is historical
     // and grows every cycle, so it must never be scanned wholesale here.
-    const [existing, eligibilityRows] = await Promise.all([
+    const [existing, eligibilityRows, emRows] = await Promise.all([
       selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
       selectAll(zcql, "Eligibility_List", "appraisal_cycle_id = '" + q(cycleId) + "'"),
+      selectAll(zcql, e.table),
     ]);
 
+    // Eligibility_List.emp_id is normally the business employee ID. Older
+    // rows/imports can hold the Employee_Master lookup ROWID instead, while
+    // employee_master_id is the explicit lookup column. Resolve all supported
+    // forms to the canonical Employee_Master emp_id before building the roster.
+    const masterByEmpId = new Map();
+    const masterByRowId = new Map();
+    emRows.forEach((master) => {
+      const empId = String(master[e.empId] || "").trim();
+      const rowId = String(master.ROWID || master.rowid || "").trim();
+      if (empId) masterByEmpId.set(norm(empId), master);
+      if (rowId) masterByRowId.set(rowId, master);
+    });
+    const eligibleStatus = (row) =>
+      ["eligible", "yes", "true", "1"].includes(
+        String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase(),
+      );
     const requestedEligibleIds = Array.from(new Set(
       eligibilityRows
-        .filter((row) =>
-          String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase() === "eligible"
-        )
-        .map((row) => norm(row.emp_id))
+        .filter(eligibleStatus)
+        .map((row) => {
+          const empRef = String(row.emp_id || "").trim();
+          const masterRef = String(row.employee_master_id || "").trim();
+          const master =
+            masterByEmpId.get(norm(empRef)) ||
+            masterByRowId.get(empRef) ||
+            masterByRowId.get(masterRef) ||
+            masterByEmpId.get(norm(masterRef));
+          return master ? norm(master[e.empId]) : "";
+        })
         .filter(Boolean)
     ));
     if (!requestedEligibleIds.length) {
@@ -1806,10 +1830,7 @@ app.post(
       }
       return out;
     };
-    const [emRows, sheetRows] = await Promise.all([
-      selectAll(zcql, e.table),
-      selectSheetRows(),
-    ]);
+    const sheetRows = await selectSheetRows();
     // Employee_Master indexes
     const em = {},
       byName = {};
@@ -1870,11 +1891,17 @@ app.post(
     // without an Eligible decision; do not fall back to the full master roster.
     const eligibleIds = new Set(
       eligibilityRows
-        .filter((row) =>
-          String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase() === "eligible"
-        )
-        // Same key as the Employee_Master index (norm upper-cases).
-        .map((row) => norm(row.emp_id))
+        .filter(eligibleStatus)
+        .map((row) => {
+          const empRef = String(row.emp_id || "").trim();
+          const masterRef = String(row.employee_master_id || "").trim();
+          const master =
+            masterByEmpId.get(norm(empRef)) ||
+            masterByRowId.get(empRef) ||
+            masterByRowId.get(masterRef) ||
+            masterByEmpId.get(norm(masterRef));
+          return master ? norm(master[e.empId]) : "";
+        })
         .filter((id) => id && em[id] &&
           String(em[id].row[e.status] || "Active").trim().toLowerCase() === "active")
     );
@@ -1973,6 +2000,13 @@ app.post(
         updated_at: at,
       });
     });
+
+    if (!rows.length) {
+      throw new HttpError(
+        422,
+        "No Delegation rows could be prepared. The eligible employees could not be matched to active Employee Master records. Existing Delegation rows were left untouched.",
+      );
+    }
 
     const t = ds.table("74008000000036124");
     let deleted = 0,
