@@ -211,7 +211,7 @@
 //     setBudgetCompManagerRows(comp);
 //     setEmployeeRows(Array.isArray(initialBudget.employeeRoster) ? initialBudget.employeeRoster : []);
 //     setTechEdOwners(Array.isArray(initialBudget.techEdOwners) ? initialBudget.techEdOwners : []);
-//   }, [budgetCacheScope, initialBudget]);
+//   }, [budgetSnapshotScope, initialBudget]);
 
 //   const runLoad = useCallback(async () => {
 //     setLoading(!initialBudget);
@@ -1537,6 +1537,23 @@ export function BudgetProvider({ children }) {
   // of starting another budgetmasterapi GET and roster request.
   const loadRef = useRef(null);
   const loadLocationRef = useRef(String(selectedLocation || "All"));
+  const previousLocationRef = useRef(String(selectedLocation || "All"));
+  useEffect(() => {
+    const nextLocation = String(selectedLocation || "All");
+    if (previousLocationRef.current === nextLocation) return;
+    previousLocationRef.current = nextLocation;
+    if (!dataWantedRef.current) return;
+    // Do not leave the previous location's budget visible while the newly
+    // selected location's Active cycle and allocations are loading.
+    setActiveBudgetCycleId("");
+    setBudgetRows([]);
+    setBudgetMasterRows([]);
+    setBudgetDistributionRows([]);
+    setBudgetCompManagerRows([]);
+    setEmployeeRows([]);
+    setTechEdOwners([]);
+    setBudgetWarning("");
+  }, [selectedLocation]);
   const load = useCallback(() => {
     const locationKey = String(selectedLocation || "All").trim().toLowerCase();
     if (loadRef.current && loadLocationRef.current === locationKey) {
