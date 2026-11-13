@@ -1020,24 +1020,35 @@ export function useDistributionBudget() {
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
   );
   const liveComps = useMemo(() => {
-    // budgetmasterapi authenticates and scopes Budget_Distribution_Comp to the
-    // signed-in Comp Manager. Resolve that child allocation directly: requiring
-    // liveTech first incorrectly hides a valid child row when its parent row is
-    // temporarily absent from the role-scoped response or its cycle reference
-    // is represented differently by the cycle endpoint.
+    // For a Comp Manager, budgetmasterapi has already authenticated and scoped
+    // these child rows to the signed-in manager. Resolve the cycle from the
+    // child row first, then its parent Tech-Ed allocation. Older child rows may
+    // not have appraisal_cycle_id populated; do not discard those valid rows
+    // solely because that optional child field is blank.
     if (isCompManagerLogin) {
-      return budgetCompManagerRows.filter(
-        (row) =>
-          !activeCycleId ||
-          String(row.appraisal_cycle_id || "") === String(activeCycleId),
-      );
+      return budgetCompManagerRows.filter((row) => {
+        const parent = budgetDistributionRows.find(
+          (item) =>
+            String(item.id) === String(row.budget_distribution_id),
+        );
+        const rowCycle = String(
+          row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
+        ).trim();
+        return !activeCycleId || !rowCycle || rowCycle === String(activeCycleId);
+      });
     }
 
     if (!liveTech) return [];
     return budgetCompManagerRows.filter(
       (row) => String(row.budget_distribution_id) === String(liveTech.id),
     );
-  }, [budgetCompManagerRows, liveTech, isCompManagerLogin, activeCycleId]);
+  }, [
+    budgetCompManagerRows,
+    budgetDistributionRows,
+    liveTech,
+    isCompManagerLogin,
+    activeCycleId,
+  ]);
   const liveMaster = useMemo(
     () =>
       liveTech
