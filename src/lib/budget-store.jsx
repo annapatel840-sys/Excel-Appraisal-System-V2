@@ -1285,7 +1285,8 @@ export function BudgetProvider({ children }) {
         )
           .trim()
           .toLowerCase(),
-      , selectedLocation).then(
+        selectedLocation,
+      ).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
       );
