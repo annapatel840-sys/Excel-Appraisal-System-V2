@@ -522,12 +522,12 @@ async function activeCycleRowId(datastore, requestedCycleId = "") {
     return status === "active" && !archived && !hidden;
   };
   const requested = String(requestedCycleId || "").trim();
-  const active = (requested
+  const active = requested
     ? cycles.find(function (cycle) {
         return isAvailable(cycle) &&
           String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requested;
       })
-    : null) || cycles.find(isAvailable);
+    : cycles.find(isAvailable);
   return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
 }
 
