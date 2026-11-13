@@ -1130,8 +1130,26 @@ async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
   const sameLocation = new Set(
     cycles.filter((item) => cycleLocationKey(item) === cycleLocationKey(cycle)).map((item) => item.id),
   );
+  // A location child inherits the existing org-wide source cycle's criteria
+  // when it has not yet had its own Apply. This preserves the configured
+  // eligibility rules without copying audit rows or sharing later edits.
+  const sourceCycleIds = new Set(
+    cycleLocationKey(cycle)
+      ? cycles.filter((item) =>
+          !cycleLocationKey(item) &&
+          item.id !== cycle.id &&
+          cycleNameWithoutLocation(item.name).trim().toLowerCase() ===
+            cycleNameWithoutLocation(cycle.name).trim().toLowerCase() &&
+          cycleYear(item) === cycleYear(cycle) &&
+          cycleTypeOf(item.name) === cycleTypeOf(cycle.name),
+        ).map((item) => item.id)
+      : [],
+  );
   const other = applies
-    .filter(({ row }) => sameLocation.has(String(row.batch_id || "")) && String(row.batch_id || "") !== String(cycle.id))
+    .filter(({ row }) =>
+      String(row.batch_id || "") !== String(cycle.id) &&
+      (sameLocation.has(String(row.batch_id || "")) || sourceCycleIds.has(String(row.batch_id || ""))),
+    )
     .sort(sortByTime);
   if (!other.length) return { criteria: null, criteriaHistory, inherited: false };
   return {
