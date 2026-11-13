@@ -3291,6 +3291,26 @@ const ROSTER_FIELD_TO_CATALYST = {
    HELPERS
    ============================================================ */
 
+// Current time as "YYYY-MM-DD HH:MM:SS" in the business time zone (same
+// format and zone the backend writes to eligibility_updated_at).
+function businessNowStamp() {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .map((part) => [part.type, part.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+
 function normalizeEmpId(value) {
   return String(value || "")
     .trim()
@@ -5506,6 +5526,9 @@ export function EmployeeMaster() {
           ? change.fields?.Reason || employee.eligibleReason || ""
           : change.fields?.Reason || "",
         manualOverride: manual ? true : Boolean(employee.manualOverride),
+        // Same "YYYY-MM-DD HH:MM:SS" (India time) the server stores, so the
+        // Last Updated column changes at once, without a refresh.
+        eligibilityUpdatedAt: businessNowStamp(),
         status: employee.status,
       };
     };
