@@ -1235,14 +1235,14 @@
 //       // The employeesapi roster already includes current-cycle feedback
 //       // fields. Avoid a second full Feedback_And_Rating API request.
 //       const viewAs = getViewAsSelected();
-//       const roster = await fetchAppraisalRoster({ viewAs });
+//       const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation });
 
 //       if (requestId !== loadSeqRef.current) {
 //         return;
 //       }
 
 //       freshAppliedRef.current = true;
-//       loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs);
+//       loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs) + "::" + String(selectedLocation || "All").trim().toLowerCase();
 //       setShowingSaved(false);
 
 //       const activeCycle = roster.activeCycle;
@@ -1296,7 +1296,7 @@
 //       }
 //     }
 //   // }, [isHRUser, updateRows]);
-//   }, [isHRUser, updateRows, viewAsId, rosterCacheScope]);
+//   }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation]);
 
 //   /* ==========================================================
 //   INITIAL EMPLOYEE LOAD
@@ -1314,7 +1314,7 @@
 
 //   // Show the saved copy while the first roster loads. Same key as the roster
 //   // request: the signed-in user and the View-as choice it was loaded under.
-//   const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected());
+//   const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected()) + "::" + String(selectedLocation || "All").trim().toLowerCase();
 //   useEffect(() => {
 //     if (!dataWanted || freshAppliedRef.current) return undefined;
 //     let cancelled = false;
@@ -3492,6 +3492,7 @@ PROVIDER
 
 export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
+  const [selectedLocation] = useSelectedLocation();
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
 
@@ -4658,7 +4659,6 @@ export function AppraisalProvider({ children }) {
   // (Appraisal Sheet, Detail Screen, Bulk Edit, Dashboard, Budget screens,
   // Tech-ED / Comp Manager logins). The full list stays in rowsRef so saves,
   // imports and audit keep working on the complete data.
-  const [selectedLocation] = useSelectedLocation();
   const locationRows = useMemo(
     () => filterByLocation(rows, selectedLocation),
     [rows, selectedLocation],
