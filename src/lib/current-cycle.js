@@ -1,19 +1,21 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useSelectedLocation } from "@/lib/location-store";
 
-// The top-bar label must represent an Active cycle only. Closed and
-// archived cycles remain available in cycle history, but are never a fallback.
-// When no Active cycle exists, the global header intentionally shows no label.
+// The header cycle label follows the system location. A location with no
+// Active cycle intentionally has no label; another location's cycle is never
+// used as a fallback.
 
 const STALE_MS = 60_000;
 const listeners = new Set();
-let currentName = "";
-let fetchedAt = 0;
-let inflight = null;
+const cycleNames = new Map();
+const fetchedAt = new Map();
+const inflight = new Map();
 
 const isTruthyFlag = (value) =>
-  value === true || value === 1 ||
+  value === true ||
+  value === 1 ||
   ["true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
 
 const isActiveCycle = (cycle) =>
@@ -21,28 +23,42 @@ const isActiveCycle = (cycle) =>
   !isTruthyFlag(cycle?.archived) &&
   !isTruthyFlag(cycle?.hidden);
 
-function load() {
-  if (inflight) return inflight;
-  inflight = payrollCycleRequest("cycles")
+const locationKey = (value) => {
+  const location = String(value || "All").trim();
+  return location.toLowerCase();
+};
+
+function matchesSelectedLocation(cycle, selectedLocation) {
+  const selected = locationKey(selectedLocation);
+  if (!selected || selected === "all" || selected === "all locations") return true;
+  return String(cycle?.location || "").trim().toLowerCase() === selected;
+}
+
+function load(selectedLocation) {
+  const key = locationKey(selectedLocation);
+  if (inflight.has(key)) return inflight.get(key);
+  const promise = payrollCycleRequest("cycles")
     .then((data) => {
       const list = Array.isArray(data) ? data : [];
-      const picked = list.find(isActiveCycle);
-      // Never fall back to a closed or archived cycle.
-      currentName = String(
-        picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "",
-      ).trim();
+      const picked = list.find(
+        (cycle) => isActiveCycle(cycle) && matchesSelectedLocation(cycle, selectedLocation),
+      );
+      cycleNames.set(
+        key,
+        String(picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "").trim(),
+      );
       listeners.forEach((listener) => listener());
     })
     .catch(() => {
-      // Don't retain a stale closed-cycle label if refresh fails.
-      currentName = "";
+      cycleNames.set(key, "");
       listeners.forEach((listener) => listener());
     })
     .finally(() => {
-      fetchedAt = Date.now();
-      inflight = null;
+      fetchedAt.set(key, Date.now());
+      inflight.delete(key);
     });
-  return inflight;
+  inflight.set(key, promise);
+  return promise;
 }
 
 const subscribe = (listener) => {
@@ -51,21 +67,24 @@ const subscribe = (listener) => {
 };
 
 export function useCurrentCycleName() {
+  const [selectedLocation] = useSelectedLocation();
+  const key = locationKey(selectedLocation);
   const name = useSyncExternalStore(
     subscribe,
-    () => currentName,
+    () => cycleNames.get(key) || "",
     () => "",
   );
   useEffect(() => {
-    if (Date.now() - fetchedAt > STALE_MS) load();
+    if (Date.now() - (fetchedAt.get(key) || 0) > STALE_MS) load(selectedLocation);
     if (typeof window === "undefined") return undefined;
     const refresh = () => {
-      currentName = "";
+      fetchedAt.delete(key);
+      cycleNames.set(key, "");
       listeners.forEach((listener) => listener());
-      load();
+      load(selectedLocation);
     };
     window.addEventListener("appraisal:cycle-updated", refresh);
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
-  }, []);
+  }, [key, selectedLocation]);
   return name;
 }
