@@ -183,9 +183,10 @@ async function getProjectSchema(adminApp) {
 }
 
 class ApiError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, code = "") {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -1825,7 +1826,7 @@ function sameSheetValue(stored, next) {
   return false;
 }
 
-async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
+async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, options = {}) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
@@ -1919,6 +1920,22 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     return itemYear < currentYear || (itemYear === currentYear && itemDate && currentDate && itemDate < currentDate);
   };
   const currentYear = cycleYear(cycle);
+  const reuseExistingCycleData = options.reuseExistingCycleData === true;
+  const canonicalCycleName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
+  const sourceCycle = cycleLocationKey(cycle)
+    ? normalizedCycles.find((item) =>
+        String(item.id) !== String(cycle.id) &&
+        !cycleLocationKey(item) &&
+        cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalCycleName &&
+        cycleYear(item) === currentYear &&
+        cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
+      ) || null
+    : null;
+  const sourceCycleKeys = new Set(
+    sourceCycle
+      ? [sourceCycle.id, sourceCycle.sourceRowId, sourceCycle.name].map((value) => referenceText(value).toLowerCase()).filter(Boolean)
+      : [],
+  );
   const payrollRowsWithCycle = payrollRows.map((row) => {
     const rawCycle = referenceText(
       row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
@@ -1930,9 +1947,22 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
   // must belong to this exact cycle; rows from another cycle cannot satisfy
   // the prerequisite just because they exist in the same Data Store tables.
   const currentCyclePayrollRows = payrollRowsWithCycle.filter(
-    ({ cycle: sourceCycle }) => sourceCycle && String(sourceCycle.id) === String(cycle.id),
+    ({ cycle: rowCycle }) => rowCycle && (
+      String(rowCycle.id) === String(cycle.id) ||
+      (reuseExistingCycleData && sourceCycle && String(rowCycle.id) === String(sourceCycle.id))
+    ),
   );
+  const sourceHasPayroll = Boolean(sourceCycle && payrollRowsWithCycle.some(
+    ({ cycle: rowCycle }) => rowCycle && String(rowCycle.id) === String(sourceCycle.id),
+  ));
   if (!currentCyclePayrollRows.length) {
+    if (!reuseExistingCycleData && sourceHasPayroll) {
+      throw new ApiError(
+        `Payroll data already exists for ${sourceCycle.name}. Confirm to reuse those existing records for ${cycle.name}; no payroll rows will be copied or inserted.`,
+        409,
+        "EXISTING_CYCLE_DATA_AVAILABLE",
+      );
+    }
     throw new ApiError(
       `Payroll data has not been uploaded for ${cycle.name}. Upload payroll data for this cycle before generating the Appraisal Sheet.`,
       409,
@@ -1943,10 +1973,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     const feedbackCycle = referenceText(
       fieldValue(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"),
     ).toLowerCase();
-    return [cycle.id, cycle.sourceRowId, cycle.name]
-      .map((value) => referenceText(value).toLowerCase())
-      .filter(Boolean)
-      .includes(feedbackCycle);
+    const acceptedCycleKeys = [cycle.id, cycle.sourceRowId, cycle.name]
+      .map((value) => referenceText(value).toLowerCase()).filter(Boolean);
+    if (reuseExistingCycleData) acceptedCycleKeys.push(...sourceCycleKeys);
+    return acceptedCycleKeys.includes(feedbackCycle);
   });
   const hasFeedback = currentCycleFeedbackRows.some((row) =>
     ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
@@ -1961,6 +1991,28 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     }),
   );
   if (!currentCycleFeedbackRows.length || !hasFeedback || !hasRating) {
+    const sourceFeedbackRows = sourceCycle ? feedbackRows.filter((row) =>
+      sourceCycleKeys.has(referenceText(fieldValue(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year")).toLowerCase())
+    ) : [];
+    const sourceHasFeedback = sourceFeedbackRows.some((row) =>
+      ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
+        const value = fieldValue(row, field);
+        return value !== undefined && value !== null && String(value).trim() !== "";
+      })
+    );
+    const sourceHasRating = sourceFeedbackRows.some((row) =>
+      ["manager_rating", "client_rating"].some((field) => {
+        const value = fieldValue(row, field);
+        return value !== undefined && value !== null && String(value).trim() !== "";
+      })
+    );
+    if (!reuseExistingCycleData && sourceCycle && sourceHasPayroll && sourceFeedbackRows.length && sourceHasFeedback && sourceHasRating) {
+      throw new ApiError(
+        `Existing payroll, feedback and rating data were found for ${sourceCycle.name}. Confirm to reuse them for ${cycle.name}; no duplicate rows will be created.`,
+        409,
+        "EXISTING_CYCLE_DATA_AVAILABLE",
+      );
+    }
     const missing = [
       !currentCycleFeedbackRows.length ? "Feedback and Rating upload" : "",
       !hasFeedback ? "feedback values" : "",
@@ -1973,7 +2025,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
   }
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    if (masterId && cycleKeys.has(rawCycle.toLowerCase())) {
+    if (masterId && (cycleKeys.has(rawCycle.toLowerCase()) || (reuseExistingCycleData && sourceCycleKeys.has(rawCycle.toLowerCase())))) {
       payrollByMasterId.set(masterId, row);
     }
   });
@@ -2048,7 +2100,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     ]).filter(([id]) => id),
   );
   const feedbackCycleKeys = new Set(
-    [cycle.id, cycle.sourceRowId, cycle.name]
+    [cycle.id, cycle.sourceRowId, cycle.name, ...(reuseExistingCycleData ? [...sourceCycleKeys] : [])]
       .map((value) => referenceText(value).toLowerCase())
       .filter(Boolean),
   );
@@ -3420,7 +3472,9 @@ async function routeRequest(req, res, identity, resource, a) {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const cycle = cycles.find((item) => item.id === cycleId);
     if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-    const result = await generateAppraisalSheet(tables, cycle, actor, writeDeadline);
+    const result = await generateAppraisalSheet(tables, cycle, actor, writeDeadline, {
+      reuseExistingCycleData: body.reuseExistingCycleData === true,
+    });
     return sendJson(res, 200, { success: true, data: result });
   }
 
@@ -4102,7 +4156,11 @@ module.exports = async function payrollCycleApi(req, res) {
       stack: error.stack,
     }));
     const status = error instanceof ApiError ? error.status : 500;
-    return sendJson(res, status, { success: false, message: error.message || "Payroll service failed." });
+    return sendJson(res, status, {
+      success: false,
+      message: error.message || "Payroll service failed.",
+      ...(error.code ? { code: error.code } : {}),
+    });
   }
 };
 
