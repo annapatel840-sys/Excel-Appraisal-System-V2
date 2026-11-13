@@ -1886,27 +1886,14 @@ async function calculateBudgetBases(
       .map((master) => cycleReference(master.appraisal_cycle_id).toLowerCase())
       .filter(Boolean),
   );
-  const isGlobalBudgetCycle = (cycle) => {
-    const location = String(
-      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
-    ).trim().toLowerCase();
-    return !location || ["all", "all locations", "global"].includes(location);
-  };
   const hasBudgetMaster = (cycle) =>
     [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
       budgetCycleRefs.has(String(ref || "").trim().toLowerCase()),
     );
-  // If HR reopens the Global cycle while country-specific cycles are also
-  // Active, prefer Global for the shared Budget Master context. Otherwise
-  // Data Store order can silently select another location's roster.
+  // Every cycle is location-scoped. Select the Active cycle linked to its own
+  // Budget_Master record; do not privilege a legacy unscoped cycle.
   const activeSheetCycle =
-    cycleRows.find(
-      (cycle) => isActiveCycle(cycle) && isGlobalBudgetCycle(cycle) && hasBudgetMaster(cycle),
-    ) ||
-    cycleRows.find(
-      (cycle) => isActiveCycle(cycle) && hasBudgetMaster(cycle),
-    ) ||
-    cycleRows.find((cycle) => isActiveCycle(cycle) && isGlobalBudgetCycle(cycle)) ||
+    cycleRows.find((cycle) => isActiveCycle(cycle) && hasBudgetMaster(cycle)) ||
     cycleRows.find(isActiveCycle);
   const activeSheetCycleId = activeSheetCycle
     ? cycleIdOf(activeSheetCycle)
@@ -2888,11 +2875,9 @@ async function calculateBudgetBases(
       ),
   );
   const activeRosterCycle =
-    activeRosterCycles.find((cycle) => {
-      const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
-        .trim().toLowerCase();
-      return !location || ["all", "all locations", "global"].includes(location);
-    }) || activeRosterCycles[0] || null;
+    activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
+    activeRosterCycles[0] ||
+    null;
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
   // row: when all cycles are closed, current working data must be empty.
@@ -3959,14 +3944,12 @@ module.exports = async function (req, res) {
       );
       return status === "active" && !archived && !hidden;
     });
-    // For shared HR Budget Master operations, use Global when active alongside
-    // country-specific cycles; location-specific budget rows remain cycle-bound.
+    // Budget writes must target the Active cycle linked to the selected
+    // Budget_Master row, keeping every location's budget isolated.
     const activeCycleForWrite =
-      activeCyclesForWrite.find((cycle) => {
-        const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
-          .trim().toLowerCase();
-        return !location || ["all", "all locations", "global"].includes(location);
-      }) || activeCyclesForWrite[0] || null;
+      activeCyclesForWrite.find((cycle) => hasBudgetMaster(cycle)) ||
+      activeCyclesForWrite[0] ||
+      null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
       : "";
