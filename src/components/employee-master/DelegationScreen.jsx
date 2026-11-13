@@ -3112,7 +3112,7 @@ export default function DelegationScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () =>
       window.removeEventListener("appraisal:cycle-updated", refreshRoster);
-  }, [initialRows]);
+  }, [initialRows, selectedLocation]);
   const say = (msg, err) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);
