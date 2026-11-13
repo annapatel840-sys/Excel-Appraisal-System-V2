@@ -2838,17 +2838,13 @@ async function calculateBudgetBases(
       // Joiners payroll, latest closed prior-cycle payroll, then current sheet
       // Total CTC. The stored previous-CTC sheet cell can be stale and is not
       // the value displayed after employeesapi enriches the row.
-      // The Appraisal Sheet's Previous Total Rewards cell is the
-      // source of truth for Org/Tech-Ed/Comp Manager budget bases. Only use
-      // payroll history when that sheet cell is genuinely blank (legacy row).
-      const storedSheetBase = employee.sheet_previous_appraisal_ctc;
-      const hasStoredSheetBase =
-        storedSheetBase !== null &&
-        storedSheetBase !== undefined &&
-        String(storedSheetBase).trim() !== "";
-      const base = hasStoredSheetBase
-        ? n(storedSheetBase)
-        : newJoinerCtc !== null
+      // Match the Appraisal Sheet's displayed Previous Total Rewards source
+      // order exactly: same-year New Joiner payroll, latest closed prior-cycle
+      // payroll, then current sheet CTC for new joiners/legacy rows. The stored
+      // previous-CTC cell can be stale because employeesapi enriches the live
+      // grid from payroll history on every read.
+      const base =
+        newJoinerCtc !== null
           ? newJoinerCtc
           : priorCtc !== null
             ? priorCtc
