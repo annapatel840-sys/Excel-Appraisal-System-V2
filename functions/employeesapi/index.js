@@ -506,26 +506,28 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
   }
 }
 
-async function activeCycleRowId(datastore) {
+async function activeCycleRowId(datastore, requestedCycleId = "") {
   const cycles = await readAllDataStoreRows(
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
-  const active = cycles.find(function (cycle) {
+  const isAvailable = function (cycle) {
     const status = String(cycle?.status ?? cycle?.cycle_status ?? "")
-      .trim()
-      .toLowerCase();
+      .trim().toLowerCase();
     const archived = ["true", "1", "yes"].includes(
-      String(cycle?.archived ?? "")
-        .trim()
-        .toLowerCase(),
+      String(cycle?.archived ?? "").trim().toLowerCase(),
     );
     const hidden = ["true", "1", "yes"].includes(
-      String(cycle?.hidden ?? "")
-        .trim()
-        .toLowerCase(),
+      String(cycle?.hidden ?? "").trim().toLowerCase(),
     );
     return status === "active" && !archived && !hidden;
-  });
+  };
+  const requested = String(requestedCycleId || "").trim();
+  const active = (requested
+    ? cycles.find(function (cycle) {
+        return isAvailable(cycle) &&
+          String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requested;
+      })
+    : null) || cycles.find(isAvailable);
   return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
 }
 
@@ -4616,7 +4618,7 @@ async function updateEmployee(req, res) {
       : readOwnRows("Employee_Master", masterTable),
     // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
     // With an Active cycle and no row for it, the sheet is not generated yet.
-    activeCycleRowId(adminApp.datastore()),
+    activeCycleRowId(adminApp.datastore(), body.cycle_id || body.appraisal_cycle_id),
   ]);
   // Only the Active cycle's row is ever edited; without an Active cycle there
   // is no current Appraisal Sheet row to change.
