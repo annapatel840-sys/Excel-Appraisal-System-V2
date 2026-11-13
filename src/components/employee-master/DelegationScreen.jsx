@@ -2985,7 +2985,7 @@ export default function DelegationScreen({
       // list: catalystFetch runs at most two requests at a time.
       // The first load joins the request the sign-in prefetch already started
       // (if any); explicit reloads always ask the server again.
-      const firstPromise = fetchDelegationRoster({ fresh: !initial });
+      const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
       firstPromise.catch(() => {}); // reported where it is awaited below
       const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
