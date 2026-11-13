@@ -6504,7 +6504,7 @@ export function EmployeeMaster() {
         )}
         {isTabVisible("hr-dashboard") && activeTab === "hr-dashboard" && (
           <div className="em-tab-content">
-            <HrDashboardPage />
+            <HrDashboardPage onNavigate={goToTab} canOpen={isTabVisible} />
           </div>
         )}
         {isTabVisible("access") && activeTab === "access" && (
