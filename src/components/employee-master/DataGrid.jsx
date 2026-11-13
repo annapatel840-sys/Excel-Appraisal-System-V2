@@ -209,6 +209,7 @@ export function DataGrid({
   emptyText = "No rows match the current filters.",
   fillWidth = false, // stretch columns to the full width of the grid area
   actionWidth = 130,
+  stickyAction = false, // keep the action column pinned on the right while the rest scrolls
 }) {
   const [menu, setMenu] = useState(null);
 
@@ -287,7 +288,7 @@ export function DataGrid({
                 );
               })}
               {actionHeader && (
-                <th>
+                <th className={stickyAction ? "emx-actcol" : undefined}>
                   <div className="emx-thi"><span className="emx-tl">{actionHeader}</span></div>
                 </th>
               )}
@@ -331,7 +332,9 @@ export function DataGrid({
                         </td>
                       );
                     })}
-                    {actionHeader && <td>{renderAction(row)}</td>}
+                    {actionHeader && (
+                      <td className={stickyAction ? "emx-actcol" : undefined}>{renderAction(row)}</td>
+                    )}
                   </tr>
                 );
               })

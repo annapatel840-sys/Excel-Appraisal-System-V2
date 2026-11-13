@@ -652,9 +652,8 @@
 // }
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, History, Info, Menu, Plus, Search, Upload } from "lucide-react";
+import { Download, History, Menu, Plus, Search, Upload } from "lucide-react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
 import { PanelTab, SidePanel } from "./SidePanel";
 import { AddEmployeeModal } from "./AddEmployeeModal";
@@ -663,7 +662,7 @@ import { useScreenFields } from "@/lib/access-store";
 import { fmtDoj } from "@/lib/employee-master-utils";
 import { LocationMasterControl } from "./LocationMasterControl";
 import { matchesLocation, isAllLocations } from "@/lib/location-store";
-import { effectiveRow, isActiveStatus, isInactiveStatus } from "@/lib/eligibility-rules";
+import { effectiveRow, isActionNeededStatus, isActiveStatus, isInactiveStatus } from "@/lib/eligibility-rules";
 import "./employee-master-ui.css";
 
 const PAGE_SIZE = 20;
@@ -689,49 +688,8 @@ const eligibilityDecisionOf = (employee) => {
   return "Pending";
 };
 
-// "i" button next to the Need Action metric: opens on hover (desktop) or tap.
-function NeedActionInfo() {
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="About Need Action"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: 0,
-            border: 0,
-            background: "none",
-            color: "#64748B",
-            cursor: "pointer",
-          }}
-        >
-          <Info size={11} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="start"
-        className="w-56 p-2 text-xs"
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onClick={(event) => event.stopPropagation()}
-      >
-        These employees' status needs attention.
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// "Need Action": the employee's status in the Employee Master is not Active.
-const needsAction = (e) => Boolean(e?._eff?.actionNeeded);
+// Action Needed: the employee's status is neither Active nor Inactive.
+const needsAction = (e) => isActionNeededStatus(e);
 
 const updatedOf = (e) =>
   e.eligibilityUpdatedAt ||
@@ -905,7 +863,7 @@ const TABS = [
   ["crit", "Eligibility Criteria"],
   ["list", "Eligibility List"],
   ["ne", "Not Eligible"],
-  ["act", "Action needed"],
+  ["act", "Action Needed"],
 ];
 
 export function EligibilityList({
@@ -986,7 +944,7 @@ export function EligibilityList({
     (e) => {
       if (tab === "list" && !e._eff.eligible) return false;
       if (tab === "ne" && e._eff.decision !== "Not Eligible") return false;
-      if (tab === "act" && !e._eff.actionNeeded) return false;
+      if (tab === "act" && !needsAction(e)) return false;
       const term = (search || "").trim().toLowerCase();
       if (!term) return true;
       return (
@@ -1154,16 +1112,6 @@ export function EligibilityList({
           {stat("total", counted.length, "Total", "list")}
           {stat("el", eligibleCount, "Eligible", "list")}
           {stat("ne", notEligibleCount, "Not Eligible", "ne")}
-          {stat(
-            "act",
-            needActionCount,
-            "Need Action",
-            "act",
-            <div style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-              <span>Need Action</span>
-              <NeedActionInfo />
-            </div>,
-          )}
         </div>
 
         <div className="em-eligibility-actions">
@@ -1186,16 +1134,6 @@ export function EligibilityList({
             ariaLabel="Filter Eligibility List by Location Master"
           />
 
-          {onAddEmployee && canEdit && (
-            <button
-              type="button"
-              className="em-btn emx-dashed"
-              disabled={!criteriaApplied}
-              onClick={() => setAddOpen(true)}
-            >
-              <Plus size={14} /> Add an Employee
-            </button>
-          )}
           <div className="em-eligibility-generate">
             {criteriaApplied && onGenerateDelegation && (
               <button
@@ -1309,6 +1247,17 @@ export function EligibilityList({
             {key === "act" && actionTabCount > 0 ? ` (${actionTabCount})` : ""}
           </button>
         ))}
+        {tab === "list" && onAddEmployee && canEdit && (
+          <div className="elx-tabs-right">
+            <button
+              type="button"
+              disabled={!criteriaApplied}
+              onClick={() => setAddOpen(true)}
+            >
+              <Plus size={14} /> Add an Employee
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ================= BODY + PANEL ================= */}
@@ -1373,6 +1322,7 @@ export function EligibilityList({
                 canSelectRow={canSelect}
                 rowClass={(e) => (rowIsOff(e) ? "emx-dim" : "")}
                 actionHeader={canEdit ? "Action" : null}
+                stickyAction
                 renderAction={(e) =>
                   rowIsOff(e) ? (
                     "—"
@@ -1388,7 +1338,7 @@ export function EligibilityList({
                 }
                 emptyText={
                   tab === "act"
-                    ? "Nothing needs action."
+                    ? "No employees need action."
                     : tab === "ne"
                       ? "No Not Eligible employees."
                       : "No eligibility records found."
@@ -1444,14 +1394,13 @@ export function EligibilityList({
           <div className="em-modal em-small-modal">
             <div className="em-modal-header">
               <div>
-                <strong>Action needed</strong>
+                <strong>Action Needed</strong>
               </div>
             </div>
             <div className="em-modal-body">
               <b>{delegationPrompt}</b> is now Eligible.
               <div className="em-hint" style={{ marginTop: 8 }}>
-                Next step: Generate Delegation. The employee stays in Action needed until the
-                Delegation step and then the Appraisal Sheet step are done.
+                Next step: Generate Delegation, then the Appraisal Sheet step.
               </div>
             </div>
             <div className="em-modal-footer">

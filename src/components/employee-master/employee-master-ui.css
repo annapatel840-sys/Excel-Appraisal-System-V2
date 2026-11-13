@@ -343,3 +343,23 @@
 .elx-actions .elx-apply{min-width:150px;justify-content:center}
 @media(max-width:900px){.elx-cwrap{flex-direction:column}.elx-cl{width:100%}}
 .elx-actions .em-apply-btn{width:auto;margin-top:0;text-transform:uppercase}
+/* ---- Pinned Action column (right) ---- */
+.emx-table th.emx-actcol{right:0;left:auto;z-index:5;background:#DFE8F3;border-left:1px solid #C9D8EC;border-right:0}
+.emx-table tbody tr td.emx-actcol{position:sticky;right:0;z-index:1;background:#FBFCFE;border-left:1px solid #CBD5E1;border-right:0}
+.emx-table tbody tr:nth-child(even) td.emx-actcol{background:#F2F5F9}
+.emx-table tbody tr:hover td.emx-actcol{background:#EAF2FF}
+.emx-table tbody tr.emx-sel td.emx-actcol{background:#DCEBFF}
+
+/* ---- Add an Employee sits at the right end of the tab bar ---- */
+.elx-tabs .elx-tabs-right{margin-left:auto;display:flex;align-items:center;padding:4px 0}
+.elx-tabs .elx-tabs-right button{margin:0;padding:5px 12px;border:1px dashed #9db4d3;border-radius:6px;border-bottom:1px dashed #9db4d3;color:#17365d;font-size:12.5px;display:inline-flex;align-items:center;gap:4px}
+.elx-tabs .elx-tabs-right button:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---- Add parameter: field dropdown ---- */
+.elx-addmenu{z-index:10050;display:flex;flex-direction:column;background:#fff;border:1px solid #CBD5E1;border-radius:8px;box-shadow:0 10px 28px rgba(15,23,42,.18);overflow:hidden}
+.elx-addmenu input{margin:8px;height:32px;border:1px solid #d9dee7;border-radius:6px;padding:0 8px;font:inherit;font-size:12.5px}
+.elx-addmenu .elx-addlist{overflow-y:auto;flex:1 1 auto;border-top:1px solid #eef1f5}
+.elx-addmenu .elx-addopt{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:8px 12px;border:0;background:none;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;color:#334155;text-align:left}
+.elx-addmenu .elx-addopt:hover{background:#EAF2FF}
+.elx-addmenu .elx-addopt i{font-style:normal;font-weight:500;font-size:10.5px;color:#9ca3af}
+.elx-addmenu .elx-addempty{padding:12px;color:#9ca3af;font-size:12px}

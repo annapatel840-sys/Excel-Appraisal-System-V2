@@ -27,6 +27,8 @@ export const statusOf = (e) =>
   String(e?.status ?? e?.rawEmployee?.emp_status ?? e?.rawEmployee?.status ?? "Active").trim();
 export const isActiveStatus = (e) => statusOf(e).toLowerCase() === "active";
 export const isInactiveStatus = (e) => statusOf(e).toLowerCase() === "inactive";
+// Action Needed: a status that is neither Active nor Inactive (e.g. leave).
+export const isActionNeededStatus = (e) => !isActiveStatus(e) && !isInactiveStatus(e);
 
 export const decisionOf = (e) => {
   const raw = String(
@@ -129,8 +131,85 @@ export const PARAM_MASTERS = [
   },
 ];
 
-export const findParamField = (masterId, fieldKey) =>
-  PARAM_MASTERS.find((m) => m.id === masterId)?.fields.find((f) => f.key === fieldKey) || null;
+/* ---------- every Employee Master column, read from the loaded rows ---------- */
+const RAW_PREFIX = "raw:";
+
+const FIELD_LABELS = {
+  repo_manager: "Reporting Manager",
+  director: "Comp Manager",
+  appraiser_tech_ed: "Appraiser (Tech Ed)",
+  wissen_experience: "Org Experience (years)",
+  total_experience: "Total Experience (years)",
+  email_id: "Email",
+  cost_center: "Cost Center",
+  current_salary: "Current Salary",
+  last_appraisal_month_year: "Last Appraisal",
+  emp_type: "Emp Type",
+};
+
+const humanize = (col) =>
+  FIELD_LABELS[col] ||
+  String(col)
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Columns that already have their own section, are system columns, or are
+// eligibility bookkeeping: not offered as an added parameter.
+const SKIP_COLUMNS = new Set([
+  "rowid", "creatorid", "createdtime", "modifiedtime",
+  "emp_id", "employee_id", "emp_code", "emp_name", "name",
+  "designation", "department", "organization", "orgtn",
+  "emp_status", "status",
+  "date_of_join", "joining_date", "doj", "date_of_joining",
+  "eligible", "eligible_status", "eligibility_status", "eligible_reason",
+  "eligibility_reason", "eligibility_source", "eligibility_updated_at",
+  "eligible_updated_at", "change_tag", "manual_override", "next_step",
+  "location",
+]);
+
+const DATE_LIKE = /^\d{4}-\d{2}-\d{2}|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/;
+
+const rawField = (col, type) => ({
+  key: RAW_PREFIX + col,
+  label: humanize(col),
+  type,
+  get: (e) => e?.rawEmployee?.[col],
+});
+
+/* All other Employee Master fields, with a type guessed from the values:
+   number -> "exclude below a number", date -> "exclude by date", else a list. */
+export function employeeMasterFields(employees) {
+  const seen = new Map();
+  (employees || []).forEach((e) => {
+    const raw = e?.rawEmployee;
+    if (!raw || typeof raw !== "object") return;
+    Object.keys(raw).forEach((col) => {
+      if (SKIP_COLUMNS.has(col.toLowerCase())) return;
+      const v = raw[col];
+      if (v !== null && typeof v === "object") return;
+      const text = String(v ?? "").trim();
+      const info = seen.get(col) || { n: 0, numeric: true, date: true };
+      if (text) {
+        info.n += 1;
+        if (!(text !== "" && !Number.isNaN(Number(text)))) info.numeric = false;
+        if (!DATE_LIKE.test(text)) info.date = false;
+      }
+      seen.set(col, info);
+    });
+  });
+  return [...seen.entries()]
+    .map(([col, info]) => rawField(col, info.n && info.numeric ? "number" : info.n && info.date ? "date" : "list"))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export const findParamField = (masterId, fieldKey) => {
+  if (String(fieldKey || "").startsWith(RAW_PREFIX)) {
+    return rawField(String(fieldKey).slice(RAW_PREFIX.length), "list");
+  }
+  return PARAM_MASTERS.find((m) => m.id === masterId)?.fields.find((f) => f.key === fieldKey) || null;
+};
 
 export const paramValues = (param, employees) => {
   const f = findParamField(param.master, param.field);

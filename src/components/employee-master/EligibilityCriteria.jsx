@@ -4,6 +4,7 @@ import { loadDesignationMaster } from "@/lib/designation-master-api";
 import {
   PARAM_MASTERS,
   defaultCutoffForCycle,
+  employeeMasterFields,
   findParamField,
   paramValues,
   previewCounts,
@@ -45,7 +46,11 @@ export function EligibilityCriteria({
   const [listQuery, setListQuery] = useState("");
   const [empQuery, setEmpQuery] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
-  const [add, setAdd] = useState({ master: PARAM_MASTERS[0].id, field: "", label: "" });
+  const [addOpen, setAddOpen] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const [addPos, setAddPos] = useState(null);
+  const addBtnRef = useRef(null);
+  const addMenuRef = useRef(null);
   const savedDraftRef = useRef(null);
   const draftingRef = useRef(false);
 
@@ -143,10 +148,13 @@ export function EligibilityCriteria({
     return t.length ? t : [...new Set(activeEmployees.map((e) => e.designation))].filter(Boolean).sort();
   }, [designationRows, activeEmployees]);
 
+  // Only the statuses that really exist in the Employee Master.
   const statusValues = useMemo(() => {
-    const found = [...new Set(employees.map((e) => e.status))].filter(Boolean);
-    const all = [...new Set(["Active", ...ALWAYS_EXCLUDED, ...found])];
-    return all.sort((a, b) => (a === "Active" ? -1 : b === "Active" ? 1 : a.localeCompare(b)));
+    const found = [...new Set(employees.map((e) => statusOf(e)))].filter(Boolean);
+    return found.sort((a, b) => {
+      const rank = (v) => (v.toLowerCase() === "active" ? 0 : v.toLowerCase() === "inactive" ? 1 : 2);
+      return rank(a) - rank(b) || a.localeCompare(b);
+    });
   }, [employees]);
 
   const countBy = (get, v) => employees.filter((e) => String(get(e) ?? "") === v).length;
@@ -157,7 +165,7 @@ export function EligibilityCriteria({
       title: "Employee status",
       desc: "Employees with a ticked status are left out of the Eligibility List. Values are read from the Employee Master. Inactive is always excluded.",
       values: statusValues,
-      selected: withAlways(selectedStatuses),
+      selected: withAlways(selectedStatuses).filter((v) => statusValues.includes(v)),
       set: setSelectedStatuses,
       count: (v) => countBy((e) => e.status, v),
       always: (v) => ALWAYS_EXCLUDED.includes(v),
@@ -221,7 +229,7 @@ export function EligibilityCriteria({
   ];
 
   useEffect(() => {
-    if (sel !== "add" && !nav.some(([id]) => id === sel)) setSel("st");
+    if (!nav.some(([id]) => id === sel)) setSel("st");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraParameters]);
 
@@ -544,86 +552,66 @@ export function EligibilityCriteria({
     );
   };
 
-  const renderAdd = () => {
-    const master = PARAM_MASTERS.find((m) => m.id === add.master) || PARAM_MASTERS[0];
-    const used = extraParameters.map((p) => `${p.master}|${p.field}`);
-    const free = master.fields.filter((f) => !used.includes(`${master.id}|${f.key}`));
-    const field = free.find((f) => f.key === add.field) || free[0];
-    const label = add.label || field?.label || "";
-    return (
-      <>
-        <div className="elx-rh">
-          <div>
-            <div className="elx-rt">Add parameter</div>
-            <div className="em-hint">
-              Pick the master where the values are stored, then the field. The values are read from
-              that master and the parameter is saved with this location's criteria.
-            </div>
-          </div>
-        </div>
-        <div className="elx-addf">
-          <label>
-            Master
-            <select value={master.id} onChange={(e) => setAdd({ master: e.target.value, field: "", label: "" })}>
-              {PARAM_MASTERS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Field
-            <select value={field?.key || ""} onChange={(e) => setAdd({ ...add, field: e.target.value, label: "" })}>
-              {free.length === 0 && <option value="">All fields already added</option>}
-              {free.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Name shown
-            <input value={label} onChange={(e) => setAdd({ ...add, label: e.target.value })} />
-          </label>
-          {field && (
-            <div className="em-hint">
-              Type:{" "}
-              {field.type === "list"
-                ? "Exclude selected values"
-                : field.type === "number"
-                  ? "Exclude if below a number"
-                  : "Exclude by date"}
-            </div>
-          )}
-          <div>
-            <button
-              type="button"
-              className="em-btn em-btn-primary"
-              disabled={!field}
-              onClick={() => {
-                const id = `${field.key}_${Date.now() % 100000}`;
-                setExtraParameters((cur) => [
-                  ...cur,
-                  { id, master: master.id, field: field.key, label: label.trim() || field.label, type: field.type, values: [], op: "after", value: "" },
-                ]);
-                setSel(`x${id}`);
-                setAdd({ master: master.id, field: "", label: "" });
-              }}
-            >
-              Add parameter
-            </button>
-          </div>
-        </div>
-      </>
-    );
+  /* ----- Add parameter: a dropdown of every Employee Master field ----- */
+  const masterFields = useMemo(() => employeeMasterFields(employees), [employees]);
+  const addable = useMemo(() => {
+    const used = new Set(extraParameters.map((p) => p.field));
+    const q = addQuery.trim().toLowerCase();
+    return masterFields.filter((f) => !used.has(f.key) && (!q || f.label.toLowerCase().includes(q)));
+  }, [masterFields, extraParameters, addQuery]);
+
+  const openAddMenu = () => {
+    const rect = addBtnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = window.innerHeight - rect.bottom - 8;
+    const flip = below < 200 && rect.top > below;
+    setAddPos({
+      left: rect.left,
+      width: Math.max(rect.width, 260),
+      maxHeight: Math.min(340, Math.max(160, flip ? rect.top - 12 : below)),
+      ...(flip ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+    });
+    setAddQuery("");
+    setAddOpen(true);
+  };
+
+  useEffect(() => {
+    if (!addOpen) return undefined;
+    const outside = (e) => {
+      if (addMenuRef.current?.contains(e.target) || addBtnRef.current?.contains(e.target)) return;
+      setAddOpen(false);
+    };
+    const esc = (e) => e.key === "Escape" && setAddOpen(false);
+    const scroll = (e) => {
+      if (addMenuRef.current?.contains(e.target)) return;
+      setAddOpen(false);
+    };
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", scroll, true);
+    window.addEventListener("resize", scroll);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", scroll, true);
+      window.removeEventListener("resize", scroll);
+    };
+  }, [addOpen]);
+
+  const addField = (field) => {
+    const id = `${field.key.replace(/[^a-z0-9]/gi, "")}_${Date.now() % 100000}`;
+    setExtraParameters((cur) => [
+      ...cur,
+      { id, master: "EM", field: field.key, label: field.label, type: field.type, values: [], op: "after", value: "" },
+    ]);
+    setSel(`x${id}`);
+    setListQuery("");
+    setAddOpen(false);
   };
 
   const selectedParam = extraParameters.find((x) => `x${x.id}` === sel);
   let pane;
-  if (sel === "add") pane = renderAdd();
-  else if (sel === "em") pane = renderEmployees();
+  if (sel === "em") pane = renderEmployees();
   else if (sel === "ct") pane = renderCutoff();
   else if (lists[sel]) pane = renderList(sel);
   else if (selectedParam) pane = renderParamValue(selectedParam);
@@ -663,14 +651,52 @@ export function EligibilityCriteria({
             </button>
           ))}
           <button
+            ref={addBtnRef}
             type="button"
-            className={`elx-ni add${sel === "add" ? " on" : ""}`}
+            className={`elx-ni add${addOpen ? " on" : ""}`}
             disabled={locked}
+            aria-haspopup="listbox"
+            aria-expanded={addOpen}
             title={locked ? "Edit Criteria is needed to change the parameters" : undefined}
-            onClick={() => setSel("add")}
+            onClick={() => (addOpen ? setAddOpen(false) : openAddMenu())}
           >
             <span>＋ Add parameter</span>
+            <span>▾</span>
           </button>
+          {addOpen && addPos && (
+            <div
+              ref={addMenuRef}
+              className="elx-addmenu"
+              role="listbox"
+              style={{
+                position: "fixed",
+                left: addPos.left,
+                width: addPos.width,
+                maxHeight: addPos.maxHeight,
+                ...(addPos.top !== undefined ? { top: addPos.top } : { bottom: addPos.bottom }),
+              }}
+            >
+              <input
+                autoFocus
+                placeholder="Search Employee Master fields"
+                value={addQuery}
+                onChange={(e) => setAddQuery(e.target.value)}
+              />
+              <div className="elx-addlist">
+                {addable.length === 0 && (
+                  <div className="elx-addempty">
+                    {masterFields.length ? "No more fields to add." : "No Employee Master fields found."}
+                  </div>
+                )}
+                {addable.map((f) => (
+                  <button key={f.key} type="button" role="option" className="elx-addopt" onClick={() => addField(f)}>
+                    <span>{f.label}</span>
+                    <i>{f.type === "list" ? "values" : f.type}</i>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="elx-cr">{pane}</div>
       </div>

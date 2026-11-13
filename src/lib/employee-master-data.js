@@ -150,10 +150,15 @@ export const FIELD_DEFS = [
   },
 ];
 
+// Keep the real Employee Master status ("Active", "Inactive", or anything
+// else such as "Maternity Leave"). Only blank falls back to "Active".
 function normalizeStatus(status) {
-  return String(status || "").toLowerCase() === "inactive"
-    ? "Inactive"
-    : "Active";
+  const text = String(status ?? "").trim();
+  if (!text) return "Active";
+  const lower = text.toLowerCase();
+  if (lower === "active") return "Active";
+  if (lower === "inactive") return "Inactive";
+  return text;
 }
 
 function normalizeEligibility(value) {
