@@ -3268,6 +3268,9 @@ const fetchAuditHistoryFromCatalyst = async (empId = "", extra = null) => {
   if (extra && extra.appraisalYear) {
     url.searchParams.set("appraisal_year", String(extra.appraisalYear));
   }
+  if (APPRAISAL_CYCLE_ID) {
+    url.searchParams.set("cycle_id", APPRAISAL_CYCLE_ID);
+  }
 
   if (String(empId).trim()) {
     url.searchParams.set("emp_id", String(empId).trim());
@@ -3336,6 +3339,7 @@ const createAuditRecordsInCatalyst = async (entries) => {
     batch_id: String(entry.batchId || ""),
 
     appraisal_year: String(entry.appraisalYear || APPRAISAL_YEAR),
+    cycle_id: APPRAISAL_CYCLE_ID,
   }));
 
   const response = await catalystFetch(AUDIT_API_URL, {
