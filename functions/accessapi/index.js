@@ -1775,10 +1775,19 @@ app.post(
       if (empId) masterByEmpId.set(norm(empId), master);
       if (rowId) masterByRowId.set(rowId, master);
     });
-    const eligibleStatus = (row) =>
-      ["eligible", "yes", "true", "1"].includes(
-        String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase(),
-      );
+    const eligibleStatus = (row) => {
+      // Eligibility_List rows can contain both the current and legacy status
+      // aliases. Prefer the first populated value, not merely the first
+      // truthy property: an empty primary column must not hide "Eligible".
+      const raw = [
+        row?.eligibility_status,
+        row?.eligible_status,
+        row?.eligibility,
+        row?.eligible,
+      ].find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+      const normalized = String(raw || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+      return ["eligible", "yes", "true", "1"].includes(normalized);
+    };
     const requestedEligibleIds = Array.from(new Set(
       eligibilityRows
         .filter(eligibleStatus)
@@ -1790,7 +1799,10 @@ app.post(
             masterByRowId.get(empRef) ||
             masterByRowId.get(masterRef) ||
             masterByEmpId.get(norm(masterRef));
-          return master ? norm(master[e.empId]) : "";
+          // Keep the business employee ID as a final lookup key. This also
+          // covers rows whose optional lookup reference was not populated.
+          const canonicalId = master ? master[e.empId] : empRef;
+          return masterByEmpId.has(norm(canonicalId)) ? norm(canonicalId) : "";
         })
         .filter(Boolean)
     ));
@@ -1900,10 +1912,14 @@ app.post(
             masterByRowId.get(empRef) ||
             masterByRowId.get(masterRef) ||
             masterByEmpId.get(norm(masterRef));
-          return master ? norm(master[e.empId]) : "";
+          const canonicalId = master ? master[e.empId] : empRef;
+          return masterByEmpId.has(norm(canonicalId)) ? norm(canonicalId) : "";
         })
         .filter((id) => id && em[id] &&
-          String(em[id].row[e.status] || "Active").trim().toLowerCase() === "active")
+          String(
+            [em[id].row[e.status], em[id].row.status]
+              .find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "Active",
+          ).trim().toLowerCase() === "active")
     );
     // Never replace a cycle's Delegation with an empty list.
     if (!eligibleIds.size)
