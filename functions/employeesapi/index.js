@@ -3722,24 +3722,30 @@ async function getEmployees(req, res) {
   // decisions update matching sheet rows, but an ID mismatch must not remove
   // an otherwise valid generated row from the active sheet.
   if (isCycleView) {
-    const activeCycle = cycleRows.find((cycle) => {
+    const selectedLocation = String(params.location || "All").trim();
+    const allLocationsSelected =
+      !selectedLocation ||
+      ["all", "all locations"].includes(selectedLocation.toLowerCase());
+    const isAvailableActiveCycle = (cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
-      )
-        .trim()
-        .toLowerCase();
+      ).trim().toLowerCase();
       const archived = ["true", "1", "yes"].includes(
-        String(cycle?.archived ?? "")
-          .trim()
-          .toLowerCase(),
+        String(cycle?.archived ?? "").trim().toLowerCase(),
       );
       const hidden = ["true", "1", "yes"].includes(
-        String(cycle?.hidden ?? "")
-          .trim()
-          .toLowerCase(),
+        String(cycle?.hidden ?? "").trim().toLowerCase(),
       );
       return status === "active" && !archived && !hidden;
-    });
+    };
+    // A location switch selects that location's Active cycle. It never
+    // changes cycle status and never falls back to another location.
+    const activeCycle = allLocationsSelected
+      ? cycleRows.find(isAvailableActiveCycle)
+      : cycleRows.find((cycle) =>
+          isAvailableActiveCycle(cycle) &&
+          String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
+        );
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
