@@ -1770,7 +1770,7 @@ async function enrichPreviousAppraisalValues(
   const sourceCycleForFeedback = currentCycle && selectedLocationKey !== "all"
     ? cycleRows.find((cycle) =>
         cycleIdOf(cycle) !== currentCycleId &&
-        ["", "all", "all locations"].includes(String(cycle.location || "").trim().toLowerCase()) &&
+        !String(cycle.location || "").trim() &&
         cycleNameWithoutLocation(historyCycleName(cycle)) ===
           cycleNameWithoutLocation(historyCycleName(currentCycle))
       ) || null
