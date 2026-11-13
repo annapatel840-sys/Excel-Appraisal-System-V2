@@ -138,12 +138,14 @@ export function SettingsPage() {
           }
 
           const delegation = await fillDelegation(target.id);
-          if (Number(delegation?.matched || 0) + Number(delegation?.unmatched || 0) === 0) {
-            throw new Error("Delegation generation returned no employee assignments.");
+          if (Number(delegation?.employees || 0) === 0 || Number(delegation?.inserted || 0) === 0) {
+            throw new Error("Delegation generation returned no employee rows for this location.");
           }
 
           const generated = await generateAppraisalSheet(target.id, { reuseExistingCycleData: true });
-          completed.push(`${location}: ${generated?.created || 0} created, ${generated?.updated || 0} updated`);
+          const unmatchedTech = Array.isArray(delegation?.unmatched?.techEd) ? delegation.unmatched.techEd.length : 0;
+          const unmatchedComp = Array.isArray(delegation?.unmatched?.compManager) ? delegation.unmatched.compManager.length : 0;
+          completed.push(`${location}: ${generated?.created || 0} created, ${generated?.updated || 0} updated, ${delegation.employees} delegated${unmatchedTech || unmatchedComp ? ` (unmatched Tech-Ed: ${unmatchedTech}, Comp Manager: ${unmatchedComp})` : ""}`);
           if (target.status === "Active" && generated?.upToDate) skipped.push(location);
         } catch (error) {
           failed.push(`${location}: ${error?.message || "setup failed"}`);
