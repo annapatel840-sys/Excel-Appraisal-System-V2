@@ -1303,7 +1303,7 @@
 //         eligibilityLoadedKeyRef.current = null;
 //       }
 //     };
-//   }, [activeTab, eligibilityReloadKey]);
+//   }, [activeTab, eligibilityReloadKey, locationFilter]);
 
 //   // Force the Eligibility List to reload from Catalyst on its next view.
 //   const invalidateEligibilityList = () => {
@@ -4474,6 +4474,11 @@ export function EmployeeMaster() {
     }
 
     eligibilityLoadedKeyRef.current = eligibilityLocationKey;
+    // Clear the previous location's cycle immediately so writes cannot target
+    // the location we just left while the new location is loading.
+    setEligibilityCycleId("");
+    setEligibilityEmployees([]);
+    setEligibilityCriteriaApplied(false);
 
     let cancelled = false;
     let finished = false;
@@ -4562,7 +4567,7 @@ export function EmployeeMaster() {
         eligibilityLoadedKeyRef.current = null;
       }
     };
-  }, [activeTab, eligibilityReloadKey]);
+  }, [activeTab, eligibilityReloadKey, locationFilter]);
 
   // Keep the saved criteria + their history (from the server) in state.
   const applyCriteriaMeta = (cycleMeta) => {
