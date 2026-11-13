@@ -30,8 +30,15 @@ const locationKey = (value) => {
 
 function matchesSelectedLocation(cycle, selectedLocation) {
   const selected = locationKey(selectedLocation);
-  if (!selected || selected === "all" || selected === "all locations") return true;
-  return String(cycle?.location || "").trim().toLowerCase() === selected;
+  const rawLocation = String(cycle?.location || "All").trim().toLowerCase();
+  const cycleLocation =
+    !rawLocation || rawLocation === "all" || rawLocation === "all locations"
+      ? "all"
+      : rawLocation;
+  if (!selected || selected === "all" || selected === "all locations") {
+    return cycleLocation === "all";
+  }
+  return cycleLocation === selected;
 }
 
 function load(selectedLocation) {
