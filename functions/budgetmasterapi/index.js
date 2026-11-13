@@ -1815,7 +1815,6 @@ async function calculateBudgetBases(
   bundle,
   techEdOwners = [],
   sourceRows,
-  selectedLocation = "All",
 ) {
   // Reuse the single serialized source-table read set for both calculations
   // and owner/employee roster construction. Do not start parallel Data Store
@@ -2218,8 +2217,20 @@ async function calculateBudgetBases(
 
   // The active / previous cycle is the same for every row: work it out once
   // (it was recomputed - a cycle sort included - for each of thousands of rows).
-  const activeCycleRow = activeSheetCycle;
-  const currentCycleId = cycleIdOf(activeCycleRow);
+  const activeCycleRow =
+    cycleRows.find(
+      (cycle) =>
+        String(cycle.status || "")
+          .trim()
+          .toLowerCase() === "active" &&
+        cycle.archived !== true &&
+        cycle.archived !== "true",
+    ) ||
+    cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] ||
+    null;
+  const currentCycleId =
+    cycleIdOf(activeCycleRow) ||
+    String(bundle.master[0]?.appraisal_cycle_id || "");
   const previousCycle = previousCycleFor(currentCycleId);
   const previousCycleId = previousCycle
     ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
@@ -2942,17 +2953,8 @@ async function calculateBudgetBases(
       // Joiners payroll, latest closed prior-cycle payroll, then current sheet
       // Total CTC. The stored previous-CTC sheet cell can be stale and is not
       // the value displayed after employeesapi enriches the row.
-      // The Appraisal Sheet's Previous Total Rewards cell is the
-      // source of truth for Org/Tech-Ed/Comp Manager budget bases. Only use
-      // payroll history when that sheet cell is genuinely blank (legacy row).
-      const storedSheetBase = employee.sheet_previous_appraisal_ctc;
-      const hasStoredSheetBase =
-        storedSheetBase !== null &&
-        storedSheetBase !== undefined &&
-        String(storedSheetBase).trim() !== "";
-      const base = hasStoredSheetBase
-        ? n(storedSheetBase)
-        : newJoinerCtc !== null
+      const base =
+        newJoinerCtc !== null
           ? newJoinerCtc
           : priorCtc !== null
             ? priorCtc
@@ -3010,9 +3012,10 @@ async function calculateBudgetBases(
           : cycle.hidden,
       ),
   );
-  const activeRosterCycle = activeSheetCycleId
-    ? activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) || null
-    : null;
+  const activeRosterCycle =
+    activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
+    activeRosterCycles[0] ||
+    null;
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
   // row: when all cycles are closed, current working data must be empty.
@@ -3222,12 +3225,19 @@ async function calculateBudgetBases(
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
     // second lookup can disagree with the already-generated rows and change the
     // budget total while the Appraisal Sheet's Total row stays the same.
-    // Appraisal_Sheet is already the generated eligible roster for this
-    // cycle. Use every generated row and its resolved Previous Total Rewards
-    // value (stored sheet cell first, same prior-payroll mapping as the Sheet
-    // when the legacy cell is blank). Re-applying Eligibility_List here drops
-    // rows and makes Org Base differ from the Appraisal Sheet total.
-    const cycleFilteredEmployees = appraisalSheetEmployees;
+    const cycleFilteredEmployees = appraisalSheetEmployees.filter(
+      (employee) => {
+        const cycleEligibility = cycleEligibilityFor(employee, cycleId);
+        const employeeStatus = String(employee.master_status || employee.status)
+          .trim()
+          .toLowerCase();
+        const active = !employeeStatus || employeeStatus === "active";
+        return (
+          active &&
+          (cycleEligibility ? cycleEligibility.eligible : employee.eligible)
+        );
+      },
+    );
     // Keep the legacy explicit sheet/master eligibility roster for the
     // existing count and allocation calculations below. Budget base itself
     // uses cycleFilteredEmployees so it follows the exact cycle eligibility.
@@ -3265,7 +3275,7 @@ async function calculateBudgetBases(
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "all generated rows in the selected Active cycle's Appraisal_Sheet using the same Previous Total Rewards resolution shown on the Sheet (stored cell, then prior payroll mapping)",
+        "active cycle-eligible Appraisal Sheet Previous Total CTC with Rewards mapped values",
       budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: cycleFilteredEmployees.length,
@@ -3952,8 +3962,6 @@ module.exports = async function (req, res) {
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
       // Avoid overlapping multiple datastore scans on the same request.
-      const requestUrl = new URL(String(req.url || "/"), "http://local");
-      const selectedLocation = String(requestUrl.searchParams.get("location") || "All").trim();
       const rawBundle = await readBundle(app);
       logBudgetStage("budget tables loaded", {
         masterRows: rawBundle.master.length,
@@ -3993,7 +4001,6 @@ module.exports = async function (req, res) {
           rawBundle,
           techEdOwners,
           sourceRows,
-          selectedLocation,
         );
         logBudgetStage("budget calculations and persistence complete", {
           techEdRows: calculatedBundle.techEd.length,
@@ -4078,31 +4085,9 @@ module.exports = async function (req, res) {
     });
     // Budget writes must target the Active cycle linked to the selected
     // Budget_Master row, keeping every location's budget isolated.
-    const requestUrl = new URL(String(req.url || "/"), "http://local");
-    const selectedLocation = String(requestUrl.searchParams.get("location") || body.location || "All").trim();
-    const requestedCycleIdForWrite = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
-    const isSelectedWriteLocation = (cycle) => {
-      const rawLocation = String(
-        firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
-      ).trim().toLowerCase();
-      const cycleLocation =
-        !rawLocation || ["all", "all locations"].includes(rawLocation)
-          ? "all"
-          : rawLocation;
-      const selectedKey =
-        !selectedLocation || ["all", "all locations"].includes(selectedLocation.toLowerCase())
-          ? "all"
-          : selectedLocation.toLowerCase();
-      return cycleLocation === selectedKey;
-    };
     const activeCycleForWrite =
-      activeCyclesForWrite.find((cycle) =>
-        isSelectedWriteLocation(cycle) &&
-        requestedCycleIdForWrite &&
-        (cycleIdOf(cycle) === requestedCycleIdForWrite ||
-          cycleNameOf(cycle).toLowerCase() === requestedCycleIdForWrite.toLowerCase())
-      ) ||
-      activeCyclesForWrite.find(isSelectedWriteLocation) ||
+      activeCyclesForWrite.find((cycle) => hasBudgetMaster(cycle)) ||
+      activeCyclesForWrite[0] ||
       null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
