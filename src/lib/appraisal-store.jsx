@@ -3609,14 +3609,14 @@ export function AppraisalProvider({ children }) {
       // The employeesapi roster already includes current-cycle feedback
       // fields. Avoid a second full Feedback_And_Rating API request.
       const viewAs = getViewAsSelected();
-      const roster = await fetchAppraisalRoster({ viewAs });
+      const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation });
 
       if (requestId !== loadSeqRef.current) {
         return;
       }
 
       freshAppliedRef.current = true;
-      loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs);
+      loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs) + "::" + String(selectedLocation || "All").trim().toLowerCase();
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
@@ -3671,7 +3671,7 @@ export function AppraisalProvider({ children }) {
       }
     }
   // }, [isHRUser, updateRows]);
-  }, [isHRUser, updateRows, viewAsId, rosterCacheScope]);
+  }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD
@@ -3689,7 +3689,7 @@ export function AppraisalProvider({ children }) {
 
   // Show the saved copy while the first roster loads. Same key as the roster
   // request: the signed-in user and the View-as choice it was loaded under.
-  const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected());
+  const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected()) + "::" + String(selectedLocation || "All").trim().toLowerCase();
   useEffect(() => {
     if (!dataWanted || freshAppliedRef.current) return undefined;
     let cancelled = false;
