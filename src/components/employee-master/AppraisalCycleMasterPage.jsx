@@ -50,13 +50,14 @@ const isAllCycleLocation = (value) => {
   return !v || v === "all" || v === "all locations";
 };
 const locationLabel = (value) =>
-  isAllCycleLocation(value) ? "All Locations" : String(value).trim();
+  isAllCycleLocation(value) ? "Global" : String(value).trim();
 // Two cycles cover the same people when either is for All Locations or both are
 // for the same location.
-const sameLocationScope = (a, b) =>
-  isAllCycleLocation(a) ||
-  isAllCycleLocation(b) ||
-  String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+const sameLocationScope = (a, b) => {
+  const left = isAllCycleLocation(a) ? "global" : String(a).trim().toLowerCase();
+  const right = isAllCycleLocation(b) ? "global" : String(b).trim().toLowerCase();
+  return left === right;
+};
 
 const MON = [
   "Jan",
@@ -562,9 +563,14 @@ export function AppraisalCycleMasterPage({
 
   /* ---------------- rules ---------------- */
 
-  // Only one cycle can be Active at a time (access follows the Active cycle).
+  // Only another Active cycle in the same location scope blocks this cycle.
   const otherActive = (c) =>
-    cycles.find((x) => x.id !== c.id && x.status === "Active" && !x.archived);
+    cycles.find((x) =>
+      x.id !== c.id &&
+      x.status === "Active" &&
+      !x.archived &&
+      sameLocationScope(x.location, c.location)
+    );
 
   // Activate: Employee Master updated + payroll resolved (Annual process, when
   // data is supplied) + no other Annual cycle running + dates set.
@@ -606,7 +612,7 @@ export function AppraisalCycleMasterPage({
         "No other cycle active",
         !other,
         other
-          ? `Not met: close or archive ${other.name} first. Only one cycle can be Active at a time.`
+          ? `Not met: close or archive ${other.name} first. Only one cycle per location scope can be Active at a time.`
           : "Met",
       ),
     );
@@ -2439,7 +2445,7 @@ export function AppraisalCycleMasterPage({
                 >
                   {/* Only older org-wide cycles are "All Locations"; new cycles are per location. */}
                   {isAllCycleLocation(editCycle.location) && (
-                    <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+                    <option value={ALL_CYCLE_LOCATIONS}>Global</option>
                   )}
                   {cycleLocations
                     .concat(
@@ -2635,7 +2641,7 @@ export function AppraisalCycleMasterPage({
               Select the location for this cycle
             </option>
             <option value={ALL_CYCLE_LOCATIONS}>
-              All Locations (one cycle per location)
+              Global (one cycle per location)
             </option>
             {cycleLocations.map((name) => (
               <option key={name} value={name}>
