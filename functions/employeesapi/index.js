@@ -3748,12 +3748,21 @@ async function getEmployees(req, res) {
     };
     // A location switch selects that location's Active cycle. It never
     // changes cycle status and never falls back to another location.
-    const activeCycle = allLocationsSelected
-      ? cycleRows.find(isAvailableActiveCycle)
-      : cycleRows.find((cycle) =>
+    const requestedCycleId = String(
+      params.cycleId || params.cycle_id || params.appraisal_cycle_id || "",
+    ).trim();
+    const activeCycle =
+      (requestedCycleId &&
+        cycleRows.find((cycle) =>
           isAvailableActiveCycle(cycle) &&
-          String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
-        );
+          String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requestedCycleId
+        )) ||
+      (allLocationsSelected
+        ? cycleRows.find(isAvailableActiveCycle)
+        : cycleRows.find((cycle) =>
+            isAvailableActiveCycle(cycle) &&
+            String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
+          ));
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
