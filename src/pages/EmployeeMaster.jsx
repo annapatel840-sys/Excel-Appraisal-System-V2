@@ -4468,11 +4468,12 @@ export function EmployeeMaster() {
       return;
     }
 
-    if (eligibilityLoadedKeyRef.current === "loaded") {
+    const eligibilityLocationKey = String(locationFilter || "All").trim().toLowerCase();
+    if (eligibilityLoadedKeyRef.current === eligibilityLocationKey) {
       return;
     }
 
-    eligibilityLoadedKeyRef.current = "loaded";
+    eligibilityLoadedKeyRef.current = eligibilityLocationKey;
 
     let cancelled = false;
     let finished = false;
@@ -4490,6 +4491,7 @@ export function EmployeeMaster() {
           page: 1,
           limit: 100000,
           search: "",
+          location: locationFilter,
         });
         if (cancelled) return;
 
@@ -4556,7 +4558,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
       // Allow a retry if this load was interrupted before it finished.
-      if (!finished && eligibilityLoadedKeyRef.current === "loaded") {
+      if (!finished && eligibilityLoadedKeyRef.current === eligibilityLocationKey) {
         eligibilityLoadedKeyRef.current = null;
       }
     };
@@ -5898,6 +5900,7 @@ export function EmployeeMaster() {
       limit: 100000,
       search: "",
       cycleId: eligibilityCycleId,
+      location: locationFilter,
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
