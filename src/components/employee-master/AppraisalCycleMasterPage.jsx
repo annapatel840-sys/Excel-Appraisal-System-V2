@@ -42,7 +42,7 @@ const PROCESSES = [
 const ENFORCE_ONE_OPEN_ANNUAL = true;
 const OPEN_CYCLE_STATUSES = ["Upcoming", "Active"];
 
-// Each cycle is for one Location Master location or for all of them ("All").
+// Each cycle is for one Location Master location or for all selected locations, creating separate cycles ("All").
 // Cycles saved before locations existed have no value and count as All.
 const ALL_CYCLE_LOCATIONS = "All";
 const isAllCycleLocation = (value) => {
@@ -50,7 +50,7 @@ const isAllCycleLocation = (value) => {
   return !v || v === "all" || v === "all locations";
 };
 const locationLabel = (value) =>
-  isAllCycleLocation(value) ? "Global" : String(value).trim();
+  isAllCycleLocation(value) ? "All Locations" : String(value).trim();
 // Two cycles cover the same people when either is for All Locations or both are
 // for the same location.
 const sameLocationScope = (a, b) => {
@@ -893,7 +893,7 @@ export function AppraisalCycleMasterPage({
   const newName = (f) => {
     const base = `${f.type} ${f.year}`;
     // Names are unique, so a location cycle starts with its location:
-    // "Dubai - Annual 2027". All Locations keeps the plain "Annual 2027".
+    // "Dubai - Annual 2027". All Locations creates separate location-prefixed cycles; legacy unscoped cycles remain unchanged.
     const allLocations = !f.location || isAllCycleLocation(f.location);
     const sameLocation = (x) =>
       allLocations
@@ -2443,9 +2443,9 @@ export function AppraisalCycleMasterPage({
                     setEditForm((f) => ({ ...f, location: e.target.value }))
                   }
                 >
-                  {/* Only older org-wide cycles are "All Locations"; new cycles are per location. */}
+                  {/* Only legacy cycles without a location are treated as All Locations; new cycles are per location. */}
                   {isAllCycleLocation(editCycle.location) && (
-                    <option value={ALL_CYCLE_LOCATIONS}>Global</option>
+                    <option value={ALL_CYCLE_LOCATIONS}>All Locations (separate cycle per location)</option>
                   )}
                   {cycleLocations
                     .concat(
@@ -2641,7 +2641,7 @@ export function AppraisalCycleMasterPage({
               Select the location for this cycle
             </option>
             <option value={ALL_CYCLE_LOCATIONS}>
-              Global (one cycle per location)
+              All Locations (separate cycle per location)
             </option>
             {cycleLocations.map((name) => (
               <option key={name} value={name}>
