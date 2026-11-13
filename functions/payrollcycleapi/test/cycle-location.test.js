@@ -168,6 +168,32 @@ async function t(name, fn) {
     assert.strictEqual((await byName('Annual 2027 Legacy')).location, 'India');
   });
 
+  await t('different locations can have Active cycles at the same time', async () => {
+    const dubai = await byName('Annual 2027 Dubai');
+    const india = await byName('Annual 2027 Legacy');
+    assert.strictEqual(dubai.status, 'Upcoming');
+    const dubaiActive = await post('cycles/status/' + dubai.id, { status: 'Active' });
+    assert.strictEqual(dubaiActive.status, 200, JSON.stringify(dubaiActive.json));
+    const indiaActive = await post('cycles/status/' + india.id, { status: 'Active' });
+    assert.strictEqual(indiaActive.status, 200, JSON.stringify(indiaActive.json));
+    const current = await cycles();
+    assert.strictEqual(current.find((x) => x.id === dubai.id).status, 'Active');
+    assert.strictEqual(current.find((x) => x.id === india.id).status, 'Active');
+  });
+
+  await t('a second Active cycle in the same location remains blocked', async () => {
+    const dubai = await byName('Annual 2027 Dubai');
+    const r = await post('cycles/status/' + dubai.id, { status: 'Closed' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const reopened = await post('cycles/status/' + dubai.id, { status: 'Active' });
+    assert.strictEqual(reopened.status, 200, JSON.stringify(reopened.json));
+    const duplicate = await post('cycles/create', { ...dates, name: 'Dubai - Annual 2028', location: 'Dubai' });
+    assert.strictEqual(duplicate.status, 201, JSON.stringify(duplicate.json));
+    const activateDuplicate = await post('cycles/status/' + duplicate.json.data.id, { status: 'Active' });
+    assert.strictEqual(activateDuplicate.status, 409);
+    assert.match(activateDuplicate.json.message, /Dubai - Annual 2027/);
+  });
+
   await t('the location is fixed once the cycle is Active', async () => {
     const c = await byName('Annual 2027 Dubai');
     const act = await post('cycles/status/' + c.id, { status: 'Active' });
