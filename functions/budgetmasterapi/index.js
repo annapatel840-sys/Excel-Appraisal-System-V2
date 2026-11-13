@@ -3988,11 +3988,18 @@ module.exports = async function (req, res) {
     const selectedLocation = String(requestUrl.searchParams.get("location") || body.location || "All").trim();
     const requestedCycleIdForWrite = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
     const isSelectedWriteLocation = (cycle) => {
-      const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
-        .trim().toLowerCase();
-      return ["", "all", "all locations"].includes(selectedLocation.toLowerCase())
-        ? true
-        : location === selectedLocation.toLowerCase();
+      const rawLocation = String(
+        firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
+      ).trim().toLowerCase();
+      const cycleLocation =
+        !rawLocation || ["all", "all locations"].includes(rawLocation)
+          ? "all"
+          : rawLocation;
+      const selectedKey =
+        !selectedLocation || ["all", "all locations"].includes(selectedLocation.toLowerCase())
+          ? "all"
+          : selectedLocation.toLowerCase();
+      return cycleLocation === selectedKey;
     };
     const activeCycleForWrite =
       activeCyclesForWrite.find((cycle) =>
