@@ -1,5 +1,5 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
-import { payrollCycleRequest } from "./payroll-cycle-api";
+import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const EMPLOYEE_MASTER_API_URL = catalystFunctionUrl("employeemasterapi");
