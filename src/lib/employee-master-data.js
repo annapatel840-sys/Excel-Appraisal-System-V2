@@ -1,5 +1,5 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
-import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
+import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const EMPLOYEE_MASTER_API_URL = catalystFunctionUrl("employeemasterapi");
@@ -772,7 +772,7 @@ export async function updateEmployeeEligibility(
       : "";
   if (!eligibleStatus) throw new Error("Eligibility must be Eligible or Not Eligible.");
 
-  const result = await payrollCycleRequest("eligibility", {
+  return payrollCycleRequest("eligibility", {
     method: "POST",
     body: {
       cycleId,
@@ -846,11 +846,6 @@ export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
     },
   });
 
-  // Apply Criteria writes Eligibility_List. The page immediately reloads the
-  // same cycle, so discard the module-level GET promise/cache first; otherwise
-  // reloadEligibilityRows can receive the pre-apply empty list for 60 seconds.
-  eligibilityRead = null;
-  invalidatePayrollCycleReads();
   return result;
 }
 
