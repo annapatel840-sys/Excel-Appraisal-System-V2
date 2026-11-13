@@ -3393,7 +3393,9 @@ async function calculateBudgetBases(
     });
     let orgUtilized = 0;
 
-    eligibleEmployees.forEach((employee) => {
+    // Allocation bases must use exactly the same cycle-eligible rows as
+    // Org Budget Base and the Appraisal Sheet's Previous Total CTC with Rewards.
+    cycleFilteredEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
       const consumed =
