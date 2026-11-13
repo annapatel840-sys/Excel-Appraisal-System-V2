@@ -1564,15 +1564,15 @@ function filterOwn(
           savedParentIds.has(String(row.id || "").trim()),
         )
       : [];
-    let compManager = ownSavedCompRows.filter((row) =>
-      techEd.some(
-        (parent) =>
-          String(parent.id) === String(row.budget_distribution_id) &&
-          (!row.appraisal_cycle_id ||
-            String(parent.appraisal_cycle_id) ===
-              String(row.appraisal_cycle_id)),
-      ),
-    );
+
+    // The child allocation is the authoritative record for the signed-in
+    // Comp Manager. Do not drop it merely because its parent Tech-Ed row is
+    // missing, was recreated, or is not returned in this role-scoped bundle.
+    // The frontend can resolve a cycle from the parent when available and
+    // still display a legacy child row whose optional cycle field is blank.
+    // Keep the ownership check above (isOwnCompAllocation) as the security
+    // boundary; never return another manager's child rows.
+    let compManager = ownSavedCompRows;
 
     // Compatibility fallback for older rows without a usable parent link.
     if (!techEd.length) {
