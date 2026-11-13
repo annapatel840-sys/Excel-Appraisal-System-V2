@@ -492,9 +492,10 @@ export function AppraisalCycleMasterPage({
     () =>
       cycles.filter(
         (cycle) =>
-          isAllCycleLocation(selectedLocation) ||
-          isAllCycleLocation(cycle.location) ||
-          matchesLocation(cycle.location, selectedLocation),
+          isAllCycleLocation(selectedLocation)
+            ? true
+            : !isAllCycleLocation(cycle.location) &&
+              matchesLocation(cycle.location, selectedLocation),
       ),
     [cycles, selectedLocation],
   );
