@@ -67,7 +67,11 @@ function get(api) {
   });
 }
 
-const sheet = (id, techEd, cm, base, pb) => ({ emp_id: id, appraiser_tech_ed: techEd, comp_manager: cm, status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: base, allocated_pb_amount: pb });
+const sheet = (id, techEd, cm, base, pb, previousRewards) => ({
+  emp_id: id, appraiser_tech_ed: techEd, comp_manager: cm, status: 'Active',
+  eligible_status: 'Eligible', current_annual_base_pay: base, allocated_pb_amount: pb,
+  ...(previousRewards !== undefined ? { Previous_Appraisal_total_CTC_with_rewards: previousRewards } : {}),
+});
 let pass = 0, fail = 0;
 async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name); } catch (e) { fail++; console.log('FAIL', name, '\n   ', e.message); } }
 
@@ -81,9 +85,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { appraisal_cycle_id: 'Apr-26', emp_id: 'E3', eligibility_status: 'Eligible' },
       ],
       Appraisal_Sheet: [
-        sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '12,00,000', '1,00,000'),
-        sheet('E2', 'EMP0051 - Ashok Kumar', 'Anita', '₹ 8,00,000', '50000'),
-        sheet('E3', 'EMP0057 - Prabhu', 'Raj', '15 L', '1.5 L'),
+        sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '12,00,000', '1,00,000', 1300000),
+        sheet('E2', 'EMP0051 - Ashok Kumar', 'Anita', '₹ 8,00,000', '50000', 850000),
+        sheet('E3', 'EMP0057 - Prabhu', 'Raj', '15 L', '1.5 L', 1650000),
       ],
     });
     const r = await get(load(store));
@@ -98,7 +102,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(r.json.diagnostics.warning, undefined);
   });
 
-  await t('prior-cycle total CTC is the budget base and new employees fall back to current CTC', async () => {
+  await t('Org Budget Base sums only stored Appraisal_Sheet previous rewards; new employee fallback is excluded', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -152,7 +156,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000);
+    assert.strictEqual(r.json.master[0].org_budget_base, 27000, 'missing Appraisal_Sheet previous rewards must not be replaced by Payroll_Data or current CTC');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
@@ -163,7 +167,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(fresh.rb_to_be_paid, 8250, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
-    const orgBase = 2500000 + 905000;
+    const orgBase = 27000;
     const orgOriginal = orgBase * 0.08;
     assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
     const techRow = r.json.techEd[0];
