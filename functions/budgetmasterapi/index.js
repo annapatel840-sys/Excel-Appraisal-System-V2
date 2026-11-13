@@ -2869,7 +2869,7 @@ async function calculateBudgetBases(
   };
   // The UI headcount roster must use the same cycle-scoped Eligibility_List
   // decision as budget aggregation, not stale Employee_Master eligibility aliases.
-  const activeRosterCycle = cycleRows.find(
+  const activeRosterCycles = cycleRows.filter(
     (cycle) =>
       String(
         firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
@@ -2887,6 +2887,12 @@ async function calculateBudgetBases(
           : cycle.hidden,
       ),
   );
+  const activeRosterCycle =
+    activeRosterCycles.find((cycle) => {
+      const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
+        .trim().toLowerCase();
+      return !location || ["all", "all locations", "global"].includes(location);
+    }) || activeRosterCycles[0] || null;
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
   // row: when all cycles are closed, current working data must be empty.
@@ -3921,7 +3927,7 @@ module.exports = async function (req, res) {
     // Budget writes must always target the Active cycle. Historical budget rows
     // stay stored for reference, but closed/archived cycles are read-only.
     const cycleRowsForWrite = await getAllRows(app, "Appraisal_Cycle_Master");
-    const activeCycleForWrite = cycleRowsForWrite.find((cycle) => {
+    const activeCyclesForWrite = cycleRowsForWrite.filter((cycle) => {
       const status = String(
         firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
       )
@@ -3939,6 +3945,14 @@ module.exports = async function (req, res) {
       );
       return status === "active" && !archived && !hidden;
     });
+    // For shared HR Budget Master operations, use Global when active alongside
+    // country-specific cycles; location-specific budget rows remain cycle-bound.
+    const activeCycleForWrite =
+      activeCyclesForWrite.find((cycle) => {
+        const location = String(firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "")
+          .trim().toLowerCase();
+        return !location || ["all", "all locations", "global"].includes(location);
+      }) || activeCyclesForWrite[0] || null;
     const activeCycleIdForWrite = activeCycleForWrite
       ? cycleIdOf(activeCycleForWrite)
       : "";
