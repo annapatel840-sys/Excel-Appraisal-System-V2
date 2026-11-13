@@ -2053,14 +2053,20 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
     ]).filter(([id]) => id),
   );
+  // Resolve payroll references in O(1). Repeated Array.find() calls here
+  // made generation quadratic for large payroll and Employee_Master tables.
+  const employeeMasterByBusinessId = new Map(
+    employeeMasterRows.map((row) => [
+      String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
+      row,
+    ]).filter(([id]) => id),
+  );
   const basePayrollCandidatesByEmployee = new Map();
   payrollRowsWithCycle.forEach(({ row, cycle: sourceCycle }) => {
     if (!sourceCycle || !isClosedCycle(sourceCycle)) return;
     const sourceYear = cycleYear(sourceCycle);
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    const directMaster = employeeMasterRows.find((master) =>
-      String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() === masterId.toLowerCase()
-    );
+    const directMaster = employeeMasterByBusinessId.get(masterId.toLowerCase());
     const empId = masterIdToEmpId.get(masterId) ||
       String(fieldValue(directMaster || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() ||
       String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
@@ -2089,9 +2095,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
     // Also index by actual Employee_Master ROWID when payroll emp_id stores
     // the business employee ID instead of a lookup reference.
-    const master = employeeMasterRows.find((item) =>
-      String(fieldValue(item, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() === empId
-    );
+    const master = employeeMasterByBusinessId.get(empId);
     const actualMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id);
     if (actualMasterId) payrollBaseSourceByMasterId.set(actualMasterId, selected.row);
   });
