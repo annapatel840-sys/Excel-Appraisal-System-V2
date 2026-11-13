@@ -3115,6 +3115,15 @@ async function calculateBudgetBases(
         );
       },
     );
+    // Keep the legacy explicit sheet/master eligibility roster for the
+    // existing count and allocation calculations below. Budget base itself
+    // uses cycleFilteredEmployees so it follows the exact cycle eligibility.
+    const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
+      const employeeStatus = String(employee.status || employee.master_status)
+        .trim()
+        .toLowerCase();
+      return employeeStatus === "active" && Boolean(employee.eligible);
+    });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
     // Sum the same Previous Total CTC with Rewards value exposed in the
