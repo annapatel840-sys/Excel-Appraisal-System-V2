@@ -1270,6 +1270,7 @@ export function BudgetProvider({ children }) {
       // first paint on both Sheet and Detailed Screen and couples two requests.
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
+      budgetUrl.searchParams.set("location", String(selectedLocation || "All"));
       // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
       budgetUrl.searchParams.set("gz", "1");
       // Start both independent requests immediately, but do not make the
@@ -1519,7 +1520,8 @@ export function BudgetProvider({ children }) {
     authenticatedUser?.user_id,
     budgetCacheScope,
     initialBudget,
-  ]);
+  
+    selectedLocation,]);
 
   // Keep one shared load promise for the entire time a budget refresh is
   // running. Every screen and refresh event receives the same result instead
@@ -2157,7 +2159,7 @@ export function BudgetProvider({ children }) {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, resource, ...payload }),
+          body: JSON.stringify({ id, resource, appraisal_cycle_id: activeBudgetCycleId, ...payload }),
         },
       );
       const result = await response.json();
