@@ -47,6 +47,7 @@ async function sendPayrollCycleRequest(url, resource, method, body) {
   if (!response.ok || payload.success !== true) {
     const error = new Error(payload.message || "The request failed.");
     error.status = response.status;
+    error.code = payload.code || "";
     throw error;
   }
 
@@ -93,10 +94,13 @@ export async function payrollCycleRequest(
 // until nothing remains and returns the last result with the counts added up.
 const GENERATE_MAX_RUNS = 20;
 
-export async function generateAppraisalSheet(cycleId) {
+export async function generateAppraisalSheet(cycleId, options = {}) {
   let total = null;
   for (let run = 0; run < GENERATE_MAX_RUNS; run += 1) {
-    const response = await payrollCycleRequest("generate-sheet", { method: "POST", body: { cycleId } });
+    const response = await payrollCycleRequest("generate-sheet", {
+      method: "POST",
+      body: { cycleId, reuseExistingCycleData: options.reuseExistingCycleData === true },
+    });
     const result = response?.data || response || {};
     total = total
       ? {
