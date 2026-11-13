@@ -246,6 +246,7 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
+  const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
   // screen state
   const [sel, setSel] = useState(null);
@@ -720,7 +721,7 @@ export function AppraisalCycleMasterPage({
     setConfirm({ kind, cycle });
   };
 
-  const submitConfirm = async () => {
+  const submitConfirm = async (reuseExistingCycleData = false) => {
     const { kind, cycle } = confirm;
     if (kind === "activate" && !allOk(activateRules(cycle))) {
       setModalError("These checks are not met.");
@@ -733,7 +734,7 @@ export function AppraisalCycleMasterPage({
       }
       setSaving(true);
       try {
-        const result = await onGenerateSheet(cycle);
+        const result = await onGenerateSheet(cycle, { reuseExistingCycleData });
         setGeneratedByCycle((previous) => ({
           ...previous,
           [cycle.id]: result?.data || result || { eligible: 0 },
@@ -744,6 +745,7 @@ export function AppraisalCycleMasterPage({
         );
         setConfirm(null);
       } catch (error) {
+        setCanReuseExistingCycleData(error?.code === "EXISTING_CYCLE_DATA_AVAILABLE");
         setModalError(error?.message || "Unable to generate the sheet.");
       } finally {
         setSaving(false);
@@ -2089,11 +2091,21 @@ export function AppraisalCycleMasterPage({
             >
               {noLabel}
             </button>
+            {kind === "generate" && canReuseExistingCycleData && (
+              <button
+                type="button"
+                className="acx-btn p"
+                disabled={saving}
+                onClick={() => submitConfirm(true)}
+              >
+                {saving ? "Checking…" : "Use Existing Annual Data"}
+              </button>
+            )}
             <button
               type="button"
               className="acx-btn p"
               disabled={saving}
-              onClick={submitConfirm}
+              onClick={() => submitConfirm(false)}
             >
               {saving ? "Saving…" : okLabel}
             </button>
