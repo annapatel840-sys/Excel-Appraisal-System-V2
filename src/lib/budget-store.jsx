@@ -2292,7 +2292,7 @@ export function useBudget() {
   const requestData = ctx?.requestData;
   useEffect(() => {
     if (requestData) requestData();
-  }, [requestData]);
+  }, [requestData, activeBudgetCycleId]);
   if (!ctx) throw new Error("useBudget must be used within BudgetProvider");
   return ctx;
 }
