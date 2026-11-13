@@ -242,22 +242,7 @@ async function checkAccess(req) {
   const adminApp = catalyst.initialize(req, { scope: "admin" });
 
   try {
-    const params = req.queryParams || req.query || {};
-    const urlParams = new URL(String(req.url || "/"), "http://local").searchParams;
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const context = {
-      location: params.location || urlParams.get("location") || body.location || "",
-      cycleId:
-        body.cycle_id ||
-        body.appraisal_cycle_id ||
-        body.cycleId ||
-        params.cycleId ||
-        params.cycle_id ||
-        urlParams.get("cycleId") ||
-        urlParams.get("cycle_id") ||
-        "",
-    };
-    return await access.check(userApp, adminApp, context);
+    return await access.check(userApp, adminApp);
   } catch (error) {
     if (access.isEnforced()) throw error;
     // Dry run must never change legacy behaviour, even if access data is unreadable.
@@ -521,28 +506,26 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
   }
 }
 
-async function activeCycleRowId(datastore, requestedCycleId = "") {
+async function activeCycleRowId(datastore) {
   const cycles = await readAllDataStoreRows(
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
-  const isAvailable = function (cycle) {
+  const active = cycles.find(function (cycle) {
     const status = String(cycle?.status ?? cycle?.cycle_status ?? "")
-      .trim().toLowerCase();
+      .trim()
+      .toLowerCase();
     const archived = ["true", "1", "yes"].includes(
-      String(cycle?.archived ?? "").trim().toLowerCase(),
+      String(cycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
     );
     const hidden = ["true", "1", "yes"].includes(
-      String(cycle?.hidden ?? "").trim().toLowerCase(),
+      String(cycle?.hidden ?? "")
+        .trim()
+        .toLowerCase(),
     );
     return status === "active" && !archived && !hidden;
-  };
-  const requested = String(requestedCycleId || "").trim();
-  const active = requested
-    ? cycles.find(function (cycle) {
-        return isAvailable(cycle) &&
-          String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requested;
-      })
-    : cycles.find(isAvailable);
+  });
   return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
 }
 
@@ -612,13 +595,7 @@ async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
   ]);
   const masterMap = buildEmployeeMasterMap(masterRows);
   const myRowId = currentUserMasterRowId(a.user, masterRows);
-  const scopedCycleId = String(a.scope?.cycleId || "").trim();
-  const scopedAppraisalRows = scopedCycleId
-    ? appraisalRows.filter((row) =>
-        String(row.cycle_id || row.appraisal_cycle_id || "").trim() === scopedCycleId
-      )
-    : appraisalRows;
-  mergeEmployeeMasterIntoAppraisal(scopedAppraisalRows, masterMap).forEach(
+  mergeEmployeeMasterIntoAppraisal(appraisalRows, masterMap).forEach(
     function (employee) {
       if (employeeBelongsToCurrentUser(employee, a.user, myRowId)) {
         owned.add(
@@ -1740,46 +1717,18 @@ async function enrichPreviousAppraisalValues(
       .map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle])
       .filter(([name]) => name),
   );
-  const requestedLocation = String(options.location || "All").trim().toLowerCase();
-  const selectedLocationKey =
-    !requestedLocation || ["all", "all locations"].includes(requestedLocation)
-      ? "all"
-      : requestedLocation;
   const currentCycle =
-    cycleRows.find((cycle) => {
-      if (
-        cycleStatusOf(cycle) !== "active" ||
-        ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
-        ["true", "1", "yes"].includes(String(cycle.hidden ?? "").trim().toLowerCase())
-      ) return false;
-      const rawLocation = String(cycle.location || "All").trim().toLowerCase();
-      const cycleLocationKey =
-        !rawLocation || ["all", "all locations"].includes(rawLocation)
-          ? "all"
-          : rawLocation;
-      return cycleLocationKey === selectedLocationKey;
-    }) || null;
+    cycleRows.find(
+      (cycle) =>
+        cycleStatusOf(cycle) === "active" &&
+        cycle.archived !== true &&
+        cycle.archived !== "true",
+    ) ||
+    cycleRows
+      .slice()
+      .sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] ||
+    null;
   const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
-  const cycleNameWithoutLocation = (name) => {
-    const value = String(name || "").trim();
-    const match = value.match(/^(.+?)\s+-\s+(.+)$/);
-    return match && /^(annual|mid-year|exceptional|new joiner)\b/i.test(match[2])
-      ? match[2].trim().toLowerCase()
-      : value.toLowerCase();
-  };
-  const sourceCycleForFeedback = currentCycle && selectedLocationKey !== "all"
-    ? cycleRows.find((cycle) =>
-        cycleIdOf(cycle) !== currentCycleId &&
-        !String(cycle.location || "").trim() &&
-        cycleNameWithoutLocation(historyCycleName(cycle)) ===
-          cycleNameWithoutLocation(historyCycleName(currentCycle))
-      ) || null
-    : null;
-  const feedbackCycleIds = new Set(
-    [currentCycleId, sourceCycleForFeedback ? cycleIdOf(sourceCycleForFeedback) : ""]
-      .filter(Boolean)
-      .map(String),
-  );
   const eligibilityByEmployee = new Map();
   eligibilityRows.forEach((record) => {
     // Lookup columns may be returned as foreign-key objects, not plain strings.
@@ -1896,7 +1845,7 @@ async function enrichPreviousAppraisalValues(
     );
     const cycle =
       cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
-    if (!empKey || !cycle || !feedbackCycleIds.has(cycleIdOf(cycle))) return;
+    if (!empKey || !cycle || cycleIdOf(cycle) !== currentCycleId) return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -3791,14 +3740,12 @@ async function getEmployees(req, res) {
     };
     // A location switch selects that location's Active cycle. It never
     // changes cycle status and never falls back to another location.
-    const activeCycle = cycleRows.find((cycle) => {
-      if (!isAvailableActiveCycle(cycle)) return false;
-      const rawLocation = String(cycle?.location || "All").trim().toLowerCase();
-      const cycleLocation = !rawLocation || ["all", "all locations"].includes(rawLocation)
-        ? "all"
-        : rawLocation;
-      return cycleLocation === (allLocationsSelected ? "all" : selectedLocation.toLowerCase());
-    });
+    const activeCycle = allLocationsSelected
+      ? cycleRows.find(isAvailableActiveCycle)
+      : cycleRows.find((cycle) =>
+          isAvailableActiveCycle(cycle) &&
+          String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
+        );
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
@@ -4143,7 +4090,6 @@ async function getEmployees(req, res) {
         requestedView !== "appraisal" &&
         requestedView !== "delegation",
       view: requestedView,
-      location,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
@@ -4678,7 +4624,7 @@ async function updateEmployee(req, res) {
       : readOwnRows("Employee_Master", masterTable),
     // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
     // With an Active cycle and no row for it, the sheet is not generated yet.
-    activeCycleRowId(adminApp.datastore(), body.cycle_id || body.appraisal_cycle_id),
+    activeCycleRowId(adminApp.datastore()),
   ]);
   // Only the Active cycle's row is ever edited; without an Active cycle there
   // is no current Appraisal Sheet row to change.
