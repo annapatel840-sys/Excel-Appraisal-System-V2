@@ -1922,17 +1922,8 @@ async function calculateBudgetBases(
   const locationAliases = new Set(
     [requestedLocation].map(normalizeLocationKey).filter(Boolean),
   );
-  const activeCycleLocationRaw = String(
-    firstValue(
-      cycleRows.find((cycle) =>
-        cycleIdOf(cycle) === activeSheetCycleId
-      ) || {},
-      ["location", "cycle_location", "cycleLocation"],
-    ) || "",
-  ).trim();
-  if (activeCycleLocationRaw) {
-    locationAliases.add(normalizeLocationKey(activeCycleLocationRaw));
-  }
+  // Do not derive the selected location from the active cycle here: the
+  // cycle is resolved below. Location Master aliases are the source of truth.
   // Location Master may store the selected location as a name, code or ROWID.
   // Resolve all aliases before filtering a reused source-cycle roster.
   const matchedLocation = locationRows.find((location) => {
