@@ -3108,6 +3108,7 @@ const savePreviousAppraisalChangesToCatalyst = async ({
 
   const historyPayload = {
     emp_id: String(empId),
+    cycle_id: APPRAISAL_CYCLE_ID,
     appraisal_year: APPRAISAL_YEAR,
   };
 
