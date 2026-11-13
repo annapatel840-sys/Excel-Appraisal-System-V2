@@ -42,12 +42,13 @@ export function SettingsPage() {
       if (!locations.length) throw new Error("No active locations were found in Location Master.");
 
       const sourceEligibility = await payrollCycleRequest("eligibility", {
-        query: { cycleId: source.id, count: 1, _ts: Date.now() },
+        query: { cycleId: source.id, _ts: Date.now() },
         fresh: true,
       });
       const sourceRecords = Array.isArray(sourceEligibility?.records) ? sourceEligibility.records : [];
-      if (!sourceRecords.length || sourceEligibility.criteriaApplied !== true) {
-        throw new Error("The original Annual 2027 Eligibility List has no applied criteria. Apply criteria to the original cycle first.");
+      const sourceCriteria = sourceEligibility?.meta?.criteria;
+      if (!sourceRecords.length || !sourceCriteria) {
+        throw new Error("The original Annual 2027 cycle has no saved eligibility criteria/records. Apply criteria to the original cycle first.");
       }
 
       const completed = [];
@@ -92,30 +93,48 @@ export function SettingsPage() {
             });
           }
 
-          const locationKey = location.trim().toLowerCase();
-          const locationRecords = sourceRecords.filter((record) => {
-            const employeeLocation = String(record.location || record.work_location || "").trim().toLowerCase();
-            const active = String(record.emp_status || record.status || "Active").trim().toLowerCase() === "active";
-            return active && employeeLocation === locationKey &&
-              ["eligible", "not eligible"].includes(String(record.eligibility_status || record.eligible_status || "").trim().toLowerCase());
-          });
-          if (!locationRecords.length) throw new Error("No employees with completed eligibility decisions were found for this location in the source cycle.");
-
-          const eligibilitySave = await payrollCycleRequest("eligibility", {
+          // Re-run the source cycle's saved criteria against only this location's
+          // active employees. The backend writes a separate Eligibility_List
+          // and audit marker for this child cycle; source rows are never moved.
+          const criteriaResult = await payrollCycleRequest("eligibility", {
             method: "POST",
             body: {
+              action: "apply-criteria",
               cycleId: target.id,
-              source: "Criteria",
-              records: locationRecords.map((record) => ({
-                empId: String(record.empId || record.emp_id || "").trim(),
-                eligible_status: record.eligibility_status || record.eligible_status,
-                reason: record.eligibility_reason || record.eligibleReason || "",
-                source: String(record.eligibility_source || record.eligibilitySource || "Criteria").toLowerCase() === "manual" ? "Manual" : "Criteria",
-              })),
+              ...sourceCriteria,
+              cutoffDate: "",
             },
           });
-          if (Number(eligibilitySave?.saved || 0) !== locationRecords.length || Number(eligibilitySave?.failed || 0) > 0) {
-            throw new Error(`Eligibility setup was incomplete (${eligibilitySave?.saved || 0}/${locationRecords.length} saved).`);
+          if (criteriaResult?.criteriaApplied === false) {
+            throw new Error("The location cycle's eligibility criteria were not applied.");
+          }
+
+          // Preserve deliberate manual overrides from the source cycle after
+          // applying the shared criteria. Criteria-driven decisions are
+          // recalculated independently for this location.
+          const locationKey = location.trim().toLowerCase();
+          const manualRecords = sourceRecords.filter((record) => {
+            const employeeLocation = String(record.location || record.work_location || "").trim().toLowerCase();
+            const active = String(record.emp_status || record.status || "Active").trim().toLowerCase() === "active";
+            const manual = String(record.eligibility_source || record.eligibilitySource || "").trim().toLowerCase() === "manual";
+            return active && manual && employeeLocation === locationKey;
+          });
+          if (manualRecords.length) {
+            const manualSave = await payrollCycleRequest("eligibility", {
+              method: "POST",
+              body: {
+                cycleId: target.id,
+                records: manualRecords.map((record) => ({
+                  empId: String(record.empId || record.emp_id || "").trim(),
+                  eligible_status: record.eligibility_status || record.eligible_status,
+                  reason: record.eligibility_reason || record.eligibleReason || "",
+                  source: "Manual",
+                })),
+              },
+            });
+            if (Number(manualSave?.saved || 0) !== manualRecords.length || Number(manualSave?.failed || 0) > 0) {
+              throw new Error(`Manual eligibility overrides were not fully saved (${manualSave?.saved || 0}/${manualRecords.length}).`);
+            }
           }
 
           const delegation = await fillDelegation(target.id);
