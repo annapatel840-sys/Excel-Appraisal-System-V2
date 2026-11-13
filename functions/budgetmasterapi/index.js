@@ -2609,9 +2609,9 @@ async function calculateBudgetBases(
     bundle.diagnostics.warning =
       "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
   } else if (!withBase) {
-    bundle.diagnostics.warning = `None of the ${appraisalEmployees.length} Appraisal Sheet employees has a previous-cycle Total CTC with Rewards or a usable current-cycle CTC fallback, so the budget base is 0. Check Payroll_Data and Appraisal_Sheet.`;
+    bundle.diagnostics.warning = `None of the ${appraisalEmployees.length} Appraisal Sheet employees has a stored Previous_Appraisal_total_CTC_with_rewards value, so the Org Budget Base is 0. Check the generated Appraisal_Sheet rows.`;
   } else if (withBase < appraisalEmployees.length) {
-    bundle.diagnostics.warning = `${appraisalEmployees.length - withBase} of ${appraisalEmployees.length} Appraisal Sheet employees have no usable previous-cycle or current-cycle Total CTC with Rewards and add 0 to the budget base.`;
+    bundle.diagnostics.warning = `${appraisalEmployees.length - withBase} of ${appraisalEmployees.length} Appraisal Sheet employees have no usable previous-cycle or current-cycle CTC for their individual team details. Org Budget Base counts only stored Appraisal_Sheet previous rewards values.`;
   }
   if (!withTechEd) {
     bundle.diagnostics.warning =
