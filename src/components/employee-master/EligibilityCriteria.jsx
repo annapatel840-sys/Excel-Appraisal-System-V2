@@ -1,140 +1,84 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
+import {
+  PARAM_MASTERS,
+  defaultCutoffForCycle,
+  findParamField,
+  paramValues,
+  previewCounts,
+  statusOf,
+} from "@/lib/eligibility-rules";
 
-function CheckList({ values, selected, setSelected, disabled }) {
-  const toggle = (value) =>
-    setSelected((current) =>
-      current.includes(value)
-        ? current.filter((item) => item !== value)
-        : [...current, value],
-    );
+const ALWAYS_EXCLUDED = ["Inactive"]; // rule 6: Inactive is always excluded
 
-  return (
-    <div className="em-chk-list">
-      {values.length === 0 && <div className="em-hint">No values</div>}
-      {values.map((value) => (
-        <label key={value}>
-          <input
-            type="checkbox"
-            checked={selected.includes(value)}
-            onChange={() => toggle(value)}
-            disabled={disabled}
-          />
-          <span>{value}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-// One foldable criteria section (click the heading to fold / unfold).
-function Section({ title, count = 0, folded, onToggle, grow = false, children }) {
-  return (
-    <div className={`em-crit-sec${grow && !folded ? " grow" : ""}`}>
-      <button
-        type="button"
-        className="em-crit-toggle"
-        aria-expanded={!folded}
-        onClick={onToggle}
-      >
-        {folded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        <span>{title}</span>
-        {count > 0 && <em>{count}</em>}
-      </button>
-      {!folded && <div className="em-crit-body">{children}</div>}
-    </div>
-  );
-}
+const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return y && m && d ? `${Number(d)} ${months[Number(m) - 1]} ${y}` : iso;
+};
 
 export function EligibilityCriteria({
   employees,
   excludedEmployees,
   setExcludedEmployees,
   onApply,
-  onGenerateDelegation,
-  savedCriteria = null, // criteria saved by the last Apply Criteria (from the server)
+  savedCriteria = null,
   criteriaApplied = false,
   delegationGenerated = false,
   readOnly = false,
+  cycleName = "",
+  locationLabel = "this location",
+  hasCycle = true,
+  currentCounts = null, // { eligible, notEligible, total } of the generated list
+  onApplied, // called after a successful Apply (screen jumps to the list tab)
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedDesignations, setSelectedDesignations] = useState([]);
   const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [search, setSearch] = useState("");
-  const [showSuggest, setShowSuggest] = useState(false);
+  const [extraParameters, setExtraParameters] = useState([]);
   const [cutoffDate, setCutoffDate] = useState("");
   const [isEditing, setIsEditing] = useState(!criteriaApplied);
   const [applying, setApplying] = useState(false);
+  const [sel, setSel] = useState("st");
+  const [listQuery, setListQuery] = useState("");
+  const [empQuery, setEmpQuery] = useState("");
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [add, setAdd] = useState({ master: PARAM_MASTERS[0].id, field: "", label: "" });
   const savedDraftRef = useRef(null);
-  const searchBoxRef = useRef(null);
-  const [folded, setFolded] = useState({});
-  const toggleSection = (key) =>
-    setFolded((current) => ({ ...current, [key]: !current[key] }));
-  const [menuPos, setMenuPos] = useState(null);
-
-  // The employee picker floats under the search box like a menu (it does not
-  // take space in the panel). Position it from the box on open, and close it
-  // if the panel or page scrolls so it never drifts away from the box.
-  useEffect(() => {
-    if (!showSuggest) {
-      setMenuPos(null);
-      return undefined;
-    }
-    const place = () => {
-      const rect = searchBoxRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const maxHeight = 220;
-      const below = window.innerHeight - rect.bottom - 8;
-      const flip = below < 120 && rect.top > below;
-      setMenuPos({
-        left: rect.left,
-        width: rect.width,
-        maxHeight: Math.min(maxHeight, Math.max(120, flip ? rect.top - 12 : below)),
-        ...(flip
-          ? { bottom: window.innerHeight - rect.top + 4 }
-          : { top: rect.bottom + 4 }),
-      });
-    };
-    place();
-    const close = (event) => {
-      // Scrolling the menu itself must not close it.
-      if (event?.target?.closest?.(".em-suggest-menu")) return;
-      setShowSuggest(false);
-    };
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [showSuggest]);
-  // true while the user is changing an already-applied criteria set
   const draftingRef = useRef(false);
+
+  const defaultCutoff = useMemo(() => defaultCutoffForCycle(cycleName), [cycleName]);
 
   useEffect(() => {
     setIsEditing(!criteriaApplied);
   }, [criteriaApplied]);
 
-  // Show the selections saved by the last Apply Criteria, so they are still
-  // there after a reload and when Edit Criteria is opened. A draft being
-  // edited right now is never overwritten.
+  // Selections saved by the last Apply Criteria (server). A draft being edited is never overwritten.
   useEffect(() => {
-    if (!savedCriteria || draftingRef.current) return;
-    setSelectedDepartments(savedCriteria.departments || []);
-    setSelectedDesignations(savedCriteria.designations || []);
-    setSelectedStatuses(savedCriteria.statuses || []);
-    setExcludedEmployees(savedCriteria.excludedEmployees || []);
-    setCutoffDate(savedCriteria.cutoffDate || "");
+    if (draftingRef.current) return;
+    setSelectedDepartments(savedCriteria?.departments || []);
+    setSelectedDesignations(savedCriteria?.designations || []);
+    setSelectedStatuses(savedCriteria?.statuses || []);
+    setExcludedEmployees(savedCriteria?.excludedEmployees || []);
+    setExtraParameters(savedCriteria?.extraParameters || []);
+    // Rule 7: no saved date -> start from the cycle default
+    setCutoffDate(savedCriteria?.cutoffDate || defaultCutoff);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedCriteria]);
+  }, [savedCriteria, defaultCutoff]);
+
+  const locked = readOnly || !isEditing || delegationGenerated;
+
+  const withAlways = (list) => [...new Set([...ALWAYS_EXCLUDED, ...list])];
 
   const currentDraft = () => ({
     departments: selectedDepartments,
     designations: selectedDesignations,
-    statuses: selectedStatuses,
+    statuses: withAlways(selectedStatuses),
     excludedEmployees: [...excludedEmployees],
     cutoffDate,
+    extraParameters,
   });
 
   const beginEdit = () => {
@@ -151,6 +95,7 @@ export function EligibilityCriteria({
       setSelectedStatuses(saved.statuses || []);
       setExcludedEmployees(saved.excludedEmployees);
       setCutoffDate(saved.cutoffDate);
+      setExtraParameters(saved.extraParameters || []);
     }
     draftingRef.current = false;
     setIsEditing(false);
@@ -159,253 +104,591 @@ export function EligibilityCriteria({
   const applyDraft = async () => {
     setApplying(true);
     try {
-      const succeeded = await onApply({
-        ...currentDraft(),
-        replaceCriteria: criteriaApplied,
-      });
-      if (succeeded) {
+      const ok = await onApply({ ...currentDraft(), replaceCriteria: criteriaApplied });
+      if (ok) {
         savedDraftRef.current = currentDraft();
         draftingRef.current = false;
         setIsEditing(false);
+        onApplied?.();
       }
     } finally {
       setApplying(false);
     }
   };
 
+  /* ----- value lists ----- */
   const activeEmployees = useMemo(
-    () => employees.filter((employee) => employee.status === "Active"),
+    () => employees.filter((e) => statusOf(e).toLowerCase() === "active"),
     [employees],
   );
 
-  // Designation + department names come from the Designation table
-  // (Designation Master). If that table cannot be read, fall back to the
-  // values found in the employee list so the screen keeps working.
   const [designationRows, setDesignationRows] = useState([]);
-
   useEffect(() => {
     let cancelled = false;
     loadDesignationMaster()
-      .then((data) => {
-        if (!cancelled) setDesignationRows(data?.designations || []);
-      })
-      .catch((error) => {
-        console.error("Could not load Designation table for criteria:", error);
-      });
+      .then((data) => !cancelled && setDesignationRows(data?.designations || []))
+      .catch((error) => console.error("Could not load Designation table for criteria:", error));
     return () => {
       cancelled = true;
     };
   }, []);
 
   const departments = useMemo(() => {
-    const fromTable = [...new Set(designationRows.map((row) => row.department))]
-      .filter(Boolean)
-      .sort();
-    if (fromTable.length) return fromTable;
-    return [...new Set(activeEmployees.map((employee) => employee.organization))]
-      .filter(Boolean)
-      .sort();
+    const t = [...new Set(designationRows.map((r) => r.department))].filter(Boolean).sort();
+    return t.length ? t : [...new Set(activeEmployees.map((e) => e.organization))].filter(Boolean).sort();
   }, [designationRows, activeEmployees]);
 
   const designations = useMemo(() => {
-    const fromTable = [...new Set(designationRows.map((row) => row.name))]
-      .filter(Boolean)
-      .sort();
-    if (fromTable.length) return fromTable;
-    return [...new Set(activeEmployees.map((employee) => employee.designation))]
-      .filter(Boolean)
-      .sort();
+    const t = [...new Set(designationRows.map((r) => r.name))].filter(Boolean).sort();
+    return t.length ? t : [...new Set(activeEmployees.map((e) => e.designation))].filter(Boolean).sort();
   }, [designationRows, activeEmployees]);
 
   const statusValues = useMemo(() => {
-    const found = [...new Set(employees.map((employee) => employee.status))]
-      .filter(Boolean)
-      .sort();
-    return found.length ? found : ["Active", "Inactive"];
+    const found = [...new Set(employees.map((e) => e.status))].filter(Boolean);
+    const all = [...new Set(["Active", ...ALWAYS_EXCLUDED, ...found])];
+    return all.sort((a, b) => (a === "Active" ? -1 : b === "Active" ? 1 : a.localeCompare(b)));
   }, [employees]);
 
+  const countBy = (get, v) => employees.filter((e) => String(get(e) ?? "") === v).length;
+
+  /* ----- one definition per list-type section ----- */
+  const lists = {
+    st: {
+      title: "Employee status",
+      desc: "Employees with a ticked status are left out of the Eligibility List. Values are read from the Employee Master. Inactive is always excluded.",
+      values: statusValues,
+      selected: withAlways(selectedStatuses),
+      set: setSelectedStatuses,
+      count: (v) => countBy((e) => e.status, v),
+      always: (v) => ALWAYS_EXCLUDED.includes(v),
+    },
+    dp: {
+      title: "Department",
+      desc: "Employees in a ticked department are left out. Values are read from the Department master.",
+      values: departments,
+      selected: selectedDepartments,
+      set: setSelectedDepartments,
+      count: (v) => countBy((e) => e.organization, v),
+    },
+    ds: {
+      title: "Designation",
+      desc: "Employees with a ticked designation are left out. Values are read from the Designation master.",
+      values: designations,
+      selected: selectedDesignations,
+      set: setSelectedDesignations,
+      count: (v) => countBy((e) => e.designation, v),
+    },
+  };
+
+  extraParameters.forEach((p) => {
+    if (p.type !== "list") return;
+    const f = findParamField(p.master, p.field);
+    lists[`x${p.id}`] = {
+      title: p.label,
+      desc: `Source: ${PARAM_MASTERS.find((m) => m.id === p.master)?.name} › ${p.label}. Employees with a ticked value are left out.`,
+      values: paramValues(p, employees),
+      selected: p.values || [],
+      set: (updater) =>
+        setExtraParameters((cur) =>
+          cur.map((x) =>
+            x.id === p.id
+              ? { ...x, values: typeof updater === "function" ? updater(x.values || []) : updater }
+              : x,
+          ),
+        ),
+      count: (v) => countBy((e) => f?.get(e), v),
+    };
+  });
+
+  const toggleValue = (def, value) =>
+    def.set((cur) => (cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value]));
+
+  const sectionCount = (id) => {
+    if (id === "em") return excludedEmployees.length;
+    if (id === "ct") return 0;
+    if (lists[id]) return lists[id].selected.length;
+    const p = extraParameters.find((x) => `x${x.id}` === id);
+    return p ? (p.value !== "" && p.value != null ? 1 : 0) : 0;
+  };
+
+  const nav = [
+    ["st", "Employee status"],
+    ["dp", "Department"],
+    ["ds", "Designation"],
+    ...extraParameters.map((p) => [`x${p.id}`, p.label]),
+    ["em", "Specific employees"],
+    ["ct", "Joining date cutoff"],
+  ];
+
+  useEffect(() => {
+    if (sel !== "add" && !nav.some(([id]) => id === sel)) setSel("st");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraParameters]);
+
+  /* ----- impact strip ----- */
+  const preview = useMemo(
+    () => previewCounts(employees, { ...currentDraft() }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, selectedDepartments, selectedDesignations, selectedStatuses, excludedEmployees, cutoffDate, extraParameters],
+  );
+  const showCurrent = criteriaApplied && !isEditing && currentCounts;
+  const shown = showCurrent ? currentCounts : preview;
+
+  /* ----- employee picker ----- */
   const suggestions = useMemo(() => {
-    // Clicking the field lists the employees from the Employee Master;
-    // typing narrows the list by name or ID.
-    const term = search.trim().toLowerCase();
+    const term = empQuery.trim().toLowerCase();
     return activeEmployees
       .filter(
-        (employee) =>
-          !excludedEmployees.includes(employee.empId) &&
-          (!term ||
-            `${employee.empId} ${employee.name}`.toLowerCase().includes(term)),
+        (e) =>
+          !excludedEmployees.includes(e.empId) &&
+          (!term || `${e.empId} ${e.name}`.toLowerCase().includes(term)),
       )
-      .slice(0, 200);
-  }, [search, activeEmployees, excludedEmployees]);
+      .slice(0, 8);
+  }, [empQuery, activeEmployees, excludedEmployees]);
 
   const addExcluded = (empId) => {
-    setExcludedEmployees((current) =>
-      current.includes(empId) ? current : [...current, empId],
-    );
-    setSearch("");
+    setExcludedEmployees((cur) => (cur.includes(empId) ? cur : [...cur, empId]));
+    setEmpQuery("");
     setShowSuggest(false);
   };
 
-  const locked = readOnly || !isEditing;
+  /* ----- state message ----- */
+  const cycle = cycleName || "this cycle";
+  let strip;
+  let amber = false;
+  if (!hasCycle || (readOnly && !criteriaApplied)) {
+    amber = true;
+    strip = (
+      <>
+        <b>No Eligibility List can be generated for {locationLabel} right now.</b> An Active Annual
+        cycle (or another cycle that follows the process) must exist, and the previous cycle must be
+        archived. The criteria below are the saved {locationLabel} default.
+      </>
+    );
+  } else if (readOnly) {
+    strip = (
+      <>
+        <b>{cycle} is read-only.</b> The criteria used for this cycle are shown as saved.
+      </>
+    );
+  } else if (!criteriaApplied) {
+    strip = (
+      <>
+        <b>First generation for {cycle}.</b> The list is empty. Set the criteria (saved {locationLabel}{" "}
+        default) and press Apply Criteria to generate it.
+      </>
+    );
+  } else if (delegationGenerated) {
+    strip = (
+      <>
+        <b>Delegation is generated for {cycle}. The criteria are locked.</b> From here a person who
+        becomes not active moves to Not Eligible and leaves Delegation and the Appraisal Sheet. A
+        person made eligible or added goes to Delegation first, then the Appraisal Sheet.
+      </>
+    );
+  } else if (isEditing) {
+    strip = (
+      <>
+        <b>Regenerating {cycle}.</b> Apply Criteria rebuilds the list (manual decisions are kept) and
+        saves the criteria as the {locationLabel} default.
+      </>
+    );
+  } else {
+    strip = (
+      <>
+        <b>List generated for {cycle}.</b> You can Edit Criteria and regenerate until Delegation is
+        generated.
+      </>
+    );
+  }
 
-  return (
-    <div className="em-criteria-pane">
-      <Section
-        title="Exclude by department"
-        count={selectedDepartments.length}
-        folded={folded.departments}
-        onToggle={() => toggleSection("departments")}
-        grow
-      >
-        <CheckList
-          values={departments}
-          selected={selectedDepartments}
-          setSelected={setSelectedDepartments}
-          disabled={locked}
-        />
-      </Section>
-
-      <Section
-        title="Exclude by designation"
-        count={selectedDesignations.length}
-        folded={folded.designations}
-        onToggle={() => toggleSection("designations")}
-        grow
-      >
-        <CheckList
-          values={designations}
-          selected={selectedDesignations}
-          setSelected={setSelectedDesignations}
-          disabled={locked}
-        />
-      </Section>
-
-      <Section
-        title="Exclude by employee status"
-        count={selectedStatuses.length}
-        folded={folded.statuses}
-        onToggle={() => toggleSection("statuses")}
-        grow
-      >
-        <CheckList
-          values={statusValues}
-          selected={selectedStatuses}
-          setSelected={setSelectedStatuses}
-          disabled={locked}
-        />
-      </Section>
-
-      <Section
-        title="Exclude specific employees"
-        count={excludedEmployees.length}
-        folded={folded.employees}
-        onToggle={() => toggleSection("employees")}
-      >
-        <div className="em-search-field" ref={searchBoxRef}>
-          <input
-            value={search}
-            disabled={locked}
-            onFocus={() => setShowSuggest(true)}
-            onClick={() => setShowSuggest(true)}
-            onBlur={() => setShowSuggest(false)}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setShowSuggest(true);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && suggestions[0])
-                addExcluded(suggestions[0].empId);
-            }}
-            placeholder="Click to pick, or type name / ID"
-          />
-        </div>
-
-        {showSuggest && !readOnly && isEditing && menuPos && (
-          <div
-            className="em-suggest em-suggest-menu"
-            style={{
-              position: "fixed",
-              left: menuPos.left,
-              width: menuPos.width,
-              maxHeight: menuPos.maxHeight,
-              ...(menuPos.top !== undefined
-                ? { top: menuPos.top }
-                : { bottom: menuPos.bottom }),
-            }}
-          >
-            {suggestions.length ? (
-              suggestions.map((employee) => (
-                <div
-                  key={employee.empId}
-                  onMouseDown={() => addExcluded(employee.empId)}
-                >
-                  {employee.empId} - {employee.name}
-                </div>
-              ))
-            ) : (
-              <div className="em-hint em-suggest-empty">No match</div>
-            )}
+  /* ----- panes ----- */
+  const renderList = (id) => {
+    const def = lists[id];
+    const p = extraParameters.find((x) => `x${x.id}` === id);
+    const q = listQuery.toLowerCase();
+    const items = def.values.filter((v) => !q || v.toLowerCase().includes(q));
+    return (
+      <>
+        <div className="elx-rh">
+          <div>
+            <div className="elx-rt">{def.title}</div>
+            <div className="em-hint">{def.desc}</div>
           </div>
-        )}
-
-        <div className="em-chips">
-          {excludedEmployees.map((empId) => {
-            const employee = employees.find((item) => item.empId === empId);
+          {p && !locked && (
+            <button type="button" className="elx-lnk" onClick={() => removeParam(p)}>
+              Remove parameter
+            </button>
+          )}
+          <div className="elx-rsel">{def.selected.length} selected</div>
+        </div>
+        <div className="elx-rtool">
+          <div className="em-search-field">
+            <input
+              placeholder={`Search ${def.title.toLowerCase()}`}
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <button
+            type="button"
+            className="elx-lnk"
+            disabled={locked}
+            onClick={() => def.set((cur) => [...new Set([...cur, ...items])])}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="elx-lnk"
+            disabled={locked}
+            onClick={() => def.set((cur) => cur.filter((v) => def.always?.(v) || !items.includes(v)))}
+          >
+            Clear
+          </button>
+        </div>
+        <div className="elx-rlist">
+          {items.length === 0 && <div className="em-hint" style={{ padding: 14 }}>No match.</div>}
+          {items.map((v) => {
+            const al = def.always?.(v);
+            const n = def.count(v);
             return (
-              <span className="em-chip" key={empId}>
-                {employee?.name ?? empId}
-                <button
-                  type="button"
-                  disabled={locked}
-                  onClick={() =>
-                    setExcludedEmployees((current) =>
-                      current.filter((item) => item !== empId),
-                    )
-                  }
-                >
-                  <X size={11} />
-                </button>
-              </span>
+              <label key={v} className={`elx-ri${locked || al ? " dis" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={al || def.selected.includes(v)}
+                  disabled={locked || al}
+                  onChange={() => toggleValue(def, v)}
+                />
+                <span className="elx-rn">
+                  {v}
+                  {al && <em>always excluded</em>}
+                </span>
+                <i>
+                  {n} {n === 1 ? "employee" : "employees"}
+                </i>
+              </label>
             );
           })}
         </div>
-      </Section>
+      </>
+    );
+  };
 
-      <Section
-        title="Joining date cutoff"
-        count={cutoffDate ? 1 : 0}
-        folded={folded.cutoff}
-        onToggle={() => toggleSection("cutoff")}
-      >
-        <div className="em-hint">Exclude anyone who joined after this date</div>
-        <input
-          type="date"
-          className="em-date-input"
-          value={cutoffDate}
-          disabled={locked}
-          onChange={(event) => setCutoffDate(event.target.value)}
-        />
-      </Section>
+  const patchParam = (id, patch) =>
+    setExtraParameters((cur) => cur.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-      <div className="em-crit-actions">
+  const removeParam = (p) => {
+    setExtraParameters((cur) => cur.filter((x) => x.id !== p.id));
+    setSel("st");
+  };
+
+  const renderParamValue = (p) => (
+    <>
+      <div className="elx-rh">
+        <div>
+          <div className="elx-rt">{p.label}</div>
+          <div className="em-hint">
+            Source: {PARAM_MASTERS.find((m) => m.id === p.master)?.name} › {p.label}
+          </div>
+        </div>
+        {!locked && (
+          <button type="button" className="elx-lnk" onClick={() => removeParam(p)}>
+            Remove parameter
+          </button>
+        )}
+      </div>
+      <div className="elx-box">
+        {p.type === "number" ? (
+          <>
+            <div className="em-hint">Exclude employees with a value below</div>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              className="em-date-input elx-narrow"
+              value={p.value ?? ""}
+              disabled={locked}
+              onChange={(e) => patchParam(p.id, { value: e.target.value })}
+            />
+          </>
+        ) : (
+          <>
+            <div className="em-hint">Exclude employees whose date is</div>
+            <select
+              className="em-date-input elx-narrow"
+              value={p.op || "after"}
+              disabled={locked}
+              onChange={(e) => patchParam(p.id, { op: e.target.value })}
+            >
+              <option value="after">after</option>
+              <option value="before">on or before</option>
+            </select>
+            <input
+              type="date"
+              className="em-date-input elx-narrow"
+              style={{ marginTop: 8 }}
+              value={p.value || ""}
+              disabled={locked}
+              onChange={(e) => patchParam(p.id, { value: e.target.value })}
+            />
+          </>
+        )}
+      </div>
+    </>
+  );
+
+  const renderEmployees = () => (
+    <>
+      <div className="elx-rh">
+        <div>
+          <div className="elx-rt">Specific employees</div>
+          <div className="em-hint">Exclude named employees. Only active employees can be picked.</div>
+        </div>
+        <div className="elx-rsel">{excludedEmployees.length} selected</div>
+      </div>
+      <div className="elx-rtool" style={{ position: "relative" }}>
+        <div className={`em-search-field${locked ? " dis" : ""}`} style={{ maxWidth: 360 }}>
+          <input
+            placeholder="Type name or ID"
+            autoComplete="off"
+            disabled={locked}
+            value={empQuery}
+            onFocus={() => setShowSuggest(true)}
+            onBlur={() => setTimeout(() => setShowSuggest(false), 120)}
+            onChange={(e) => {
+              setEmpQuery(e.target.value);
+              setShowSuggest(true);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && suggestions[0] && addExcluded(suggestions[0].empId)}
+          />
+        </div>
+        {showSuggest && !locked && (
+          <div className="em-suggest elx-suggest">
+            {suggestions.length ? (
+              suggestions.map((e) => (
+                <div key={e.empId} onMouseDown={() => addExcluded(e.empId)}>
+                  {e.empId} - {e.name}
+                </div>
+              ))
+            ) : (
+              <div className="em-hint">No match</div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="em-chips" style={{ padding: "6px 2px" }}>
+        {excludedEmployees.length === 0 && <span className="elx-none">No employees excluded.</span>}
+        {excludedEmployees.map((id) => {
+          const e = employees.find((x) => x.empId === id);
+          return (
+            <span className="em-chip" key={id}>
+              {e?.name ?? id}
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => setExcludedEmployees((cur) => cur.filter((x) => x !== id))}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  const renderCutoff = () => {
+    const changed = (cutoffDate || "") !== defaultCutoff;
+    return (
+      <>
+        <div className="elx-rh">
+          <div>
+            <div className="elx-rt">Joining date cutoff</div>
+            <div className="em-hint">Employees who joined after this date are left out.</div>
+          </div>
+        </div>
+        <div className="elx-box">
+          <div className="em-hint">Cutoff date</div>
+          <input
+            type="date"
+            className="em-date-input elx-narrow"
+            value={cutoffDate}
+            disabled={locked || !hasCycle}
+            onChange={(e) => setCutoffDate(e.target.value)}
+          />
+          <div className="em-hint" style={{ marginTop: 10 }}>
+            {defaultCutoff ? (
+              <>
+                Starts as the cycle default ({fmtDate(defaultCutoff)}, 31 Oct of the year before the
+                cycle's end year, from {cycle}). Change it here if needed; it applies to {cycle} only
+                and archived cycles keep their own date.{" "}
+                {changed && (
+                  <>
+                    <b className="elx-chg">Changed from default.</b>{" "}
+                    {!locked && (
+                      <button type="button" className="elx-lnk" onClick={() => setCutoffDate(defaultCutoff)}>
+                        Reset to default
+                      </button>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              "No cycle yet. When the next Annual cycle is created, the cutoff starts as 31 Oct of the year before the cycle's end year and can be changed here."
+            )}
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const renderAdd = () => {
+    const master = PARAM_MASTERS.find((m) => m.id === add.master) || PARAM_MASTERS[0];
+    const used = extraParameters.map((p) => `${p.master}|${p.field}`);
+    const free = master.fields.filter((f) => !used.includes(`${master.id}|${f.key}`));
+    const field = free.find((f) => f.key === add.field) || free[0];
+    const label = add.label || field?.label || "";
+    return (
+      <>
+        <div className="elx-rh">
+          <div>
+            <div className="elx-rt">Add parameter</div>
+            <div className="em-hint">
+              Pick the master where the values are stored, then the field. The values are read from
+              that master and the parameter is saved with this location's criteria.
+            </div>
+          </div>
+        </div>
+        <div className="elx-addf">
+          <label>
+            Master
+            <select value={master.id} onChange={(e) => setAdd({ master: e.target.value, field: "", label: "" })}>
+              {PARAM_MASTERS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Field
+            <select value={field?.key || ""} onChange={(e) => setAdd({ ...add, field: e.target.value, label: "" })}>
+              {free.length === 0 && <option value="">All fields already added</option>}
+              {free.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Name shown
+            <input value={label} onChange={(e) => setAdd({ ...add, label: e.target.value })} />
+          </label>
+          {field && (
+            <div className="em-hint">
+              Type:{" "}
+              {field.type === "list"
+                ? "Exclude selected values"
+                : field.type === "number"
+                  ? "Exclude if below a number"
+                  : "Exclude by date"}
+            </div>
+          )}
+          <div>
+            <button
+              type="button"
+              className="em-btn em-btn-primary"
+              disabled={!field}
+              onClick={() => {
+                const id = `${field.key}_${Date.now() % 100000}`;
+                setExtraParameters((cur) => [
+                  ...cur,
+                  { id, master: master.id, field: field.key, label: label.trim() || field.label, type: field.type, values: [], op: "after", value: "" },
+                ]);
+                setSel(`x${id}`);
+                setAdd({ master: master.id, field: "", label: "" });
+              }}
+            >
+              Add parameter
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const selectedParam = extraParameters.find((x) => `x${x.id}` === sel);
+  let pane;
+  if (sel === "add") pane = renderAdd();
+  else if (sel === "em") pane = renderEmployees();
+  else if (sel === "ct") pane = renderCutoff();
+  else if (lists[sel]) pane = renderList(sel);
+  else if (selectedParam) pane = renderParamValue(selectedParam);
+
+  return (
+    <div className="elx-crit">
+      <div className={`elx-strip${amber ? " amber" : ""}`}>{strip}</div>
+
+      <div className="elx-imp">
+        <span>{showCurrent ? "Current list" : "If applied now"}</span>
+        <b>{shown.eligible}</b> eligible <span className="dot">·</span>
+        <b>{shown.notEligible}</b> not eligible <span className="dot">·</span>
+        {shown.total} employees
+        {!hasCycle && <span className="elx-none"> (preview only)</span>}
+      </div>
+
+      <div className="elx-cwrap">
+        <div className="elx-cl">
+          {nav.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`elx-ni${sel === id ? " on" : ""}`}
+              onClick={() => {
+                setSel(id);
+                setListQuery("");
+              }}
+            >
+              <span>{label}</span>
+              {id === "ct" ? (
+                <span className="elx-nb lk">
+                  {cutoffDate ? fmtDate(cutoffDate).replace(/ 20(\d\d)$/, " $1") : "—"}
+                </span>
+              ) : (
+                <span className={`elx-nb${sectionCount(id) ? " on" : ""}`}>{sectionCount(id)}</span>
+              )}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`elx-ni add${sel === "add" ? " on" : ""}`}
+            disabled={locked}
+            title={locked ? "Edit Criteria is needed to change the parameters" : undefined}
+            onClick={() => setSel("add")}
+          >
+            <span>＋ Add parameter</span>
+          </button>
+        </div>
+        <div className="elx-cr">{pane}</div>
+      </div>
+
+      <div className="elx-actions">
         {isEditing ? (
           <>
             <button
               type="button"
-              className="em-btn em-btn-primary em-apply-btn"
-              disabled={readOnly || applying}
+              className="em-btn em-btn-primary em-apply-btn elx-apply"
+              disabled={readOnly || applying || delegationGenerated || !hasCycle}
               onClick={applyDraft}
             >
               <Check size={14} />
               {applying ? "Applying..." : "Apply Criteria"}
             </button>
             {criteriaApplied && (
-              <button
-                type="button"
-                className="em-btn em-btn-ghost"
-                disabled={applying}
-                onClick={cancelEdit}
-              >
+              <button type="button" className="em-btn em-btn-ghost" disabled={applying} onClick={cancelEdit}>
                 Cancel Edit
               </button>
             )}
@@ -413,16 +696,21 @@ export function EligibilityCriteria({
         ) : (
           <button
             type="button"
-            className="em-btn em-btn-primary em-apply-btn"
-            disabled={readOnly}
+            className="em-btn em-btn-primary em-apply-btn elx-apply"
+            disabled={readOnly || delegationGenerated}
             onClick={beginEdit}
           >
             Edit Criteria
           </button>
         )}
+        <span className="em-hint">
+          {delegationGenerated
+            ? `Locked: Delegation is generated for ${cycle}.`
+            : hasCycle
+              ? `Saves as the ${locationLabel} default and as the copy for ${cycle}. Earlier cycles stay as they were.`
+              : `Apply Criteria is available after the next Annual cycle is created for ${locationLabel}.`}
+        </span>
       </div>
-
-
     </div>
   );
 }

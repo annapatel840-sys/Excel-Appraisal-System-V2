@@ -3196,7 +3196,7 @@ import {
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { useSelectedLocation } from "@/lib/location-store";
+import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { DesignationMasterPage } from "@/components/employee-master/DesignationMasterPage";
 import {
   FIELD_DEFS,
@@ -6210,34 +6210,8 @@ export function EmployeeMaster() {
             ) : (
               <div
                 className="em-eligibility-layout"
-                style={
-                  canEditEmployees
-                    ? undefined
-                    : { gridTemplateColumns: "minmax(0, 1fr)" }
-                }
+                style={{ gridTemplateColumns: "minmax(0, 1fr)" }}
               >
-                {canEditEmployees && (
-                  <EligibilityCriteria
-                    employees={
-                      eligibilityMasterEmployees.length
-                        ? eligibilityMasterEmployees
-                        : eligibilityEmployees
-                    }
-                    excludedEmployees={excludedEmployees}
-                    setExcludedEmployees={setExcludedEmployees}
-                    onApply={applyEligibilityCriteria}
-                    savedCriteria={eligibilitySavedCriteria}
-                    onGenerateDelegation={
-                      eligibilityShowingSnapshot
-                        ? undefined
-                        : generateDelegationFromEligibility
-                    }
-                    criteriaApplied={eligibilityCriteriaApplied}
-                    delegationGenerated={delegationGenerated}
-                    readOnly={!eligibilityCycleId || eligibilityShowingSnapshot}
-                  />
-                )}
-
                 <EligibilityList
                   employees={eligibilityEmployees}
                   search={eligibilitySearch}
@@ -6277,6 +6251,35 @@ export function EmployeeMaster() {
                       : generateDelegationFromEligibility
                   }
                   delegationGenerated={delegationGenerated}
+                  criteriaSlot={({ goList, currentCounts }) => (
+                    <EligibilityCriteria
+                      employees={
+                        eligibilityMasterEmployees.length
+                          ? eligibilityMasterEmployees
+                          : eligibilityEmployees
+                      }
+                      excludedEmployees={excludedEmployees}
+                      setExcludedEmployees={setExcludedEmployees}
+                      onApply={applyEligibilityCriteria}
+                      savedCriteria={eligibilitySavedCriteria}
+                      criteriaApplied={eligibilityCriteriaApplied}
+                      delegationGenerated={delegationGenerated}
+                      readOnly={
+                        !canEditEmployees ||
+                        !eligibilityCycleId ||
+                        eligibilityShowingSnapshot
+                      }
+                      hasCycle={Boolean(eligibilityCycleId)}
+                      cycleName={currentAppraisalCycleName}
+                      locationLabel={
+                        isAllLocations(eligibilityLocationFilter)
+                          ? "all locations"
+                          : String(eligibilityLocationFilter)
+                      }
+                      currentCounts={currentCounts}
+                      onApplied={goList}
+                    />
+                  )}
                 />
               </div>
             )}

@@ -663,6 +663,7 @@ import { useScreenFields } from "@/lib/access-store";
 import { fmtDoj } from "@/lib/employee-master-utils";
 import { LocationMasterControl } from "./LocationMasterControl";
 import { matchesLocation, isAllLocations } from "@/lib/location-store";
+import { effectiveRow, isActiveStatus, isInactiveStatus } from "@/lib/eligibility-rules";
 import "./employee-master-ui.css";
 
 const PAGE_SIZE = 20;
@@ -730,12 +731,7 @@ function NeedActionInfo() {
 }
 
 // "Need Action": the employee's status in the Employee Master is not Active.
-const needsAction = (e) => {
-  const status = String(
-    e?.status ?? e?.rawEmployee?.emp_status ?? e?.rawEmployee?.status ?? "Active",
-  ).trim();
-  return status.toLowerCase() !== "active";
-};
+const needsAction = (e) => Boolean(e?._eff?.actionNeeded);
 
 const updatedOf = (e) =>
   e.eligibilityUpdatedAt ||
@@ -800,9 +796,7 @@ const DEFS = [
       ).trim();
       const active = status.toLowerCase() === "active";
       return (
-        <span className={`emx-tag ${active ? "ok" : "grey"}`}>
-          {active ? "Active" : "Inactive"}
-        </span>
+        <span className={`emx-tag ${active ? "ok" : "grey"}`}>{status}</span>
       );
     },
   },
@@ -810,9 +804,9 @@ const DEFS = [
     key: "eligible",
     label: "Eligibility",
     w: 110,
-    get: (e) => eligibilityDecisionOf(e),
+    get: (e) => e._eff?.decision ?? eligibilityDecisionOf(e),
     render: (e) => {
-      const decision = eligibilityDecisionOf(e);
+      const decision = e._eff?.decision ?? eligibilityDecisionOf(e);
       return (
         <span
           className={`emx-tag ${decision === "Eligible" ? "ok" : decision === "Pending" ? "info" : "warn"}`}
@@ -823,16 +817,39 @@ const DEFS = [
     },
   },
   {
+    key: "compManager",
+    label: "Comp Manager",
+    w: 150,
+    get: (e) => e.compManager || e.rawEmployee?.comp_manager || "—",
+  },
+  {
+    key: "nextStep",
+    label: "Next Step",
+    w: 190,
+    get: (e) => e._eff?.nextLabel || "—",
+    render: (e) =>
+      e._eff?.nextLabel ? (
+        <span
+          className={`emx-tag ${e._eff.decisionNeeded || e._eff.nextStep === "Delegation" ? "warn" : "info"}`}
+        >
+          {e._eff.nextLabel}
+        </span>
+      ) : (
+        "—"
+      ),
+  },
+  {
     key: "reason",
     label: "Reason",
     w: 200,
-    get: (e) => e.eligibleReason || "—",
+    get: (e) => e._eff?.reason || e.eligibleReason || "—",
   },
   {
     key: "by",
     label: "Set By",
     w: 100,
     get: (e) => {
+      if (e._eff?.setBy === "System") return "System";
       const source = String(
         e.eligibilitySource || e.rawEmployee?.eligibility_source || "",
       )
@@ -848,11 +865,11 @@ const DEFS = [
     label: "Change Tag",
     w: 200,
     get: (e) =>
-      [tagOf(e), e.inExceptionalCycle ? "In open Exceptional cycle" : ""]
+      [tagOf(e) || (e._eff?.changed ? "Changed" : ""), e.inExceptionalCycle ? "In open Exceptional cycle" : ""]
         .filter(Boolean)
         .join(" · ") || "—",
     render: (e) => {
-      const tag = tagOf(e);
+      const tag = tagOf(e) || (e._eff?.changed ? "Changed" : "");
       if (!tag && !e.inExceptionalCycle) return "—";
       return (
         <>
@@ -884,8 +901,15 @@ function countBy(list, fn) {
     .map((k) => [k, map[k]]);
 }
 
+const TABS = [
+  ["crit", "Eligibility Criteria"],
+  ["list", "Eligibility List"],
+  ["ne", "Not Eligible"],
+  ["act", "Action needed"],
+];
+
 export function EligibilityList({
-  employees,
+  employees: rawEmployees,
   search,
   setSearch,
   locationFilter = "All",
@@ -901,6 +925,7 @@ export function EligibilityList({
   criteriaApplied = false,
   onGenerateDelegation,
   delegationGenerated = false,
+  criteriaSlot, // ({ goList, currentCounts }) => element  (the Eligibility Criteria tab)
 }) {
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
@@ -918,10 +943,31 @@ export function EligibilityList({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
-  // Click a metric to filter the list: null | "eligible" | "notEligible" | "needAction"
-  const [quickFilter, setQuickFilter] = useState(null);
+  const [delegationPrompt, setDelegationPrompt] = useState(null);
+  // Tabs: crit | list (Eligible only) | ne (Not Eligible only) | act (pending step)
+  const [tab, setTab] = useState(criteriaApplied ? "list" : "crit");
+  const tabTouched = useRef(false);
+  const pickTab = (next) => {
+    tabTouched.current = true;
+    setTab(next);
+    setSelectedIds(new Set());
+  };
+  // Open on the list once it exists, on the criteria while nothing is generated.
+  useEffect(() => {
+    if (!tabTouched.current) setTab(criteriaApplied ? "list" : "crit");
+  }, [criteriaApplied]);
 
   const canEdit = Boolean(onChangeEligibility) && fieldAccess.canEdit("Eligibility");
+
+  // Rules 11-14: derive what each row shows (System-set Not Eligible, Action needed, next step)
+  const employees = useMemo(
+    () =>
+      rawEmployees.map((e) => ({
+        ...e,
+        _eff: effectiveRow(e, { listGenerated: criteriaApplied, delegationGenerated }),
+      })),
+    [rawEmployees, criteriaApplied, delegationGenerated],
+  );
 
   useEffect(() => {
     const outside = (event) => {
@@ -938,21 +984,17 @@ export function EligibilityList({
 
   const searchPre = useCallback(
     (e) => {
-      if (quickFilter === "eligible" && eligibilityDecisionOf(e) !== "Eligible") return false;
-      if (quickFilter === "notEligible" && eligibilityDecisionOf(e) !== "Not Eligible") return false;
-      if (quickFilter === "needAction" && !needsAction(e)) return false;
+      if (tab === "list" && !e._eff.eligible) return false;
+      if (tab === "ne" && e._eff.decision !== "Not Eligible") return false;
+      if (tab === "act" && !e._eff.actionNeeded) return false;
       const term = (search || "").trim().toLowerCase();
       if (!term) return true;
       return (
-        String(e.name ?? "")
-          .toLowerCase()
-          .includes(term) ||
-        String(e.empId ?? "")
-          .toLowerCase()
-          .includes(term)
+        String(e.name ?? "").toLowerCase().includes(term) ||
+        String(e.empId ?? "").toLowerCase().includes(term)
       );
     },
-    [search, quickFilter],
+    [search, tab],
   );
 
   const locationFilteredEmployees = useMemo(() => {
@@ -975,16 +1017,11 @@ export function EligibilityList({
     () => locationFilteredEmployees.filter((e) => tagOf(e) !== "Removed"),
     [locationFilteredEmployees],
   );
-  const eligibleCount = counted.filter(
-    (e) => eligibilityDecisionOf(e) === "Eligible",
-  ).length;
-  const notEligibleCount = counted.filter(
-    (e) => eligibilityDecisionOf(e) === "Not Eligible",
-  ).length;
+  const eligibleCount = counted.filter((e) => e._eff.eligible).length;
+  const notEligibleCount = counted.filter((e) => e._eff.decision === "Not Eligible").length;
   const needActionCount = counted.filter(needsAction).length;
-  const pendingCount = counted.filter(
-    (e) => eligibilityDecisionOf(e) === "Pending",
-  ).length;
+  const pendingDelegation = counted.filter((e) => e._eff.nextStep === "Delegation").length;
+  const actionTabCount = needActionCount;
 
   /* paging */
   const pages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
@@ -994,7 +1031,7 @@ export function EligibilityList({
   }, [page, pages]);
   useEffect(
     () => setPage(1),
-    [grid.filters, grid.sort, search, locationFilter, quickFilter],
+    [grid.filters, grid.sort, search, locationFilter, tab],
   );
 
   const pageRows = useMemo(
@@ -1005,10 +1042,8 @@ export function EligibilityList({
   const to = Math.min(view.length, safePage * PAGE_SIZE);
 
   /* selection */
-  const selectable = useMemo(
-    () => view.filter((e) => tagOf(e) !== "Removed"),
-    [view],
-  );
+  const canSelect = (e) => tagOf(e) !== "Removed" && isActiveStatus(e);
+  const selectable = useMemo(() => view.filter(canSelect), [view]);
   const selectedRows = useMemo(
     () =>
       locationFilteredEmployees.filter(
@@ -1016,11 +1051,8 @@ export function EligibilityList({
       ),
     [locationFilteredEmployees, selectedIds],
   );
-  const viewSelected = selectable.filter((e) =>
-    selectedIds.has(e.empId),
-  ).length;
-  const allSelected =
-    selectable.length > 0 && viewSelected === selectable.length;
+  const viewSelected = selectable.filter((e) => selectedIds.has(e.empId)).length;
+  const allSelected = selectable.length > 0 && viewSelected === selectable.length;
 
   const toggleRow = (id) =>
     setSelectedIds((current) => {
@@ -1033,9 +1065,7 @@ export function EligibilityList({
   const toggleAll = () =>
     setSelectedIds((current) => {
       const next = new Set(current);
-      selectable.forEach((e) =>
-        allSelected ? next.delete(e.empId) : next.add(e.empId),
-      );
+      selectable.forEach((e) => (allSelected ? next.delete(e.empId) : next.add(e.empId)));
       return next;
     });
 
@@ -1044,17 +1074,13 @@ export function EligibilityList({
     onChangeEligibility(Object.assign([...selectedRows], { preset }));
   };
 
-  const showSetEligible = selectedRows.some(
-    (e) => eligibilityDecisionOf(e) !== "Eligible",
-  );
-  const showSetNotEligible = selectedRows.some(
-    (e) => eligibilityDecisionOf(e) === "Eligible",
-  );
+  const showSetEligible = selectedRows.some((e) => !e._eff.eligible);
+  const showSetNotEligible = selectedRows.some((e) => e._eff.eligible);
 
   /* statistics tab */
   const stats = useMemo(() => {
-    const notEl = counted.filter((e) => e.eligible !== "Yes");
-    const el = counted.filter((e) => e.eligible === "Yes");
+    const notEl = counted.filter((e) => !e._eff.eligible);
+    const el = counted.filter((e) => e._eff.eligible);
     const listed = new Set(employees.map((e) => e.empId));
     const notInList = masterEmployees.filter(
       (e) => e.status === "Active" && !listed.has(e.empId),
@@ -1069,33 +1095,55 @@ export function EligibilityList({
           ? [["Active in Employee Master, not in list", notInList]]
           : []),
         ["Set by hand", counted.filter((e) => e.manualOverride).length],
-        [
-          "In open Exceptional cycle",
-          counted.filter((e) => e.inExceptionalCycle).length,
-        ],
+        ["In open Exceptional cycle", counted.filter((e) => e.inExceptionalCycle).length],
       ],
       sections: [
         {
           title: "Not Eligible, by Reason",
-          rows: countBy(
-            notEl,
-            (e) => e.eligibleReason || "Excluded by criteria",
-          ),
+          rows: countBy(notEl, (e) => e._eff.reason || "Excluded by criteria"),
         },
         {
           title: "Eligible, by Reason",
-          rows: countBy(
-            el,
-            (e) => e.eligibleReason || "Criteria (no exception)",
-          ),
+          rows: countBy(el, (e) => e._eff.reason || "Criteria (no exception)"),
         },
       ],
     };
   }, [counted, employees, masterEmployees]);
 
-  const listedIds = useMemo(
-    () => new Set(employees.map((e) => e.empId)),
-    [employees],
+  const listedIds = useMemo(() => new Set(employees.map((e) => e.empId)), [employees]);
+
+  // Rule 13: adding an employee prompts Generate Delegation
+  const handleAdd = async (payload) => {
+    const result = await onAddEmployee?.(payload);
+    if (delegationGenerated && onGenerateDelegation) {
+      const added = masterEmployees.find((m) => m.empId === payload?.empId);
+      setDelegationPrompt(added?.name || payload?.empId || "The employee");
+    }
+    return result;
+  };
+
+  const rowIsOff = (e) => tagOf(e) === "Removed" || isInactiveStatus(e);
+
+  const generateLabel = !delegationGenerated
+    ? "Generate Delegation"
+    : pendingDelegation
+      ? `Generate Delegation (${pendingDelegation})`
+      : "Delegation Generated";
+  const generateDisabled = delegationGenerated && !pendingDelegation;
+
+  const stat = (key, count, label, tabKey, extra) => (
+    <div
+      key={key}
+      className={`em-stat-click${tab === tabKey ? " on" : ""}`}
+      role="button"
+      tabIndex={0}
+      title={`Open ${label}`}
+      onClick={() => pickTab(tabKey)}
+      onKeyDown={(event) => event.key === "Enter" && pickTab(tabKey)}
+    >
+      <strong>{count}</strong>
+      {extra || <span>{label}</span>}
+    </div>
   );
 
   return (
@@ -1103,53 +1151,19 @@ export function EligibilityList({
       {/* ================= HEADER ================= */}
       <div className="em-eligibility-header">
         <div className="em-eligibility-stats">
-          <div
-            className={`em-stat-click${quickFilter === null ? " on" : ""}`}
-            role="button"
-            tabIndex={0}
-            title="Show all"
-            onClick={() => setQuickFilter(null)}
-            onKeyDown={(event) => event.key === "Enter" && setQuickFilter(null)}
-          >
-            <strong>{counted.length}</strong>
-            <span>Total</span>
-          </div>
-          {[
-            ["eligible", eligibleCount, "Eligible"],
-            ["notEligible", notEligibleCount, "Not Eligible"],
-            ["needAction", needActionCount, "Need Action"],
-          ].map(([key, count, label]) => (
-            <div
-              key={key}
-              className={`em-stat-click${quickFilter === key ? " on" : ""}`}
-              role="button"
-              tabIndex={0}
-              title={
-                key === "needAction"
-                  ? undefined
-                  : quickFilter === key
-                    ? "Click to show all"
-                    : `Show only ${label.toLowerCase()} employees`
-              }
-              onClick={() => setQuickFilter((cur) => (cur === key ? null : key))}
-              onKeyDown={(event) =>
-                event.key === "Enter" &&
-                setQuickFilter((cur) => (cur === key ? null : key))
-              }
-            >
-              <strong>{count}</strong>
-              {key === "needAction" ? (
-                <div
-                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
-                >
-                  <span>{label}</span>
-                  <NeedActionInfo />
-                </div>
-              ) : (
-                <span>{label}</span>
-              )}
-            </div>
-          ))}
+          {stat("total", counted.length, "Total", "list")}
+          {stat("el", eligibleCount, "Eligible", "list")}
+          {stat("ne", notEligibleCount, "Not Eligible", "ne")}
+          {stat(
+            "act",
+            needActionCount,
+            "Need Action",
+            "act",
+            <div style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+              <span>Need Action</span>
+              <NeedActionInfo />
+            </div>,
+          )}
         </div>
 
         <div className="em-eligibility-actions">
@@ -1160,6 +1174,7 @@ export function EligibilityList({
               onChange={(event) => {
                 setSearch(event.target.value);
                 setMenuOpen(false);
+                if (tab === "crit") pickTab("list");
               }}
               placeholder="Search name / ID"
             />
@@ -1175,6 +1190,7 @@ export function EligibilityList({
             <button
               type="button"
               className="em-btn emx-dashed"
+              disabled={!criteriaApplied}
               onClick={() => setAddOpen(true)}
             >
               <Plus size={14} /> Add an Employee
@@ -1185,12 +1201,10 @@ export function EligibilityList({
               <button
                 type="button"
                 className="em-btn em-btn-primary"
-                disabled={delegationGenerated}
+                disabled={generateDisabled}
                 onClick={onGenerateDelegation}
               >
-                {delegationGenerated
-                  ? "Delegation Generated"
-                  : "Generate Delegation"}
+                {generateLabel}
               </button>
             )}
           </div>
@@ -1280,105 +1294,126 @@ export function EligibilityList({
         </div>
       </div>
 
-      {/* ================= TABLE + PANEL ================= */}
+      {/* ================= TABS ================= */}
+      <div className="elx-tabs" role="tablist">
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tab === key ? "on" : ""}
+            onClick={() => pickTab(key)}
+          >
+            {label}
+            {key === "act" && actionTabCount > 0 ? ` (${actionTabCount})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {/* ================= BODY + PANEL ================= */}
       <div className="emx-work">
         <div className="emx-main">
-          {canEdit && selectedRows.length > 0 && (
-            <div className="emx-selbar">
-              <b>{selectedRows.length} selected</b>
-              {showSetEligible && (
-                <button
-                  type="button"
-                  className="emx-mini"
-                  onClick={() => bulk("Yes")}
-                >
-                  Set Eligible…
-                </button>
-              )}
-              {showSetNotEligible && (
-                <button
-                  type="button"
-                  className="emx-mini"
-                  onClick={() => bulk("No")}
-                >
-                  Set Not Eligible…
-                </button>
-              )}
-              <button
-                type="button"
-                className="emx-mini"
-                onClick={() => setSelectedIds(new Set())}
-              >
-                Clear selection
-              </button>
+          {tab === "crit" ? (
+            <div className="elx-crit-scroll">
+              {criteriaSlot?.({
+                goList: () => pickTab("list"),
+                currentCounts: criteriaApplied
+                  ? {
+                      eligible: eligibleCount,
+                      notEligible: notEligibleCount,
+                      total: counted.length,
+                    }
+                  : null,
+              })}
             </div>
+          ) : !criteriaApplied ? (
+            <div className="elx-empty">
+              <b>No Eligibility List</b>
+              The list has not been generated yet. Set the criteria on the Eligibility Criteria tab
+              and press Apply Criteria.
+            </div>
+          ) : (
+            <>
+              {canEdit && selectedRows.length > 0 && (
+                <div className="emx-selbar">
+                  <b>{selectedRows.length} selected</b>
+                  {showSetEligible && (
+                    <button type="button" className="emx-mini" onClick={() => bulk("Yes")}>
+                      Set Eligible…
+                    </button>
+                  )}
+                  {showSetNotEligible && (
+                    <button type="button" className="emx-mini" onClick={() => bulk("No")}>
+                      Set Not Eligible…
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="emx-mini"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              )}
+
+              <DataGrid
+                defs={defs}
+                grid={grid}
+                allRows={employees}
+                rows={pageRows}
+                rowKey={(e) => e.empId}
+                selectable={canEdit}
+                selected={selectedIds}
+                onToggleRow={toggleRow}
+                onToggleAll={toggleAll}
+                allSelected={allSelected}
+                someSelected={viewSelected > 0}
+                canSelectRow={canSelect}
+                rowClass={(e) => (rowIsOff(e) ? "emx-dim" : "")}
+                actionHeader={canEdit ? "Action" : null}
+                renderAction={(e) =>
+                  rowIsOff(e) ? (
+                    "—"
+                  ) : (
+                    <button
+                      type="button"
+                      className="emx-mini"
+                      onClick={() => onChangeEligibility(e)}
+                    >
+                      {e._eff.eligible ? "Set Not Eligible" : "Set Eligible"}
+                    </button>
+                  )
+                }
+                emptyText={
+                  tab === "act"
+                    ? "Nothing needs action."
+                    : tab === "ne"
+                      ? "No Not Eligible employees."
+                      : "No eligibility records found."
+                }
+              />
+
+              <ClientPager
+                page={safePage}
+                pages={pages}
+                from={from}
+                to={to}
+                total={view.length}
+                allTotal={employees.length}
+                onPage={setPage}
+                grid={grid}
+              />
+            </>
           )}
-
-          <DataGrid
-            defs={defs}
-            grid={grid}
-            allRows={employees}
-            rows={pageRows}
-            rowKey={(e) => e.empId}
-            selectable={canEdit}
-            selected={selectedIds}
-            onToggleRow={toggleRow}
-            onToggleAll={toggleAll}
-            allSelected={allSelected}
-            someSelected={viewSelected > 0}
-            canSelectRow={(e) =>
-              tagOf(e) !== "Removed" &&
-              String(
-                e.status || e.rawEmployee?.emp_status || "Active",
-              ).toLowerCase() === "active"
-            }
-            rowClass={(e) =>
-              tagOf(e) === "Removed" ||
-              String(
-                e.status || e.rawEmployee?.emp_status || "Active",
-              ).toLowerCase() !== "active"
-                ? "emx-dim"
-                : ""
-            }
-            actionHeader={canEdit ? "Action" : null}
-            renderAction={(e) =>
-              tagOf(e) === "Removed" ||
-              String(
-                e.status || e.rawEmployee?.emp_status || "Active",
-              ).toLowerCase() !== "active" ? (
-                "—"
-              ) : (
-                <button
-                  type="button"
-                  className="emx-mini"
-                  onClick={() => onChangeEligibility(e)}
-                >
-                  {eligibilityDecisionOf(e) === "Eligible"
-                    ? "Set Not Eligible"
-                    : "Set Eligible"}
-                </button>
-              )
-            }
-            emptyText="No eligibility records found."
-          />
-
-          <ClientPager
-            page={safePage}
-            pages={pages}
-            from={from}
-            to={to}
-            total={view.length}
-            allTotal={employees.length}
-            onPage={setPage}
-            grid={grid}
-          />
         </div>
 
         <SidePanel
           open={panel.open}
           title="Eligibility List"
           tab={panel.tab}
-          onTab={(tab) => updatePanel({ tab })}
+          onTab={(t) => updatePanel({ tab: t })}
           onClose={() => updatePanel({ open: false })}
           defs={defs}
           grid={grid}
@@ -1387,19 +1422,59 @@ export function EligibilityList({
           auditHint="Latest Apply Criteria changes: who applied them, when, and what changed in the criteria."
           onFullAudit={onAuditHistory}
         />
-        <PanelTab
-          open={panel.open}
-          onOpen={() => updatePanel({ open: true })}
-        />
+        <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
       </div>
 
       {addOpen && (
         <AddEmployeeModal
           masterEmployees={masterEmployees}
           listedIds={listedIds}
-          onAdd={onAddEmployee}
+          onAdd={handleAdd}
           onClose={() => setAddOpen(false)}
         />
+      )}
+
+      {delegationPrompt && (
+        <div
+          className="em-modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDelegationPrompt(null);
+          }}
+        >
+          <div className="em-modal em-small-modal">
+            <div className="em-modal-header">
+              <div>
+                <strong>Action needed</strong>
+              </div>
+            </div>
+            <div className="em-modal-body">
+              <b>{delegationPrompt}</b> is now Eligible.
+              <div className="em-hint" style={{ marginTop: 8 }}>
+                Next step: Generate Delegation. The employee stays in Action needed until the
+                Delegation step and then the Appraisal Sheet step are done.
+              </div>
+            </div>
+            <div className="em-modal-footer">
+              <button
+                type="button"
+                className="em-btn em-btn-ghost"
+                onClick={() => setDelegationPrompt(null)}
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                className="em-btn em-btn-primary"
+                onClick={() => {
+                  setDelegationPrompt(null);
+                  onGenerateDelegation?.();
+                }}
+              >
+                Generate Delegation
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
