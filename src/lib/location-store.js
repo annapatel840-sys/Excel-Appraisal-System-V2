@@ -11,6 +11,7 @@
    so a location added in Location Master works everywhere at once.
    ============================================================ */
 import { useSyncExternalStore } from "react";
+import { cycleNameLocation } from "./cycle-name";
 
 export const ALL_LOCATIONS = "All";
 const STORAGE_KEY = "appraisal.selectedLocation.v1";
@@ -128,6 +129,29 @@ export function matchesLocation(employeeLocation, sel = selected) {
 
 export function locationOfRow(row) {
   return row?.location ?? row?.work_location ?? row?.workLocation ?? "";
+}
+
+export function cycleLocationOf(cycle) {
+  const explicitLocation = String(
+    cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+  ).trim();
+  return (
+    explicitLocation ||
+    cycleNameLocation(
+      cycle?.name ??
+        cycle?.cycle_name ??
+        cycle?.appraisal_cycle_name ??
+        cycle?.appraisal_year ??
+        "",
+    )
+  );
+}
+
+export function matchesCycleLocation(cycle, sel = selected) {
+  const cycleLocation = cycleLocationOf(cycle);
+  return isAllLocations(sel)
+    ? isAllLocations(cycleLocation)
+    : matchesLocation(cycleLocation, sel);
 }
 
 export function filterByLocation(list, sel = selected, getter = locationOfRow) {

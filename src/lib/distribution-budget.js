@@ -341,6 +341,7 @@ export function useDistributionBudget() {
     budgetMasterRows,
     employeeRows = [],
     techEdOwners = [],
+    activeBudgetCycleId = "",
     totals: sharedBudgetTotals,
     budgetAuditLog = [],
     loading: budgetLoading,
@@ -352,40 +353,23 @@ export function useDistributionBudget() {
   const applies = !isHR && (roleText === "teched" || isCompManagerView);
 
   const [cycleRows, setCycleRows] = useState([]);
-  const [activeCycleId, setActiveCycleId] = useState("");
   const [cycleLoading, setCycleLoading] = useState(true);
+  const activeCycleId = String(activeBudgetCycleId || "").trim();
 
   useEffect(() => {
-    if (!applies) return undefined;
+    if (!applies) {
+      setCycleRows([]);
+      setCycleLoading(false);
+      return undefined;
+    }
     let mounted = true;
     const loadCycles = () => {
-      // Never leave a closed cycle selected while the refreshed list is loading.
       setCycleRows([]);
-      setActiveCycleId("");
       setCycleLoading(true);
       payrollCycleRequest("cycles")
         .then((cycles) => {
           if (!mounted) return;
-          const allCycles = Array.isArray(cycles) ? cycles : [];
-          setCycleRows(allCycles);
-          const active = allCycles.find((cycle) => {
-            const status = String(cycle.status ?? cycle.cycle_status ?? "")
-              .trim()
-              .toLowerCase();
-            const archived = [true, 1, "true", "1", "yes"].includes(
-              typeof cycle.archived === "string"
-                ? cycle.archived.trim().toLowerCase()
-                : cycle.archived,
-            );
-            return status === "active" && !archived && !cycle.hidden;
-          });
-          const cycleId =
-            active?.id ??
-            active?.appraisal_cycle_id ??
-            active?.cycle_id ??
-            active?.ROWID ??
-            "";
-          setActiveCycleId(cycleId ? String(cycleId) : "");
+          setCycleRows(Array.isArray(cycles) ? cycles : []);
         })
         .catch((cycleError) => {
           console.error(
@@ -394,7 +378,6 @@ export function useDistributionBudget() {
           );
           if (mounted) {
             setCycleRows([]);
-            setActiveCycleId("");
           }
         })
         .finally(() => {

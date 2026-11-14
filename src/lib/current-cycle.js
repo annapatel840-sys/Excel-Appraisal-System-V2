@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { useSelectedLocation } from "@/lib/location-store";
+import { matchesCycleLocation, useSelectedLocation } from "@/lib/location-store";
 
 // The header cycle label follows the system location. A location with no
 // Active cycle intentionally has no label; another location's cycle is never
@@ -29,16 +29,7 @@ const locationKey = (value) => {
 };
 
 function matchesSelectedLocation(cycle, selectedLocation) {
-  const selected = locationKey(selectedLocation);
-  const rawLocation = String(cycle?.location || "All").trim().toLowerCase();
-  const cycleLocation =
-    !rawLocation || rawLocation === "all" || rawLocation === "all locations"
-      ? "all"
-      : rawLocation;
-  if (!selected || selected === "all" || selected === "all locations") {
-    return cycleLocation === "all";
-  }
-  return cycleLocation === selected;
+  return matchesCycleLocation(cycle, selectedLocation);
 }
 
 function load(selectedLocation) {

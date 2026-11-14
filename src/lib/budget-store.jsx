@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -132,8 +133,8 @@ function ownerMatches(owner, identities) {
 // authorized for the Employee Master screen, so the roster is the Appraisal
 // view (the signed-in user's normal appraisal scope). The request is shared
 // with the Appraisal Sheet store when both load at the same time.
-async function fetchAllEligibleEmployees(cacheScope) {
-  const roster = await fetchAppraisalRoster({ cacheScope });
+async function fetchAllEligibleEmployees(cacheScope, location) {
+  const roster = await fetchAppraisalRoster({ cacheScope, location });
   return roster.employees;
 }
 
@@ -258,11 +259,29 @@ export function BudgetProvider({ children }) {
   // Reuse the last successful budget response immediately while refreshing it in the background.
   const [loading, setLoading] = useState(() => !initialBudget);
   const [error, setError] = useState("");
+  const loadGenerationRef = useRef(0);
+  const previousBudgetScopeRef = useRef(budgetSnapshotScope);
 
-  // If authentication becomes available after the provider first mounts,
-  // hydrate only that account's snapshot instead of retaining anonymous data.
-  useEffect(() => {
-    if (!budgetCacheScope || !initialBudget) return;
+  // Hydrate only the selected account/location. Clearing a missing snapshot
+  // also prevents the previous location's rows flashing or surviving a switch.
+  useLayoutEffect(() => {
+    if (previousBudgetScopeRef.current !== budgetSnapshotScope) {
+      loadGenerationRef.current += 1;
+      previousBudgetScopeRef.current = budgetSnapshotScope;
+    }
+    if (!budgetCacheScope || !initialBudget) {
+      setActiveBudgetCycleId("");
+      setBudgetRows([]);
+      setBudgetMasterRows([]);
+      setBudgetDistributionRows([]);
+      setBudgetCompManagerRows([]);
+      setEmployeeRows([]);
+      setTechEdOwners([]);
+      setBudgetWarning("");
+      setError("");
+      setLoading(true);
+      return;
+    }
     const cycleId = String(
       initialBudget.active_appraisal_cycle_id || "",
     ).trim();
@@ -328,31 +347,38 @@ export function BudgetProvider({ children }) {
         ? initialBudget.techEdOwners
         : [],
     );
-  }, [budgetCacheScope, initialBudget]);
+    setLoading(false);
+  }, [budgetCacheScope, budgetSnapshotScope, initialBudget]);
 
-  const runLoad = useCallback(async () => {
-    setLoading(!initialBudget);
-    setError("");
+  const runLoad = useCallback(async (generation) => {
+    const isCurrentLoad = () => loadGenerationRef.current === generation;
+    if (isCurrentLoad()) {
+      setLoading(!initialBudget);
+      setError("");
+    }
     try {
       // Do not gate budget refresh on the appraisal roster. The Appraisal
       // provider loads/caches the roster independently; waiting here delays
       // first paint on both Sheet and Detailed Screen and couples two requests.
+      const requestLocation = String(selectedLocation || "All");
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
-      budgetUrl.searchParams.set("location", String(selectedLocation || "All"));
+      budgetUrl.searchParams.set("location", requestLocation);
       // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
       budgetUrl.searchParams.set("gz", "1");
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
+      const requestUser = String(
+        authenticatedUser?.email ||
+          authenticatedUser?.id ||
+          authenticatedUser?.user_id ||
+          "anonymous",
+      )
+        .trim()
+        .toLowerCase();
       const employeeResultPromise = fetchAllEligibleEmployees(
-        String(
-          authenticatedUser?.email ||
-            authenticatedUser?.id ||
-            authenticatedUser?.user_id ||
-            "anonymous",
-        )
-          .trim()
-          .toLowerCase(),
+        requestUser,
+        requestLocation,
       ).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
@@ -382,6 +408,7 @@ export function BudgetProvider({ children }) {
       }
 
       saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
+      if (!isCurrentLoad()) return;
       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
@@ -467,6 +494,7 @@ export function BudgetProvider({ children }) {
       // The full employeesapi roster is supplementary. It was started above
       // in parallel, and is awaited only after the budget data is available.
       const employeeResult = await employeeResultPromise;
+      if (!isCurrentLoad()) return;
       const apiEmployees =
         activeCycleId && Array.isArray(employeeResult.employees)
           ? employeeResult.employees
@@ -568,6 +596,7 @@ export function BudgetProvider({ children }) {
         );
       }
     } catch (e) {
+      if (!isCurrentLoad()) return;
       console.error("Failed to load Budget Master:", e);
       // Keep a previously cached, usable snapshot on screen if refresh fails.
       if (!initialBudget) {
@@ -581,30 +610,40 @@ export function BudgetProvider({ children }) {
       }
       setError((e && e.message) || "Failed to load Budget Master.");
     } finally {
-      setLoading(false);
+      if (isCurrentLoad()) setLoading(false);
     }
   }, [
     authenticatedUser?.email,
     authenticatedUser?.id,
     authenticatedUser?.user_id,
     budgetCacheScope,
+    budgetSnapshotScope,
     initialBudget,
-  
-    selectedLocation,]);
+    selectedLocation,
+  ]);
 
-  // Keep one shared load promise for the entire time a budget refresh is
-  // running. Every screen and refresh event receives the same result instead
-  // of starting another budgetmasterapi GET and roster request.
-  const loadRef = useRef(null);
+  // Deduplicate only within the same account/location. A location change
+  // starts a fresh request, and the generation guard prevents an older result
+  // from overwriting the newly selected location.
+  const loadRef = useRef({ scope: "", promise: null });
   const load = useCallback(() => {
-    if (loadRef.current) return loadRef.current;
+    if (
+      loadRef.current?.scope === budgetSnapshotScope &&
+      loadRef.current.generation === loadGenerationRef.current &&
+      loadRef.current.promise
+    ) {
+      return loadRef.current.promise;
+    }
 
-    const promise = runLoad().finally(() => {
-      if (loadRef.current === promise) loadRef.current = null;
+    const generation = ++loadGenerationRef.current;
+    const promise = runLoad(generation).finally(() => {
+      if (loadRef.current?.promise === promise) {
+        loadRef.current = { scope: "", promise: null };
+      }
     });
-    loadRef.current = promise;
+    loadRef.current = { scope: budgetSnapshotScope, generation, promise };
     return promise;
-  }, [runLoad]);
+  }, [budgetSnapshotScope, runLoad]);
 
   // All callers use the same in-flight load. A new load starts only after
   // the current one has finished (or when a later refresh is requested).
@@ -683,7 +722,7 @@ export function BudgetProvider({ children }) {
         );
       }
     };
-  }, [load]);
+  }, [budgetSnapshotScope, load]);
 
   // employeeRows stays complete (it identifies the signed-in Tech-ED / Comp
   // Manager and their hierarchy). locationEmployeeRows is the same roster
@@ -1304,9 +1343,9 @@ export function BudgetProvider({ children }) {
         // A GET started before this PUT may still be in flight. Do not reuse
         // that pre-save response: let it finish, discard its cached snapshot,
         // then start a new GET that reads the just-saved allocation.
-        if (loadRef.current) {
+        if (loadRef.current?.promise) {
           try {
-            await loadRef.current;
+            await loadRef.current.promise;
           } catch (_) {
             // The fresh request below is still required after a failed old GET.
           }
@@ -1316,7 +1355,7 @@ export function BudgetProvider({ children }) {
       }
       return result;
     },
-    [load, budgetCacheScope],
+    [load, budgetCacheScope, budgetSnapshotScope],
   );
 
   return (

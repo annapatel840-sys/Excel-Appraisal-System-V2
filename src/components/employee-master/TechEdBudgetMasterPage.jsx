@@ -3,10 +3,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
-import { matchesLocation, useSelectedLocation } from "@/lib/location-store";
-import { cycleNameLocation } from "@/lib/cycle-name";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -262,57 +259,39 @@ export function TechEdBudgetMasterPage() {
     budgetMasterRows = [],
     employeeRows = [],
     techEdOwners = [],
+    activeBudgetCycleId = "",
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
   const access = useAccess();
-  const [selectedLocation] = useSelectedLocation();
   const canAllot =
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("allotNextLevel");
   const canAudit = access.canAction("viewAudit");
   const rawName = String(user?.name || user?.display_name || user?.email || "").trim();
-  const [activeCycle, setActiveCycle] = useState(null);
-
-  useEffect(() => {
-    let mounted = true;
-    payrollCycleRequest("cycles")
-      .then((cycles) => {
-        if (!mounted) return;
-        const active = (Array.isArray(cycles) ? cycles : []).find(
-          (cycle) =>
-            String(cycle.status || "").trim().toLowerCase() === "active" &&
-            !cycle.archived &&
-            matchesLocation(
-              cycle.location || cycleNameLocation(cycle.name || cycle.cycle_name),
-              selectedLocation,
-            ),
-        );
-        setActiveCycle(active || null);
-      })
-      .catch((error) => {
-        console.error("Failed to load active cycle for Tech-Ed Budget Master:", error);
-        if (mounted) setActiveCycle(null);
-      });
-    return () => { mounted = false; };
-  }, [selectedLocation]);
-
-  const activeCycleId = String(activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
-  const activeCycleName = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
+  const activeCycleId = String(activeBudgetCycleId || "").trim();
+  const activeCycleName = useMemo(() => {
+    const activeMaster = budgetMasterRows.find(
+      (master) => String(master.appraisal_cycle_id || "") === activeCycleId,
+    );
+    return String(
+      activeMaster?.appraisal_cycle_name ||
+        activeMaster?.cycle_name ||
+        activeMaster?.appraisal_year ||
+        "",
+    ).trim();
+  }, [activeBudgetCycleId, budgetMasterRows]);
   const budgetCycleIds = useMemo(() => {
     const ids = new Set();
     if (activeCycleId) ids.add(activeCycleId);
     budgetMasterRows.forEach((master) => {
-      const masterName = normalizeIdentity(master.appraisal_cycle_name || master.cycle_name || "");
       if (activeCycleId && String(master.appraisal_cycle_id || "") === activeCycleId) {
         ids.add(String(master.appraisal_cycle_id));
-      } else if (activeCycleName && masterName && masterName === normalizeIdentity(activeCycleName)) {
-        ids.add(String(master.appraisal_cycle_id || ""));
       }
     });
     return ids;
-  }, [activeCycleId, activeCycleName, budgetMasterRows]);
+  }, [activeCycleId, budgetMasterRows]);
 
   const userIdentities = useMemo(() => new Set([
     user?.name, user?.display_name, user?.first_name, user?.last_name,
