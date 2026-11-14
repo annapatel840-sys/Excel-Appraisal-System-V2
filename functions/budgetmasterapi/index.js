@@ -2353,9 +2353,16 @@ async function calculateBudgetBases(
         const archived = [true, 1, "true", "1", "yes", "archived"].includes(
           typeof candidate.archived === "string" ? candidate.archived.trim().toLowerCase() : candidate.archived,
         );
+        const hidden = [true, 1, "true", "1", "yes"].includes(
+          typeof candidate.hidden === "string" ? candidate.hidden.trim().toLowerCase() : candidate.hidden,
+        );
+        // New Joiner cycles can remain Active because their process is None.
+        // Their same-year payroll upload is still the authoritative source.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
-          (archived || ["closed", "complete", "completed"].includes(candidateStatus));
+          !archived &&
+          !hidden &&
+          !["cancelled", "canceled"].includes(candidateStatus);
       })
       .map((candidate) => {
         const candidateId = cycleIdOf(candidate);
