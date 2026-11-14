@@ -385,6 +385,13 @@ async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
 
   await test('appraisalhistoryapi GET: location-cycle Delegation remains authoritative when sheet assignment is blank and heading is global', async () => {
     const before = snapshot();
+    // A global Annual cycle may still be Active beside the location cycles.
+    insert(CYC, {
+      cycle_name: 'Annual 2027',
+      status: 'Active',
+      start_date: '2026-04-01',
+      location: 'All Locations',
+    });
     const locationCycle = insert(CYC, {
       cycle_name: 'Australia - Annual 2027',
       status: 'Active',
