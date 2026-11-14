@@ -9,7 +9,6 @@ export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
   const user = useCatalystUser();
-  const isHR = String(user?.role || "").trim().toLowerCase() === "hr";
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
