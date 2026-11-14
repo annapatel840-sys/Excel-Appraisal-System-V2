@@ -3700,30 +3700,123 @@ async function routeRequest(req, res, identity, resource, a) {
         },
       });
     }
-    const cycleData = await Promise.all(targetCycles.map((item) => getEligibilityRows(tables, item, actor)));
-    const records = cycleData.flatMap((item) => item.records);
-    const masterById = new Map();
-    cycleData.forEach((item) => (item.masterRecords || []).forEach((master) => {
-      const key = String(master.ROWID || master.rowid || master.emp_id || "");
-      if (key && !masterById.has(key)) masterById.set(key, master);
-    }));
-    const criteriaFlags = await Promise.all(targetCycles.map(async (item) => {
-      const meta = await readEligibilityCriteriaMeta(tables, item).catch((error) => {
-        console.error("Could not read the saved criteria:", error);
-        return { criteria: null, criteriaHistory: [] };
+    let records = [];
+    let masterRecords = [];
+    let criteriaApplied = false;
+
+    if (targetCycles.length > 1) {
+      // All Locations is a read-only aggregate. Read each large table ONCE;
+      // do not run seven independent syncEligibilityRows scans concurrently.
+      // Concurrent full-table scans were exhausting Catalyst read components
+      // and returning a non-JSON gateway error to the Eligibility page.
+      const [allMasters, allEligibility, allSheetRows, allAuditRows] = await Promise.all([
+        getAllRows(tables.employeeMaster),
+        getAllRows(tables.eligibility),
+        getAllRows(tables.appraisalSheet),
+        getAllRows(tables.audit),
+      ]);
+      const masterByEmpId = new Map(
+        allMasters.map((master) => [
+          String(master.emp_id || master.employee_id || "").trim().toLowerCase(),
+          master,
+        ]).filter(([key]) => key),
+      );
+      const masterByRowId = new Map(
+        allMasters.map((master) => [String(master.ROWID || master.rowid || ""), master]),
+      );
+
+      // Recover only genuinely missing cycle rows from their exact cycle's
+      // already-generated Appraisal Sheet rows. Existing/manual eligibility
+      // decisions are never overwritten; other location cycles are untouched.
+      const additions = [];
+      for (const target of targetCycles) {
+        const cycleRows = allEligibility.filter((row) =>
+          String(row.appraisal_cycle_id || "") === String(target.id),
+        );
+        if (cycleRows.length) continue;
+        const sheetRows = allSheetRows.filter((sheet) => {
+          const reference = String(
+            sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
+          ).trim();
+          return reference === String(target.id) ||
+            reference.toLowerCase() === String(target.name || "").trim().toLowerCase();
+        });
+        const seen = new Set();
+        for (const sheet of sheetRows) {
+          const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
+          const key = empId.toLowerCase();
+          if (!key || seen.has(key)) continue;
+          const master = masterByEmpId.get(key);
+          if (!master || !inCycleLocation(target, master)) continue;
+          seen.add(key);
+          const rawStatus = String(
+            sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
+          ).trim().toLowerCase().replace(/[ _-]+/g, "");
+          additions.push({
+            appraisal_cycle_id: String(target.id),
+            employee_master_id: String(master.ROWID || master.rowid || ""),
+            emp_id: empId,
+            eligibility_status: ["eligible", "yes", "true", "1"].includes(rawStatus)
+              ? "Eligible"
+              : "Not Eligible",
+            eligibility_reason: "Recovered from existing Appraisal Sheet roster",
+            eligibility_source: "System",
+            change_tag: "Recovered",
+            evaluated_at: nowLocal(),
+            updated_by: String(actor || "System").slice(0, 60),
+            eligibility_updated_at: nowLocal(),
+          });
+        }
+      }
+      for (let index = 0; index < additions.length; index += 100) {
+        await tables.eligibility.insertRows(additions.slice(index, index + 100));
+      }
+      const eligibilityRows = additions.length
+        ? await getAllRows(tables.eligibility)
+        : allEligibility;
+      const masterById = new Map();
+      for (const target of targetCycles) {
+        for (const row of eligibilityRows) {
+          if (String(row.appraisal_cycle_id || "") !== String(target.id)) continue;
+          const master = masterByRowId.get(String(row.employee_master_id || "")) ||
+            masterByEmpId.get(String(row.emp_id || "").trim().toLowerCase());
+          if (!master) continue;
+          records.push(shapeEligibilityRow(row, master));
+          const masterKey = String(master.ROWID || master.rowid || master.emp_id || "");
+          if (masterKey) masterById.set(masterKey, master);
+        }
+      }
+      masterRecords = Array.from(masterById.values());
+      criteriaApplied = targetCycles.every((target) => {
+        const rows = eligibilityRows.filter((row) =>
+          String(row.appraisal_cycle_id || "") === String(target.id),
+        );
+        const hasMarker = allAuditRows.some((row) =>
+          String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
+          String(row.batch_id || "") === String(target.id),
+        );
+        return hasMarker || rows.some((row) =>
+          String(row.eligibility_source || "").trim().toLowerCase() === "criteria",
+        );
       });
-      return Boolean(cycleData[targetCycles.indexOf(item)]?.criteriaApplied && meta.criteria);
-    }));
+    } else {
+      const single = await getEligibilityRows(tables, targetCycles[0], actor);
+      records = single.records;
+      masterRecords = single.masterRecords;
+      const meta = await readEligibilityCriteriaMeta(tables, targetCycles[0]).catch(() => ({ criteria: null }));
+      criteriaApplied = Boolean(single.criteriaApplied && meta.criteria);
+    }
+
     return sendJson(res, 200, {
       success: true,
       data: {
         records,
-        masterRecords: Array.from(masterById.values()),
+        masterRecords,
         meta: {
           cycleId: cycle ? cycle.id : "",
           cycleName: cycle ? cycle.name : "All Locations — Active Cycles",
           total: records.length,
-          criteriaApplied: criteriaFlags.length > 0 && criteriaFlags.every(Boolean),
+          criteriaApplied,
           criteria: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteria : null,
           criteriaHistory: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteriaHistory : [],
           cycles: targetCycles.map((item) => ({ cycleId: item.id, cycleName: item.name, location: item.location || "" })),
