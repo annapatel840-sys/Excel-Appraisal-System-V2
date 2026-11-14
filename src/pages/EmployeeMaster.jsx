@@ -6282,19 +6282,19 @@ export function EmployeeMaster() {
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
-                    canEditEmployees && !eligibilityShowingSnapshot
+                    canEditEmployees && Boolean(eligibilityCycleId) && !eligibilityShowingSnapshot
                       ? setEligibilityEmployee
                       : undefined
                   }
                   onAddEmployee={
-                    canEditEmployees && !eligibilityShowingSnapshot
+                    canEditEmployees && Boolean(eligibilityCycleId) && !eligibilityShowingSnapshot
                       ? addEmployeeToEligibility
                       : undefined
                   }
                   masterEmployees={eligibilityMasterEmployees}
                   onDownloadTemplate={downloadEligibilityTemplate}
                   onImport={
-                    canEditEmployees && !eligibilityShowingSnapshot
+                    canEditEmployees && Boolean(eligibilityCycleId) && !eligibilityShowingSnapshot
                       ? handleEligibilityFile
                       : undefined
                   }
@@ -6307,7 +6307,7 @@ export function EmployeeMaster() {
                   criteriaApplied={eligibilityCriteriaApplied}
                   auditEntries={eligibilityCriteriaAuditEntries}
                   onGenerateDelegation={
-                    eligibilityShowingSnapshot
+                    !eligibilityCycleId || eligibilityShowingSnapshot
                       ? undefined
                       : generateDelegationFromEligibility
                   }
