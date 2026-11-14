@@ -3760,7 +3760,11 @@ async function getEmployees(req, res) {
           String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requestedCycleId
         )) ||
       (allLocationsSelected
-        ? cycleRows.find(isAvailableActiveCycle)
+        ? cycleRows.find((cycle) =>
+            isAvailableActiveCycle(cycle) &&
+            (!String(cycle?.location || "").trim() ||
+              ["all", "all locations"].includes(String(cycle.location).trim().toLowerCase()))
+          ) || cycleRows.find(isAvailableActiveCycle)
         : cycleRows.find((cycle) =>
             isAvailableActiveCycle(cycle) &&
             String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
