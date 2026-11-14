@@ -2239,17 +2239,10 @@ async function calculateBudgetBases(
 
   // The active / previous cycle is the same for every row: work it out once
   // (it was recomputed - a cycle sort included - for each of thousands of rows).
-  const activeCycleRow =
-    cycleRows.find(
-      (cycle) =>
-        String(cycle.status || "")
-          .trim()
-          .toLowerCase() === "active" &&
-        cycle.archived !== true &&
-        cycle.archived !== "true",
-    ) ||
-    cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] ||
-    null;
+  // The selected location's Budget_Master-linked Active cycle is the
+  // only valid current cycle for this request. Never choose the first Active
+  // cycle globally: several location cycles are intentionally Active together.
+  const activeCycleRow = activeSheetCycle || null;
   const currentCycleId =
     cycleIdOf(activeCycleRow) ||
     String(bundle.master[0]?.appraisal_cycle_id || "");
@@ -2971,16 +2964,13 @@ async function calculateBudgetBases(
       const newJoinerCtc = sameYearNewJoinerPayroll
         ? previousCtc(sameYearNewJoinerPayroll)
         : null;
-      // Match the Appraisal Sheet's per-employee source order: same-year New
-      // Joiners payroll, latest closed prior-cycle payroll, then current sheet
-      // Total CTC. The stored previous-CTC sheet cell can be stale and is not
-      // the value displayed after employeesapi enriches the row.
-      const base =
-        newJoinerCtc !== null
-          ? newJoinerCtc
-          : priorCtc !== null
-            ? priorCtc
-            : employee.current_ctc;
+      // Use the exact previous-appraisal CTC-with-rewards value already
+      // resolved for this Appraisal_Sheet employee. It prefers the stored
+      // Previous_Appraisal_total_CTC_with_rewards column and uses the existing
+      // employee-level fallback only when that sheet value is genuinely blank.
+      // Do not independently select another cycle's payroll row here: that
+      // produced a different Org Budget Base from the Appraisal Sheet total.
+      const base = employee.base;
       const cycleEligibility = cycleEligibilityFor(employee, targetCycleId);
       // Eligibility_List is the source of truth for each appraisal cycle.
       // Missing/Pending rows are not eligible, matching Appraisal Sheet's
@@ -3036,7 +3026,6 @@ async function calculateBudgetBases(
   );
   const activeRosterCycle =
     activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
-    activeRosterCycles[0] ||
     null;
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
@@ -3103,6 +3092,9 @@ async function calculateBudgetBases(
     // archived cycles keep the values stored while they were current; they
     // used to be rewritten on every load with the Active cycle's roster.
     const masterCycle = currentCycleFor(cycleId);
+    // Only recalculate the location/cycle selected for this request. Other
+    // location cycles may also be Active and must retain their own budget data.
+    if (activeSheetCycle && cycleId !== activeSheetCycleId) continue;
     const masterCycleHidden = [true, 1, "true", "1", "yes"].includes(
       typeof masterCycle?.hidden === "string"
         ? masterCycle.hidden.trim().toLowerCase()
