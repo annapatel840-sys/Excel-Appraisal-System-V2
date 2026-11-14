@@ -726,7 +726,7 @@
 //   const goToTab = (tab) => {
 //     if (tab === "eligibility" || tab === "change-mismatch") {
 //       // Start the shared read at click time; the tab effect joins this request.
-//       void prefetchEligibilityEmployees();
+//       void prefetchEligibilityEmployees(locationFilter);
 //     }
 //     const current = new URLSearchParams(window.location.search).get("tab");
 //     if (window.location.pathname === "/employee-master" && current !== tab) {
@@ -822,7 +822,9 @@
 //   const eligibilityLoadedKeyRef = useRef(null);
 //   const eligibilityFreshAppliedRef = useRef(false);
 //   const eligibilityCacheScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
-//   const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope);
+//   const eligibilityCacheKey = eligibilitySnapshotKey(
+    `${eligibilityCacheScope}::${String(locationFilter || "All").trim().toLowerCase()}`,
+  );
 //   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
 
 //   useEffect(() => {
@@ -4076,8 +4078,13 @@ export function EmployeeMaster() {
   }, []);
 
   useEffect(() => {
+    eligibilityLoadedKeyRef.current = null;
     eligibilityFreshAppliedRef.current = false;
     setEligibilityShowingSnapshot(false);
+    setEligibilityEmployees([]);
+    setEligibilityMasterEmployees([]);
+    setEligibilityCycleId("");
+    setEligibilityCriteriaApplied(false);
   }, [eligibilityCacheKey]);
 
   useEffect(
@@ -4489,6 +4496,7 @@ export function EmployeeMaster() {
           page: 1,
           limit: 100000,
           search: "",
+          location: locationFilter,
         });
         if (cancelled) return;
 
