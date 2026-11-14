@@ -1486,7 +1486,9 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     .filter(Boolean);
   return {
     records,
-    masterRecords: masterRows,
+    // The criteria panel / Add Employee picker must use the same location
+    // roster as this cycle, not the complete global Employee_Master table.
+    masterRecords: masterRows.filter((master) => inCycleLocation(cycle, master)),
     criteriaApplied: Boolean(synced.criteriaApplied),
   };
 }
