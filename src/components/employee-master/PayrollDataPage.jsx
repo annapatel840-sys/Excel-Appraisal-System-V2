@@ -3,6 +3,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
+import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
 
 const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
@@ -347,6 +348,7 @@ function defaultPayrollColumnWidth(column) {
 const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
+  const [selectedLocation] = useSelectedLocation();
   const canAudit = useAccess().canAction("viewAudit");
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
@@ -492,7 +494,7 @@ export function PayrollDataPage() {
   const colByKey = (key) => COLS.find((c) => c.key === key);
 
   const rows = useMemo(() => {
-    let list = stored.filter((r) => {
+    let list = filterByLocation(stored, selectedLocation, (row) => row.location).filter((r) => {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
@@ -535,7 +537,7 @@ export function PayrollDataPage() {
     }
 
     return list;
-  }, [stored, search, batchFilter, columnFilters, sortState, cycleOrder, priorMap]);
+  }, [stored, selectedLocation, search, batchFilter, columnFilters, sortState, cycleOrder, priorMap]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAYROLL_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -548,7 +550,7 @@ export function PayrollDataPage() {
   // A new search / filter / sort starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [search, batchFilter, columnFilters, sortState]);
+  }, [selectedLocation, search, batchFilter, columnFilters, sortState]);
 
   useEffect(() => {
     if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
