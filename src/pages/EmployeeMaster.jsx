@@ -5038,6 +5038,7 @@ export function EmployeeMaster() {
           page: 1,
           limit: 100,
           search: "",
+          location: locationFilter,
         });
 
         sourceEmployees = Array.isArray(firstPage?.data) ? firstPage.data : [];
@@ -5049,6 +5050,8 @@ export function EmployeeMaster() {
             page,
             limit: 100,
             search: "",
+            cycleId: firstPage?.cycle?.cycleId || "",
+            location: locationFilter,
           });
 
           sourceEmployees = sourceEmployees.concat(
