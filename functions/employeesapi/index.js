@@ -2160,15 +2160,15 @@ async function enrichPreviousAppraisalValues(
             isNewJoinerCycle(item.cycle) &&
             cycleYearOf(item.cycle) !== "" &&
             cycleYearOf(item.cycle) === currentYear &&
-            (item.cycle.archived === true ||
-              ["true", "1", "yes", "archived"].includes(
-                String(item.cycle.archived ?? "")
-                  .trim()
-                  .toLowerCase(),
-              ) ||
-              ["archived", "closed", "complete", "completed"].includes(
-                cycleStatusOf(item.cycle),
-              )),
+            // New Joiner cycles use process=None and can remain Active while
+            // their payroll upload is the required source for this Annual year.
+            // Do not require the cycle to be Closed/Archived before using it.
+            ![true, 1, "true", "1", "yes", "archived"].includes(
+              typeof item.cycle.archived === "string"
+                ? item.cycle.archived.trim().toLowerCase()
+                : item.cycle.archived,
+            ) &&
+            !["cancelled", "canceled"].includes(cycleStatusOf(item.cycle)),
         )
         .sort(
           (a, b) =>
