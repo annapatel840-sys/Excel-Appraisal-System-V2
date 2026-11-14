@@ -3580,59 +3580,91 @@ async function routeRequest(req, res, identity, resource, a) {
         ? cycleLocation === "all"
         : cycleLocation === requestedLocation;
     };
-    // A supplied cycle ID is authoritative. Otherwise the selected header
-    // location chooses its own Active cycle; never fall back to another
-    // location's cycle when that location has no Active cycle.
-    const cycle = queryCycleId
-      ? cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item)) || null
-      : cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item)) || null;
-    const activeCycle = cycle;
-    // ?count=1: read-only status for Cycle Master, without the sync below
-    // (which writes). criteriaApplied is what "generated" means: the list is
-    // created by Apply Criteria, which is allowed once per cycle.
+    // A supplied cycle ID is authoritative. With a selected location, use
+    // that location's Active cycle. For All Locations, aggregate all Active
+    // location cycles (and use the legacy unscoped cycle only when no location
+    // cycles exist). The aggregate is display-only: writes still require one
+    // explicitly selected cycle ID, preventing criteria edits across locations.
+    let targetCycles = [];
+    if (queryCycleId) {
+      const exact = cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item));
+      if (exact) targetCycles = [exact];
+    } else if (allLocationsSelected) {
+      const activeCycles = cycles.filter(isAvailableActiveCycle);
+      const locationCycles = activeCycles.filter((item) => {
+        const raw = String(item.location || "").trim().toLowerCase();
+        return raw && !["all", "all locations"].includes(raw);
+      });
+      targetCycles = locationCycles.length
+        ? locationCycles
+        : activeCycles.filter((item) => matchesRequestedLocation(item));
+    } else {
+      const exact = cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item));
+      if (exact) targetCycles = [exact];
+    }
+    const cycle = targetCycles.length === 1 ? targetCycles[0] : null;
     if (["1", "true"].includes(String(query.count || "").trim().toLowerCase())) {
-      if (!cycle) {
+      if (!targetCycles.length) {
         return sendJson(res, 200, { success: true, data: { cycleId: "", total: 0, criteriaApplied: false } });
       }
-      const cycleRows = (await getAllRows(tables.eligibility)).filter(
-        (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
-      );
-      const criteriaApplied = await eligibilityCriteriaWasApplied(tables, cycle.id, cycleRows);
+      const allEligibility = await getAllRows(tables.eligibility);
+      const counts = await Promise.all(targetCycles.map(async (item) => {
+        const cycleRows = allEligibility.filter((row) => String(row.appraisal_cycle_id || "") === String(item.id));
+        return {
+          cycleId: item.id,
+          total: cycleRows.length,
+          criteriaApplied: await eligibilityCriteriaWasApplied(tables, item.id, cycleRows),
+        };
+      }));
       return sendJson(res, 200, {
         success: true,
-        data: { cycleId: cycle.id, total: cycleRows.length, criteriaApplied },
+        data: {
+          cycleId: cycle ? cycle.id : "",
+          total: counts.reduce((sum, item) => sum + item.total, 0),
+          criteriaApplied: counts.length > 0 && counts.every((item) => item.criteriaApplied),
+          cycles: counts,
+        },
       });
     }
-    if (!cycle) {
+    if (!targetCycles.length) {
       return sendJson(res, 200, {
         success: true,
         data: [],
         meta: {
           cycleId: "",
           cycleName: "",
-          message: activeCycle
-            ? "Eligibility data is available only for the Active appraisal cycle."
-            : "No active appraisal cycle is available.",
+          message: "No Active appraisal cycle is available for the selected location.",
         },
       });
     }
-    const data = await getEligibilityRows(tables, cycle, actor);
-    const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch((error) => {
-      console.error("Could not read the saved criteria:", error);
-      return { criteria: null, criteriaHistory: [] };
-    });
+    const cycleData = await Promise.all(targetCycles.map((item) => getEligibilityRows(tables, item, actor)));
+    const records = cycleData.flatMap((item) => item.records);
+    const masterById = new Map();
+    cycleData.forEach((item) => (item.masterRecords || []).forEach((master) => {
+      const key = String(master.ROWID || master.rowid || master.emp_id || "");
+      if (key && !masterById.has(key)) masterById.set(key, master);
+    }));
+    const criteriaFlags = await Promise.all(targetCycles.map(async (item) => {
+      const meta = await readEligibilityCriteriaMeta(tables, item).catch((error) => {
+        console.error("Could not read the saved criteria:", error);
+        return { criteria: null, criteriaHistory: [] };
+      });
+      return Boolean(cycleData[targetCycles.indexOf(item)]?.criteriaApplied && meta.criteria);
+    }));
     return sendJson(res, 200, {
       success: true,
       data: {
-        records: data.records,
-        masterRecords: data.masterRecords,
+        records,
+        masterRecords: Array.from(masterById.values()),
         meta: {
-          cycleId: cycle.id,
-          cycleName: cycle.name,
-          total: data.records.length,
-          criteriaApplied: data.criteriaApplied,
-          criteria: criteriaMeta.criteria,
-          criteriaHistory: criteriaMeta.criteriaHistory,
+          cycleId: cycle ? cycle.id : "",
+          cycleName: cycle ? cycle.name : "All Locations — Active Cycles",
+          total: records.length,
+          criteriaApplied: criteriaFlags.length > 0 && criteriaFlags.every(Boolean),
+          criteria: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteria : null,
+          criteriaHistory: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteriaHistory : [],
+          cycles: targetCycles.map((item) => ({ cycleId: item.id, cycleName: item.name, location: item.location || "" })),
+          readOnlyAggregate: targetCycles.length > 1,
         },
       },
     }, req);
