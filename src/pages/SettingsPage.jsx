@@ -3,12 +3,11 @@ import { LogOut, RotateCcw, Save, Settings2 } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
-import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
+import { useCatalystSignOut } from "@/lib/catalyst-auth";
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
-  const user = useCatalystUser();
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
