@@ -12,6 +12,7 @@ const PAYROLL_DATA_TABLE_ID = "74008000000035326";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 const APPRAISAL_SHEET_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
+const DELEGATION_TABLE_ID = "74008000000036124";
 
 /*
  * CHANGED: name of the parent (employee) table that Payroll_Data.emp_id
@@ -403,71 +404,69 @@ const managerOwnsEmployeeInActiveCycle = async (
   cycleName,
   employeeId,
 ) => {
+  if (!["techEd", "compMgr"].includes(role)) return false;
+
   const requestedCycleName = String(cycleName || "").trim().toLowerCase();
   const requestedEmployeeId = normalizeHistoryEmpId(employeeId);
-  if (!requestedCycleName || !requestedEmployeeId) return false;
+  if (!requestedEmployeeId) return false;
 
   const datastore = app.datastore();
-  const [cycles, employees, appraisalRows] = await Promise.all([
+  const [cycles, employees, appraisalRows, delegationRows] = await Promise.all([
     getAllRowsFromTable(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     getAllRowsFromTable(datastore.table(EMPLOYEE_MASTER_TABLE_ID)),
     getAllRowsFromTable(datastore.table(APPRAISAL_SHEET_TABLE_ID)),
+    getAllRowsFromTable(datastore.table(DELEGATION_TABLE_ID)),
   ]);
-  const cycle = cycles.find((row) => {
-    const name = String(
-      row.cycle_name ?? row.cycleName ?? row.name ?? "",
-    ).trim().toLowerCase();
+
+  const isActiveCycle = (row) => {
     const status = String(
       row.status ?? row.cycle_status ?? row.appraisal_status ?? "",
     ).trim().toLowerCase();
-    const archivedValue =
-      row.archived ?? row.is_archived ?? row.isArchived;
+    const archivedValue = row.archived ?? row.is_archived ?? row.isArchived;
     const archived = [true, 1, "true", "1", "yes", "archived"].includes(
-      typeof archivedValue === "string"
-        ? archivedValue.trim().toLowerCase()
-        : archivedValue,
+      typeof archivedValue === "string" ? archivedValue.trim().toLowerCase() : archivedValue,
     );
     const hidden = [true, 1, "true", "1", "yes"].includes(
-      typeof row.hidden === "string"
-        ? row.hidden.trim().toLowerCase()
-        : row.hidden,
+      typeof row.hidden === "string" ? row.hidden.trim().toLowerCase() : row.hidden,
     );
-    return name === requestedCycleName && status === "active" && !archived && !hidden;
-  });
-  if (!cycle) return false;
+    return status === "active" && !archived && !hidden;
+  };
+  const activeCycles = cycles.filter(isActiveCycle);
+  const namedCycle = requestedCycleName
+    ? activeCycles.find((row) => String(
+        row.cycle_name ?? row.cycleName ?? row.name ?? "",
+      ).trim().toLowerCase() === requestedCycleName)
+    : null;
+  // The All Locations Appraisal Sheet can display employees from several
+  // simultaneously-active location cycles. Its shared heading may be the
+  // global Annual cycle, not the employee's own location cycle. In that case
+  // resolve access from the employee's actual active-cycle assignment below.
+  const candidateCycles = namedCycle ? [namedCycle] : activeCycles;
+  if (!candidateCycles.length) return false;
 
   const manager = employees.find(
     (row) =>
       normalizeHistoryEmpId(row.emp_id ?? row.employee_id ?? row.emp_code) ===
       normalizeHistoryEmpId(managerEmpId),
   );
-  if (!manager) return false;
+  const employee = employees.find(
+    (row) =>
+      normalizeHistoryEmpId(row.emp_id ?? row.employee_id ?? row.emp_code) ===
+      requestedEmployeeId,
+  );
+  if (!manager || !employee) return false;
+
   const managerKeys = new Set(
     [
-      manager.ROWID,
-      manager.rowid,
-      manager.emp_id,
-      manager.employee_id,
-      manager.emp_code,
-      manager.emp_name,
-      manager.name,
-      manager.email_id,
-    ]
-      .map((value) => String(value ?? "").trim().toLowerCase())
-      .filter(Boolean),
+      manager.ROWID, manager.rowid, manager.emp_id, manager.employee_id,
+      manager.emp_code, manager.emp_name, manager.name, manager.email_id,
+    ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean),
   );
   const assignmentReference = (value) => {
     if (value && typeof value === "object") {
       return assignmentReference(
-        value.ROWID ??
-          value.rowid ??
-          value.emp_id ??
-          value.employee_id ??
-          value.id ??
-          value.value ??
-          value.display_value ??
-          value.name ??
-          "",
+        value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+        value.id ?? value.value ?? value.display_value ?? value.name ?? "",
       );
     }
     return String(value ?? "").trim().toLowerCase();
@@ -479,50 +478,43 @@ const managerOwnsEmployeeInActiveCycle = async (
   };
   const employeeKeys = new Set([
     requestedEmployeeId,
-    ...historyEmployeeKeys(
-      employees.find(
-        (row) =>
-          normalizeHistoryEmpId(row.emp_id ?? row.employee_id ?? row.emp_code) ===
-          requestedEmployeeId,
-      ),
-    ),
-  ]);
-  const cycleId = cycleLookupId(cycle.ROWID ?? cycle.rowid ?? cycle.id);
-  const resolvedCycleName = String(cycle.cycle_name ?? cycle.cycleName ?? cycle.name ?? "")
-    .trim()
-    .toLowerCase();
-  const assignmentField =
-    role === "techEd"
-      ? [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed1",
-          "appraiser_tech_ed_id",
-          "appraiser_tech_ed_row_id",
-          "appraiser_tech_ed_owner_row_id",
-          "appraiser_teched",
-          "appraiserTechED",
-          "tech_ed",
-          "tech_ed_id",
-        ]
-      : ["comp_manager", "comp_manager_id", "comp_manager_name"];
-  return appraisalRows.some((row) => {
-    const rowCycle = cycleLookupId(
-      row.cycle_id ??
-        row.appraisal_cycle_id ??
-        row.appraisalCycleId ??
-        row.appraisal_cycle_name ??
-        row.cycle_name,
+    ...historyEmployeeKeys(employee),
+  ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean));
+
+  const rowMatchesEmployee = (row) =>
+    [...historyEmployeeKeys(row.emp_id ?? row.employee_id ?? row.emp_code)]
+      .some((key) => employeeKeys.has(String(key).trim().toLowerCase()));
+
+  const cycleIdOf = (row) =>
+    cycleLookupId(row.ROWID ?? row.rowid ?? row.id);
+  const cycleNameOf = (row) =>
+    String(row.cycle_name ?? row.cycleName ?? row.name ?? "").trim().toLowerCase();
+  const rowBelongsToCycle = (row, cycle) => {
+    const reference = cycleLookupId(
+      row.cycle_id ?? row.appraisal_cycle_id ?? row.appraisalCycleId ??
+      row.cycleId ?? row.appraisal_cycle_name ?? row.cycle_name,
     );
-    if (
-      rowCycle !== cycleId &&
-      rowCycle.toLowerCase() !== resolvedCycleName
-    )
-      return false;
-    const rowEmployeeKeys = historyEmployeeKeys(
-      row.emp_id ?? row.employee_id ?? row.emp_code,
+    return reference === cycleIdOf(cycle) || reference.toLowerCase() === cycleNameOf(cycle);
+  };
+
+  const assignmentFields = role === "techEd"
+    ? ["appraiser_tech_ed", "appraiser_tech_ed1", "appraiser_tech_ed_id",
+       "appraiser_tech_ed_row_id", "appraiser_tech_ed_owner_row_id",
+       "appraiser_teched", "appraiserTechED", "tech_ed", "tech_ed_id"]
+    : ["comp_manager", "comp_manager_id", "comp_manager_name"];
+
+  return candidateCycles.some((cycle) => {
+    const sheetAssigned = appraisalRows.some((row) =>
+      rowBelongsToCycle(row, cycle) &&
+      rowMatchesEmployee(row) &&
+      assignmentFields.some((field) => matchesManager(row[field])),
     );
-    if (![...rowEmployeeKeys].some((key) => employeeKeys.has(key))) return false;
-    return assignmentField.some((field) => matchesManager(row[field]));
+    const delegationAssigned = delegationRows.some((row) =>
+      rowBelongsToCycle(row, cycle) &&
+      rowMatchesEmployee(row) &&
+      assignmentFields.some((field) => matchesManager(row[field])),
+    );
+    return sheetAssigned || delegationAssigned;
   });
 };
 
