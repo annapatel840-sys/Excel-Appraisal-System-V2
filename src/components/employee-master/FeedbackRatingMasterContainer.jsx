@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { loadFeedbackRating } from "@/lib/feedback-rating-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
+import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
 import { FeedbackRatingMasterPage } from "./FeedbackRatingMasterPage";
 
 // Loads the data from feedbackratingapi and hands it to the (UI-only) page.
 export function FeedbackRatingMasterContainer() {
   const [state, setState] = useState({ cycles: [], rows: [], batches: [], loading: true, error: "" });
   const signedInUser = useCatalystUser();
+  const [selectedLocation] = useSelectedLocation();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
   const feedbackSnapshotKey = masterSnapshotKey(snapshotScope, "feedback");
 
@@ -53,18 +55,21 @@ export function FeedbackRatingMasterContainer() {
     };
   }, [feedbackSnapshotKey]);
 
-  const activeCycle = state.cycles.find((cycle) =>
+  const locationCycles = filterByLocation(state.cycles, selectedLocation, (cycle) => cycle.location);
+  const activeCycle = locationCycles.find((cycle) =>
     String(cycle?.status || "").trim().toLowerCase() === "active" &&
     ![true, 1, "true", "1", "yes"].includes(
       typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
     )
   );
+  const cycleRows = activeCycle ? state.rows.filter((row) => String(row.cid) === String(activeCycle.id)) : [];
+  const cycleBatches = activeCycle ? state.batches.filter((batch) => String(batch.cid) === String(activeCycle.id)) : [];
   return (
     <FeedbackRatingMasterPage
       key={activeCycle?.id || "no-active-cycle"}
-      cycles={state.cycles}
-      rows={state.rows}
-      batches={state.batches}
+      cycles={locationCycles}
+      rows={cycleRows}
+      batches={cycleBatches}
       loading={state.loading}
       error={state.error}
     />
