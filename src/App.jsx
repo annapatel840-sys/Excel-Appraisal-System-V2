@@ -41,8 +41,8 @@ const TECH_ED_PATHS = [
   "/sheet",
   "/detail-screen",
   "/bulk-edit",
+  "/budget-master",
   "/budget-distribution",
-  "/settings",
   "/employee-master",
 ];
 
