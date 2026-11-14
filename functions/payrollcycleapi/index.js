@@ -982,16 +982,16 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     }
   }
 
-  // The Eligibility List is cycle-specific. Remove only stale-cycle rows and
-  // rows whose employee no longer exists in Employee_Master.
-  const staleRows = existingRows.filter(
-    (row) => String(row.appraisal_cycle_id || "") !== String(cycle.id),
-  );
+  // Eligibility_List is shared by every location cycle. Never delete rows
+  // belonging to another cycle while reading or repairing the selected cycle.
+  // Only orphaned rows and obsolete auto-seed placeholders for THIS cycle may
+  // be removed; all other location-cycle rows must remain untouched.
+  const staleRows = [];
   const orphanRows = cycleRows.filter((row) => {
     const empId = String(row.emp_id || "").trim().toLowerCase();
     return !masterByRowId.has(String(row.employee_master_id || "")) && !masterByEmpId.has(empId);
   });
-  const toDelete = [...staleRows, ...orphanRows, ...unqualifiedSeedRows];
+  const toDelete = [...orphanRows, ...unqualifiedSeedRows];
   await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
   // Opening the Eligibility List must never pre-populate employees.
