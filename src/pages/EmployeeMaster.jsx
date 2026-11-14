@@ -4475,11 +4475,12 @@ export function EmployeeMaster() {
       return;
     }
 
-    if (eligibilityLoadedKeyRef.current === "loaded") {
+    const eligibilityRequestKey = String(locationFilter || "All Locations").trim().toLowerCase();
+    if (eligibilityLoadedKeyRef.current === eligibilityRequestKey) {
       return;
     }
 
-    eligibilityLoadedKeyRef.current = "loaded";
+    eligibilityLoadedKeyRef.current = eligibilityRequestKey;
     let cancelled = false;
     let finished = false;
 
@@ -4563,7 +4564,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
       // Allow a retry if this load was interrupted before it finished.
-      if (!finished && eligibilityLoadedKeyRef.current === "loaded") {
+      if (!finished && eligibilityLoadedKeyRef.current === eligibilityRequestKey) {
         eligibilityLoadedKeyRef.current = null;
       }
     };
