@@ -1,8 +1,12 @@
 // Default production functions domain. This project currently deploys only the
 // Catalyst Development environment, so the ".development." domain is intended.
 // Override per build with VITE_CATALYST_FUNCTIONS_URL (e.g. for Production).
+// This repo's main branch builds the live Slate app in the ExcelAppraisalManagement
+// project, whose users and functions live here. A deployment in another project
+// (e.g. AppraisalPerformanceHike) must set VITE_CATALYST_FUNCTIONS_URL instead of
+// changing this default, or the live app loses its server.
 const PROJECT_FUNCTIONS_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server";
+  "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server";
 
 const FUNCTIONS_BASE_URL = import.meta.env.DEV
   ? "http://localhost:3000/server"
