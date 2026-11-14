@@ -823,8 +823,8 @@
 //   const eligibilityFreshAppliedRef = useRef(false);
 //   const eligibilityCacheScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
 //   const eligibilityCacheKey = eligibilitySnapshotKey(
-    `${eligibilityCacheScope}::${String(locationFilter || "All").trim().toLowerCase()}`,
-  );
+//     `${eligibilityCacheScope}::${String(locationFilter || "All").trim().toLowerCase()}`,
+//   );
 //   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
 
 //   useEffect(() => {
