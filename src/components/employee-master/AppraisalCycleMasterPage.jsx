@@ -331,8 +331,10 @@ export function AppraisalCycleMasterPage({
     start: "",
     end: "",
     remarks: "",
-    // HR must pick the location (or All Locations) for every new cycle.
-    location: "",
+    // One logical cycle setup applies to every active location. The
+    // location-specific cycle IDs remain internal so existing eligibility,
+    // delegation, appraisal and budget records keep their foreign-key links.
+    location: ALL_CYCLE_LOCATIONS,
   };
   const [newForm, setNewForm] = useState(blankNew);
   const [confirm, setConfirm] = useState(null); // { kind, cycle }
@@ -1509,7 +1511,6 @@ export function AppraisalCycleMasterPage({
             <tr>
               <th>ID</th>
               <th>Cycle</th>
-              <th>Location</th>
               <th>Process</th>
               <th>Effective Date</th>
               <th>Start Date</th>
@@ -1522,7 +1523,7 @@ export function AppraisalCycleMasterPage({
           <tbody>
             {pageRows.length === 0 && (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={9}>
                   <div className="acx-empty">No {type} cycles match.</div>
                 </td>
               </tr>
@@ -1538,8 +1539,7 @@ export function AppraisalCycleMasterPage({
                   <td className="rl" title={String(c.id)}>
                     {c.id}
                   </td>
-                  <td title={c.name}>{c.name}</td>
-                  <td title={locationLabel(c.location)}>{locationLabel(c.location)}</td>
+                  <td title={c.name}>{cycleNameWithoutLocation(c.name)}</td>
                   <td>
                     <span className="acx-tag pr">{procLabel(c.process)}</span>
                   </td>
@@ -2475,40 +2475,11 @@ export function AppraisalCycleMasterPage({
                     The process is locked once the cycle is activated.
                   </div>
                 )}
-                {!isAllCycleLocation(editCycle.location) ? (
-                  <>
-                    <label className="acx-fl">Location</label>
-                    <select
-                      style={{ width: "100%" }}
-                      disabled={saving || editCycle.status !== "Upcoming"}
-                      value={editForm.location}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, location: e.target.value }))
-                      }
-                    >
-                      {cycleLocations
-                        .concat(
-                          !cycleLocations.includes(editForm.location)
-                            ? [editForm.location]
-                            : [],
-                        )
-                        .map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                    </select>
-                  </>
-                ) : (
-                  <div className="acx-hint">
-                    This legacy cycle has no Location Master scope. New cycles must use a Location Master location.
-                  </div>
-                )}
-                {editCycle.status !== "Upcoming" && (
-                  <div className="acx-hint">
-                    The location is locked once the cycle is activated.
-                  </div>
-                )}
+                <div className="acx-hint">
+                  Location scope is managed automatically. Changing the
+                  selected location in the app changes the employee and budget
+                  data shown, not the appraisal cycle.
+                </div>
               </>
             );
           })()}
@@ -2669,36 +2640,13 @@ export function AppraisalCycleMasterPage({
             </>
           }
         >
-          <label className="acx-fl">
-            Location <span style={{ color: "#c0392b" }}>*</span>
-          </label>
-          <select
-            style={{ width: "100%" }}
-            disabled={saving}
-            value={newForm.location}
-            aria-required="true"
-            onChange={(e) =>
-              setNewForm((f) => ({ ...f, location: e.target.value }))
-            }
-          >
-            <option value="" disabled>
-              Select the location for this cycle
-            </option>
-            <option value={ALL_CYCLE_LOCATIONS}>
-              All Locations (separate cycle per location)
-            </option>
-            {cycleLocations.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
           <div className="acx-hint">
+            This cycle is set up once for all active locations. Each location
+            keeps its own employee records and budget allocation under the same
+            cycle name.
             {cycleLocationsError
-              ? `Could not load Location Master: ${cycleLocationsError}`
-              : isAllCycleLocation(newForm.location) && newForm.location
-                ? `Sets up ${cycleLocations.length} cycles, one for each location; each lists only that location's employees.`
-                : "Only this location's employees go on the cycle's Eligibility List."}
+              ? ` Location list warning: ${cycleLocationsError}`
+              : ` ${cycleLocations.length} active locations will be configured.`}
           </div>
           <div className="acx-row2">
             <div>
