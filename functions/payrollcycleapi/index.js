@@ -888,6 +888,7 @@ async function requirePayrollTables(adminApp) {
   return {
     datastore,
     employees: datastore.table(TABLES.employees),
+    appraisalSheet: datastore.table(TABLES.employees),
     employeeMaster: datastore.table(TABLES.employeeMaster),
     payroll: datastore.table(TABLES.payroll),
     cycles: datastore.table(TABLES.cycles),
@@ -994,14 +995,75 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   const toDelete = [...orphanRows, ...unqualifiedSeedRows];
   await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
-  // Opening the Eligibility List must never pre-populate employees.
-  // Only Apply Criteria or the explicit Add An Employee action may create
-  // cycle rows. This sync is limited to repairing existing rows/references.
+  // Safe recovery for location cycles whose Eligibility_List rows were lost
+  // after the Appraisal Sheet and Delegation had already been generated.
+  // Rebuild only from Appraisal_Sheet rows explicitly tagged to THIS cycle;
+  // these rows were created from the approved eligibility roster. Never use
+  // the unscoped source cycle or another location's rows, and never overwrite
+  // an existing/manual Eligibility_List decision.
+  let restoredFromSheet = 0;
+  if (tables.appraisalSheet && (!cycleRows.length || unqualifiedSeedRows.length)) {
+    const sheetRows = await getAllRows(tables.appraisalSheet);
+    const exactCycleRows = sheetRows.filter((sheet) => {
+      const reference = String(
+        sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
+      ).trim();
+      return reference === String(cycle.id) || reference.toLowerCase() === String(cycle.name || "").trim().toLowerCase();
+    });
+    const existingEmpIds = new Set(
+      cycleRows
+        .filter((row) => !unqualifiedSeedRows.some((seed) => rowId(seed) === rowId(row)))
+        .map((row) => String(row.emp_id || "").trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const masterByEmployeeId = new Map(
+      masterRows.map((master) => [
+        String(master.emp_id || master.employee_id || "").trim().toLowerCase(),
+        master,
+      ]),
+    );
+    const restored = [];
+    for (const sheet of exactCycleRows) {
+      const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
+      const key = empId.toLowerCase();
+      if (!key || existingEmpIds.has(key)) continue;
+      const master = masterByEmployeeId.get(key);
+      if (!master || !inCycleLocation(cycle, master)) continue;
+      const statusRaw = String(
+        sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+      const status = ["eligible", "yes", "true", "1"].includes(statusRaw)
+        ? "Eligible"
+        : ["noteligible", "no", "false"].includes(statusRaw)
+          ? "Not Eligible"
+          : "Eligible";
+      restored.push({
+        appraisal_cycle_id: String(cycle.id),
+        employee_master_id: String(master.ROWID || master.rowid || ""),
+        emp_id: empId,
+        eligibility_status: status,
+        eligibility_reason: "Recovered from existing Appraisal Sheet roster",
+        eligibility_source: "System",
+        change_tag: "Recovered",
+        evaluated_at: nowLocal(),
+        updated_by: String(actor || "System").slice(0, 60),
+        eligibility_updated_at: nowLocal(),
+      });
+      existingEmpIds.add(key);
+    }
+    for (let index = 0; index < restored.length; index += 100) {
+      await tables.eligibility.insertRows(restored.slice(index, index + 100));
+    }
+    restoredFromSheet = restored.length;
+  }
+
+  // Opening the Eligibility List remains read-only apart from the narrow
+  // recovery above. No new Employee_Master population is generated.
 
   if (readBack) {
     readBack.masterRows = masterRows;
     readBack.eligibilityRows = existingRows;
-    readBack.changed = rowsUpdated > 0 || toDelete.length > 0;
+    readBack.changed = rowsUpdated > 0 || toDelete.length > 0 || restoredFromSheet > 0;
     // Reuse the marker lookup already performed during this sync; the GET
     // route must not scan the full Appraisal_Audit table a second time.
     readBack.criteriaApplied = criteriaAlreadyApplied;
@@ -1014,6 +1076,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     unqualifiedSeedRowsRemoved: unqualifiedSeedRows.length,
     repairedReferences,
     inactiveMarked,
+    restoredFromSheet,
     activeEmployees: masterRows.filter((row) =>
       String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
     ).length,
