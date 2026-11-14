@@ -6,6 +6,7 @@ import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { generateAppraisalSheet, invalidatePayrollCycleReads, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { fillDelegation } from "@/lib/access-admin-api";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { cycleNameWithoutLocation, withCycleLocation } from "@/lib/cycle-name";
 
 export function SettingsPage() {
@@ -143,9 +144,53 @@ export function SettingsPage() {
           }
 
           const generated = await generateAppraisalSheet(target.id, { reuseExistingCycleData: true });
+
+          // Create the cycle's independent Budget_Master row before loading any
+          // budget screen. The budget API then derives this cycle's Tech-Ed and
+          // Comp Manager rows from its own generated Appraisal Sheet.
+          const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
+          const budgetWrite = await catalystFetch(budgetUrl, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              resource: "master",
+              appraisal_cycle_id: target.id,
+              budget_percentage: 0,
+              budget_utilized: 0,
+              org_budget_base: 0,
+              calculated_budget: 0,
+              applied_budget: 0,
+            }),
+          });
+          let budgetWriteResult = {};
+          try { budgetWriteResult = await budgetWrite.json(); } catch { /* handled below */ }
+          if (!budgetWrite.ok || budgetWriteResult?.success !== true) {
+            throw new Error(budgetWriteResult?.message || `Could not initialize Budget_Master for ${location}.`);
+          }
+
+          // A fresh location-scoped GET recalculates Org Budget Base and
+          // upserts the matching Tech-Ed / Comp Manager allocations.
+          budgetUrl.searchParams.set("location", location);
+          const budgetRead = await catalystFetch(budgetUrl, { method: "GET" });
+          let budgetResult = {};
+          try { budgetResult = await budgetRead.json(); } catch { /* handled below */ }
+          if (!budgetRead.ok || budgetResult?.success !== true) {
+            throw new Error(budgetResult?.message || `Could not initialize location-wise budget allocations for ${location}.`);
+          }
+          const budgetData = budgetResult?.data || {};
+          const budgetCycleId = String(budgetResult?.active_appraisal_cycle_id || budgetData?.active_appraisal_cycle_id || "");
+          if (budgetCycleId && budgetCycleId !== String(target.id)) {
+            throw new Error(`Budget initialization selected cycle ${budgetCycleId}, expected ${target.id} for ${location}.`);
+          }
+          const budgetMaster = Array.isArray(budgetResult?.master) ? budgetResult.master : [];
+          if (!budgetMaster.some((row) => String(row.appraisal_cycle_id || "") === String(target.id))) {
+            throw new Error(`Budget_Master was not confirmed for ${location}.`);
+          }
+          const techRows = Array.isArray(budgetResult?.techEd) ? budgetResult.techEd : [];
+          const compRows = Array.isArray(budgetResult?.compManager) ? budgetResult.compManager : [];
           const unmatchedTech = Array.isArray(delegation?.unmatched?.techEd) ? delegation.unmatched.techEd.length : 0;
           const unmatchedComp = Array.isArray(delegation?.unmatched?.compManager) ? delegation.unmatched.compManager.length : 0;
-          completed.push(`${location}: ${generated?.created || 0} created, ${generated?.updated || 0} updated, ${delegation.employees} delegated${unmatchedTech || unmatchedComp ? ` (unmatched Tech-Ed: ${unmatchedTech}, Comp Manager: ${unmatchedComp})` : ""}`);
+          completed.push(`${location}: ${generated?.created || 0} sheet rows created, ${generated?.updated || 0} updated, ${delegation.employees} delegated, ${techRows.length} Tech-Ed budgets, ${compRows.length} Comp Manager budgets${unmatchedTech || unmatchedComp ? ` (unmatched Tech-Ed: ${unmatchedTech}, Comp Manager: ${unmatchedComp})` : ""}`);
           if (target.status === "Active" && generated?.upToDate) skipped.push(location);
         } catch (error) {
           failed.push(`${location}: ${error?.message || "setup failed"}`);
