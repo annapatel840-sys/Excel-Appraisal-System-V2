@@ -441,7 +441,15 @@ const managerOwnsEmployeeInActiveCycle = async (
   // simultaneously-active location cycles. Its shared heading may be the
   // global Annual cycle, not the employee's own location cycle. In that case
   // resolve access from the employee's actual active-cycle assignment below.
-  const candidateCycles = namedCycle ? [namedCycle] : activeCycles;
+  // Try the heading cycle first, then the other active location cycles.
+  // The shared/global heading can exist alongside location-specific active
+  // cycles and may not contain this employee's delegation row.
+  const candidateCycles = namedCycle
+    ? [namedCycle, ...activeCycles.filter((row) =>
+        String(row.ROWID ?? row.rowid ?? row.id ?? "") !==
+        String(namedCycle.ROWID ?? namedCycle.rowid ?? namedCycle.id ?? ""),
+      )]
+    : activeCycles;
   if (!candidateCycles.length) return false;
 
   const manager = employees.find(
