@@ -2375,12 +2375,11 @@ async function calculateBudgetBases(
     const storedPreviousCtc = previousRecord
       ? previousCtc(previousRecord)
       : null;
-    const previousAppraisalCtc =
-      sheetPreviousCtc !== null
-        ? sheetPreviousCtc
-        : storedPreviousCtc === null
-          ? currentCtcValue
-          : storedPreviousCtc;
+    // Budget Master Org Budget Base must equal the Appraisal Sheet's
+    // visible Previous Total Rewards column exactly. Do not substitute a
+    // historical payroll or current CTC value when this stored sheet cell is
+    // blank: the Appraisal Sheet total treats that cell as zero.
+    const previousAppraisalCtc = sheetPreviousCtc === null ? 0 : sheetPreviousCtc;
     const lastAppraisalLabel = previousRecord
       ? cycleNameOf(previousCycle)
       : "New - " + currentYear;
@@ -2577,6 +2576,9 @@ async function calculateBudgetBases(
       master_status: masterStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
+      // Previous-cycle expense is a separate allocation base: base pay +
+      // previous hike + previous PB/RB/JB for this employee.
+      last_year_expenses: lastYearExpenses,
       current_ctc: currentCtcValue,
       // Preserve the Appraisal_Sheet value separately so cycle enrichment
       // cannot replace the canonical budget base with a blank/current payroll value.
@@ -3231,10 +3233,11 @@ async function calculateBudgetBases(
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
-    // Shared value resolver for Org, Tech-Ed and Comp Manager budget bases.
-    // employee.base is the mapped Previous Total CTC with Rewards value
-    // produced by employeesForBudgetCycle for this exact cycle.
+    // Org Budget Base is Previous Total Rewards CTC from the current
+    // Appraisal Sheet. Tech-Ed and Comp Manager allocation bases are instead
+    // the sum of each employee's previous-cycle expenses.
     const sheetBaseValue = (employee) => n(employee?.base);
+    const previousExpenseValue = (employee) => n(employee?.last_year_expenses);
 
     // Sum the same Previous Total CTC with Rewards value exposed in the
     // Appraisal Sheet/Budget roster. The canonical sheet field is preferred;
@@ -3369,7 +3372,7 @@ async function calculateBudgetBases(
           count: 0,
           utilized: 0,
         };
-        tech.base += sheetBaseValue(employee);
+        tech.base += previousExpenseValue(employee);
         // count (all sheet rows) seeds the Original Count above; Current Count
         // follows the same active, eligible employees as the base and budget.
         tech.current = (tech.current || 0) + 1;
@@ -3379,7 +3382,7 @@ async function calculateBudgetBases(
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
-        comp.base += sheetBaseValue(employee);
+        comp.base += previousExpenseValue(employee);
         comp.current = (comp.current || 0) + 1;
         comp.utilized += consumed;
         compBases.set(key, comp);
