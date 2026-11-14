@@ -4224,7 +4224,7 @@ module.exports = async function (req, res) {
       }
       const cycleId = String(body.appraisal_cycle_id).trim();
       const existing = (await getAllRows(app, "Budget_Master")).find(
-        (row) => String(value(row, "appraisal_cycle_id")) === cycleId,
+        (row) => cycleReference(value(row, "appraisal_cycle_id")) === cycleId,
       );
       if (existing) {
         // Setup/retry must be idempotent: never reset an existing location's
