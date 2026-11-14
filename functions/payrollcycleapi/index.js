@@ -79,6 +79,11 @@ function cycleTypeOf(name) {
   const lower = cycleNameWithoutLocation(name).toLowerCase();
   return CYCLE_TYPES.find((type) => lower.startsWith(type.toLowerCase())) || "Annual";
 }
+// Shared cycle-year parser used by cycle activation, duplicate checks and sheet generation.
+const cycleYear = (item) => {
+  const match = String(item?.name || "").match(/(?:19|20)\\d{2}/);
+  return match ? match[0] : "";
+};
 const cycleProcessOf = (cycle) => cycle.process || DEFAULT_CYCLE_PROCESS[cycle.type || cycleTypeOf(cycle.name)] || "Annual";
 
 let cycleColumnCache = { at: 0, names: null };
