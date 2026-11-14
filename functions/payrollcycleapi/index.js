@@ -81,7 +81,7 @@ function cycleTypeOf(name) {
 }
 // Shared cycle-year parser used by cycle activation, duplicate checks and sheet generation.
 const cycleYear = (item) => {
-  const match = String(item?.name || "").match(/(?:19|20)\\d{2}/);
+  const match = String(item?.name || "").match(/(?:19|20)\d{2}/);
   return match ? match[0] : "";
 };
 const cycleProcessOf = (cycle) => cycle.process || DEFAULT_CYCLE_PROCESS[cycle.type || cycleTypeOf(cycle.name)] || "Annual";
