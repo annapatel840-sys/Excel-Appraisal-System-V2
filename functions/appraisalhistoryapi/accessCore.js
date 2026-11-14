@@ -366,19 +366,21 @@ function resolveFields(C, lim) {
 /* ---------------------------------------------------------------------
    People: Employee_Master + Delegation + Catalyst roles
    --------------------------------------------------------------------- */
-async function activeCycleId(zcql) {
+async function activeCycleIds(zcql) {
   const c = SETTINGS.cycle;
   const rows = await selectAll(zq(zcql), c.table);
   const isTruthyFlag = (value) =>
     [true, 1, "true", "1", "yes"].includes(
       typeof value === "string" ? value.trim().toLowerCase() : value,
     );
-  const active = rows.find((row) =>
-    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
-    !isTruthyFlag(row.archived) &&
-    !isTruthyFlag(row.hidden)
-  );
-  return active ? String(active[c.idColumn] || "") || null : null;
+  return rows
+    .filter((row) =>
+      String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
+      !isTruthyFlag(row.archived) &&
+      !isTruthyFlag(row.hidden)
+    )
+    .map((row) => String(row[c.idColumn] || "").trim())
+    .filter(Boolean);
 }
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
@@ -394,14 +396,13 @@ async function activeCycleId(zcql) {
         Master import), then Employee_Master (before Generate).
    A person reassigned in Delegation therefore leaves the old manager's team.
    Sheet rows of other cycles are not used: they hold past managers. */
-async function loadDelegation(zcql, cycleId) {
+async function loadDelegation(zcql, cycleIds) {
   const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {}, rowIdOf: {} };
   const z = zq(zcql);
   const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
-  const [rows, masterRows, sheetRows] = await Promise.all([
-    cycleId
-      ? selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
-      : Promise.resolve([]),
+  const activeCycleSet = new Set((Array.isArray(cycleIds) ? cycleIds : [cycleIds]).map((id) => String(id || "").trim()).filter(Boolean));
+  const [allDelegationRows, masterRows, sheetRows] = await Promise.all([
+    activeCycleSet.size ? selectAll(z, d.table) : Promise.resolve([]),
     selectAll(z, e.table),
     selectAll(z, s.table),
   ]);
@@ -436,8 +437,13 @@ async function loadDelegation(zcql, cycleId) {
     }
     return '';
   };
-  const cycleSheetRows = cycleId
-    ? sheetRows.filter((r) => cycleOf(r) === String(cycleId))
+  // Scope reviewers across every active location cycle. A single arbitrary
+  // Active cycle is insufficient after location-wise cycle creation.
+  const rows = allDelegationRows.filter((row) =>
+    activeCycleSet.has(lookupText(row[d.cycleColumn])),
+  );
+  const cycleSheetRows = activeCycleSet.size
+    ? sheetRows.filter((r) => activeCycleSet.has(cycleOf(r)))
     : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
@@ -605,11 +611,11 @@ async function getVersion(zcql) {
   return rows[0] ? { version: Number(rows[0].version) || 1, rowid: rows[0].ROWID } : { version: 1, rowid: null };
 }
 async function loadBase(z, version) {
-  const [C, roles, cycleId, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleId(z), selectAll(z, T.override)]);
-  const [deleg, m] = await Promise.all([loadDelegation(z, cycleId), loadMatrix(z, C, roles)]);
+  const [C, roles, cycleIds, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleIds(z), selectAll(z, T.override)]);
+  const [deleg, m] = await Promise.all([loadDelegation(z, cycleIds), loadMatrix(z, C, roles)]);
   const overridesBy = {};
   ovRows.filter((o) => !bool(o.removed)).map(overrideRow).forEach((o) => { const k = norm(o.empId); (overridesBy[k] = overridesBy[k] || []).push(o); });
-  return { version, C, roles, cycleId, deleg, m, overridesBy };
+  return { version, C, roles, cycleId: cycleIds[0] || null, cycleIds, deleg, m, overridesBy };
 }
 /* Returns the cached base data; at most one query (the version row) when warm,
    and none when the version was checked less than 30 s ago. */
@@ -672,7 +678,7 @@ function scopeOf(base, ro, a, person) {
     const rowId = (d.rowIdOf || {})[k];
     if (rowId) rowIds.push(rowId);
   });
-  return { all: false, cycleId: base.cycleId, empIds, rowIds };
+  return { all: false, cycleId: base.cycleId, cycleIds: base.cycleIds || [], empIds, rowIds };
 }
 async function get(cat, opts) {
   // getCurrentUser() throws when the request carries no user credentials.
