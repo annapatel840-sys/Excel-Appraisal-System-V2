@@ -4274,24 +4274,28 @@ async function getEmployees(req, res) {
           );
         });
 
-  const scopedTotalCount = scopedEmployees.length;
-  const scopedActiveCount = scopedEmployees.filter(function (employee) {
-    return (
-      String(employee.status || "")
-        .trim()
-        .toLowerCase() === "active"
-    );
+  // Header location applies to the whole Employee Master/Eligibility roster,
+  // including the summary counts, not only to the visible page rows.
+  const locationValue = String(location || "").trim().toLowerCase();
+  const locationScopedEmployees =
+    locationValue && !["all", "all locations"].includes(locationValue)
+      ? scopedEmployees.filter(function (employee) {
+          return String(employee.location || employee.work_location || "")
+            .trim()
+            .toLowerCase() === locationValue;
+        })
+      : scopedEmployees;
+
+  const scopedTotalCount = locationScopedEmployees.length;
+  const scopedActiveCount = locationScopedEmployees.filter(function (employee) {
+    return String(employee.status || "").trim().toLowerCase() === "active";
   }).length;
-  const scopedInactiveCount = scopedEmployees.filter(function (employee) {
-    return (
-      String(employee.status || "")
-        .trim()
-        .toLowerCase() === "inactive"
-    );
+  const scopedInactiveCount = locationScopedEmployees.filter(function (employee) {
+    return String(employee.status || "").trim().toLowerCase() === "inactive";
   }).length;
 
   const filteredEmployees = filterEmployees(
-    scopedEmployees,
+    locationScopedEmployees,
     employeeMasterMap,
     search,
     status === "all" ? "" : status,
