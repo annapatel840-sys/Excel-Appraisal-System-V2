@@ -2408,11 +2408,16 @@ async function calculateBudgetBases(
     // visible Previous Total Rewards column exactly. Do not substitute a
     // historical payroll or current CTC value when this stored sheet cell is
     // blank: the Appraisal Sheet total treats that cell as zero.
+    const currentCyclePayrollCtc = currentCyclePayrollRecord
+      ? previousCtc(currentCyclePayrollRecord)
+      : null;
     const payrollCtcFallback =
       sameYearNewJoinerPayrollRecord?.value ??
       (previousRecord ? previousCtc(previousRecord) : null) ??
       (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
-      currentCtcValue;
+      currentCyclePayrollCtc ??
+      currentCtcValue ??
+      currentCtc(masterRow);
     const previousAppraisalCtc =
       sheetPreviousCtc !== null && sheetPreviousCtc > 0
         ? sheetPreviousCtc
