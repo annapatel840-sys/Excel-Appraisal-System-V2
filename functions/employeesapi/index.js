@@ -2408,10 +2408,13 @@ async function enrichPreviousAppraisalValues(
       payrollCtcValue !== ""
         ? Number(String(payrollCtcValue).replace(/[₹,\s]/g, ""))
         : ctcFromComponents(selectedPayroll || {});
+    // A same-year New Joiner payroll row may contain bonus/base-pay
+    // fields but no usable Total CTC. Do not let Number.isFinite(0) make that
+    // incomplete row override the employee's last valid Annual history.
     const previousCtc =
-      sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed)
+      sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed) && payrollCtcParsed > 0
         ? payrollCtcParsed
-        : prior && prior.value !== null
+        : prior && Number.isFinite(prior.value) && prior.value > 0
           ? prior.value
           : currentTotalCtc(employee);
     const previousCycleName = selectedPayrollCycle
