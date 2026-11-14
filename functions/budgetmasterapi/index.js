@@ -2416,8 +2416,8 @@ async function calculateBudgetBases(
       (previousRecord ? previousCtc(previousRecord) : null) ??
       (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
       currentCyclePayrollCtc ??
-      currentCtcValue ??
-      currentCtc(masterRow);
+      (currentCtcValue > 0 ? currentCtcValue : null) ??
+      (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
       sheetPreviousCtc !== null && sheetPreviousCtc > 0
         ? sheetPreviousCtc
