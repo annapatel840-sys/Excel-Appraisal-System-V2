@@ -2675,8 +2675,12 @@ function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
   const employeeName = employee?.emp_name || employee?.name || "";
   const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
   const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
+  const locationColumn = Object.keys(employee || {}).find((key) =>
+    ["location", "work_location", "location_name"].includes(key.toLowerCase()),
+  );
   return {
     ...row, id: rowId(row),
+    location: locationColumn ? String(employee[locationColumn] || "") : "",
     // Payroll stores the Employee Master ROWID as the foreign key. Expose
     // the human/business Employee ID to the UI instead of the internal ROWID.
     emp_id: businessEmpId || text("emp_id"),
