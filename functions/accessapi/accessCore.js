@@ -382,6 +382,11 @@ async function activeCycleIds(zcql) {
     .map((row) => String(row[c.idColumn] || "").trim())
     .filter(Boolean);
 }
+// Older callers (accessapi) still ask for one Active cycle id; the first one is kept.
+async function activeCycleId(zcql) {
+  const ids = await activeCycleIds(zcql);
+  return ids[0] || "";
+}
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
      byEmp            : { normEmpId: { empId, techEd, compMgr } }
@@ -811,7 +816,7 @@ async function bumpVersion(cat, by, why) {
 module.exports = {
   SETTINGS, T, BUILT_IN_ROLES, START_CATALOG, FIELD_COLUMNS, COLUMN_FIELDS, LEVELS, LIMITS, OV_TYPES, HttpError,
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
-  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
+  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, activeCycleIds, loadDelegation, hasTeam, emRow, findEmployee,
   loadOverrides, live, baseRoleOf, accessOf, scopeOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
   fieldOfColumn, fieldKeyOf, fieldLimitOf, requireEditFields, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE
