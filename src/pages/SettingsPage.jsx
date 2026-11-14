@@ -168,29 +168,13 @@ export function SettingsPage() {
             throw new Error(budgetWriteResult?.message || `Could not initialize Budget_Master for ${location}.`);
           }
 
-          // A fresh location-scoped GET recalculates Org Budget Base and
-          // upserts the matching Tech-Ed / Comp Manager allocations.
-          budgetUrl.searchParams.set("location", location);
-          const budgetRead = await catalystFetch(budgetUrl, { method: "GET" });
-          let budgetResult = {};
-          try { budgetResult = await budgetRead.json(); } catch { /* handled below */ }
-          if (!budgetRead.ok || budgetResult?.success !== true) {
-            throw new Error(budgetResult?.message || `Could not initialize location-wise budget allocations for ${location}.`);
-          }
-          const budgetData = budgetResult?.data || {};
-          const budgetCycleId = String(budgetResult?.active_appraisal_cycle_id || budgetData?.active_appraisal_cycle_id || "");
-          if (budgetCycleId && budgetCycleId !== String(target.id)) {
-            throw new Error(`Budget initialization selected cycle ${budgetCycleId}, expected ${target.id} for ${location}.`);
-          }
-          const budgetMaster = Array.isArray(budgetResult?.master) ? budgetResult.master : [];
-          if (!budgetMaster.some((row) => String(row.appraisal_cycle_id || "") === String(target.id))) {
-            throw new Error(`Budget_Master was not confirmed for ${location}.`);
-          }
-          const techRows = Array.isArray(budgetResult?.techEd) ? budgetResult.techEd : [];
-          const compRows = Array.isArray(budgetResult?.compManager) ? budgetResult.compManager : [];
+          // Budget distribution is intentionally left for HR to configure
+          // manually after the location-wise Appraisal Sheet is generated.
+          // Do not call the budget GET here: it also calculates/upserts
+          // Tech-Ed and Comp Manager allocations as a side effect.
           const unmatchedTech = Array.isArray(delegation?.unmatched?.techEd) ? delegation.unmatched.techEd.length : 0;
           const unmatchedComp = Array.isArray(delegation?.unmatched?.compManager) ? delegation.unmatched.compManager.length : 0;
-          completed.push(`${location}: ${generated?.created || 0} sheet rows created, ${generated?.updated || 0} updated, ${delegation.employees} delegated, ${techRows.length} Tech-Ed budgets, ${compRows.length} Comp Manager budgets${unmatchedTech || unmatchedComp ? ` (unmatched Tech-Ed: ${unmatchedTech}, Comp Manager: ${unmatchedComp})` : ""}`);
+          completed.push(`${location}: ${generated?.created || 0} sheet rows created, ${generated?.updated || 0} updated, ${delegation.employees} delegated; budget distribution is ready for manual setup${unmatchedTech || unmatchedComp ? ` (unmatched Tech-Ed: ${unmatchedTech}, Comp Manager: ${unmatchedComp})` : ""}`);
           if (target.status === "Active" && generated?.upToDate) skipped.push(location);
         } catch (error) {
           failed.push(`${location}: ${error?.message || "setup failed"}`);
@@ -252,7 +236,7 @@ export function SettingsPage() {
         {isHR && (
           <section className="rounded-lg border border-amber-300 bg-card p-4">
             <h3 className="text-sm font-semibold">Temporary: Generate Location-wise Annual 2027 Cycles</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Creates or reuses each location's Annual 2027 cycle, activates it, builds its Eligibility List and Delegation from the original cycle, then generates its Appraisal Sheet using existing payroll, feedback and rating data by employee ID. No source payroll rows are copied.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Creates or reuses each location's Annual 2027 cycle, activates it, builds its Eligibility List and Delegation from the original cycle, then generates its Appraisal Sheet using existing payroll, feedback and rating data by employee ID. Budget distribution is left for manual setup. No source payroll rows are copied.</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button type="button" disabled={splittingCycles} onClick={generateLocationCycles}>
                 {splittingCycles ? "Activating & Generating..." : "Generate Location-wise Cycles"}

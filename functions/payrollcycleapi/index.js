@@ -1486,7 +1486,9 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     .filter(Boolean);
   return {
     records,
-    masterRecords: masterRows,
+    // The criteria panel / Add Employee picker must use the same location
+    // roster as this cycle, not the complete global Employee_Master table.
+    masterRecords: masterRows.filter((master) => inCycleLocation(cycle, master)),
     criteriaApplied: Boolean(synced.criteriaApplied),
   };
 }
@@ -3549,6 +3551,9 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
+    const requestedLocation = String(query.location || "").trim().toLowerCase();
+    const allLocationsSelected =
+      !requestedLocation || ["all", "all locations"].includes(requestedLocation);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const isAvailableActiveCycle = (item) =>
       String(item.status || "").trim().toLowerCase() === "active" &&
@@ -3558,13 +3563,20 @@ async function routeRequest(req, res, identity, resource, a) {
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.hidden === "string" ? item.hidden.trim().toLowerCase() : item.hidden,
       );
-    // Location-wise cycles can be Active together. When the caller supplies
-    // a cycle ID, resolve that exact Active cycle instead of whichever one
-    // happens to appear first in Cycle Master.
+    const matchesRequestedLocation = (item) => {
+      const raw = String(item.location || "").trim().toLowerCase();
+      const cycleLocation = !raw || ["all", "all locations"].includes(raw) ? "all" : raw;
+      return allLocationsSelected
+        ? cycleLocation === "all"
+        : cycleLocation === requestedLocation;
+    };
+    // A supplied cycle ID is authoritative. Otherwise the selected header
+    // location chooses its own Active cycle; never fall back to another
+    // location's cycle when that location has no Active cycle.
     const cycle = queryCycleId
       ? cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item)) || null
-      : cycles.find(isAvailableActiveCycle) || null;
-    const activeCycle = cycle || cycles.find(isAvailableActiveCycle) || null;
+      : cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item)) || null;
+    const activeCycle = cycle;
     // ?count=1: read-only status for Cycle Master, without the sync below
     // (which writes). criteriaApplied is what "generated" means: the list is
     // created by Apply Criteria, which is allowed once per cycle.

@@ -4224,10 +4224,18 @@ module.exports = async function (req, res) {
       }
       const cycleId = String(body.appraisal_cycle_id).trim();
       const existing = (await getAllRows(app, "Budget_Master")).find(
-        (row) => String(value(row, "appraisal_cycle_id")) === cycleId,
+        (row) => cycleReference(value(row, "appraisal_cycle_id")) === cycleId,
       );
       if (existing) {
-        id = idOf(existing);
+        // Setup/retry must be idempotent: never reset an existing location's
+        // budget percentage, original snapshot, utilization, or applied amount
+        // merely because the temporary cycle-setup button was clicked again.
+        return sendJson(res, 200, {
+          success: true,
+          resource: "master",
+          data: mapMaster(existing),
+          existing: true,
+        });
       } else {
         const masterTable = app.datastore().table(TABLES.master);
         const created = await masterTable.insertRow({
