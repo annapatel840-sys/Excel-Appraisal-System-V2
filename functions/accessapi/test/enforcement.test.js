@@ -383,6 +383,41 @@ async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
     }
   });
 
+  await test('appraisalhistoryapi GET: location-cycle Delegation remains authoritative when sheet assignment is blank and heading is global', async () => {
+    const before = snapshot();
+    const locationCycle = insert(CYC, {
+      cycle_name: 'Australia - Annual 2027',
+      status: 'Active',
+      start_date: '2026-04-01',
+      location: 'Australia',
+    });
+    insert(DEL, {
+      cycle_id: locationCycle.ROWID,
+      emp_id: 'EMP0104',
+      appraiser_tech_ed: 'EMP0051 - Ashok Kumar',
+      comp_manager: 'EMP0060 - Priya Shah',
+      status: 'Pending',
+    });
+    insert(SHEET, {
+      cycle_id: locationCycle.ROWID,
+      emp_id: 'EMP0104',
+      appraiser_tech_ed: '',
+      comp_manager: '',
+      status: 'Active',
+      eligible_status: 'Eligible',
+    });
+    try {
+      const response = await HIST(
+        'GET',
+        '/?emp_id=EMP0104&cycle_name=Annual%202027',
+        U.ashok,
+      );
+      assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+    } finally {
+      restore(before);
+    }
+  });
+
   await test('appraisalhistoryapi PATCH: mapped editable ok; read-only / master / out-of-scope refused; unmapped needs sheet edit', async () => {
     const P = (who, b) => HIST('PATCH', '/', who, Object.assign({ appraisal_year: 'Apr-26' }, b));
     assert.strictEqual((await P(U.ashok, { emp_id: 'EMP0100', hike_amount: 1 })).status, 200);
