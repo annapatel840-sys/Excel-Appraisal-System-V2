@@ -2342,11 +2342,33 @@ async function calculateBudgetBases(
           cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId,
         )
       : null;
-    // New joiners may have their PB/RB-to-be-paid values included in the
-    // payroll upload for the current no-process cycle (for example Annual 2027)
-    // but naturally have no prior closed-cycle payroll row. Prefer the prior
-    // closed cycle when it exists; use the current-cycle payroll row only when
-    // no prior payroll record exists for this employee.
+    // Match employeesapi's per-employee CTC source order. Employees who joined
+    // during this appraisal year use their same-year closed New Joiner payroll
+    // record first; all others use their latest closed Annual payroll record.
+    const sameYearNewJoinerPayrollRecord = cycleRows
+      .filter((candidate) => {
+        const candidateName = cycleNameOf(candidate);
+        const candidateYear = cycleYearOf(candidate);
+        const candidateStatus = String(candidate.status || "").trim().toLowerCase();
+        const archived = [true, 1, "true", "1", "yes", "archived"].includes(
+          typeof candidate.archived === "string" ? candidate.archived.trim().toLowerCase() : candidate.archived,
+        );
+        return /new[\s_-]*joiners?/i.test(candidateName) &&
+          candidateYear === currentYear &&
+          (archived || ["closed", "complete", "completed"].includes(candidateStatus));
+      })
+      .map((candidate) => {
+        const candidateId = cycleIdOf(candidate);
+        const candidateName = cycleNameOf(candidate).toLowerCase();
+        const payroll =
+          payrollRowsByCycleAndEmployee.get(candidateId + "::" + employeeId) ||
+          payrollRowsByCycleAndEmployee.get(candidateName + "::" + employeeId);
+        return payroll ? { cycle: candidate, payroll, value: previousCtc(payroll) } : null;
+      })
+      .filter((item) => item && item.value !== null && item.value > 0)
+      .sort((a, b) => cycleRank(b.cycle) - cycleRank(a.cycle))[0] || null;
+    // PB/RB source remains the employee's prior closed payroll, with the
+    // current-cycle upload as fallback for New Joiners.
     const currentCyclePayrollRecord =
       payrollRowsByCycleAndEmployee.get(currentCycleId + "::" + employeeId) ||
       payrollRowsByCycleAndEmployee.get(
@@ -2379,10 +2401,22 @@ async function calculateBudgetBases(
     // visible Previous Total Rewards column exactly. Do not substitute a
     // historical payroll or current CTC value when this stored sheet cell is
     // blank: the Appraisal Sheet total treats that cell as zero.
-    const previousAppraisalCtc = sheetPreviousCtc === null ? 0 : sheetPreviousCtc;
-    const lastAppraisalLabel = previousRecord
-      ? cycleNameOf(previousCycle)
-      : "New - " + currentYear;
+    const payrollCtcFallback =
+      sameYearNewJoinerPayrollRecord?.value ??
+      (previousRecord ? previousCtc(previousRecord) : null) ??
+      (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
+      currentCtcValue;
+    const previousAppraisalCtc =
+      sheetPreviousCtc !== null && sheetPreviousCtc > 0
+        ? sheetPreviousCtc
+        : Number.isFinite(Number(payrollCtcFallback)) && Number(payrollCtcFallback) > 0
+          ? Number(payrollCtcFallback)
+          : 0;
+    const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
+      ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
+      : previousRecord
+        ? cycleNameOf(previousCycle)
+        : "New - " + currentYear;
     const basePay = n(
       firstValue(row, [
         "previous_year_base_pay",
