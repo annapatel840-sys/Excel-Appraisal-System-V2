@@ -2902,17 +2902,6 @@ async function calculateBudgetBases(
     const currentRank = currentCycle
       ? cycleRank(currentCycle)
       : cycleRank({ cycle_name: targetCycleId });
-    const targetYear = cycleYearOf(
-      currentCycle || { cycle_name: targetCycleId },
-    );
-    const sameYearNewJoinerCycles = cycleRows
-      .filter(
-        (cycle) =>
-          /new[\s_-]*joiners?/i.test(cycleNameOf(cycle)) &&
-          targetYear &&
-          cycleYearOf(cycle) === targetYear,
-      )
-      .sort((a, b) => cycleRank(b) - cycleRank(a));
     const closedCycles = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
       .filter(
@@ -2926,24 +2915,7 @@ async function calculateBudgetBases(
       const employeeKey = String(employee.employeeId || employee.emp_id || "")
         .trim()
         .toLowerCase();
-      let priorCtc = null;
       let priorCycleName = "";
-      let sameYearNewJoinerPayroll = null;
-      for (const joinerCycle of sameYearNewJoinerCycles) {
-        const cycleId = cycleIdOf(joinerCycle);
-        const cycleName = cycleNameOf(joinerCycle);
-        const payroll =
-          payrollRowsByCycleAndEmployee.get(
-            (cycleId || cycleName.toLowerCase()) + "::" + employeeKey,
-          ) ||
-          payrollRowsByCycleAndEmployee.get(
-            cycleName.toLowerCase() + "::" + employeeKey,
-          );
-        if (payroll) {
-          sameYearNewJoinerPayroll = payroll;
-          break;
-        }
-      }
       for (const closedCycle of closedCycles) {
         const cycleId = cycleIdOf(closedCycle);
         const cycleName = cycleNameOf(closedCycle);
@@ -2957,13 +2929,9 @@ async function calculateBudgetBases(
         if (!previousRecord) continue;
         const value = previousCtc(previousRecord);
         if (value === null) continue;
-        priorCtc = value;
         priorCycleName = cycleName;
         break;
       }
-      const newJoinerCtc = sameYearNewJoinerPayroll
-        ? previousCtc(sameYearNewJoinerPayroll)
-        : null;
       // Use the exact previous-appraisal CTC-with-rewards value already
       // resolved for this Appraisal_Sheet employee. It prefers the stored
       // Previous_Appraisal_total_CTC_with_rewards column and uses the existing
