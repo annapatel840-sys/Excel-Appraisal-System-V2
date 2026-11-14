@@ -710,6 +710,46 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 1875000);
   });
 
+  await t('location-cycle Org Budget Base reuses the active shared Annual payroll value', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible', location: 'United States' },
+      ],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'All' },
+        { cycle_name: 'United States - Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'United States' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', cycle_id: '', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '' },
+      ],
+    });
+    const [sourceCycleId, locationCycleId] = store.tables.Appraisal_Cycle_Master.map((cycle) => cycle.ROWID);
+    store.tables.Budget_Master[0].appraisal_cycle_id = locationCycleId;
+    store.tables.Eligibility_List.push({
+      appraisal_cycle_id: locationCycleId, emp_id: 'E1', eligibility_status: 'Eligible',
+    });
+    store.tables.Appraisal_Sheet[0].cycle_id = locationCycleId;
+    store.tables.Payroll_Data.push({
+      ROWID: '99303',
+      emp_id: 'E1',
+      appraisal_cycle_name: sourceCycleId,
+      total_ctc_with_rewards: '7,77,000',
+    });
+
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 777000);
+    assert.strictEqual(
+      response.json.employeeRoster.find((row) => row.emp_id === 'E1')
+        .previous_appraisal_total_ctc_with_rewards,
+      777000,
+    );
+  });
+
   await t('Org Budget Base uses Appraisal Sheet previous total CTC with rewards when payroll/current CTC is blank', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],

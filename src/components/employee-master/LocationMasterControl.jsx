@@ -751,10 +751,12 @@ export function LocationMasterControl({
   }, [modal, saving]);
 
   const active = locations.filter((x) => x.status === "Active");
+  const allLocationsSelected =
+    !value || ["all", "all locations"].includes(String(value).trim().toLowerCase());
   // The shared selection may be held as a name or a code (set from another
   // screen), so a row is "selected" when either one matches.
   const isSelected = (loc) =>
-    value !== "All" &&
+    !allLocationsSelected &&
     [loc.location_name, loc.location_code].some(
       (key) => key && String(key).toLowerCase() === String(value).toLowerCase(),
     );
@@ -1033,9 +1035,11 @@ export function LocationMasterControl({
               onClick={() => setMenu((v) => !v)}
             >
               <span>
-                {locations.find(isSelected)?.location_name || value || "Select location"}
+                {allLocationsSelected
+                  ? "All Locations"
+                  : locations.find(isSelected)?.location_name || value || "Select location"}
                 {showCurrencyCode &&
-                  value !== "All" &&
+                  !allLocationsSelected &&
                   (() => {
                     const selected = locations.find(isSelected);
                     return selected
@@ -1047,6 +1051,18 @@ export function LocationMasterControl({
             </button>
             {menu && (
               <div className="em-location-menu" role="listbox">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={allLocationsSelected}
+                  onClick={() => {
+                    onChange?.("All");
+                    setMenu(false);
+                  }}
+                >
+                  <span>All Locations</span>
+                  {allLocationsSelected && <Check size={14} />}
+                </button>
                 {active.map((loc) => (
                   <button
                     key={loc.id || loc.location_code}

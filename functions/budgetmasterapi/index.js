@@ -723,6 +723,17 @@ function isHistoricalCycle(cycle) {
   );
 }
 
+function isReusableSharedSourceCycle(cycle) {
+  return (
+    isHistoricalCycle(cycle) ||
+    String(
+      firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+    )
+      .trim()
+      .toLowerCase() === "active"
+  );
+}
+
 function cycleRank(cycle) {
   const dateValue = firstValue(cycle, [
     "start_date",
@@ -2068,7 +2079,7 @@ async function calculateBudgetBases(
         !candidateLocation ||
         ["all", "alllocations"].includes(candidateLocationKey);
       return (
-        isHistoricalCycle(candidate) &&
+        isReusableSharedSourceCycle(candidate) &&
         candidateIsUnscoped &&
         cycleYearOf(candidate) === cycleYearOf(activeSheetCycle) &&
         cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()
@@ -2151,7 +2162,7 @@ async function calculateBudgetBases(
         ).trim().toLowerCase();
         const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation);
         return (
-          isHistoricalCycle(candidate) &&
+          isReusableSharedSourceCycle(candidate) &&
           candidateIsUnscoped &&
           cycleYearOf(candidate) === cycleYearOf(current) &&
           cycleNameOf(candidate).toLowerCase() === canonicalName.toLowerCase()

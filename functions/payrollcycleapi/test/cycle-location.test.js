@@ -273,6 +273,39 @@ async function t(name, fn) {
     assert.match(r.json.message, /no location column/);
   });
 
+  await t('All Locations selects its own cycle and closes independently from location cycles', async () => {
+    const store2 = makeStore(CYCLE_COLUMNS);
+    const api2 = load(store2);
+    const create = (name, location) =>
+      call(api2, 'POST', 'cycles/create', { ...dates, name, location });
+    const global = await create('Annual 2032', 'All');
+    const india = await create('India - Annual 2032', 'India');
+    assert.strictEqual(global.status, 201, JSON.stringify(global.json));
+    assert.strictEqual(india.status, 201, JSON.stringify(india.json));
+
+    const globalId = global.json.data.id;
+    const indiaId = india.json.data.id;
+    assert.strictEqual((await call(api2, 'POST', 'cycles/status/' + globalId, { status: 'Active' })).status, 200);
+    assert.strictEqual((await call(api2, 'POST', 'cycles/status/' + indiaId, { status: 'Active' })).status, 200);
+
+    const eligibility = await new Promise((resolve, reject) => {
+      const req = { method: 'GET', url: '/?resource=eligibility&location=All', on() {} };
+      const res = {
+        status: 0,
+        writeHead(status) { this.status = status; },
+        end(text) { resolve({ status: this.status, json: JSON.parse(text) }); },
+      };
+      api2(req, res).catch(reject);
+    });
+    assert.strictEqual(eligibility.status, 200, JSON.stringify(eligibility.json));
+    assert.strictEqual(eligibility.json.data.meta.cycleId, globalId);
+    assert.ok(eligibility.json.data.records.every((row) => row.appraisalCycleId === globalId));
+
+    assert.strictEqual((await call(api2, 'POST', 'cycles/status/' + globalId, { status: 'Closed' })).status, 200);
+    const currentCycles = (await call(api2, 'GET', 'cycles')).json.data;
+    assert.strictEqual(currentCycles.find((cycle) => cycle.id === indiaId).status, 'Active');
+  });
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();

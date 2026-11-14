@@ -42,9 +42,8 @@ const PROCESSES = [
 const ENFORCE_ONE_OPEN_ANNUAL = true;
 const OPEN_CYCLE_STATUSES = ["Upcoming", "Active"];
 
-// New cycles use a Location Master location. The setup form's All option
-// creates one separate cycle for every active location; older unscoped cycles
-// remain readable as legacy source cycles.
+// The setup form's All option creates one global cycle and one cycle for every
+// active Location Master location.
 const ALL_CYCLE_LOCATIONS = "All";
 const isAllCycleLocation = (value) => {
   const v = String(value || "").trim().toLowerCase();
@@ -487,15 +486,29 @@ export function AppraisalCycleMasterPage({
     return out;
   })();
 
-  // A cycle marked All Locations is visible under every selected location.
-  // Location-specific cycles are shown only when they match the global header
-  // location selection. This is display filtering only; it never changes access.
+  // Keep an active shared source visible so it can be closed, plus the
+  // matching shared cycle for each location cycle so it can be archived.
   const locationCycles = useMemo(() => {
     if (isAllCycleLocation(selectedLocation)) return cycles;
-    return cycles.filter((cycle) =>
-      !isAllCycleLocation(cycle.location) &&
-      matchesLocation(cycle.location, selectedLocation),
+    const scoped = cycles.filter(
+      (cycle) =>
+        !isAllCycleLocation(cycle.location) &&
+        matchesLocation(cycle.location, selectedLocation),
     );
+    const shared = cycles.filter(
+      (cycle) =>
+        isAllCycleLocation(cycle.location) &&
+        !isHidden(cycle) &&
+        (statusOf(cycle) === "Active" ||
+          scoped.some(
+            (locationCycle) =>
+              cycleNameWithoutLocation(locationCycle.name)
+                .trim()
+                .toLowerCase() ===
+              cycleNameWithoutLocation(cycle.name).trim().toLowerCase(),
+          )),
+    );
+    return [...scoped, ...shared];
   }, [cycles, selectedLocation]);
 
   const sourceCycleFor = (cycle) => {
@@ -504,7 +517,9 @@ export function AppraisalCycleMasterPage({
     return cycles.find((candidate) =>
       candidate.id !== cycle.id &&
       isAllCycleLocation(candidate.location) &&
-      (candidate.status === "Closed" || candidate.archived) &&
+      ["Active", "Closed", "Archived", "Complete", "Completed"].includes(
+        statusOf(candidate),
+      ) &&
       cycleNameWithoutLocation(candidate.name).trim().toLowerCase() === sourceName,
     ) || null;
   };
@@ -576,7 +591,12 @@ export function AppraisalCycleMasterPage({
       x.id !== c.id &&
       x.status === "Active" &&
       !x.archived &&
-      sameLocationScope(x.location, c.location)
+      sameLocationScope(x.location, c.location) &&
+      !(
+        isAllCycleLocation(x.location) !== isAllCycleLocation(c.location) &&
+        cycleNameWithoutLocation(x.name).trim().toLowerCase() ===
+          cycleNameWithoutLocation(c.name).trim().toLowerCase()
+      )
     );
 
   // Activate: Employee Master updated + payroll resolved (Annual process, when
@@ -903,8 +923,8 @@ export function AppraisalCycleMasterPage({
 
   const newName = (f) => {
     const base = `${f.type} ${f.year}`;
-    // Names are unique, so a location cycle starts with its location:
-    // "Dubai - Annual 2027". All Locations creates separate location-prefixed cycles; legacy unscoped cycles remain unchanged.
+    // Names are unique, so location cycles start with their location while
+    // the overall cycle keeps the unprefixed name ("Annual 2027").
     const allLocations = !f.location || isAllCycleLocation(f.location);
     const sameLocation = (x) =>
       allLocations
@@ -942,10 +962,12 @@ export function AppraisalCycleMasterPage({
     if (f.past && (f.end || f.effective) >= todayIso)
       return setModalError("A past cycle must have ended before today.");
 
-    // "All Locations" sets up one cycle per active Location Master location
-    // ("Dubai - Annual 2027", "India - Annual 2027", ...); a single location sets up one.
-    const targets = isAllCycleLocation(f.location) ? cycleLocations : [f.location];
-    if (!targets.length) {
+    // All Locations creates an independent global cycle plus a separate cycle
+    // for every active Location Master location.
+    const targets = isAllCycleLocation(f.location)
+      ? [ALL_CYCLE_LOCATIONS, ...cycleLocations]
+      : [f.location];
+    if (isAllCycleLocation(f.location) && !cycleLocations.length) {
       return setModalError(
         cycleLocationsError
           ? `Could not load Location Master: ${cycleLocationsError}`
@@ -981,7 +1003,12 @@ export function AppraisalCycleMasterPage({
             OPEN_CYCLE_STATUSES.includes(c.status) &&
             !c.archived &&
             !isHidden(c) &&
-            sameLocationScope(c.location, location),
+            sameLocationScope(c.location, location) &&
+            !(
+              isAllCycleLocation(c.location) &&
+              cycleNameWithoutLocation(c.name).trim().toLowerCase() ===
+                cycleNameWithoutLocation(name).trim().toLowerCase()
+            ),
         );
         if (prev)
           problems.push(
@@ -1026,7 +1053,7 @@ export function AppraisalCycleMasterPage({
       return;
     }
 
-    // One cycle per location, saved one after another.
+    // Save each independent cycle one after another.
     if (!canManageCycles) {
       showBanner("Permission denied", "HR role is required to administer appraisal cycles.", true);
       return;
@@ -2660,7 +2687,7 @@ export function AppraisalCycleMasterPage({
               Select the location for this cycle
             </option>
             <option value={ALL_CYCLE_LOCATIONS}>
-              All Locations (separate cycle per location)
+              All Locations (overall cycle + separate cycle per location)
             </option>
             {cycleLocations.map((name) => (
               <option key={name} value={name}>
@@ -2672,7 +2699,7 @@ export function AppraisalCycleMasterPage({
             {cycleLocationsError
               ? `Could not load Location Master: ${cycleLocationsError}`
               : isAllCycleLocation(newForm.location) && newForm.location
-                ? `Sets up ${cycleLocations.length} cycles, one for each location; each lists only that location's employees.`
+                ? `Sets up one overall cycle for all employees plus ${cycleLocations.length} separate location cycles. Each cycle has its own eligibility, appraisal sheet, and budget.`
                 : "Only this location's employees go on the cycle's Eligibility List."}
           </div>
           <div className="acx-row2">
@@ -2729,14 +2756,19 @@ export function AppraisalCycleMasterPage({
             <div>
               <label className="acx-fl">
                 {isAllCycleLocation(newForm.location) && newForm.location
-                  ? `Cycle Names (${cycleLocations.length})`
+                  ? `Cycle Names (${cycleLocations.length + 1})`
                   : "Cycle Name"}
               </label>
               {(() => {
-                // All Locations: one name per location, e.g. "Dubai - Annual 2027".
+                // All Locations: an unprefixed overall cycle plus one per location.
                 const names =
                   isAllCycleLocation(newForm.location) && newForm.location
-                    ? cycleLocations.map((location) => newName({ ...newForm, location }))
+                    ? [
+                        newName({ ...newForm, location: ALL_CYCLE_LOCATIONS }),
+                        ...cycleLocations.map((location) =>
+                          newName({ ...newForm, location }),
+                        ),
+                      ]
                     : [newName(newForm)];
                 return (
                   <input

@@ -355,6 +355,34 @@ async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
     assert.strictEqual((await HIST('GET', '/?emp_id=EMP0104', U.hr)).status, 200);
   });
 
+  await test('appraisalhistoryapi GET: Tech-Ed scope follows the requested active location cycle', async () => {
+    const before = snapshot();
+    const locationCycle = insert(CYC, {
+      cycle_name: 'India - Annual 2027',
+      status: 'Active',
+      start_date: '2026-04-01',
+      location: 'India',
+    });
+    insert(SHEET, {
+      cycle_id: locationCycle.ROWID,
+      emp_id: 'EMP0104',
+      appraiser_tech_ed: 'EMP0051 - Ashok Kumar',
+      status: 'Active',
+      eligible_status: 'Eligible',
+    });
+    try {
+      const response = await HIST(
+        'GET',
+        '/?emp_id=EMP0104&cycle_name=India%20-%20Annual%202027',
+        U.ashok,
+      );
+      assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+      assert.strictEqual(response.body.count, 1);
+    } finally {
+      restore(before);
+    }
+  });
+
   await test('appraisalhistoryapi PATCH: mapped editable ok; read-only / master / out-of-scope refused; unmapped needs sheet edit', async () => {
     const P = (who, b) => HIST('PATCH', '/', who, Object.assign({ appraisal_year: 'Apr-26' }, b));
     assert.strictEqual((await P(U.ashok, { emp_id: 'EMP0100', hike_amount: 1 })).status, 200);

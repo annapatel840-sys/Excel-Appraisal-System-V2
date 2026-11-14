@@ -2182,6 +2182,8 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const isAnnualCycle = (item) => /\bannual\b/i.test(String(item?.name || ""));
   const isClosedCycle = (item) =>
     String(item?.status || "").toLowerCase() === "closed" || Boolean(item?.archived);
+  const isAvailableSourceCycle = (item) =>
+    isClosedCycle(item) || String(item?.status || "").toLowerCase() === "active";
   const cycleOrder = (item) => {
     const date = String(item?.effective || item?.end || item?.start || "");
     const year = Number(cycleYear(item)) || 0;
@@ -2198,13 +2200,13 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     ? normalizedCycles.find((item) =>
         String(item.id) !== String(cycle.id) &&
         !cycleLocationKey(item) &&
-        isClosedCycle(item) &&
+        isAvailableSourceCycle(item) &&
         cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalCycleName &&
         cycleYear(item) === currentYear &&
         cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
       ) || null
     : null;
-  // Matching location cycles share the closed legacy source data. Keep the
+  // Matching location cycles share the legacy source data. Keep the
   // explicit option for older callers, but do not require a separate upload
   // or confirmation for the location cycle.
   const reuseExistingCycleData =
@@ -2311,10 +2313,8 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       payrollByMasterId.set(masterId, row);
     }
   });
-  // Current Annual Base Pay must come from the selected prior cycle's NEW
-  // base pay, not the current cycle's current_annual_base_pay/base_pay.
-  // A same-year closed New Joiner payroll row takes priority per employee;
-  // all other employees use their latest closed Annual payroll row.
+  // Current Annual Base Pay comes from the matching shared source's NEW base
+  // pay when available; otherwise use the same-year New Joiner or prior Annual.
   const masterIdToEmpId = new Map(
     employeeMasterRows.map((row) => [
       referenceText(row.ROWID ?? row.rowid ?? row.id),
@@ -2330,19 +2330,32 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     ]).filter(([id]) => id),
   );
   const basePayrollCandidatesByEmployee = new Map();
-  payrollRowsWithCycle.forEach(({ row, cycle: sourceCycle }) => {
-    if (!sourceCycle || !isClosedCycle(sourceCycle)) return;
-    const sourceYear = cycleYear(sourceCycle);
+  payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
+    if (
+      !candidateCycle ||
+      (!isClosedCycle(candidateCycle) &&
+        String(candidateCycle.id) !== String(sourceCycle?.id || ""))
+    )
+      return;
+    const sourceYear = cycleYear(candidateCycle);
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
     const directMaster = employeeMasterByBusinessId.get(masterId.toLowerCase());
     const empId = masterIdToEmpId.get(masterId) ||
       String(fieldValue(directMaster || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() ||
       String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
     if (!empId) return;
-    const sameYearNewJoiner = isNewJoinerCycle(sourceCycle) && sourceYear && sourceYear === currentYear;
-    const priorAnnual = isAnnualCycle(sourceCycle) && isBeforeCurrentCycle(sourceCycle);
-    if (!sameYearNewJoiner && !priorAnnual) return;
-    const candidate = { row, cycle: sourceCycle, sameYearNewJoiner, rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "") };
+    const matchingSharedSource =
+      sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
+    const sameYearNewJoiner = isNewJoinerCycle(candidateCycle) && sourceYear && sourceYear === currentYear;
+    const priorAnnual = isAnnualCycle(candidateCycle) && isBeforeCurrentCycle(candidateCycle);
+    if (!matchingSharedSource && !sameYearNewJoiner && !priorAnnual) return;
+    const candidate = {
+      row,
+      cycle: candidateCycle,
+      matchingSharedSource,
+      sameYearNewJoiner,
+      rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
+    };
     const list = basePayrollCandidatesByEmployee.get(empId) || [];
     list.push(candidate);
     basePayrollCandidatesByEmployee.set(empId, list);
@@ -2355,9 +2368,12 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       const bd = String(b.cycle.effective || b.cycle.end || b.cycle.start || "");
       return by - ay || bd.localeCompare(ad) || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true });
     };
+    const sharedSource = candidates
+      .filter((item) => item.matchingSharedSource)
+      .sort((a, b) => b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
     const sameYearNewJoiner = candidates.filter((item) => item.sameYearNewJoiner).sort(compareNewest)[0];
     const latestAnnual = candidates.filter((item) => isAnnualCycle(item.cycle) && isBeforeCurrentCycle(item.cycle)).sort(compareNewest)[0];
-    const selected = sameYearNewJoiner || latestAnnual;
+    const selected = sharedSource || sameYearNewJoiner || latestAnnual;
     if (!selected) return;
     const sourceMasterId = referenceText(selected.row.emp_id ?? selected.row.employee_master_id);
     if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
@@ -3672,29 +3688,17 @@ async function routeRequest(req, res, identity, resource, a) {
         ? cycleLocation === "all"
         : cycleLocation === requestedLocation;
     };
-    // A supplied cycle ID is authoritative. With a selected location, use
-    // that location's Active cycle. For All Locations, aggregate all Active
-    // location cycles (and use the legacy unscoped cycle only when no location
-    // cycles exist). The aggregate is display-only: writes still require one
-    // explicitly selected cycle ID, preventing criteria edits across locations.
+    // A supplied cycle ID is authoritative. All Locations selects its own
+    // Active global cycle; it is not a roll-up of the location-specific cycles.
     let targetCycles = [];
     if (queryCycleId) {
       const exact = cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item));
       if (exact) targetCycles = [exact];
-    } else if (allLocationsSelected) {
-      const activeCycles = cycles.filter(isAvailableActiveCycle);
-      const locationCycles = activeCycles.filter((item) => {
-        const raw = String(item.location || "").trim().toLowerCase();
-        return raw && !["all", "all locations"].includes(raw);
-      });
-      targetCycles = locationCycles.length
-        ? locationCycles
-        : activeCycles.filter((item) => matchesRequestedLocation(item));
     } else {
       const exact = cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item));
       if (exact) targetCycles = [exact];
     }
-    const cycle = targetCycles.length === 1 ? targetCycles[0] : null;
+    const cycle = targetCycles[0] || null;
     if (["1", "true"].includes(String(query.count || "").trim().toLowerCase())) {
       if (!targetCycles.length) {
         return sendJson(res, 200, { success: true, data: { cycleId: "", total: 0, criteriaApplied: false } });
@@ -3732,110 +3736,11 @@ async function routeRequest(req, res, identity, resource, a) {
     let records = [];
     let masterRecords = [];
     let criteriaApplied = false;
-
-    if (targetCycles.length > 1) {
-      // All Locations is a read-only aggregate. Read each large table ONCE;
-      // do not run seven independent syncEligibilityRows scans concurrently.
-      // Concurrent full-table scans were exhausting Catalyst read components
-      // and returning a non-JSON gateway error to the Eligibility page.
-      const [allMasters, allEligibility, allSheetRows, allAuditRows, locations] = await Promise.all([
-        getAllRows(tables.employeeMaster),
-        getAllRows(tables.eligibility),
-        getAllRows(tables.appraisalSheet),
-        getAllRows(tables.audit),
-        getAllRows(tables.locations),
-      ]);
-      const masterByEmpId = new Map(
-        allMasters.map((master) => [
-          String(master.emp_id || master.employee_id || "").trim().toLowerCase(),
-          master,
-        ]).filter(([key]) => key),
-      );
-      const masterByRowId = new Map(
-        allMasters.map((master) => [String(master.ROWID || master.rowid || ""), master]),
-      );
-
-      // Recover only genuinely missing cycle rows from their exact cycle's
-      // already-generated Appraisal Sheet rows. Existing/manual eligibility
-      // decisions are never overwritten; other location cycles are untouched.
-      const additions = [];
-      for (const target of targetCycles) {
-        const cycleRows = allEligibility.filter((row) =>
-          String(row.appraisal_cycle_id || "") === String(target.id),
-        );
-        if (cycleRows.length) continue;
-        const sheetRows = allSheetRows.filter((sheet) => {
-          const reference = String(
-            sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
-          ).trim();
-          return reference === String(target.id) ||
-            reference.toLowerCase() === String(target.name || "").trim().toLowerCase();
-        });
-        const seen = new Set();
-        for (const sheet of sheetRows) {
-          const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
-          const key = empId.toLowerCase();
-          if (!key || seen.has(key)) continue;
-          const master = masterByEmpId.get(key);
-          if (!master || !inCycleLocation(target, master, locations)) continue;
-          seen.add(key);
-          const rawStatus = String(
-            sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
-          ).trim().toLowerCase().replace(/[ _-]+/g, "");
-          additions.push({
-            appraisal_cycle_id: String(target.id),
-            employee_master_id: String(master.ROWID || master.rowid || ""),
-            emp_id: empId,
-            eligibility_status: ["eligible", "yes", "true", "1"].includes(rawStatus)
-              ? "Eligible"
-              : "Not Eligible",
-            eligibility_reason: "Recovered from existing Appraisal Sheet roster",
-            eligibility_source: "System",
-            change_tag: "Recovered",
-            evaluated_at: nowLocal(),
-            updated_by: String(actor || "System").slice(0, 60),
-            eligibility_updated_at: nowLocal(),
-          });
-        }
-      }
-      for (let index = 0; index < additions.length; index += 100) {
-        await tables.eligibility.insertRows(additions.slice(index, index + 100));
-      }
-      const eligibilityRows = additions.length
-        ? await getAllRows(tables.eligibility)
-        : allEligibility;
-      const masterById = new Map();
-      for (const target of targetCycles) {
-        for (const row of eligibilityRows) {
-          if (String(row.appraisal_cycle_id || "") !== String(target.id)) continue;
-          const master = masterByRowId.get(String(row.employee_master_id || "")) ||
-            masterByEmpId.get(String(row.emp_id || "").trim().toLowerCase());
-          if (!master) continue;
-          records.push(shapeEligibilityRow(row, master));
-          const masterKey = String(master.ROWID || master.rowid || master.emp_id || "");
-          if (masterKey) masterById.set(masterKey, master);
-        }
-      }
-      masterRecords = Array.from(masterById.values());
-      criteriaApplied = targetCycles.every((target) => {
-        const rows = eligibilityRows.filter((row) =>
-          String(row.appraisal_cycle_id || "") === String(target.id),
-        );
-        const hasMarker = allAuditRows.some((row) =>
-          String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
-          String(row.batch_id || "") === String(target.id),
-        );
-        return hasMarker || rows.some((row) =>
-          String(row.eligibility_source || "").trim().toLowerCase() === "criteria",
-        );
-      });
-    } else {
-      const single = await getEligibilityRows(tables, targetCycles[0], actor);
-      records = single.records;
-      masterRecords = single.masterRecords;
-      const meta = await readEligibilityCriteriaMeta(tables, targetCycles[0]).catch(() => ({ criteria: null }));
-      criteriaApplied = Boolean(single.criteriaApplied && meta.criteria);
-    }
+    const single = await getEligibilityRows(tables, cycle, actor);
+    records = single.records;
+    masterRecords = single.masterRecords;
+    const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch(() => ({ criteria: null }));
+    criteriaApplied = Boolean(single.criteriaApplied && criteriaMeta.criteria);
 
     return sendJson(res, 200, {
       success: true,
@@ -3844,13 +3749,13 @@ async function routeRequest(req, res, identity, resource, a) {
         masterRecords,
         meta: {
           cycleId: cycle ? cycle.id : "",
-          cycleName: cycle ? cycle.name : "All Locations — Active Cycles",
+          cycleName: cycle ? cycle.name : "",
           total: records.length,
           criteriaApplied,
-          criteria: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteria : null,
-          criteriaHistory: cycle ? (await readEligibilityCriteriaMeta(tables, cycle)).criteriaHistory : [],
+          criteria: criteriaMeta.criteria,
+          criteriaHistory: criteriaMeta.criteriaHistory || [],
           cycles: targetCycles.map((item) => ({ cycleId: item.id, cycleName: item.name, location: item.location || "" })),
-          readOnlyAggregate: targetCycles.length > 1,
+          readOnlyAggregate: false,
         },
       },
     }, req);

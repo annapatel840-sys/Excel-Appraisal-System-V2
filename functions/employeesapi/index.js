@@ -1835,6 +1835,70 @@ async function enrichPreviousAppraisalValues(
     }
     return "";
   };
+  const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
+  const shortYearMatch = currentCycleName.match(
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
+  );
+  const currentYear = yearMatch
+    ? yearMatch[0]
+    : shortYearMatch
+      ? "20" + shortYearMatch[1]
+      : currentCycleName || String(new Date().getFullYear());
+  const cycleYearOfName = (name) =>
+    String(name || "").match(/(?:19|20)\d{2}/)?.[0] || "";
+  const canonicalCycleName = (cycle) => {
+    const name = historyCycleName(cycle);
+    const location = String(
+      cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+    ).trim();
+    const prefix = location ? location + " - " : "";
+    if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase()))
+      return name.slice(prefix.length).trim().toLowerCase();
+    return name.replace(/^All Locations\s+-\s+/i, "").trim().toLowerCase();
+  };
+  const currentLocation = String(
+    currentCycle?.location ??
+      currentCycle?.cycle_location ??
+      currentCycle?.cycleLocation ??
+      "",
+  ).trim();
+  const sharedSourceCycle =
+    currentCycle &&
+    currentLocation &&
+    !["all", "all locations", "alllocations"].includes(
+      currentLocation.toLowerCase(),
+    )
+      ? cycleRows.find((candidate) => {
+          const location = String(
+            candidate?.location ??
+              candidate?.cycle_location ??
+              candidate?.cycleLocation ??
+              "",
+          ).trim();
+          const unscoped =
+            !location ||
+            ["all", "all locations", "alllocations"].includes(
+              location.toLowerCase(),
+            );
+          const status = cycleStatusOf(candidate);
+          const archived =
+            candidate?.archived === true ||
+            ["true", "1", "yes", "archived"].includes(
+              String(candidate?.archived ?? "")
+                .trim()
+                .toLowerCase(),
+            );
+          return (
+            unscoped &&
+            (archived || ["active", "closed", "complete", "completed"].includes(status)) &&
+            cycleYearOfName(historyCycleName(candidate)) === currentYear &&
+            canonicalCycleName(candidate) === canonicalCycleName(currentCycle)
+          );
+        }) || null
+      : null;
+  const sharedSourceCycleId = sharedSourceCycle
+    ? cycleIdOf(sharedSourceCycle)
+    : "";
   feedbackRows.forEach((record) => {
     const empRaw = feedbackFirstNonEmpty(record, [
       "emp_ID",
@@ -1853,27 +1917,28 @@ async function enrichPreviousAppraisalValues(
     );
     const cycle =
       cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
-    if (!empKey || !cycle || cycleIdOf(cycle) !== currentCycleId) return;
+    const feedbackCycleId = cycle ? cycleIdOf(cycle) : "";
+    const isCurrentCycleFeedback = feedbackCycleId === currentCycleId;
+    const isSharedSourceFeedback =
+      sharedSourceCycleId && feedbackCycleId === sharedSourceCycleId;
+    if (!empKey || (!isCurrentCycleFeedback && !isSharedSourceFeedback)) return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
     const existing = currentFeedbackByEmployee.get(empKey);
     if (
       !existing ||
-      rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0
+      (isCurrentCycleFeedback && !existing.isCurrentCycle) ||
+      (isCurrentCycleFeedback === existing.isCurrentCycle &&
+        rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0)
     ) {
-      currentFeedbackByEmployee.set(empKey, { row: record, rowTime });
+      currentFeedbackByEmployee.set(empKey, {
+        row: record,
+        rowTime,
+        isCurrentCycle: isCurrentCycleFeedback,
+      });
     }
   });
-  const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
-  const shortYearMatch = currentCycleName.match(
-    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
-  );
-  const currentYear = yearMatch
-    ? yearMatch[0]
-    : shortYearMatch
-      ? "20" + shortYearMatch[1]
-      : currentCycleName || String(new Date().getFullYear());
 
   const firstNonEmpty = (row, keys) => {
     for (const key of keys) {
@@ -2147,12 +2212,22 @@ async function enrichPreviousAppraisalValues(
     const currentPayroll = empKey
       ? currentPayrollByEmployee.get(empKey)?.row
       : null;
-    const bonusPayroll = empKey
-      ? bonusPayrollByEmployee.get(empKey)?.row
-      : null;
     const employeePayrollRows = empKey
       ? payrollItemsByEmployee.get(empKey) || []
       : [];
+    const sharedSourcePayroll =
+      sharedSourceCycleId
+        ? employeePayrollRows
+            .filter(
+              (item) => cycleIdOf(item.cycle) === sharedSourceCycleId,
+            )
+            .sort((a, b) =>
+              b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+            )[0] || null
+        : null;
+    const bonusPayroll =
+      sharedSourcePayroll?.row ||
+      (empKey ? bonusPayrollByEmployee.get(empKey)?.row : null);
     const sameYearNewJoinerPayroll =
       employeePayrollRows
         .filter(
@@ -2196,16 +2271,15 @@ async function enrichPreviousAppraisalValues(
             historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
             b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
         )[0] || null;
-    // New joiners use their matching New Joiners cycle for payroll-mapped
-    // values and last-appraisal date/name. Existing staff use the last closed
-    // Annual payroll cycle. Feedback remains separately cycle-scoped below.
+    // Location cycles reuse matching shared-cycle payroll first, then apply
+    // the existing New Joiner / prior Annual fallback for remaining employees.
     const selectedPayrollSource =
-      sameYearNewJoinerPayroll || priorAnnualPayroll;
+      sharedSourcePayroll || sameYearNewJoinerPayroll || priorAnnualPayroll;
     const selectedPayroll =
       selectedPayrollSource?.row || currentPayroll || null;
     const selectedPayrollCycle = selectedPayrollSource?.cycle || null;
-    // Delegation history must come from a closed prior-cycle payroll row,
-    // never from the active-cycle upload fallback used for current payroll fields.
+    // This payroll snapshot supplies previous-only assignment display fields;
+    // it never assigns or saves the location cycle's current Delegation.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
     // Resolve the employee's historical Appraisal_Sheet row directly.
     // Prefer the selected payroll cycle when it matches, but don't require the
@@ -2408,11 +2482,14 @@ async function enrichPreviousAppraisalValues(
       payrollCtcValue !== ""
         ? Number(String(payrollCtcValue).replace(/[₹,\s]/g, ""))
         : ctcFromComponents(selectedPayroll || {});
-    // A same-year New Joiner payroll row may contain bonus/base-pay
-    // fields but no usable Total CTC. Do not let Number.isFinite(0) make that
-    // incomplete row override the employee's last valid Annual history.
+    // Prefer a matching shared-cycle value, then a complete New Joiner row;
+    // incomplete payroll totals must not override valid Annual history.
     const previousCtc =
-      sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed) && payrollCtcParsed > 0
+      sharedSourcePayroll && Number.isFinite(payrollCtcParsed) && payrollCtcParsed > 0
+        ? payrollCtcParsed
+        : sameYearNewJoinerPayroll &&
+            Number.isFinite(payrollCtcParsed) &&
+            payrollCtcParsed > 0
         ? payrollCtcParsed
         : prior && Number.isFinite(prior.value) && prior.value > 0
           ? prior.value

@@ -176,6 +176,35 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(DB[T.feedback].length, 7, 'source feedback and rating rows are reused, not duplicated');
   });
 
+  await t('a location cycle can reuse payroll, feedback, and ratings before the shared Annual source is closed', async () => {
+    DB[T.master][0].location = 'India';
+    DB[T.master][1].location = 'Dubai';
+    DB[T.cycles].push({
+      ROWID: 'C28',
+      cycle_name: 'India - Annual 2027',
+      status: 'Active',
+      archived: false,
+      location: 'India',
+      start_date: '2027-04-01',
+    });
+    DB[T.elig].push({
+      ROWID: 'E28',
+      appraisal_cycle_id: 'C28',
+      employee_master_id: 'M1',
+      emp_id: 'EMP001',
+      eligibility_status: 'Eligible',
+      eligibility_source: 'Manual',
+    });
+
+    const result = await generate('C28');
+    assert.strictEqual(result.status, 200, JSON.stringify(result.json));
+    const generatedRows = DB[T.sheet].filter((row) => row.cycle_id === 'C28');
+    assert.deepStrictEqual(generatedRows.map((row) => row.emp_id), ['EMP001']);
+    assert.strictEqual(generatedRows[0].current_annual_base_pay, 500000);
+    assert.strictEqual(DB[T.payroll].length, 7, 'source payroll rows are reused, not duplicated');
+    assert.strictEqual(DB[T.feedback].length, 7, 'source feedback and rating rows are reused, not duplicated');
+  });
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();

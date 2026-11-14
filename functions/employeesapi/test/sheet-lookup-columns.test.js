@@ -11,7 +11,7 @@ const path = require('path');
 
 const T = {
   sheet: '74008000000039094', master: '74008000000035727', cycles: '74008000000034190',
-  elig: '74008000000057046', payroll: '74008000000035326',
+  elig: '74008000000057046', payroll: '74008000000035326', feedback: '74008000000022041',
 };
 const SHEET_COLS = ['emp_id', 'name', 'designation', 'reporting_manager', 'comp_manager', 'department', 'manager', 'status',
   'wissen_experience', 'total_experience', 'last_appraisal_date', 'manager_rating', 'interview_count', 'rr_percent',
@@ -19,7 +19,7 @@ const SHEET_COLS = ['emp_id', 'name', 'designation', 'reporting_manager', 'comp_
   'pb_installment', 'new_pb_to_be_offered', 'new_pb_installment', 'new_rb', 'hike_amount', 'hike_pct', 'target_pb_next_year',
   'eligible_for_promotion', 'new_title', 'at_risk', 'joining_date', 'manager_email_id', 'super_man_email_id', 'rating',
   'eligible_status', 'joining_bonus', 'emp_master_row_id', 'appraiser_tech_ed', 'cycle_id', 'target_PB_criteria',
-  'comp_manager_remarks', 'previous_year_CTC_with_rewards'];
+  'comp_manager_remarks', 'previous_year_CTC_with_rewards', 'manager_feedback'];
 
 let DB;
 let updates;
@@ -129,6 +129,49 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     const writesAfterFirst = updates.length;
     await get('page=1&limit=100');
     assert.strictEqual(updates.length, writesAfterFirst, 'no update on an unchanged row');
+  });
+
+  await t('location appraisal sheet reuses payroll, feedback, and ratings from an active shared source', async () => {
+    DB[T.cycles][1] = {
+      ROWID: 'C28',
+      cycle_name: 'United States - Annual 2027',
+      status: 'Active',
+      location: 'United States',
+      start_date: '2026-04-01',
+    };
+    DB[T.cycles].push({
+      ROWID: 'C27',
+      cycle_name: 'Annual 2027',
+      status: 'Active',
+      location: 'All',
+      start_date: '2026-04-01',
+    });
+    DB[T.master][0].location = 'United States';
+    DB[T.elig][0].appraisal_cycle_id = 'C28';
+    DB[T.sheet][0].cycle_id = 'C28';
+    DB[T.payroll].push({
+      ROWID: 'P27',
+      emp_id: 'M22',
+      appraisal_cycle_name: 'C27',
+      new_base_pay: 700000,
+      total_CTC_with_rewards: '7,77,000',
+    });
+    DB[T.feedback] = [{
+      ROWID: 'F27',
+      emp_ID: 'M22',
+      appraisal_cycle_name: 'C27',
+      manager_feedback: 'Shared source feedback',
+      manager_rating: 5,
+    }];
+
+    const r = await get('cycleId=C28&page=1&limit=100');
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const employee = r.json.data.find((row) => row.emp_id === 'EMP022');
+    assert.ok(employee, 'only the eligible location employee is returned');
+    assert.strictEqual(employee.current_annual_base_pay, 700000, JSON.stringify(employee));
+    assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 777000, JSON.stringify(employee));
+    assert.strictEqual(employee.manager_feedback, 'Shared source feedback', JSON.stringify(employee));
+    assert.strictEqual(employee.manager_rating, 5, JSON.stringify(employee));
   });
 
   console.error = origError;

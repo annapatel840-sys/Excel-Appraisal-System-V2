@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 
 import {
   hikeAmount,
@@ -231,6 +232,7 @@ function ComparisonRow({
 // ============================================================
 
 export function EmployeeDrawer({ employee, onOpenChange }) {
+  const currentCycleName = useCurrentCycleName();
   const [previous, setPrevious] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -254,9 +256,9 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
       setPrevious(null);
 
       try {
-        const url =
-          `${APPRAISAL_HISTORY_API_URL}?emp_id=` +
-          encodeURIComponent(employee.empId);
+        const params = new URLSearchParams({ emp_id: employee.empId });
+        if (currentCycleName) params.set("cycle_name", currentCycleName);
+        const url = `${APPRAISAL_HISTORY_API_URL}?${params.toString()}`;
 
         const response = await catalystFetch(url);
 
@@ -311,7 +313,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
     return () => {
       cancelled = true;
     };
-  }, [employee?.empId]);
+  }, [employee?.empId, currentCycleName]);
 
   if (!employee) return null;
 

@@ -47,6 +47,7 @@ import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
 import { cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
 import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
+import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -404,15 +405,21 @@ const detailHistoryPromises = new Map();
 // The employee on screen skips the request queue (it is one small read the user
 // is waiting on); neighbours preloaded in the background pass background: true
 // and queue normally.
-export function prefetchDetailHistory(empId, { background = false } = {}) {
-  const key = String(empId || "").trim();
-  if (!key) return Promise.resolve([]);
+export function prefetchDetailHistory(
+  empId,
+  { background = false, cycleName = "" } = {},
+) {
+  const employeeKey = String(empId || "").trim();
+  if (!employeeKey) return Promise.resolve([]);
+  const key = `${employeeKey}::${normalizeYearKey(cycleName)}`;
   const existing = detailHistoryPromises.get(key);
   if (existing) return existing;
 
   const promise = (async () => {
+    const params = new URLSearchParams({ emp_id: employeeKey });
+    if (cycleName) params.set("cycle_name", cycleName);
     const response = await catalystFetch(
-      `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
+      `${APPRAISAL_HISTORY_API_URL}?${params.toString()}`,
       background ? {} : { priority: "high" },
     );
     if (!response.ok) {
@@ -519,7 +526,7 @@ const parseAmount = (raw) => {
 };
 const blankStr = (v) => (isBlank(v) ? "" : String(v));
 const normalizeYearKey = (y) =>
-  String(y ?? "")
+  cycleNameWithoutLocation(y)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
@@ -1366,36 +1373,39 @@ export function DetailScreenPage({
   };
 
   const loadHistory = useCallback((empId) => {
-    const key = String(empId || "").trim();
-    if (!key) return Promise.resolve([]);
+    const employeeKey = String(empId || "").trim();
+    if (!employeeKey) return Promise.resolve([]);
+    const requestKey = `${employeeKey}::${normalizeYearKey(currentCycleName)}`;
 
-    const existing = historyPromiseRef.current.get(key);
+    const existing = historyPromiseRef.current.get(requestKey);
     if (existing) return existing;
 
     setHistoryByEmpId((prev) => ({
       ...prev,
-      [key]: { loading: true, data: [], error: "" },
+      [employeeKey]: { loading: true, data: [], error: "" },
     }));
 
-    const promise = prefetchDetailHistory(key);
-    historyPromiseRef.current.set(key, promise);
+    const promise = prefetchDetailHistory(employeeKey, {
+      cycleName: currentCycleName,
+    });
+    historyPromiseRef.current.set(requestKey, promise);
     promise
       .then((data) => {
         // Never keep an empty answer; ask the server again next time.
         if (!data.length) {
-          historyPromiseRef.current.delete(key);
-          detailHistoryPromises.delete(key);
+          historyPromiseRef.current.delete(requestKey);
+          detailHistoryPromises.delete(requestKey);
         }
         setHistoryByEmpId((prev) => ({
           ...prev,
-          [key]: { loading: false, data, error: "" },
+          [employeeKey]: { loading: false, data, error: "" },
         }));
       })
       .catch((error) => {
-        historyPromiseRef.current.delete(key);
+        historyPromiseRef.current.delete(requestKey);
         setHistoryByEmpId((prev) => ({
           ...prev,
-          [key]: {
+          [employeeKey]: {
             loading: false,
             data: [],
             error: error?.message || "Unable to load history.",
@@ -1403,7 +1413,7 @@ export function DetailScreenPage({
         }));
       });
     return promise;
-  }, []);
+  }, [currentCycleName]);
 
   const employeeAt = (offset) => {
     const at = Math.min(activeIndex, rows.length - 1) + offset;
@@ -1422,7 +1432,11 @@ export function DetailScreenPage({
       .then(() => {
         if (cancelled) return;
         [nextEmpId, prevEmpId].forEach((id) => {
-          if (id) prefetchDetailHistory(id, { background: true }).catch(() => {});
+          if (id)
+            prefetchDetailHistory(id, {
+              background: true,
+              cycleName: currentCycleName,
+            }).catch(() => {});
         });
       });
     return () => {

@@ -31,6 +31,7 @@ import {
   loadDesignationRules,
   newTitleChoices,
 } from "@/lib/designation-master-api";
+import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 // ============================================================
 // API
 // ============================================================
@@ -611,7 +612,7 @@ const getCycleName = (value) => {
 };
 
 const normalizeCycleKey = (value) =>
-  String(value ?? "")
+  cycleNameWithoutLocation(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
@@ -2722,12 +2723,13 @@ export function AppraisalGrid({
 
   const loadHistory = useCallback((empId) => {
     const key = String(empId || "").trim();
+    const requestKey = `${key}::${normalizeCycleKey(currentCycleName)}`;
 
     if (!key) {
       return Promise.resolve([]);
     }
 
-    const existing = historyPromiseRef.current.get(key);
+    const existing = historyPromiseRef.current.get(requestKey);
 
     if (existing) {
       return existing;
@@ -2739,7 +2741,9 @@ export function AppraisalGrid({
     }));
 
     const promise = (async () => {
-      const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`;
+      const params = new URLSearchParams({ emp_id: key });
+      if (currentCycleName) params.set("cycle_name", currentCycleName);
+      const url = `${APPRAISAL_HISTORY_API_URL}?${params.toString()}`;
 
       const response = await catalystFetch(url);
 
@@ -2760,14 +2764,14 @@ export function AppraisalGrid({
       return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
     })();
 
-    historyPromiseRef.current.set(key, promise);
+    historyPromiseRef.current.set(requestKey, promise);
 
     promise
       .then((data) => {
         // Do not remember an empty answer: the next time the panel opens for
         // this employee it asks the server again instead of showing "nothing"
         // for the rest of the session.
-        if (!data.length) historyPromiseRef.current.delete(key);
+        if (!data.length) historyPromiseRef.current.delete(requestKey);
 
         setHistoryByEmpId((previous) => ({
           ...previous,
@@ -2777,7 +2781,7 @@ export function AppraisalGrid({
       .catch((error) => {
         console.error("Appraisal history fetch error:", error);
 
-        historyPromiseRef.current.delete(key);
+        historyPromiseRef.current.delete(requestKey);
 
         setHistoryByEmpId((previous) => ({
           ...previous,
@@ -2790,7 +2794,7 @@ export function AppraisalGrid({
       });
 
     return promise;
-  }, []);
+  }, [currentCycleName]);
 
   // Load history for the selected employee while a panel that needs it is open.
   useEffect(() => {
