@@ -1,9 +1,8 @@
 /* ============================================================
-   Global location selection.
+   Signed-in user's location selection.
 
-   One Location Master value (name or code) is shared by every screen.
-   It is kept in localStorage so it survives
-   navigation (pages are full loads) and reloads, and every mounted
+   One Location Master value (name or code) is shared by every screen for the
+   current user. It is persisted per account in localStorage and every mounted
    component is notified when it changes.
 
    The list of locations is never hard-coded. LocationMasterControl
@@ -14,21 +13,25 @@ import { useSyncExternalStore } from "react";
 import { cycleNameLocation } from "./cycle-name";
 
 export const ALL_LOCATIONS = "All";
-const STORAGE_KEY = "appraisal.selectedLocation.v1";
+const STORAGE_KEY_PREFIX = "appraisal.selectedLocation.v2:";
 const EVENT_NAME = "appraisal:location-changed";
 
 const norm = (value) => String(value ?? "").trim().toLowerCase();
 
-const readStored = () => {
+const storageKeyForUser = (userKey) =>
+  STORAGE_KEY_PREFIX + encodeURIComponent(norm(userKey) || "anonymous");
+
+const readStored = (userKey) => {
   try {
-    if (typeof window === "undefined") return ALL_LOCATIONS;
-    return window.localStorage.getItem(STORAGE_KEY) || ALL_LOCATIONS;
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(storageKeyForUser(userKey));
   } catch (_) {
-    return ALL_LOCATIONS;
+    return null;
   }
 };
 
-let selected = readStored();
+let activeUserKey = "";
+let selected = ALL_LOCATIONS;
 // Location Master rows registered by the dropdown: [{ name, code }]
 let registry = [];
 const listeners = new Set();
@@ -45,10 +48,18 @@ export function getSelectedLocation() {
 
 export function setSelectedLocation(value) {
   const next = isAllLocations(value) ? ALL_LOCATIONS : String(value).trim();
-  if (next === selected) return;
+  const key = storageKeyForUser(activeUserKey);
+  if (next === selected) {
+    try {
+      window.localStorage.setItem(key, next);
+    } catch (_) {
+      /* storage is optional */
+    }
+    return;
+  }
   selected = next;
   try {
-    window.localStorage.setItem(STORAGE_KEY, next);
+    window.localStorage.setItem(key, next);
   } catch (_) {
     /* storage is optional */
   }
@@ -58,37 +69,28 @@ export function setSelectedLocation(value) {
   }
 }
 
-// At sign-in the app opens on the user's own Employee Master location instead
-// of All Locations. This happens once per browser session (tab) per user, so a
-// location the user picks afterwards in the header is kept across page loads.
-// Users not in Employee Master (no location) keep the current selection.
-const HOME_APPLIED_KEY = "appraisal.homeLocationAppliedFor.v1";
+// Location selection is persisted per signed-in account so one user's choice
+// cannot change another user's view in the same browser.
 export function applyHomeLocationOnSignIn(userKey, homeLocation) {
   const who = norm(userKey);
   const home = String(homeLocation ?? "").trim();
-  if (!who || !home || typeof window === "undefined") return;
-  let appliedFor = "";
+  if (!who) return;
+  activeUserKey = who;
+  selected = readStored(who) || home || ALL_LOCATIONS;
   try {
-    appliedFor = window.sessionStorage.getItem(HOME_APPLIED_KEY) || "";
-  } catch (_) {
-    appliedFor = "";
-  }
-  if (appliedFor === who) return;
-  try {
-    window.sessionStorage.setItem(HOME_APPLIED_KEY, who);
-  } catch (_) {
-    /* without storage this runs on every load; the location still follows the user */
-  }
-  setSelectedLocation(home);
-}
-
-// Sign-out: the next sign-in (same tab) opens on that user's own location again.
-export function forgetHomeLocationApplied() {
-  try {
-    window.sessionStorage.removeItem(HOME_APPLIED_KEY);
+    window.localStorage.setItem(storageKeyForUser(who), selected);
   } catch (_) {
     /* storage is optional */
   }
+  emit();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: selected }));
+  }
+}
+
+// The next authenticated session selects its own saved location namespace.
+export function forgetHomeLocationApplied() {
+  activeUserKey = "";
 }
 
 // Called with the rows from Location Master (any casing of the field names).
@@ -100,11 +102,13 @@ export function registerLocations(list) {
     }))
     .filter((x) => x.name || x.code);
   const firstLocation = registry[0]?.name || registry[0]?.code || "";
-  // Shared screen filters always resolve to an active Location Master value.
+  // All remains a valid filter; only reset selections removed from Location Master.
   if (
     registry.length &&
-    (isAllLocations(selected) ||
-      !registry.some((x) => norm(x.name) === norm(selected) || norm(x.code) === norm(selected)))
+    !isAllLocations(selected) &&
+    !registry.some(
+      (x) => norm(x.name) === norm(selected) || norm(x.code) === norm(selected),
+    )
   ) {
     setSelectedLocation(firstLocation);
     return;
@@ -163,7 +167,7 @@ export function filterByLocation(list, sel = selected, getter = locationOfRow) {
 const subscribe = (fn) => {
   listeners.add(fn);
   const onStorage = (event) => {
-    if (event.key === STORAGE_KEY) {
+    if (event.key === storageKeyForUser(activeUserKey)) {
       selected = event.newValue || ALL_LOCATIONS;
       fn();
     }

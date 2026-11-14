@@ -43,6 +43,7 @@ const TECH_ED_PATHS = [
   "/bulk-edit",
   "/budget-master",
   "/budget-distribution",
+  "/settings",
   "/employee-master",
 ];
 
