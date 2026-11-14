@@ -101,10 +101,10 @@ function load() {
   try { return require('../index.js'); } finally { Module._load = orig; }
 }
 
-function generate() {
+function generate(cycleId = 'C27') {
   const api = load();
   return new Promise((resolve, reject) => {
-    const req = { method: 'POST', url: '/?resource=generate-sheet', body: { cycleId: 'C27' }, headers: {}, on() {} };
+    const req = { method: 'POST', url: '/?resource=generate-sheet', body: { cycleId }, headers: {}, on() {} };
     const res = { status: 0, setHeader() {}, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
     api(req, res).catch(reject);
   });
@@ -144,6 +144,36 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     const again = await generate();
     assert.strictEqual(again.json.data.updated, 0, JSON.stringify(again.json.data));
     assert.strictEqual(again.json.data.upToDate, true);
+  });
+
+  await t('a location cycle reuses payroll, feedback, and ratings from its closed Annual source', async () => {
+    const source = DB[T.cycles][0];
+    source.status = 'Closed';
+    DB[T.master][0].location = 'India';
+    DB[T.cycles].push({
+      ROWID: 'C28',
+      cycle_name: 'India - Annual 2027',
+      status: 'Active',
+      archived: false,
+      location: 'India',
+      start_date: '2027-04-01',
+    });
+    DB[T.elig].push({
+      ROWID: 'E28',
+      appraisal_cycle_id: 'C28',
+      employee_master_id: 'M1',
+      emp_id: 'EMP001',
+      eligibility_status: 'Eligible',
+      eligibility_source: 'Manual',
+    });
+
+    const result = await generate('C28');
+    assert.strictEqual(result.status, 200, JSON.stringify(result.json));
+    const generated = DB[T.sheet].find((row) => row.cycle_id === 'C28' && row.emp_id === 'EMP001');
+    assert.ok(generated, 'the eligible location employee is generated');
+    assert.strictEqual(generated.current_annual_base_pay, 500000);
+    assert.strictEqual(DB[T.payroll].length, 7, 'source payroll rows are reused, not duplicated');
+    assert.strictEqual(DB[T.feedback].length, 7, 'source feedback and rating rows are reused, not duplicated');
   });
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

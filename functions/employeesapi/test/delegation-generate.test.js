@@ -181,6 +181,20 @@ const LIST = 'page=1&limit=100&view=delegation';
     assert.deepStrictEqual(Object.keys(r).sort(), ['EMP001', 'EMP011', 'EMP013']);
   });
 
+  await t('Delegation assignee options include Tech-EDs across locations', async () => {
+    accessResult = HR;
+    const response = await send(
+      load('employeesapi'),
+      'GET',
+      'view=delegationoptions&location=North',
+    );
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.deepStrictEqual(
+      response.json.data.techEd.map((person) => person.empId).sort(),
+      ['EMP001', 'EMP002'],
+    );
+  });
+
   await t('Delegation change before Generate is saved on Employee_Master; old cycle row untouched', async () => {
     accessResult = HR;
     const api = load('employeesapi');

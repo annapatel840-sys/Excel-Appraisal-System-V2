@@ -3414,7 +3414,12 @@ async function getEmployees(req, res) {
       access.requireScreen(a, "employeeMaster", "view");
     }
     if (requestedView === "delegationoptions") {
-      access.requireScreen(a, "appraisalSheet", "view");
+      if (
+        a.enforced &&
+        !["view", "edit"].includes(a.screens?.appraisalSheet || "")
+      ) {
+        access.requireScreen(a, "delegation", "view");
+      }
     }
     requireInScope(a, requestedEmpIds, requestedOwned);
   });

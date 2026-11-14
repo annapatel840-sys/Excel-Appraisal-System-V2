@@ -5,6 +5,8 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
+import { matchesLocation, useSelectedLocation } from "@/lib/location-store";
+import { cycleNameLocation } from "@/lib/cycle-name";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -265,6 +267,7 @@ export function TechEdBudgetMasterPage() {
     error: budgetError,
   } = useBudget();
   const access = useAccess();
+  const [selectedLocation] = useSelectedLocation();
   const canAllot =
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("allotNextLevel");
@@ -278,7 +281,13 @@ export function TechEdBudgetMasterPage() {
       .then((cycles) => {
         if (!mounted) return;
         const active = (Array.isArray(cycles) ? cycles : []).find(
-          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
+          (cycle) =>
+            String(cycle.status || "").trim().toLowerCase() === "active" &&
+            !cycle.archived &&
+            matchesLocation(
+              cycle.location || cycleNameLocation(cycle.name || cycle.cycle_name),
+              selectedLocation,
+            ),
         );
         setActiveCycle(active || null);
       })
@@ -287,7 +296,7 @@ export function TechEdBudgetMasterPage() {
         if (mounted) setActiveCycle(null);
       });
     return () => { mounted = false; };
-  }, []);
+  }, [selectedLocation]);
 
   const activeCycleId = String(activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
   const activeCycleName = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();

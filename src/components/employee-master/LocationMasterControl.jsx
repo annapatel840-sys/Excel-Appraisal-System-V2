@@ -655,7 +655,8 @@ export function LocationMasterControl({
       const list = (Array.isArray(data) ? data : []).map(normalize);
       setLocations(list);
       // Share Location Master with every screen's location filter. Only
-      // active locations are offered; inactive ones fall back to All.
+      // active locations are offered; inactive selections fall back to an
+      // active Location Master value.
       registerLocations(list.filter((x) => x.status === "Active"));
       setError("");
     } catch (e) {
@@ -1032,9 +1033,7 @@ export function LocationMasterControl({
               onClick={() => setMenu((v) => !v)}
             >
               <span>
-                {value === "All"
-                  ? "All Locations"
-                  : locations.find(isSelected)?.location_name || value}
+                {locations.find(isSelected)?.location_name || value || "Select location"}
                 {showCurrencyCode &&
                   value !== "All" &&
                   (() => {
@@ -1048,18 +1047,6 @@ export function LocationMasterControl({
             </button>
             {menu && (
               <div className="em-location-menu" role="listbox">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={value === "All"}
-                  onClick={() => {
-                    onChange?.("All");
-                    setMenu(false);
-                  }}
-                >
-                  <span>All Locations</span>
-                  {value === "All" && <Check size={14} />}
-                </button>
                 {active.map((loc) => (
                   <button
                     key={loc.id || loc.location_code}

@@ -42,6 +42,7 @@ const BUSINESS_TZ = "Asia/Kolkata";
 // A cycle belongs to one Location Master location, or to every location
 // ("All"). Cycles saved before locations existed have no value and count as All.
 const ALL_LOCATIONS = "All";
+const normalizedLocationValue = (value) => String(value || "").trim().toLowerCase();
 const cycleLocationKey = (cycle) => {
   const value = String((cycle && cycle.location) || "").trim();
   return !value || value.toLowerCase() === ALL_LOCATIONS.toLowerCase() || value.toLowerCase() === "all locations"
@@ -50,10 +51,22 @@ const cycleLocationKey = (cycle) => {
 };
 const employeeLocationKey = (master) =>
   String((master && (master.location || master.work_location)) || "").trim().toLowerCase();
+const locationAliases = (value, locations = []) => {
+  const key = normalizedLocationValue(value);
+  const match = locations.find((location) =>
+    normalizedLocationValue(location.location_name || location.name) === key ||
+    normalizedLocationValue(location.location_code || location.code) === key,
+  );
+  return new Set([
+    key,
+    normalizedLocationValue(match?.location_name || match?.name),
+    normalizedLocationValue(match?.location_code || match?.code),
+  ].filter(Boolean));
+};
 // True when the employee belongs to the cycle's location (always true for an All cycle).
-const inCycleLocation = (cycle, master) => {
+const inCycleLocation = (cycle, master, locations = []) => {
   const key = cycleLocationKey(cycle);
-  return !key || employeeLocationKey(master) === key;
+  return !key || locationAliases(key, locations).has(employeeLocationKey(master));
 };
 
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
@@ -910,9 +923,10 @@ async function requirePayrollTables(adminApp) {
 async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before loading eligibility.", 400);
 
-  const [masterRows, existingRows] = await Promise.all([
+  const [masterRows, existingRows, locations] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
+    getAllRows(tables.locations),
   ]);
   const cycleRows = existingRows.filter(
     (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
@@ -1028,7 +1042,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
       const key = empId.toLowerCase();
       if (!key || existingEmpIds.has(key)) continue;
       const master = masterByEmployeeId.get(key);
-      if (!master || !inCycleLocation(cycle, master)) continue;
+      if (!master || !inCycleLocation(cycle, master, locations)) continue;
       const statusRaw = String(
         sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
@@ -1287,9 +1301,10 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const statuses = lowerList(criteria.statuses);
   const extraParameters = criteria.extraParameters;
 
-  const [masters, allEligibility] = await Promise.all([
+  const [masters, allEligibility, locations] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
+    getAllRows(tables.locations),
   ]);
   const existingByMasterId = new Map(
     allEligibility
@@ -1312,7 +1327,7 @@ async function applyEligibilityCriteria(tables, body, actor) {
     const empId = String(master.emp_id || "").trim();
     if (!masterId || !empId) continue;
     // A location cycle lists only that location's employees.
-    if (!inCycleLocation(cycle, master)) continue;
+    if (!inCycleLocation(cycle, master, locations)) continue;
     const existing = existingByMasterId.get(masterId);
     const active = String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active";
 
@@ -1530,11 +1545,12 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     await syncEligibilityRows(tables, cycle, actor, synced);
   }
   // When the sync wrote nothing, the rows it read are still current.
-  const [masterRows, eligibilityRows] = synced.masterRows && !synced.changed
-    ? [synced.masterRows, synced.eligibilityRows]
+  const [masterRows, eligibilityRows, locations] = synced.masterRows && !synced.changed
+    ? [synced.masterRows, synced.eligibilityRows, await getAllRows(tables.locations)]
     : await Promise.all([
       getAllRows(tables.employeeMaster),
       getAllRows(tables.eligibility),
+      getAllRows(tables.locations),
     ]);
   const masterById = new Map(
     masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
@@ -1556,7 +1572,7 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     records,
     // The criteria panel / Add Employee picker must use the same location
     // roster as this cycle, not the complete global Employee_Master table.
-    masterRecords: masterRows.filter((master) => inCycleLocation(cycle, master)),
+    masterRecords: masterRows.filter((master) => inCycleLocation(cycle, master, locations)),
     criteriaApplied: Boolean(synced.criteriaApplied),
   };
 }
@@ -1573,7 +1589,10 @@ async function saveEligibilityRow(tables, body, actor) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
-  const masters = await getAllRows(tables.employeeMaster);
+  const [masters, locations] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.locations),
+  ]);
   const master = masters.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
   if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
   if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
@@ -1586,7 +1605,7 @@ async function saveEligibilityRow(tables, body, actor) {
     String(row.appraisal_cycle_id || "") === cycleId &&
     String(row.employee_master_id || "") === masterId
   );
-  if (!existing && !inCycleLocation(cycle, master)) {
+  if (!existing && !inCycleLocation(cycle, master, locations)) {
     throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
   }
   const rawEligible = String(body.eligible_status || body.eligible || "").trim().toLowerCase();
@@ -1632,9 +1651,10 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
-  const [masters, allEligibility] = await Promise.all([
+  const [masters, allEligibility, locations] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
+    getAllRows(tables.locations),
   ]);
   const masterByEmpId = new Map(
     masters.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
@@ -1659,7 +1679,7 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
       }
       if (
         !existingByMasterId.has(String(master.ROWID || master.rowid || "")) &&
-        !inCycleLocation(cycle, master)
+        !inCycleLocation(cycle, master, locations)
       ) {
         throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
       }
@@ -2173,17 +2193,22 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     return itemYear < currentYear || (itemYear === currentYear && itemDate && currentDate && itemDate < currentDate);
   };
   const currentYear = cycleYear(cycle);
-  const reuseExistingCycleData = options.reuseExistingCycleData === true;
   const canonicalCycleName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
   const sourceCycle = cycleLocationKey(cycle)
     ? normalizedCycles.find((item) =>
         String(item.id) !== String(cycle.id) &&
         !cycleLocationKey(item) &&
+        isClosedCycle(item) &&
         cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalCycleName &&
         cycleYear(item) === currentYear &&
         cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
       ) || null
     : null;
+  // Matching location cycles share the closed legacy source data. Keep the
+  // explicit option for older callers, but do not require a separate upload
+  // or confirmation for the location cycle.
+  const reuseExistingCycleData =
+    options.reuseExistingCycleData === true || Boolean(sourceCycle);
   const sourceCycleKeys = new Set(
     sourceCycle
       ? [sourceCycle.id, sourceCycle.sourceRowId, sourceCycle.name].map((value) => referenceText(value).toLowerCase()).filter(Boolean)
@@ -2217,7 +2242,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       );
     }
     throw new ApiError(
-      `Payroll data has not been uploaded for ${cycle.name}. Upload payroll data for this cycle before generating the Appraisal Sheet.`,
+      sourceCycle
+        ? `No payroll data was found in the shared source cycle ${sourceCycle.name} for ${cycle.name}. Check the source cycle's Payroll Data.`
+        : `Payroll data has not been uploaded for ${cycle.name}. Upload payroll data for this cycle before generating the Appraisal Sheet.`,
       409,
     );
   }
@@ -2272,7 +2299,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       !hasRating ? "rating values" : "",
     ].filter(Boolean).join(" and ");
     throw new ApiError(
-      `${missing} is required for ${cycle.name}. Upload the cycle's Feedback and Rating data before generating the Appraisal Sheet.`,
+      sourceCycle
+        ? `${missing} is missing from the shared source cycle ${sourceCycle.name}. Check its Feedback and Rating data before generating ${cycle.name}'s Appraisal Sheet.`
+        : `${missing} is required for ${cycle.name}. Upload the cycle's Feedback and Rating data before generating the Appraisal Sheet.`,
       409,
     );
   }
@@ -3709,11 +3738,12 @@ async function routeRequest(req, res, identity, resource, a) {
       // do not run seven independent syncEligibilityRows scans concurrently.
       // Concurrent full-table scans were exhausting Catalyst read components
       // and returning a non-JSON gateway error to the Eligibility page.
-      const [allMasters, allEligibility, allSheetRows, allAuditRows] = await Promise.all([
+      const [allMasters, allEligibility, allSheetRows, allAuditRows, locations] = await Promise.all([
         getAllRows(tables.employeeMaster),
         getAllRows(tables.eligibility),
         getAllRows(tables.appraisalSheet),
         getAllRows(tables.audit),
+        getAllRows(tables.locations),
       ]);
       const masterByEmpId = new Map(
         allMasters.map((master) => [
@@ -3747,7 +3777,7 @@ async function routeRequest(req, res, identity, resource, a) {
           const key = empId.toLowerCase();
           if (!key || seen.has(key)) continue;
           const master = masterByEmpId.get(key);
-          if (!master || !inCycleLocation(target, master)) continue;
+          if (!master || !inCycleLocation(target, master, locations)) continue;
           seen.add(key);
           const rawStatus = String(
             sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",

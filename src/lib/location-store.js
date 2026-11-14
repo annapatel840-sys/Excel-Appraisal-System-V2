@@ -1,8 +1,8 @@
 /* ============================================================
    Global location selection.
 
-   One value shared by every screen: "All" or a Location Master
-   value (name or code). It is kept in localStorage so it survives
+   One Location Master value (name or code) is shared by every screen.
+   It is kept in localStorage so it survives
    navigation (pages are full loads) and reloads, and every mounted
    component is notified when it changes.
 
@@ -98,13 +98,14 @@ export function registerLocations(list) {
       code: String(x?.location_code ?? x?.code ?? "").trim(),
     }))
     .filter((x) => x.name || x.code);
-  // A saved selection that no longer exists in Location Master falls back to All.
+  const firstLocation = registry[0]?.name || registry[0]?.code || "";
+  // Shared screen filters always resolve to an active Location Master value.
   if (
-    !isAllLocations(selected) &&
     registry.length &&
-    !registry.some((x) => norm(x.name) === norm(selected) || norm(x.code) === norm(selected))
+    (isAllLocations(selected) ||
+      !registry.some((x) => norm(x.name) === norm(selected) || norm(x.code) === norm(selected)))
   ) {
-    setSelectedLocation(ALL_LOCATIONS);
+    setSelectedLocation(firstLocation);
     return;
   }
   emit();

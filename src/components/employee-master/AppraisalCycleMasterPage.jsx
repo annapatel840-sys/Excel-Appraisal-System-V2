@@ -42,8 +42,9 @@ const PROCESSES = [
 const ENFORCE_ONE_OPEN_ANNUAL = true;
 const OPEN_CYCLE_STATUSES = ["Upcoming", "Active"];
 
-// Each cycle is for one Location Master location or for all selected locations, creating separate cycles ("All").
-// Cycles saved before locations existed have no value and count as All.
+// New cycles use a Location Master location. The setup form's All option
+// creates one separate cycle for every active location; older unscoped cycles
+// remain readable as legacy source cycles.
 const ALL_CYCLE_LOCATIONS = "All";
 const isAllCycleLocation = (value) => {
   const v = String(value || "").trim().toLowerCase();
@@ -462,7 +463,7 @@ export function AppraisalCycleMasterPage({
       return [];
     const w = statsFor(c);
     const out = [];
-    if (w && w.emUpdated) {
+    if (w && w.emUpdated && !sourceCycleFor(c)) {
       const np = missingPay(w);
       const ni = w.notIncluded || 0;
       out.push({
@@ -491,21 +492,22 @@ export function AppraisalCycleMasterPage({
   // location selection. This is display filtering only; it never changes access.
   const locationCycles = useMemo(() => {
     if (isAllCycleLocation(selectedLocation)) return cycles;
-    const matching = cycles.filter((cycle) =>
+    return cycles.filter((cycle) =>
       !isAllCycleLocation(cycle.location) &&
       matchesLocation(cycle.location, selectedLocation),
     );
-    // Keep the configured global Annual 2027 visible until its location cycle
-    // exists. After the split, show only the selected location's cycle.
-    const hasAnnualLocationCycle = matching.some((cycle) =>
-      cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027",
-    );
-    const sourceAnnual = hasAnnualLocationCycle ? [] : cycles.filter((cycle) =>
-      isAllCycleLocation(cycle.location) &&
-      cycleNameWithoutLocation(cycle.name).trim().toLowerCase() === "annual 2027",
-    );
-    return [...matching, ...sourceAnnual];
   }, [cycles, selectedLocation]);
+
+  const sourceCycleFor = (cycle) => {
+    if (!cycle || isAllCycleLocation(cycle.location)) return null;
+    const sourceName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
+    return cycles.find((candidate) =>
+      candidate.id !== cycle.id &&
+      isAllCycleLocation(candidate.location) &&
+      (candidate.status === "Closed" || candidate.archived) &&
+      cycleNameWithoutLocation(candidate.name).trim().toLowerCase() === sourceName,
+    ) || null;
+  };
 
   const gridRows = useMemo(() => {
     const s = q.toLowerCase();
@@ -595,20 +597,22 @@ export function AppraisalCycleMasterPage({
             w.emUpdated ? "" : "go-em",
           ),
         );
-        r.push(
-          rule(
-            "Payroll differences resolved or ignored",
-            !!w.emUpdated && m === 0,
-            !w.emUpdated
-              ? "Not met: update the Employee Master first"
-              : m === 0
-                ? w.payIgnored
-                  ? `All clear · ${w.payIgnored} ignored in Change list & Mismatch`
-                  : `All ${w.emCount} employees have payroll data`
-                : `Not met: ${m} employees have no payroll data — resolve or ignore them in Change list & Mismatch`,
-            w.emUpdated && m > 0 ? "go-mm" : "",
-          ),
-        );
+        if (!sourceCycleFor(c)) {
+          r.push(
+            rule(
+              "Payroll differences resolved or ignored",
+              !!w.emUpdated && m === 0,
+              !w.emUpdated
+                ? "Not met: update the Employee Master first"
+                : m === 0
+                  ? w.payIgnored
+                    ? `All clear · ${w.payIgnored} ignored in Change list & Mismatch`
+                    : `All ${w.emCount} employees have payroll data`
+                  : `Not met: ${m} employees have no payroll data — resolve or ignore them in Change list & Mismatch`,
+              w.emUpdated && m > 0 ? "go-mm" : "",
+            ),
+          );
+        }
       }
     }
     const other = otherActive(c);
@@ -849,7 +853,9 @@ export function AppraisalCycleMasterPage({
         start: f.start,
         end: f.end,
         // The location can be changed only while the cycle is Upcoming.
-        ...(editCycle.status === "Upcoming" ? { location: f.location } : {}),
+        ...(editCycle.status === "Upcoming" && !isAllCycleLocation(editCycle.location)
+          ? { location: f.location }
+          : {}),
       },
       "Cycle updated",
       `${editedName} was updated successfully.`,
@@ -1173,7 +1179,10 @@ export function AppraisalCycleMasterPage({
         ? `${w.emCount} employees · ${w.emNew} new · ${w.emChanged} changed`
         : "Not updated for this cycle"
       : "Update the Employee Master for this cycle";
-    const paySub = w
+    const sharedSource = sourceCycleFor(c);
+    const paySub = sharedSource
+      ? `Uses existing payroll from ${sharedSource.name}; no new upload is needed`
+      : w
       ? w.emUpdated
         ? `${(w.payHave || 0) + (w.payIgnored || 0)} of ${w.emCount} employees${m ? ` · ${m} without payroll data` : ""}${w.payIgnored ? ` · ${w.payIgnored} ignored` : ""}`
         : "Update the Employee Master first"
@@ -1205,8 +1214,8 @@ export function AppraisalCycleMasterPage({
         "pay",
         "Payroll",
         paySub,
-        w ? (!w.emUpdated || m ? "wn" : "ok") : "pd",
-        [
+        sharedSource ? "ok" : w ? (!w.emUpdated || m ? "wn" : "ok") : "pd",
+        sharedSource ? [] : [
           { l: "Open Mismatch ›", id: "go-mm", link: true },
           { l: "Upload ›", id: "go-up-pay" },
         ],
@@ -1255,12 +1264,14 @@ export function AppraisalCycleMasterPage({
         "Active",
         "fr",
         "Feedback and Rating",
-        act
+        sharedSource
+          ? `Uses existing feedback and rating from ${sharedSource.name}; do not upload again`
+          : act
           ? "Upload as the data comes in · repeat any time · not required for any other step"
           : "Available after Activate",
-        act ? "pd" : "lk",
+        sharedSource ? "ok" : act ? "pd" : "lk",
         // act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
-        [{ l: "Upload ›", id: "go-up-fr" }],
+        sharedSource ? [] : [{ l: "Upload ›", id: "go-up-fr" }],
       ),
       row(
         "Active",
@@ -2439,32 +2450,35 @@ export function AppraisalCycleMasterPage({
                     The process is locked once the cycle is activated.
                   </div>
                 )}
-                <label className="acx-fl">Location</label>
-                <select
-                  style={{ width: "100%" }}
-                  disabled={saving || editCycle.status !== "Upcoming"}
-                  value={editForm.location}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, location: e.target.value }))
-                  }
-                >
-                  {/* Only legacy cycles without a location are treated as All Locations; new cycles are per location. */}
-                  {isAllCycleLocation(editCycle.location) && (
-                    <option value={ALL_CYCLE_LOCATIONS}>All Locations (separate cycle per location)</option>
-                  )}
-                  {cycleLocations
-                    .concat(
-                      !isAllCycleLocation(editForm.location) &&
-                        !cycleLocations.includes(editForm.location)
-                        ? [editForm.location]
-                        : [],
-                    )
-                    .map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                </select>
+                {!isAllCycleLocation(editCycle.location) ? (
+                  <>
+                    <label className="acx-fl">Location</label>
+                    <select
+                      style={{ width: "100%" }}
+                      disabled={saving || editCycle.status !== "Upcoming"}
+                      value={editForm.location}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, location: e.target.value }))
+                      }
+                    >
+                      {cycleLocations
+                        .concat(
+                          !cycleLocations.includes(editForm.location)
+                            ? [editForm.location]
+                            : [],
+                        )
+                        .map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                    </select>
+                  </>
+                ) : (
+                  <div className="acx-hint">
+                    This legacy cycle has no Location Master scope. New cycles must use a Location Master location.
+                  </div>
+                )}
                 {editCycle.status !== "Upcoming" && (
                   <div className="acx-hint">
                     The location is locked once the cycle is activated.

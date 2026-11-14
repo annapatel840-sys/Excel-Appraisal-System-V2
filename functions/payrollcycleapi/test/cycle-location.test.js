@@ -81,6 +81,7 @@ function load(store) {
     isEnforced: () => false,
     guard: (a, fn) => fn(),
     requireScreen: () => {},
+    requireEditFields: () => {},
     bumpVersion: async () => {},
   };
   const orig = Module._load;
@@ -191,11 +192,15 @@ async function t(name, fn) {
     assert.strictEqual(duplicate.status, 201, JSON.stringify(duplicate.json));
     const activateDuplicate = await post('cycles/status/' + duplicate.json.data.id, { status: 'Active' });
     assert.strictEqual(activateDuplicate.status, 409);
-    assert.match(activateDuplicate.json.message, /Dubai - Annual 2027/);
+    assert.match(activateDuplicate.json.message, /Annual 2027 Dubai/);
   });
 
   await t('the location is fixed once the cycle is Active', async () => {
     const c = await byName('Annual 2027 Dubai');
+    if (c.status === 'Active') {
+      const close = await post('cycles/status/' + c.id, { status: 'Closed' });
+      assert.strictEqual(close.status, 200, JSON.stringify(close.json));
+    }
     const act = await post('cycles/status/' + c.id, { status: 'Active' });
     assert.strictEqual(act.status, 200, JSON.stringify(act.json));
     const r = await post('cycles/update/' + c.id, { ...dates, name: c.name, location: 'India' });
@@ -222,7 +227,13 @@ async function t(name, fn) {
   });
 
   await t('Apply Criteria lists only the cycle location\'s employees', async () => {
+    // Employee Master may store a Location Master code instead of its display name.
+    store.tables[T.employeeMaster].rows.find((row) => row.emp_id === 'EMP002').location = 'DXB';
     const c = await byName('Annual 2027 Dubai');
+    if (c.status !== 'Active') {
+      const activated = await post('cycles/status/' + c.id, { status: 'Active' });
+      assert.strictEqual(activated.status, 200, JSON.stringify(activated.json));
+    }
     const r = await call(api, 'POST', 'eligibility', { action: 'apply-criteria', cycleId: c.id });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const listed = store.tables[T.eligibility].rows

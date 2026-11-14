@@ -2472,6 +2472,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
+import { fetchDelegationAssigneeOptions } from "@/lib/employee-master-data";
 import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
 import {
   generateAppraisalSheet,
@@ -2725,6 +2726,8 @@ export default function DelegationScreen({
         : String(catalystUser?.role || ""),
   });
   const [allRows, setRows] = useState(() => initialRows || []);
+  const [globalTechEdOptions, setGlobalTechEdOptions] = useState([]);
+  const globalTechEdOptionsRequest = useRef(null);
   // Delegation shows only the selected location's employees; saves and
   // snapshots keep working on the complete roster (allRows).
   const [selectedLocation] = useSelectedLocation();
@@ -2733,7 +2736,11 @@ export default function DelegationScreen({
     [allRows, selectedLocation],
   );
   const [stagedChanges, setStagedChanges] = useState({});
-  const resolveName = useMemo(() => makeResolver(rows), [rows]);
+  const resolverRows = useMemo(
+    () => [...rows, ...globalTechEdOptions],
+    [rows, globalTechEdOptions],
+  );
+  const resolveName = useMemo(() => makeResolver(resolverRows), [resolverRows]);
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
   // The employee whose row was edited last. Kept in this browser's storage
@@ -3117,6 +3124,29 @@ export default function DelegationScreen({
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);
   };
+  const loadGlobalTechEdOptions = useCallback(() => {
+    if (globalTechEdOptionsRequest.current) {
+      return globalTechEdOptionsRequest.current;
+    }
+    globalTechEdOptionsRequest.current = fetchDelegationAssigneeOptions()
+      .then(({ techEd }) => {
+        const options = techEd
+          .map((person) => ({
+            id: String(person.empId || "").trim(),
+            name: String(person.name || "").trim(),
+          }))
+          .filter((person) => person.id);
+        setGlobalTechEdOptions(options);
+        return options;
+      })
+      .catch((error) => {
+        globalTechEdOptionsRequest.current = null;
+        console.error("Failed to load all Tech-Ed delegation options:", error);
+        say(error?.message || "Unable to load Tech-Ed options.", true);
+        return [];
+      });
+    return globalTechEdOptionsRequest.current;
+  }, []);
   const auditCycleName = activeCycleName || cycleName || "";
   // Saved Delegation audit for this cycle. HR Admin gets every row, others
   // only their own (the server filters by the signed-in user).
@@ -3288,6 +3318,22 @@ export default function DelegationScreen({
       a.name.localeCompare(b.name),
     );
   }, [rows]);
+  const techEdPeople = useMemo(() => {
+    const uniquePeople = new Map();
+    const add = (raw) => {
+      const label = resolveName(raw);
+      if (!label) return;
+      const id = label.match(/^([a-z]*\d+)\s*-/i)?.[1] || label;
+      const key = normText(id);
+      if (!key) return;
+      uniquePeople.set(key, { id: label, name: label, roles: [] });
+    };
+    globalTechEdOptions.forEach((person) => add(`${person.id} - ${person.name}`));
+    rows.forEach((row) => add(row.app || row.te || ""));
+    return Array.from(uniquePeople.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [globalTechEdOptions, rows, resolveName]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const colValue = (r, key) => {
     switch (key) {
@@ -4435,7 +4481,10 @@ export default function DelegationScreen({
             <button
               className="btn"
               disabled={showingSaved}
-              onClick={() => setModal({ type: "bulk" })}
+              onClick={() => {
+                loadGlobalTechEdOptions();
+                setModal({ type: "bulk" });
+              }}
             >
               Bulk Assign ({selIds.length})
             </button>
@@ -4666,7 +4715,8 @@ export default function DelegationScreen({
                                   }
                                   disabled={editLocked}
                                   value={cur}
-                                  people={people}
+                                  people={f === "app" ? techEdPeople : people}
+                                  onOpen={f === "app" ? loadGlobalTechEdOptions : undefined}
                                   onSelect={(person) => {
                                     if (directAssignment(f)) {
                                       applyCellChange(r, f, person);
@@ -5080,7 +5130,7 @@ export default function DelegationScreen({
             onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
           >
             <option value="">— choose —</option>
-            {people.map((p) => (
+            {(bulk.field === "app" ? techEdPeople : people).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {p.roles.join(", ")}
               </option>
@@ -5302,7 +5352,7 @@ export default function DelegationScreen({
 /* Searchable person dropdown. Typing only filters the list; the field is
    populated only when a person is picked from the list. */
 const PERSON_LIST_LIMIT = 100;
-function PersonCombobox({ value, people, disabled, className, onSelect }) {
+function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }) {
   const inputRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -5365,6 +5415,7 @@ function PersonCombobox({ value, people, disabled, className, onSelect }) {
           setQuery("");
           setActive(0);
           e.target.select?.();
+          onOpen?.();
         }}
         onBlur={close}
         onChange={(e) => {
