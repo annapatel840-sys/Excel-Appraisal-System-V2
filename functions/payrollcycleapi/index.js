@@ -3424,6 +3424,7 @@ function shapeFeedbackCycle(cycle) {
     type: cycle.type || cycleTypeOf(cycle.name),
     status: cycle.archived ? "Archived" : cycle.status || "Upcoming",
     effective: fbDate(cycle.effective || cycle.start),
+    location: cycle.location || "",
   };
 }
 
