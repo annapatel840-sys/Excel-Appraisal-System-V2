@@ -4892,6 +4892,16 @@ async function updateEmployee(req, res) {
       .filter(Boolean)
       .map(function (value) { return value.toLowerCase(); });
   };
+  const requestedAppraisalRowId = String(body.appraisal_row_id || body.appraisalRowId || "").trim();
+  const rowIdOf = (row) => String(row?.ROWID ?? row?.rowid ?? row?.id ?? "").trim();
+  const requestedRow = requestedAppraisalRowId
+    ? employeeSheetRows.find((row) => rowIdOf(row) === requestedAppraisalRowId) || null
+    : null;
+  const requestedRowReferences = requestedRow ? rowCycleReferences(requestedRow) : [];
+  const requestedRowMatchesCycle = !!requestedRow && (
+    requestedRowReferences.length === 0 ||
+    requestedRowReferences.some((reference) => cycleAliases.has(reference))
+  );
   const exactCycleRows = employeeSheetRows.filter(function (row) {
     return rowCycleReferences(row).some(function (reference) {
       return cycleAliases.has(reference);
@@ -4912,7 +4922,8 @@ async function updateEmployee(req, res) {
       return leftId.localeCompare(rightId);
     }).slice(-1)[0] || null;
   };
-  let appraisalRow = latestRow(exactCycleRows);
+  // Prefer the exact row ID returned to the grid, while validating employee and cycle.
+  let appraisalRow = requestedRowMatchesCycle ? requestedRow : latestRow(exactCycleRows);
 
   // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
   // employee has rows for several cycles, do not reject the current row just
@@ -5026,7 +5037,7 @@ async function updateEmployee(req, res) {
   // Backfill the active cycle reference on legacy rows during the first
   // successful edit. This keeps subsequent saves deterministic and avoids
   // requiring a separate migration or adding a Data Store column.
-  if (appraisalRow && !rowCycleReference(appraisalRow) && currentCycleId) {
+  if (appraisalRow && rowCycleReferences(appraisalRow).length === 0 && currentCycleId) {
     appraisalUpdate.cycle_id = currentCycleId;
   }
 
