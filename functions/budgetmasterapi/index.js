@@ -2001,25 +2001,37 @@ async function calculateBudgetBases(
   const activeSheetCycleName = activeSheetCycle
     ? cycleNameOf(activeSheetCycle)
     : "";
-  const sheetCycleFields = [
+  // Prefer the persisted cycle foreign key. Legacy rows can also retain a
+  // shared display name such as "Annual 2027"; matching that name alongside a
+  // location-specific cycle_id incorrectly pulls the same shared-name rows
+  // into India, Australia and US at once.
+  const sheetCycleIdFields = [
     "cycle_id",
     "appraisal_cycle_id",
-    "appraisal_cycle_name",
     "cycleId",
     "appraisalCycleId",
+    "cycle_master_id",
+    "appraisal_cycle_master_id",
+    "appraisal_id",
+    "appraisalId",
+  ];
+  const sheetCycleNameFields = [
+    "appraisal_cycle_name",
     "appraisalCycleName",
     "cycle",
     "appraisal_cycle",
-    "appraisal_id",
-    "appraisalId",
-    "cycle_master_id",
-    "appraisal_cycle_master_id",
   ];
-  const sheetCycleReferences = (row) =>
-    sheetCycleFields
+  const sheetCycleReferences = (row) => {
+    const idReferences = sheetCycleIdFields
       .map((field) => cycleReference(row && row[field]))
       .filter(Boolean)
       .map((ref) => ref.trim().toLowerCase());
+    if (idReferences.length) return idReferences;
+    return sheetCycleNameFields
+      .map((field) => cycleReference(row && row[field]))
+      .filter(Boolean)
+      .map((ref) => ref.trim().toLowerCase());
+  };
   const activeSheetCycleAliases = new Set(
     activeSheetCycle ? cycleAliasesFor(activeSheetCycle) : [],
   );
