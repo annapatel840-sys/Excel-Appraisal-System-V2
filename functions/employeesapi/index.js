@@ -506,11 +506,14 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
   }
 }
 
-async function activeCycleRowId(datastore) {
+async function activeCycleRowId(datastore, requestedCycleId = "") {
   const cycles = await readAllDataStoreRows(
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
+  const requested = String(requestedCycleId || "").trim();
   const active = cycles.find(function (cycle) {
+    const id = String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
+    if (requested && id !== requested) return false;
     const status = String(cycle?.status ?? cycle?.cycle_status ?? "")
       .trim()
       .toLowerCase();
@@ -4801,7 +4804,7 @@ async function updateEmployee(req, res) {
       : readOwnRows("Employee_Master", masterTable),
     // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
     // With an Active cycle and no row for it, the sheet is not generated yet.
-    activeCycleRowId(adminApp.datastore()),
+    activeCycleRowId(adminApp.datastore(), body.cycle_id || body.appraisal_cycle_id),
   ]);
   // Only the Active cycle's row is ever edited; without an Active cycle there
   // is no current Appraisal Sheet row to change.
