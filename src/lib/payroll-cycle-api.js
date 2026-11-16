@@ -30,7 +30,7 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidatePayrollCycleReads));
 }
 
-async function sendPayrollCycleRequest(url, resource, method, body) {
+async function sendPayrollCycleRequest(url, resource, method, body, plainRetry = false) {
   const response = await catalystFetch(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -39,18 +39,27 @@ async function sendPayrollCycleRequest(url, resource, method, body) {
 
   let payload;
   let raw = "";
+  let readError = "";
   try {
     raw = await response.text();
     payload = JSON.parse(raw);
-  } catch {
+  } catch (error) {
+    readError = String(error?.message || "");
+    // A compressed (gz=1) reply that cannot be read: ask once more without
+    // compression. The server sends the same JSON uncompressed.
+    if (!plainRetry && String(method).toUpperCase() === "GET" && !body && url.searchParams.get("gz") === "1") {
+      const plain = new URL(url.toString());
+      plain.searchParams.delete("gz");
+      return sendPayrollCycleRequest(plain, resource, method, body, true);
+    }
     // Not JSON: usually a platform error page (timeout, crash, size limit).
-    // Say which HTTP status came back so the cause can be found.
+    // Say what came back so the cause can be found.
     const hint = String(raw || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
-    const error = new Error(
-      `The ${resource} service returned an invalid response (HTTP ${response.status})${hint ? `: ${hint}` : "."}`,
+    const error2 = new Error(
+      `The ${resource} service returned an invalid response (HTTP ${response.status})${hint ? `: ${hint}` : readError ? `: ${readError}` : "."}`,
     );
-    error.status = response.status;
-    throw error;
+    error2.status = response.status;
+    throw error2;
   }
 
   if (!response.ok || payload.success !== true) {
