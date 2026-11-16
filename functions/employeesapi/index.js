@@ -525,6 +525,11 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
       cycle?.ROWID, cycle?.rowid, cycle?.id, cycle?.ID,
       cycle?.cycle_name, cycle?.cycleName, cycle?.name,
       cycle?.appraisal_year, cycle?.appraisalYear,
+      (String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "").trim() &&
+       String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? "").trim())
+        ? String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation).trim() + " - " +
+          String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year).trim()
+        : "",
     ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
   };
   const locationOf = function (cycle) {
