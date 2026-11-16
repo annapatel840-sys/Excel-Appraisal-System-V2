@@ -4831,7 +4831,7 @@ async function updateEmployee(req, res) {
     currentCycle?.cycle_name ?? currentCycle?.cycleName ?? currentCycle?.name ?? currentCycle?.appraisal_year ?? "",
   ).trim();
   const currentCycleLocation = String(
-    currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? "",
+    currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? body.location ?? "",
   ).trim().toLowerCase();
   const cycleAliases = new Set(
     [currentCycleId, currentCycleName]
