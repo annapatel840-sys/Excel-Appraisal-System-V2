@@ -93,3 +93,5 @@
 .hrd-sg .it b{color:#102a43}
 .hrd-sg .it span{display:block;color:#6b7280;font-size:11px;margin-top:1px}
 .hrd-sg .hd{padding:5px 10px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#102a43;background:#f6f8fb}
+.hrd-card-ask{overflow:visible}
+.hrd-card-ask .hrd-ch{border-radius:12px 12px 0 0}

@@ -763,7 +763,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         </div>
 
         <div className="hrd-stack">
-          <section className="hrd-card">
+          <section className="hrd-card hrd-card-ask">
             <div className="hrd-ch"><h3>Ask the HR Assistant</h3></div>
             <div className="hrd-cb hrd-ask">
               <div className="in">
