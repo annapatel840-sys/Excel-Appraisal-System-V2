@@ -2390,6 +2390,7 @@ import { filterByLocation, useSelectedLocation } from "./location-store";
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
 let APPRAISAL_YEAR = "";
+let APPRAISAL_CYCLE_ID = "";
 // The browser copy of the audit trail belongs to one signed-in user (it holds
 // salary changes) and is removed on sign-out (see clearBrowserData).
 export const AUDIT_LOCAL_STORAGE_PREFIX = "appraisal.auditTrail.v2:";
@@ -3042,6 +3043,9 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) 
     },
     body: JSON.stringify({
       emp_id: String(empId),
+      appraisal_year: APPRAISAL_YEAR,
+      cycle_id: APPRAISAL_CYCLE_ID,
+      location: String(selectedLocation || "").trim(),
       [catalystField]: catalystValue,
       expected: { [catalystField]: normalizeValueForCatalyst(key, oldValue) },
     }),
@@ -3621,6 +3625,7 @@ export function AppraisalProvider({ children }) {
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
+      APPRAISAL_CYCLE_ID = String(activeCycle?.id || activeCycle?.ROWID || activeCycle?.rowid || "").trim();
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
       if (!activeCycle || !APPRAISAL_YEAR) {
         updateRows(() => []);
@@ -3746,6 +3751,7 @@ export function AppraisalProvider({ children }) {
       if (!dataWantedRef.current) return;
       // Clear the prior cycle synchronously before querying the new status.
       APPRAISAL_YEAR = "";
+      APPRAISAL_CYCLE_ID = "";
       updateRows(() => []);
       setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
       setAudit([]);
