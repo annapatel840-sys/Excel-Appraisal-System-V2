@@ -1,6 +1,5 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
 import { getSelectedLocation } from "./location-store";
-import { payrollCycleRequest } from "./payroll-cycle-api";
 
 /* ============================================================
    DELEGATION ROSTER: SHARED REQUEST, EARLY START, SAVED COPY
@@ -117,26 +116,9 @@ export function fetchDelegationRoster({ fresh = false, prefetch = false, locatio
 
 // Starts the roster request early; the screen's own load then joins it.
 export function prefetchDelegationRoster() {
-  const selectedLocation = String(getSelectedLocation() || "").trim().toLowerCase();
-  payrollCycleRequest("cycles")
-    .then((cycles) => {
-      const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-        const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-        const archived = ["true", "1", "yes", "archived"].includes(String(cycle.archived ?? "").trim().toLowerCase());
-        const hidden = ["true", "1", "yes"].includes(String(cycle.hidden ?? "").trim().toLowerCase());
-        const cycleLocation = String(cycle.location ?? cycle.cycle_location ?? "").trim().toLowerCase();
-        const locationMatches = !selectedLocation || ["all", "all locations"].includes(selectedLocation) || cycleLocation === selectedLocation;
-        return status === "active" && !archived && !hidden && locationMatches;
-      });
-      const cycleId = String(active?.id ?? active?.ROWID ?? active?.rowid ?? active?.cycle_id ?? "").trim();
-      if (cycleId) {
-        return fetchDelegationRoster({ prefetch: true, location: "All", cycleId });
-      }
-      return undefined;
-    })
-    .catch(() => {
-      /* the screen's own load reports the error */
-    });
+  // The screen resolves the selected location's active cycle before requesting
+  // its roster. A cycle-less prefetch could cache a different location's data.
+  // Keep this hook intentionally quiet; the screen's first load is authoritative.
 }
 
 /* Warm-up for users who can open Delegation but did not land on it. The
