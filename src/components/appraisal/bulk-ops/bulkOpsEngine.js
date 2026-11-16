@@ -575,7 +575,7 @@ function dispVal(r,e,v){
 }
 function showHp(){return !S.rules.some(function(r){return r.field==="hikePct"})}   // v34: the Hike % rule column already shows it
 function cols(){
-  var c=[{k:"name",t:"Employee",c:"c1"},{k:"band",t:"Band"},{k:"rating",t:"Manager Rating",r:1},{k:"basePay",t:"Base Pay",r:1}];
+  var c=[{k:"name",t:"Employee",c:"c1"},{k:"rating",t:"Manager Rating",r:1},{k:"basePay",t:"Base Pay",r:1}];
   S.rules.forEach(function(r,i){var L=FIELDS[r.field].label;
     c.push({k:"cur"+i,t:"Current · "+L,r:1},{k:"prop"+i,t:"Proposed · "+L,r:1},{k:"chg"+i,t:"Change · "+L,r:1});});
   if(showHp())c.push({k:"hikePct",t:"Hike% (After)",r:1});
@@ -778,7 +778,7 @@ function renderGrid(){
     if(!S.pv||!p||p.st!=="chg"){if(e.bulk)notes+='<span class="tag t-ok">Bulk Applied</span>';else if(e.hand&&!(p&&p.st==="skip"))notes+='<span class="tag t-info">Edited Manually</span>'}
     var hp=af.hikeAmt/e.basePay*100;
     b+='<tr><td class="c1" title="'+esc(e.empId+" - "+e.name+" - "+e.designation)+'"><div class="emp"><span class="eb'+(e.hand||e.bulk?'':' none')+'"></span><input type="checkbox" data-id="'+e.empId+'"'+(S.off[e.empId]?'':' checked')+'><div class="et"><span class="en">'+esc(e.empId)+' - '+esc(e.name)+'</span><span class="dsg">'+esc(e.designation)+'</span></div></div></td>'
-      +'<td>'+e.band+'</td><td class="r">'+(e.rating==null?'—':e.rating.toFixed(1))+'</td><td class="r">'+inr(e.basePay)+'</td>'
+      +'<td class="r">'+(e.rating==null?'—':e.rating.toFixed(1))+'</td><td class="r">'+inr(e.basePay)+'</td>'
       +cells
       +(showHp()?'<td class="r">'+pct(hp)+'</td>':'')+'<td class="r">'+inr(e.basePay+af.hikeAmt)+'</td><td class="r">'+inr(e.basePay+af.hikeAmt+af.newPB+af.newRB)+'</td><td>'+notes+'</td></tr>';
   });

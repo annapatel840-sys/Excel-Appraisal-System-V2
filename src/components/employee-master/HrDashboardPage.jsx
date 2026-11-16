@@ -671,6 +671,17 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       {failed.length > 0 && (
         <div className="hrd-warn">
           Could not load: {failed.join(", ")}. Those counts are left out, not shown as zero. Use “Check again”.
+          {[
+            status.elig?.s === "error" && `Eligibility: ${status.elig.msg}`,
+            status.del?.s === "error" && `Delegation: ${status.del.msg}`,
+            status.req?.s === "error" && `Requests: ${status.req.msg}`,
+            status.cycle?.s === "error" && `Cycle: ${status.cycle.msg}`,
+            budget.error && `Budget: ${typeof budget.error === "string" ? budget.error : budget.error?.message || "failed"}`,
+          ]
+            .filter(Boolean)
+            .map((m) => (
+              <div key={m} style={{ marginTop: 4, fontWeight: 400 }}>{m}</div>
+            ))}
         </div>
       )}
 
