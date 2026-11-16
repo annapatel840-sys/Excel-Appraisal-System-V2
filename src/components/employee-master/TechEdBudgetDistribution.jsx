@@ -2024,7 +2024,7 @@ export function TechEdBudgetDistribution() {
 
   // Rows behind the Allocation table's column filters (display only).
   const allocItems = [
-    {
+    ...(assignedTeam.length ? [{
       self: true,
       level: LEVELS[0],
       owner: String(loginTechOwner).split(/\s+-\s+/)[1] || myName,
@@ -2038,7 +2038,7 @@ export function TechEdBudgetDistribution() {
       lastSort:
         String(myHistory[0].date || "") + String(myHistory[0].time || ""),
       pct: myPct,
-    },
+    }] : []),
     ...visibleCmNodes.map((n) => ({
       node: n,
       level: LEVELS[1],
