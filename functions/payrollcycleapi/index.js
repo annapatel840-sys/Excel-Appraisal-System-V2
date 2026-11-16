@@ -2332,12 +2332,20 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       row,
     ]).filter(([id]) => id),
   );
+  const employeeMasterByRowId = new Map(
+    employeeMasterRows.map((row) => [
+      referenceText(row.ROWID ?? row.rowid ?? row.id).toLowerCase(),
+      row,
+    ]).filter(([id]) => id),
+  );
   const basePayrollCandidatesByEmployee = new Map();
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
     if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    const directMaster = employeeMasterByBusinessId.get(masterId.toLowerCase());
+    const directMaster =
+      employeeMasterByBusinessId.get(masterId.toLowerCase()) ||
+      employeeMasterByRowId.get(masterId.toLowerCase());
     const empId = masterIdToEmpId.get(masterId) ||
       String(fieldValue(directMaster || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() ||
       String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
