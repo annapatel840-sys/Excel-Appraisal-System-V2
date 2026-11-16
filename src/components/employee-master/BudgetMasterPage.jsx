@@ -1137,7 +1137,7 @@
 //       .forEach((row) => {
 //         const owner = row.appraiser_tech_ed_id || "";
 //         const key = resolveTechOwnerKey(owner);
-//         if (!key || !ownerValues.has(key) || !(locationTeamCounts.get(key) > 0)) return;
+//         if (!key || !ownerValues.has(key)) return;
 //         // Multiple legacy records may point to the same Tech-Ed using ROWID,
 //         // employee ID, or label. Keep one display row per canonical roster key.
 //         if (seenOwners.has(key)) {
