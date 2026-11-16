@@ -35,13 +35,6 @@ const SCREENS = {
 };
 const ORDER = ["req", "elig", "del", "bud", "let"];
 const COLS = ["Screen", "Employee / From", "Type", "Detail", "Tech-ED", "Age", "Resolve in"];
-const QUESTIONS = [
-  "What needs attention first?",
-  "What is oldest?",
-  "Who has most open items?",
-  "Who has no Comp Manager?",
-  "What is pending for Tech-ED?",
-];
 
 /* ---------------- helpers ---------------- */
 const norm = (v) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -90,6 +83,7 @@ function ageDays(value) {
   if (Number.isNaN(t)) return null;
   return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
+const escHtml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const inr = (n) => Number(n || 0).toLocaleString("en-IN");
 const pct = (n) => Number(n || 0).toFixed(2);
 const locOf = (e) => e?.location || e?.rawEmployee?.location || e?.rawEmployee?.work_location || e?.work_location || "";
@@ -223,6 +217,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   const [sel, setSel] = useState("all");
   const [answer, setAnswer] = useState("");
   const [question, setQuestion] = useState("");
+  const [sugOpen, setSugOpen] = useState(false);
   const seq = useRef(0);
   const budgetReload = useRef(null);
   budgetReload.current = budget.reload;
@@ -480,6 +475,109 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   );
   const gridRows = shown.map(({ k, r }) => r.map((c, i) => (i === 6 ? C(SCREENS[k].open, openCell(k)) : c)));
 
+  /* ---- HR Assistant: type-ahead (Insights + People) and person profile ---- */
+  const byScr = (k) => all.filter((x) => x.k === k);
+  const directory = useMemo(() => {
+    const m = new Map();
+    const add = (n) => {
+      const v = String(n || "").trim();
+      if (v.length > 2 && v !== "—") m.set(v.toLowerCase(), v);
+    };
+    (elig?.masterEmployees || []).forEach((e) => add(e.name));
+    (roster || []).forEach((r) => add(r.name || r.emp_name));
+    all.forEach((x) => {
+      add(T(x.r[1]));
+      add(T(x.r[4]));
+    });
+    teRows.forEach((t) => add(t.name));
+    return m;
+  }, [elig, roster, all, teRows]);
+  const findPerson = (q) =>
+    [...directory.keys()].filter((k) => q.includes(k)).sort((a, b) => b.length - a.length)[0] || null;
+
+  const personLine = (k) => {
+    const mine = all.filter((x) => norm(T(x.r[1])) === k);
+    const team = all.filter((x) => norm(T(x.r[4])) === k && norm(T(x.r[1])) !== k);
+    const te = teRows.find((t) => norm(t.name) === k);
+    const parts = [];
+    if (mine.length) parts.push(`${[...new Set(mine.map((x) => T(x.r[2])))].join(", ")}${T(mine[0].r[5]) !== "—" ? ` · ${T(mine[0].r[5])} old` : ""}`);
+    if (te) parts.push(`Tech-ED · team ${te.team}${te.budget == null ? " · budget not given" : ""}${team.length ? ` · ${team.length} open in team` : ""}`);
+    if (!parts.length) parts.push("Nothing pending");
+    return parts.join(" · ");
+  };
+  const topicInsights = (t) => {
+    const out = [];
+    const is = (word, stem) => word.startsWith(t) || t.startsWith(stem || word);
+    if (is("budget")) {
+      const b = byScr("bud");
+      out.push({ h: "Budget", v: b.length ? `${b.length} Tech-ED with no budget given: ${b.map((x) => T(x.r[1])).join(", ")}` : "Every Tech-ED has a budget" });
+    }
+    if (is("delegation", "deleg") || t.startsWith("comp m")) {
+      const d = byScr("del");
+      out.push({ h: "Delegation", v: `${d.length} open: ${d.filter((x) => T(x.r[2]) === "No Comp Manager").length} with no Comp Manager, ${d.filter((x) => T(x.r[2]) === "Comp Manager inactive").length} with an inactive one` });
+    }
+    if (is("eligibility", "elig")) out.push({ h: "Eligibility", v: `${byScreen.elig.length} employees need action in the Eligibility List` });
+    if (is("letters", "letter")) {
+      const l = byScr("let");
+      out.push({ h: "Letters", v: `${l.length} need action: ${l.filter((x) => T(x.r[2]) === "Failed").length} failed, ${l.filter((x) => T(x.r[2]) === "Reviewed").length} ready to send` });
+    }
+    if (is("requests", "request")) out.push({ h: "Requests", v: `${byScr("req").length} waiting in the Request screen` });
+    return out;
+  };
+  const term = question.trim().toLowerCase();
+  const suggestions =
+    term.length < 2
+      ? { insights: [], people: [] }
+      : {
+          insights: topicInsights(term),
+          people: [...directory.entries()]
+            .filter(([k]) => k.startsWith(term) || k.split(" ").some((w) => w.startsWith(term)))
+            .slice(0, 5)
+            .map(([k, n]) => ({ name: n, line: personLine(k) })),
+        };
+  const hasSuggestions = suggestions.insights.length + suggestions.people.length > 0;
+  const pick = (text) => {
+    setQuestion(text);
+    setSugOpen(false);
+    ask(text);
+  };
+
+  const profile = (key) => {
+    const name = directory.get(key) || key;
+    const master = (elig?.masterEmployees || []).find((e) => norm(e.name) === key);
+    const rosterRow = (roster || []).find((r) => norm(r.name || r.emp_name) === key);
+    const eligRow = (elig?.data || []).find((e) => norm(e.name) === key);
+    const mine = all.filter((x) => norm(T(x.r[1])) === key);
+    const asTech = all.filter((x) => norm(T(x.r[4])) === key && norm(T(x.r[1])) !== key);
+    const te = teRows.find((t) => norm(t.name) === key);
+    const techName = String(rosterRow?.appraiser_tech_ed || master?.appraiser || master?.rawEmployee?.appraiser_tech_ed || "").trim();
+    const sec = (title, body) => `<div style="margin-top:8px"><div style="font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#102a43">${escHtml(title)}</div><div>${body}</div></div>`;
+    const none = '<span style="color:#15803d">Nothing pending ✓</span>';
+    const items = (k) => {
+      const a = mine.filter((x) => x.k === k);
+      return a.length ? a.map((x) => `${escHtml(T(x.r[2]))}: ${escHtml(T(x.r[3]))}${T(x.r[5]) !== "—" ? ` (${escHtml(T(x.r[5]))})` : ""}`).join("<br>") : none;
+    };
+    let h = `<b style="font-size:13px">${escHtml(name)}</b>${master || rosterRow ? "" : ' <span style="color:#6b7280">(not in the employee master)</span>'}`;
+    if (master || rosterRow) {
+      const des = master?.designation || master?.rawEmployee?.designation || "";
+      const st = master ? statusOf(master) : "";
+      const loc = master ? locOf(master) : "";
+      const comp = rosterRow ? String(rosterRow.delegation_comp_manager || rosterRow.comp_manager || "").trim() : "";
+      h += sec("Employee", `${[des, st, loc].filter(Boolean).map(escHtml).join(" · ") || "—"}<br>Tech-ED: ${escHtml(techName || "—")} · Comp Manager: ${escHtml(comp || (rosterRow ? "blank" : "—"))}`);
+    }
+    if (eligRow) h += sec("Eligibility", `${escHtml(statusOf(eligRow) || "—")}${mine.some((x) => x.k === "elig") ? `<br>${escHtml(T(mine.find((x) => x.k === "elig").r[3]))}` : ""}`);
+    h += sec("Delegation", items("del"));
+    const bt = te || (techName ? teRows.find((t) => sameOwner(t.name, techName)) : null);
+    let bud = items("bud");
+    if (bt) bud = `${bt.budget == null ? `<span style="color:#b7791f">Budget not given</span> for ${escHtml(bt.name)}` : `Budget ${inr(bt.budget)} for Tech-ED ${escHtml(bt.name)}, used ${pct(bt.used)}%`}${bud.includes("Nothing") ? "" : `<br>${bud}`}`;
+    h += sec("Budget", bud);
+    const reqs = [...mine.filter((x) => x.k === "req"), ...asTech.filter((x) => x.k === "req")];
+    h += sec("Requests", reqs.length ? reqs.map((x) => `${escHtml(T(x.r[2]))}: ${escHtml(T(x.r[3]))}`).join("<br>") : none);
+    h += sec("Letters", items("let"));
+    if (te) h += sec("As Tech-ED", `Team size ${te.team}${asTech.length ? `<br>${asTech.length} open item${asTech.length === 1 ? "" : "s"} in the team` : ""}`);
+    return `${h}<div style="margin-top:8px;color:#6b7280;font-size:11px">Read-only.</div>`;
+  };
+
   /* ---- HR Assistant: answers come from the list on the left ---- */
   const ask = (text) => {
     const q = String(text || "").toLowerCase();
@@ -490,10 +588,20 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     const te = (x) => T(x.r[4]);
     const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
     let out = "";
+    const personKey = findPerson(q);
     const byName = all.filter((x) => q && q.includes(T(x.r[1]).toLowerCase()) && T(x.r[1]).length > 2);
     const teName = [...new Set(all.map(te).filter((n) => n && n !== "—"))].find((n) => q.includes(n.toLowerCase()));
     if (!all.length) out = "Nothing needs attention for this location right now.";
-    else if (/pending|waiting|open for/.test(q) && teName) {
+    else if (/pending for each|each tech|per tech|by tech/.test(q)) {
+      const c = {};
+      all.forEach((x) => {
+        const t = te(x);
+        if (t && t !== "—") c[t] = (c[t] || 0) + 1;
+      });
+      out = `Open items by Tech-ED: ${Object.keys(c).sort((a, b) => c[b] - c[a]).map((t) => `<b>${esc(t)}</b> ${c[t]}`).join(" · ")}.`;
+    } else if (personKey && !/pending|waiting|open for|who has|\bwhy\b|listed|reason/.test(q)) {
+      out = profile(personKey);
+    } else if (/pending|waiting|open for/.test(q) && teName) {
       const mine = all.filter((x) => te(x) === teName);
       out = `<b>${esc(teName)}</b> has ${mine.length} open item${mine.length === 1 ? "" : "s"}: ${mine.map((x) => `${esc(T(x.r[1]))} › ${esc(T(x.r[2]))}`).join(", ")}.`;
     } else if (/\bwhy\b|listed|reason/.test(q) && byName.length) {
@@ -516,9 +624,22 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       const lead = ORDER.map((k) => [k, byScreen[k].length]).filter(([, n]) => n).sort((a, b) => b[1] - a[1])[0];
       const failedLetters = byScreen.let.filter((r) => T(r[2]) === "Failed").length;
       out = `Largest pile: <b>${lead[1]} in ${esc(SCREENS[lead[0]].label)}</b>.${failedLetters ? ` Also <b>${failedLetters}</b> failed letter(s) to resend.` : ""}`;
+    } else if (/eligib/.test(q)) {
+      out = `<b>${byScreen.elig.length}</b> employees need action in Eligibility List › Action needed.`;
+    } else if (/deleg/.test(q)) {
+      const d = byScreen.del;
+      out = `<b>${d.length}</b> in Delegation: ${d.filter((r) => T(r[2]) === "No Comp Manager").length} with no Comp Manager, ${d.filter((r) => T(r[2]) === "Comp Manager inactive").length} with an inactive Comp Manager.`;
+    } else if (/letter/.test(q)) {
+      const l = byScreen.let;
+      out = `<b>${l.length}</b> letters need action: ${l.filter((r) => T(r[2]) === "Failed").length} failed, ${l.filter((r) => T(r[2]) === "Reviewed").length} reviewed and ready to send, ${l.filter((r) => T(r[2]) === "Alert").length} with the sheet changed after the letter was made.`;
+    } else if (/budget/.test(q)) {
+      const b = byScreen.bud;
+      out = b.length ? `<b>${b.length}</b> Tech-ED with no budget given: ${b.map((r) => esc(T(r[1]))).join(", ")}.` : "Every Tech-ED has a budget.";
+    } else if (/request/.test(q)) {
+      out = `<b>${byScreen.req.length}</b> requests are waiting in the Request screen.`;
     } else {
       const sc = ORDER.find((k) => q.includes(SCREENS[k].label.toLowerCase().split(" ")[0]));
-      out = sc ? `<b>${byScreen[sc].length}</b> open in ${esc(SCREENS[sc].label)}.` : "I can answer about oldest items, who has the most, who has no Comp Manager, why someone is listed, and what is pending for a Tech-ED.";
+      out = sc ? `<b>${byScreen[sc].length}</b> open in ${esc(SCREENS[sc].label)}.` : "I can answer about a person, oldest items, who has the most, eligibility, delegation, letters, budget and requests.";
     }
     setAnswer(out);
   };
@@ -645,23 +766,48 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
           <section className="hrd-card">
             <div className="hrd-ch"><h3>Ask the HR Assistant</h3></div>
             <div className="hrd-cb hrd-ask">
-              <div className="q">
-                {QUESTIONS.map((q) => (
-                  <button key={q} type="button" onClick={() => ask(q)}>{q}</button>
-                ))}
-              </div>
               <div className="in">
                 <input
                   value={question}
-                  placeholder="e.g. why is a name listed, who has no Comp Manager"
-                  onChange={(e) => setQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && ask(question)}
+                  placeholder="Type a name or a topic, e.g. budget, delegation"
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setQuestion(e.target.value);
+                    setSugOpen(true);
+                  }}
+                  onFocus={() => setSugOpen(true)}
+                  onBlur={() => setTimeout(() => setSugOpen(false), 120)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSugOpen(false);
+                    if (e.key === "Enter") {
+                      setSugOpen(false);
+                      ask(question);
+                    }
+                  }}
                 />
-                <button type="button" className="hrd-btn go" onClick={() => ask(question)}>Ask</button>
+                <button type="button" className="hrd-btn go" onClick={() => { setSugOpen(false); ask(question); }}>Ask</button>
+                {sugOpen && hasSuggestions && (
+                  <div className="hrd-sg">
+                    {suggestions.insights.length > 0 && <div className="hd">Insights</div>}
+                    {suggestions.insights.map((t) => (
+                      <div key={`i-${t.h}`} className="it" onMouseDown={(e) => { e.preventDefault(); pick(t.h); }}>
+                        <b>{t.h}</b>
+                        <span>{t.v}</span>
+                      </div>
+                    ))}
+                    {suggestions.people.length > 0 && <div className="hd">People</div>}
+                    {suggestions.people.map((p) => (
+                      <div key={`p-${p.name}`} className="it" onMouseDown={(e) => { e.preventDefault(); pick(p.name); }}>
+                        <b>{p.name}</b>
+                        <span>{p.line}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div
                 className="hrd-ans"
-                dangerouslySetInnerHTML={{ __html: answer || "Pick a question or type one. Answers come from the list on the left." }}
+                dangerouslySetInnerHTML={{ __html: answer || "Type a name or a topic. Answers come from the list on the left." }}
               />
             </div>
           </section>
