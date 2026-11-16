@@ -2022,7 +2022,6 @@ async function enrichPreviousAppraisalValues(
       return;
     }
     const rank = historyCycleRank(cycle);
-    const priorStatus = cycleStatusOf(cycle);
     const archived = isArchivedCycle(cycle);
     if (!archived) return;
     const sameYearNewJoinerCycle =
