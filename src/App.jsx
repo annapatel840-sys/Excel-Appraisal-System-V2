@@ -150,9 +150,15 @@ function accessAllowedPath(path, access, isTechEd = false) {
   );
   if (isTechEd && path === "/employee-master") {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    return requestedTab === "delegation" ? path + "?tab=delegation" : "/";
+    if (requestedTab === "delegation" && access.canScreen("delegation"))
+      return path + "?tab=delegation";
+    // Delegation is None for this login: fall through to the first allowed screen.
+    const firstAllowed = FIRST_SCREEN_PATHS.find(([key]) => access.canScreen(key));
+    return firstAllowed ? firstAllowed[1] : null;
   }
-  if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
+  // Budget Distribution follows the access rule even for Tech-ED.
+  if (isTechEd && path !== "/budget-distribution" && TECH_ED_PATHS.includes(path))
+    return path;
   const allowed =
     path === "/bulk-edit"
       ? access.canScreen("bulkEditScreen")

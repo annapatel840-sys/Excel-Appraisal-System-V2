@@ -3852,7 +3852,8 @@ export function EmployeeMaster() {
     // Tech-Ed may open the existing Delegation screen without exposing the
     // other HR Operations tabs. DelegationScreen still applies action-level
     // permissions and routes Tech-Ed changes through HR approval.
-    if (tab === "delegation" && isTechEd) return true;
+    if (tab === "delegation" && isTechEd)
+      return access.ok ? access.canScreen("delegation") : true;
     // Without access rules these HR Operations screens are HR only. With
     // access rules each has its own screen (None / View / Edit), below.
     if (

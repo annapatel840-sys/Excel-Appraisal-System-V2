@@ -606,18 +606,19 @@ export function AppShell({ children, headerActions, notifications }) {
             label: "Detailed Screen",
             icon: BookOpen,
           },
-          isTechEd && {
-            to: "/employee-master?tab=delegation",
-            label: "Delegation",
-            icon: Users,
-          },
+          isTechEd &&
+            access.canScreen("delegation") && {
+              to: "/employee-master?tab=delegation",
+              label: "Delegation",
+              icon: Users,
+            },
           access.canScreen("bulkEditScreen") && {
             to: "/bulk-edit",
             label: "Bulk Edit",
             icon: SlidersHorizontal,
           },
-          (isTechEd ||
-            (isCompManager && access.canScreen("budgetDistribution"))) && {
+          (isTechEd || isCompManager) &&
+            access.canScreen("budgetDistribution") && {
             to: "/budget-distribution",
             label: "Budget Distribution",
             icon: WalletCards,
