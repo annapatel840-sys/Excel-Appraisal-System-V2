@@ -2156,7 +2156,7 @@ export function DetailScreenPage({
                           hidePrev={hid("newBaseSalary")}
                           exc={excEach((rec) => (
                             <>
-                              <div style={{ width: "62%", minWidth: 110 }}>
+                              <div style={{ width: "100%" }}>
                                 <ReadOnlyInput value={fmt(rec.newBasePay)} />
                               </div>
                               <span style={subNote}>
@@ -2167,7 +2167,7 @@ export function DetailScreenPage({
                           ))}
                           prev={
                             <>
-                              <div style={{ width: "62%", minWidth: 110 }}>
+                              <div style={{ width: "100%" }}>
                                 <ReadOnlyInput value={dashPrev(last?.newBasePay)} />
                               </div>
                               {last && (
