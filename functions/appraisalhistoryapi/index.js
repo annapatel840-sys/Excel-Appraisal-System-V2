@@ -1226,25 +1226,8 @@ module.exports = async (req, res) => {
         return;
       }
 
-      /* ------------------------------------------------------
-      ONLY ALLOW 2025 AND 2026 HISTORY
-      ------------------------------------------------------ */
-
-      const normalizedYear = appraisalYear.toLowerCase().trim();
-
-      const is2025 =
-        normalizedYear.includes("2025") || normalizedYear.includes("apr-25");
-
-      const is2026 =
-        normalizedYear.includes("2026") || normalizedYear.includes("apr-26");
-
-      if (!is2025 && !is2026) {
-        sendJson(res, 400, {
-          success: false,
-          message: "Only 2025 and 2026 appraisal history can be updated.",
-        });
-        return;
-      }
+      // Do not hard-code appraisal years here. History rows are updated by
+      // their exact cycle/year key, so future and archived cycles remain valid.
 
       /* ------------------------------------------------------
       BUILD UPDATE DATA
