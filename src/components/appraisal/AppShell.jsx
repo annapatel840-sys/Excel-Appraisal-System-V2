@@ -529,9 +529,9 @@ export function AppShell({ children, headerActions, notifications }) {
           },
         ]
       : []),
-    ...(!isCompManager
-      ? [{ to: "/bulk-edit", label: "Bulk Edit", icon: SlidersHorizontal }]
-      : []),
+    // Bulk Edit is in every role's menu; with access rules on, it is hidden only
+    // when the role's Bulk Edit screen is set to None (see the access-based menu below).
+    { to: "/bulk-edit", label: "Bulk Edit", icon: SlidersHorizontal },
     ...(!isTechEd && !isCompManager
       ? [
           {
