@@ -2350,6 +2350,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     ]).filter(([id]) => id),
   );
   const basePayrollCandidatesByEmployee = new Map();
+  // Keep the same-year New Joiner cycle tied to its employee. Its feedback
+  // and rating must come from that employee's New Joiner cycle, not the shared
+  // Annual source cycle used for existing employees.
+  const newJoinerCycleKeysByEmployee = new Map();
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
     if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
@@ -2401,6 +2405,13 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const latestAnnual = candidates.filter((item) => isAnnualCycle(item.cycle) && isBeforeCurrentCycle(item.cycle)).sort(compareNewest)[0];
     const selected = sharedSource || sameYearNewJoiner || latestAnnual;
     if (!selected) return;
+    if (selected.sameYearNewJoiner) {
+      newJoinerCycleKeysByEmployee.set(empId, new Set(
+        [selected.cycle.id, selected.cycle.sourceRowId, selected.cycle.name]
+          .map((value) => referenceText(value).toLowerCase())
+          .filter(Boolean),
+      ));
+    }
     const sourceMasterId = referenceText(selected.row.emp_id ?? selected.row.employee_master_id);
     if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
     // Also index by actual Employee_Master ROWID when payroll emp_id stores
@@ -2442,7 +2453,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const feedbackCycle = referenceText(fieldValue(
       row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year",
     )).toLowerCase();
-    if (!rawEmployee || !feedbackCycleKeys.has(feedbackCycle)) return;
+    if (!rawEmployee) return;
 
     // emp_ID is a lookup to Employee_Master.ROWID in current uploads, but
     // older records may contain the employee's business ID instead.
@@ -2454,6 +2465,11 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const empId = master
       ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
       : rawEmployee.toLowerCase();
+    const employeeNewJoinerCycleKeys = newJoinerCycleKeysByEmployee.get(empId);
+    if (
+      !feedbackCycleKeys.has(feedbackCycle) &&
+      !employeeNewJoinerCycleKeys?.has(feedbackCycle)
+    ) return;
 
     const previousMaster = feedbackByMasterId.get(masterId);
     if (!previousMaster ||
