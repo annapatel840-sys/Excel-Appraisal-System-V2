@@ -72,7 +72,8 @@ function Toggle({ value, options, onChange }) {
           onClick={() => onChange(k)}
           className={cn(
             MONO,
-            "px-2 py-[3px] text-[10px] font-semibold",
+            "cursor-pointer px-2 py-[3px] text-[10px] font-semibold transition-colors",
+            value !== k && "hover:bg-[#F3F5F8]",
             value === k ? "bg-[#1D3B5E] text-white" : "bg-white text-[#6B7280]",
           )}
         >
@@ -230,7 +231,7 @@ function PeopleList({ list, onClose }) {
         <span className="text-[11.5px] text-[#6B7280]">
           {inr(list.rows.length)} people{list.rows.length > 50 ? " · showing first 50" : ""}
         </span>
-        <button type="button" onClick={onClose} className="ml-auto rounded-md border border-[#D1D5DB] bg-white px-3 py-1 text-xs font-bold">
+        <button type="button" onClick={onClose} className="ml-auto cursor-pointer rounded-md border border-[#D1D5DB] bg-white px-3 py-1 text-xs font-bold hover:bg-[#F3F5F8]">
           Close
         </button>
       </div>
@@ -355,7 +356,7 @@ export function DashboardOverview() {
     <button
       type="button"
       onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}
-      className="ml-auto text-[11.5px] font-semibold text-[#1559A6]"
+      className="ml-auto cursor-pointer text-[11.5px] font-semibold text-[#1559A6] hover:underline"
     >
       {expanded[key] ? "Show less" : "See all"} ›
     </button>
@@ -390,7 +391,10 @@ export function DashboardOverview() {
   const Row = ({ label, mid, right, onClick }) => (
     <div
       onClick={onClick}
-      className="grid cursor-pointer grid-cols-[minmax(86px,34%)_1fr_auto] items-center gap-2 border-t border-[#E5E7EB] py-1.5 text-xs first:border-t-0"
+      className={cn(
+        "grid grid-cols-[minmax(86px,34%)_1fr_auto] items-center gap-2 border-t border-[#E5E7EB] py-1.5 text-xs first:border-t-0",
+        onClick && "cursor-pointer hover:bg-[#F7F9FB]",
+      )}
     >
       <span className="truncate font-semibold text-[#102A43]" title={label}>{label}</span>
       <div className="space-y-1">{mid}</div>
@@ -657,11 +661,11 @@ export function DashboardOverview() {
             <span className="text-[#6B7280]">By level</span>
             {levels.length > 1 ? (
               <select
-                className="rounded-md border border-[#D1D5DB] bg-white px-2 py-1 text-xs"
+                className="cursor-pointer rounded-md border border-[#D1D5DB] bg-white px-2 py-1 text-xs"
                 value={level.k}
                 onChange={(e) => { setLevelKey(e.target.value); setExpanded({}); setList(null); }}
               >
-                {levels.map((l) => <option key={l.k} value={l.k}>{l.n}</option>)}
+                {levels.map((l) => <option key={l.k} value={l.k} className="cursor-pointer">{l.n}</option>)}
               </select>
             ) : <b>{level.n}</b>}
             <Toggle value={view} onChange={setView} options={[["b", "Bars"], ["c", "Columns"]]} />
