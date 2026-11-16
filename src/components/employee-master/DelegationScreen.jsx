@@ -2970,7 +2970,7 @@ export default function DelegationScreen({
     const startedGeneration = delegationGeneration();
     const savedKey = delegationSnapshotKey(
       catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "",
-      selectedLocation,
+      "All",
     );
     let freshApplied = false;
     try {
@@ -2985,17 +2985,11 @@ export default function DelegationScreen({
           setShowingSaved(true);
         });
       }
-      // The roster does not depend on the cycle lookup (employeesapi finds the
-      // active cycle itself), so start page 1 together with the cycle list
-      // instead of after it. Only page 1 writes lookups, so this is safe.
-      // The roster is the slow call, so it is queued before the (tiny) cycle
-      // list: catalystFetch runs at most two requests at a time.
-      // The first load joins the request the sign-in prefetch already started
-      // (if any); explicit reloads always ask the server again.
-      const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
-      firstPromise.catch(() => {}); // reported where it is awaited below
-      const cyclesPromise = payrollCycleRequest("cycles");
-      const cycles = await cyclesPromise;
+      // Resolve the location's active cycle first, then request that exact
+      // cycle's roster without a location filter. Delegation assignment options
+      // must include all employees across locations, while the universal header
+      // still determines which cycle is being worked on.
+      const cycles = await payrollCycleRequest("cycles");
       const allLocationsSelected =
         !selectedLocation ||
         ["all", "all locations"].includes(String(selectedLocation).trim().toLowerCase());
@@ -3032,6 +3026,13 @@ export default function DelegationScreen({
       );
       setActiveCycleId(cycleId);
       setActiveCycleName(cycleName);
+
+      const firstPromise = fetchDelegationRoster({
+        fresh: !initial,
+        location: "All",
+        cycleId,
+      });
+      firstPromise.catch(() => {}); // reported where it is awaited below
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
