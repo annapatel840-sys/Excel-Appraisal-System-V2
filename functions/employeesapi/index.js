@@ -4833,8 +4833,27 @@ async function updateEmployee(req, res) {
   const currentCycleLocation = String(
     currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? body.location ?? "",
   ).trim().toLowerCase();
+  // Generated Appraisal_Sheet rows have existed with more than one
+  // cycle identifier shape: Catalyst ROWID, the cycle's logical id, or a
+  // cycle-name alias. Match every identifier exposed by the selected cycle,
+  // not only ROWID, so a valid row is not rejected when those IDs differ.
   const cycleAliases = new Set(
-    [currentCycleId, currentCycleName]
+    [
+      currentCycle?.ROWID,
+      currentCycle?.rowid,
+      currentCycle?.id,
+      currentCycle?.ID,
+      currentCycle?.cycle_id,
+      currentCycle?.appraisal_cycle_id,
+      currentCycle?.cycleId,
+      currentCycle?.appraisalCycleId,
+      currentCycleName,
+      currentCycle?.cycle_name,
+      currentCycle?.cycleName,
+      currentCycle?.appraisal_year,
+      currentCycle?.appraisalYear,
+    ]
+      .map(historyReference)
       .filter(Boolean)
       .map(function (value) { return value.trim().toLowerCase(); }),
   );
