@@ -642,7 +642,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster[0].previous_appraisal_total_ctc_with_rewards, 2750000);
   });
 
-  await t('Org Budget Base reads Payroll CTC from Archived and Completed prior cycles', async () => {
+  await t('Org Budget Base reads Payroll CTC from archived prior cycles', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -710,7 +710,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 0);
   });
 
-  await t('location-cycle Org Budget Base reuses the active shared Annual payroll value', async () => {
+  await t('location-cycle Org Budget Base reuses the archived shared Annual payroll value', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -720,7 +720,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
-        { cycle_name: 'Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'All' },
+        { cycle_name: 'Annual 2027', start_date: '2026-04-01', status: 'Archived', archived: true, location: 'All' },
         { cycle_name: 'United States - Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'United States' },
       ],
       Appraisal_Sheet: [
@@ -774,9 +774,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 1250000 + 875000);
-    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 1250000);
-    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E2').previous_appraisal_total_ctc_with_rewards, 875000);
+    assert.strictEqual(r.json.master[0].org_budget_base, 27000 + 27000);
+    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 27000);
+    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E2').previous_appraisal_total_ctc_with_rewards, 27000);
   });
 
   await t('empty pay columns: base 0 with a clear warning', async () => {
