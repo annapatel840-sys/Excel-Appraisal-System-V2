@@ -3636,6 +3636,78 @@ function shapeFeedbackBatches(auditRows) {
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
+/* Rows of one table whose `column` is one of `values`, read in batches of IDs
+   (ZCQL IN list) and pages of 300 by ROWID. Batches run through the shared
+   read limiter. `numeric` writes the values unquoted (ROWID columns). */
+const SCOPED_IN_BATCH = 150;
+async function readRowsWhereIn(tables, tableName, column, values, numeric = false) {
+  const clean = [...new Set((values || []).map((v) => String(v ?? "").trim()).filter(Boolean))]
+    .filter((v) => (numeric ? /^\d{1,30}$/.test(v) : !/['\\]/.test(v)));
+  const batches = [];
+  for (let i = 0; i < clean.length; i += SCOPED_IN_BATCH) batches.push(clean.slice(i, i + SCOPED_IN_BATCH));
+  const pages = await Promise.all(batches.map(async (batch) => {
+    const list = batch.map((v) => (numeric ? v : "'" + v + "'")).join(",");
+    const rows = [];
+    let last = "0";
+    for (let guard = 0; guard < 100; guard += 1) {
+      const result = await fastReadQuery(
+        tables.zcql,
+        "SELECT * FROM " + tableName + " WHERE " + column + " IN (" + list + ") AND ROWID > " + last + " ORDER BY ROWID ASC LIMIT 300",
+        tableName + " scoped read",
+      );
+      const page = (result || []).map((item) => unwrapZcqlRow(item, tableName)).filter(Boolean);
+      rows.push(...page);
+      if (page.length < 300) break;
+      const next = String(page[page.length - 1].ROWID || "");
+      if (!next || next === last) break;
+      last = next;
+    }
+    return rows;
+  }));
+  const seen = new Set();
+  return pages.flat().filter((row) => {
+    const id = String(row.ROWID || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+/* Feedback for a team-scoped login (Tech ED / Comp Manager): the same rows and
+   shape as getFeedbackData, but only the team's Employee_Master rows and their
+   Feedback_And_Rating rows are read. The caller still applies access.inScope. */
+async function getScopedFeedbackData(tables, query, scope) {
+  if (!tables.zcql || typeof tables.zcql.executeZCQLQuery !== "function") return null;
+  const rowIds = (scope.rowIds || []).map((v) => String(v).trim()).filter(Boolean);
+  const empIds = (scope.empIds || []).map((v) => String(v).trim()).filter(Boolean);
+  const empIdVariants = [...new Set(empIds.flatMap((v) => [v, v.toUpperCase(), v.toLowerCase()]))];
+  const [cycleRows, mastersByRowId, mastersByEmpId] = await Promise.all([
+    readTableFast(tables, "cycles"),
+    readRowsWhereIn(tables, "Employee_Master", "ROWID", rowIds, true),
+    readRowsWhereIn(tables, "Employee_Master", "emp_id", empIdVariants),
+  ]);
+  const masterRows = [...mastersByRowId, ...mastersByEmpId];
+  // Feedback rows name the employee by Employee_Master ROWID (older rows may use the code).
+  const feedbackKeys = [...new Set([...masterRows.map((row) => rowId(row)), ...rowIds, ...empIdVariants])];
+  const feedbackRows = await readRowsWhereIn(tables, "Feedback_And_Rating", "emp_ID", feedbackKeys);
+
+  const masterByRowId = new Map();
+  const masterByEmpId = new Map();
+  masterRows.forEach((row) => {
+    if (rowId(row)) masterByRowId.set(rowId(row), row);
+    const business = fbText(row.emp_id).toLowerCase();
+    if (business) masterByEmpId.set(business, row);
+  });
+  const cycles = cycleRows.map(normalizeCycle).filter((c) => c.status !== "Cancelled").map(shapeFeedbackCycle);
+  const cycleById = new Map(cycles.map((c) => [c.id, c]));
+  const onlyCycle = fbText(query.cycleId || query.cycle_id);
+  const rows = feedbackRows
+    .sort((x, y) => (BigInt(String(x.ROWID || 0)) < BigInt(String(y.ROWID || 0)) ? -1 : 1))
+    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
+    .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
+  return { cycles, rows, batches: [] };
+}
+
 async function getFeedbackData(tables, query, includeBatches = true) {
   // The independent tables are read together (bounded by the shared read
   // limits) through the unchanged-table cache instead of one after another.
@@ -3921,7 +3993,19 @@ async function routeRequest(req, res, identity, resource, a) {
   }
 
   if (resource === "feedback" && req.method === "GET") {
-    const data = await getFeedbackData(tables, query, Boolean(a && a.scope && a.scope.all));
+    const teamScoped = Boolean(a && a.scope && !a.scope.all);
+    // A team-scoped login only needs its own team's rows: read just those
+    // (a few small queries) instead of the whole Feedback_And_Rating and
+    // Employee_Master tables. Any problem falls back to the full read below;
+    // the team filter that follows is applied either way.
+    let data = null;
+    if (teamScoped) {
+      data = await getScopedFeedbackData(tables, query, a.scope).catch((error) => {
+        console.warn("[payrollcycleapi] scoped feedback read failed; using the full read:", (error && error.message) || error);
+        return null;
+      });
+    }
+    if (!data) data = await getFeedbackData(tables, query, Boolean(a && a.scope && a.scope.all));
     // HR (scope.all) gets everything. Any other login (Tech ED / Comp Manager) only
     // gets the feedback of the employees in their own team, and no upload-batch
     // history (that belongs to the HR-only Feedback & Rating Master screen).
