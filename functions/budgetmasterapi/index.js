@@ -2353,17 +2353,14 @@ async function calculateBudgetBases(
         const candidateName = cycleNameOf(candidate);
         const candidateYear = cycleYearOf(candidate);
         const candidateStatus = String(candidate.status || "").trim().toLowerCase();
-        const archived = [true, 1, "true", "1", "yes", "archived"].includes(
-          typeof candidate.archived === "string" ? candidate.archived.trim().toLowerCase() : candidate.archived,
-        );
         const hidden = [true, 1, "true", "1", "yes"].includes(
           typeof candidate.hidden === "string" ? candidate.hidden.trim().toLowerCase() : candidate.hidden,
         );
-        // New Joiner cycles can remain Active because their process is None.
-        // Their same-year payroll upload is still the authoritative source.
+        // New Joiner process=None cycles may remain Active; once closed they
+        // become a history source only after explicit archival.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
-          !archived &&
+          (isHistoricalCycle(candidate) || candidateStatus === "active") &&
           !hidden &&
           !["cancelled", "canceled"].includes(candidateStatus);
       })
