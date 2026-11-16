@@ -3586,15 +3586,29 @@ async function getEmployees(req, res) {
     }
     const techEd = collect("appraiser_tech_ed");
     const compManagers = collect("comp_manager");
+    // Dropdown options must be global across locations, not derived from the
+    // currently selected location's appraisal roster.
+    const employees = masterRows
+      .map((row) => {
+        const status = String(row.emp_status || row.status || "Active").trim().toLowerCase();
+        if (["inactive", "disabled", "terminated"].includes(status)) return null;
+        const empId = String(row.emp_id || row.employee_id || "").trim();
+        const name = String(row.emp_name || row.name || "").trim();
+        return empId && name ? { empId, name, label: empId + " - " + name } : null;
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.label.localeCompare(right.label));
     return sendJson(res, 200, {
       success: true,
       data: {
         techEd: techEd,
         compManagers: compManagers,
+        employees: employees,
         counts: {
           employeeMasterRows: masterRows.length,
           techEd: techEd.length,
           compManagers: compManagers.length,
+          employees: employees.length,
         },
       },
     });
