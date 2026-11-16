@@ -3329,78 +3329,58 @@ async function calculateBudgetBases(
     const sheetBaseValue = (employee) => n(employee?.base);
     const previousExpenseValue = (employee) => n(employee?.last_year_expenses);
 
-    // Org Budget Base must be the literal sum of the generated rows for
-    // this cycle, using only Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards.
-    // Do not add Employee_Master/payroll fallbacks or apply another eligibility
-    // filter here: that can make the base differ from the employees HR sees in
-    // the generated Appraisal Sheet. Collapse legacy duplicate rows by employee
-    // and keep the latest row in the current cycle.
-    const orgBaseSheetRowsByEmployee = new Map();
-    currentAppraisalRows.forEach((sheetRow) => {
+    // The Appraisal Sheet API enriches each generated row with the employee's
+    // previous_appraisal_total_ctc_with_rewards value from the matching
+    // archived/shared payroll source. That value is returned in the sheet
+    // response; it is not a physical Appraisal_Sheet column in every legacy
+    // Catalyst schema. Budget Master must use that same enriched value, while
+    // keeping the roster strictly limited to the current generated sheet.
+    // Never add employees from Employee_Master, Eligibility_List, or payroll.
+    const orgBaseRowsByEmployee = new Map();
+    appraisalSheetEmployees.forEach((employee) => {
       const employeeId = String(
-        firstValue(sheetRow, [
-          "emp_id",
-          "empId",
-          "employee_id",
-          "employeeId",
-          "employee_id_text",
-        ]) || idOf(sheetRow),
+        firstValue(employee, ["emp_id", "employeeId", "employee_id"]) ||
+          employee.employeeId ||
+          "",
       ).trim();
-      if (employeeId) {
-        orgBaseSheetRowsByEmployee.set(employeeId.toLowerCase(), {
-          employeeId,
-          sheetRow,
-        });
-      }
+      if (!employeeId) return;
+      orgBaseRowsByEmployee.set(employeeId.toLowerCase(), {
+        employeeId,
+        ctc: n(employee.base),
+        hasPreviousCtc: n(employee.base) > 0,
+        sheetPreviousCtc: n(employee.sheet_previous_appraisal_ctc),
+      });
     });
-    const orgBaseRows = Array.from(orgBaseSheetRowsByEmployee.values()).map(
-      ({ employeeId, sheetRow }) => {
-        const rawCtc = firstValue(sheetRow, [
-          "Previous_Appraisal_total_CTC_with_rewards",
-          "previous_appraisal_total_ctc_with_rewards",
-          "previousAppraisalTotalCtcWithRewards",
-        ]);
-        const hasStoredCtc =
-          rawCtc !== null &&
-          rawCtc !== undefined &&
-          String(rawCtc).trim() !== "";
-        return {
-          employeeId,
-          ctc: hasStoredCtc ? n(rawCtc) : 0,
-          hasStoredCtc,
-        };
-      },
-    );
+    const orgBaseRows = Array.from(orgBaseRowsByEmployee.values());
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "current-cycle generated Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards raw values",
+        "current-cycle generated Appraisal_Sheet employees using the same enriched Previous_Appraisal_total_CTC_with_rewards values returned by the Appraisal Sheet",
       budgetBaseSheetRows: currentAppraisalRows.length,
       budgetBaseGeneratedEmployees: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: orgBaseRows.length,
       budgetBaseCycleEligibilityRows: orgBaseRows.length,
       budgetBaseEligibilityFilterDelta: 0,
-      budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,
-      budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc)
-        .length,
+      budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc > 0).length,
+      budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.sheetPreviousCtc > 0).length,
       budgetBaseRawCtcSum: orgBase,
       budgetBaseMissingEmployeeIds: orgBaseRows
-        .filter((row) => !row.hasStoredCtc)
+        .filter((row) => !row.hasPreviousCtc)
         .map((row) => row.employeeId)
         .slice(0, 20),
-      employeesWithBase: orgBaseRows.filter((row) => row.hasStoredCtc && row.ctc > 0).length,
+      employeesWithBase: orgBaseRows.filter((row) => row.hasPreviousCtc).length,
       baseColumns:
-        "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards from current-cycle generated rows only; no payroll or Employee_Master fallback",
+        "Appraisal_Sheet current-cycle generated employee roster enriched with previous_appraisal_total_ctc_with_rewards; no additional employees",
       budgetBaseSheetRowCountMismatch:
         currentAppraisalRows.length !== legacyEligibilityCount,
     };
-    const missingOrgBaseRows = orgBaseRows.filter((row) => !row.hasStoredCtc).length;
+    const missingOrgBaseRows = orgBaseRows.filter((row) => !row.hasPreviousCtc).length;
     if (orgBaseRows.length && missingOrgBaseRows) {
-      bundle.diagnostics.warning = orgBaseRows.length === missingOrgBaseRows
-        ? `None of the ${orgBaseRows.length} generated Appraisal Sheet employees has a stored Previous_Appraisal_total_CTC_with_rewards value, so the Org Budget Base is 0. Check the generated Appraisal_Sheet rows.`
-        : `${missingOrgBaseRows} of ${orgBaseRows.length} generated Appraisal Sheet employees have no stored Previous_Appraisal_total_CTC_with_rewards value. Org Budget Base includes only the stored values.`;
+      bundle.diagnostics.warning = missingOrgBaseRows === orgBaseRows.length
+        ? `None of the ${orgBaseRows.length} generated Appraisal Sheet employees has a usable Previous_Appraisal_total_CTC_with_rewards value. Org Budget Base is 0; check their matching archived/shared payroll source records.`
+        : `${missingOrgBaseRows} of ${orgBaseRows.length} generated Appraisal Sheet employees have no usable Previous_Appraisal_total_CTC_with_rewards value. Org Budget Base includes the available employee values.`;
     }
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
