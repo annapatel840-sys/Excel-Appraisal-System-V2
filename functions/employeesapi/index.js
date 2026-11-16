@@ -1798,7 +1798,7 @@ async function enrichPreviousAppraisalValues(
     if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
     const archived = isArchivedCycle(cycle);
     const rank = historyCycleRank(cycle);
-    if (!archived || (currentRank > 0 && rank >= currentRank)) return;
+    if (!archived || (currentRank > 0 && rank > currentRank)) return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -1879,14 +1879,7 @@ async function enrichPreviousAppraisalValues(
             ["all", "all locations", "alllocations"].includes(
               location.toLowerCase(),
             );
-          const status = cycleStatusOf(candidate);
-          const archived =
-            candidate?.archived === true ||
-            ["true", "1", "yes", "archived"].includes(
-              String(candidate?.archived ?? "")
-                .trim()
-                .toLowerCase(),
-            );
+          const archived = isArchivedCycle(candidate);
           return (
             unscoped &&
             archived &&
