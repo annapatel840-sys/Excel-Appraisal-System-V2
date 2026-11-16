@@ -20,21 +20,33 @@
 // async function readAuditPage(table, options) {
 //   let release;
 //   const previous = auditReadQueue;
-//   auditReadQueue = new Promise((resolve) => { release = resolve; });
+//   auditReadQueue = new Promise((resolve) => {
+//     release = resolve;
+//   });
 //   await previous;
 //   try {
 //     for (let attempt = 0; ; attempt += 1) {
 //       try {
 //         return await table.getPagedRows(options);
 //       } catch (error) {
-//         const status = Number(error && (error.statusCode || error.status || error.status_code));
-//         const code = String(error && error.code || "").toUpperCase();
-//         const message = String(error && error.message || "").toLowerCase();
-//         const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
-//           ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
-//           /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+//         const status = Number(
+//           error && (error.statusCode || error.status || error.status_code),
+//         );
+//         const code = String((error && error.code) || "").toUpperCase();
+//         const message = String((error && error.message) || "").toLowerCase();
+//         const transient =
+//           [408, 429, 500, 502, 503, 504].includes(status) ||
+//           [
+//             "TOO_MANY_REQUESTS",
+//             "COMPONENT",
+//             "ETIMEDOUT",
+//             "ECONNRESET",
+//           ].includes(code) ||
+//           /concurrency limit|too many requests|temporarily unavailable|timed out/.test(
+//             message,
+//           );
 //         if (!transient || attempt >= 4) throw error;
-//         const delay = 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
+//         const delay = 400 * 2 ** attempt + Math.floor(Math.random() * 250);
 //         console.warn("Retrying audit Data Store read, attempt", attempt + 1);
 //         await new Promise((resolve) => setTimeout(resolve, delay));
 //       }
@@ -73,7 +85,11 @@
 // const SYSTEM_EMP_IDS = new Set(["", "CYCLE", "SYSTEM", "ALL"]);
 
 // function isSystemEmpId(empId) {
-//   return SYSTEM_EMP_IDS.has(String(empId || "").trim().toUpperCase());
+//   return SYSTEM_EMP_IDS.has(
+//     String(empId || "")
+//       .trim()
+//       .toUpperCase(),
+//   );
 // }
 
 // function isHrAdmin(a) {
@@ -364,7 +380,10 @@
 //       }
 //     });
 //     if (!allowed) {
-//       throw new access.HttpError(403, "You do not have access to audit history.");
+//       throw new access.HttpError(
+//         403,
+//         "You do not have access to audit history.",
+//       );
 //     }
 //   });
 
@@ -738,6 +757,8 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
 const AUDIT_TABLE_ID = "74008000000034940";
+const APPRAISAL_SHEET_TABLE_ID = "74008000000039094";
+const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -750,7 +771,6 @@ let auditReadQueue = Promise.resolve();
 async function readAuditPage(table, options) {
   let release;
   const previous = auditReadQueue;
-
   auditReadQueue = new Promise((resolve) => {
     release = resolve;
   });
@@ -765,7 +785,6 @@ async function readAuditPage(table, options) {
         const status = Number(
           error && (error.statusCode || error.status || error.status_code),
         );
-
         const code = String((error && error.code) || "").toUpperCase();
         const message = String((error && error.message) || "").toLowerCase();
 
@@ -781,12 +800,9 @@ async function readAuditPage(table, options) {
             message,
           );
 
-        if (!transient || attempt >= 4) {
-          throw error;
-        }
+        if (!transient || attempt >= 4) throw error;
 
         const delay = 400 * 2 ** attempt + Math.floor(Math.random() * 250);
-
         console.warn("Retrying audit Data Store read, attempt", attempt + 1);
 
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -830,13 +846,228 @@ function isHrAdmin(a) {
   return Boolean(a && a.role === "hr");
 }
 
-function canSeeAuditEmp(a, empId) {
-  if (isSystemEmpId(empId)) {
-    return isHrAdmin(a);
+function canSeeAuditEmp(a, empId, techEdOwnedEmpIds) {
+  if (isSystemEmpId(empId)) return isHrAdmin(a);
+
+  if (access.inScope(a, empId)) return true;
+
+  return Boolean(
+    techEdOwnedEmpIds &&
+    techEdOwnedEmpIds.has(
+      String(empId || "")
+        .trim()
+        .toLowerCase(),
+    ),
+  );
+}
+
+// Read every page from a Data Store table.
+async function readAllTableRows(table) {
+  const rows = [];
+  let nextToken = null;
+
+  while (true) {
+    const options = { maxRows: DATASTORE_PAGE_SIZE };
+
+    if (nextToken) options.nextToken = nextToken;
+
+    const result = await readAuditPage(table, options);
+    const page = Array.isArray(result.data) ? result.data : [];
+
+    rows.push(...page);
+
+    if (result.more_records !== true || !result.next_token) break;
+
+    nextToken = result.next_token;
   }
 
-  return access.inScope(a, empId);
+  return rows;
 }
+
+function normalizeTechEdText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function currentUserEmployeeMasterRowId(user, masterRows) {
+  const emails = [user && user.email_id, user && user.email]
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+
+  const empId = String((user && (user.empId || user.emp_id)) || "")
+    .trim()
+    .toLowerCase();
+
+  const currentUserRow = (masterRows || []).find((row) => {
+    const rowEmail = String(row.email_id || row.email || "")
+      .trim()
+      .toLowerCase();
+
+    const rowEmpId = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
+
+    return (
+      (rowEmail && emails.includes(rowEmail)) || (empId && rowEmpId === empId)
+    );
+  });
+
+  return currentUserRow
+    ? String(currentUserRow.ROWID || currentUserRow.rowid || "").trim()
+    : "";
+}
+
+function getTechEdUserAliases(user) {
+  const firstName = user && user.first_name ? user.first_name : "";
+  const lastName = user && user.last_name ? user.last_name : "";
+
+  return [
+    user && user.user_id,
+    user && user.empId,
+    user && user.emp_id,
+    user && user.email_id,
+    user && user.email,
+    user && user.display_name,
+    user && user.name,
+    firstName,
+    lastName,
+    [firstName, lastName].filter(Boolean).join(" "),
+  ]
+    .map(normalizeTechEdText)
+    .filter(Boolean);
+}
+
+function resolveTechEdOwnerRowId(values, masterByEmpId, masterByRowId) {
+  for (const rawValue of values) {
+    if (rawValue === null || rawValue === undefined) continue;
+
+    const raw = String(rawValue).trim();
+    if (!raw) continue;
+
+    // New lookup values store Employee_Master.ROWID directly.
+    if (/^[0-9]+$/.test(raw) && masterByRowId.has(raw)) {
+      return raw;
+    }
+
+    // Legacy values store "EMPxxxx - Name" or the employee ID.
+    const ownerEmpId = raw
+      .split(/\s+-\s+/)[0]
+      .trim()
+      .toLowerCase();
+    const owner = masterByEmpId.get(ownerEmpId);
+
+    const ownerRowId = owner && String(owner.ROWID || owner.rowid || "").trim();
+
+    if (ownerRowId) return ownerRowId;
+  }
+
+  return "";
+}
+
+/*
+ * Match the ownership rule used by employeesapi:
+ *   Appraisal_Sheet.appraiser_tech_ed1 (Employee_Master ROWID) is authoritative;
+ *   legacy appraiser_tech_ed text is resolved through Employee_Master.emp_id.
+ * The Employee_Master assignment is retained as a compatibility fallback.
+ */
+async function getTechEdOwnedEmpIds(req, a, onlyEmpIds) {
+  const owned = new Set();
+
+  if (!a || !a.enforced || a.role !== "techEd" || (a.scope && a.scope.all)) {
+    return owned;
+  }
+
+  const datastore = catalyst
+    .initialize(req, {
+      scope: "admin",
+    })
+    .datastore();
+
+  const [appraisalRows, masterRows] = await Promise.all([
+    readAllTableRows(datastore.table(APPRAISAL_SHEET_TABLE_ID)),
+    readAllTableRows(datastore.table(EMPLOYEE_MASTER_TABLE_ID)),
+  ]);
+
+  const masterByEmpId = new Map();
+  const masterByRowId = new Map();
+
+  masterRows.forEach((row) => {
+    const empId = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
+    const rowId = String(row.ROWID || row.rowid || "").trim();
+
+    if (empId) masterByEmpId.set(empId, row);
+    if (rowId) masterByRowId.set(rowId, row);
+  });
+
+  const myRowId = currentUserEmployeeMasterRowId(a.user, masterRows);
+  const aliases = getTechEdUserAliases(a.user);
+
+  const requested =
+    Array.isArray(onlyEmpIds) && onlyEmpIds.length
+      ? new Set(
+          onlyEmpIds.map((id) =>
+            String(id || "")
+              .trim()
+              .toLowerCase(),
+          ),
+        )
+      : null;
+
+  appraisalRows.forEach((sheetRow) => {
+    const empId = String(sheetRow.emp_id || "").trim();
+    const key = empId.toLowerCase();
+
+    if (!empId || (requested && !requested.has(key))) return;
+
+    const master = masterByEmpId.get(key) || {};
+
+    const ownerRowId = resolveTechEdOwnerRowId(
+      [
+        sheetRow.appraiser_tech_ed1,
+        sheetRow.appraiser_tech_ed,
+        master.appraiser_tech_ed1,
+        master.appraiser_tech_ed,
+      ],
+      masterByEmpId,
+      masterByRowId,
+    );
+
+    if (myRowId && ownerRowId) {
+      if (ownerRowId === myRowId) owned.add(key);
+      return;
+    }
+
+    // Same legacy text fallback as employeesapi when no lookup ROWID exists.
+    const legacyAssignment = normalizeTechEdText(
+      sheetRow.appraiser_tech_ed || master.appraiser_tech_ed || "",
+    );
+
+    if (
+      legacyAssignment &&
+      aliases.some(
+        (alias) =>
+          legacyAssignment === alias ||
+          legacyAssignment.includes(alias) ||
+          alias.includes(legacyAssignment),
+      )
+    ) {
+      owned.add(key);
+    }
+  });
+
+  return owned;
+}
+/* ============================================================
+   ACCESS CHECK
+   ============================================================ */
 
 async function checkAccess(req) {
   const userApp = catalyst.initialize(req);
@@ -845,9 +1076,7 @@ async function checkAccess(req) {
   try {
     return await access.check(userApp, adminApp);
   } catch (error) {
-    if (access.isEnforced()) {
-      throw error;
-    }
+    if (access.isEnforced()) throw error;
 
     console.log("ACCESS dry-run: access check failed:", error && error.message);
 
@@ -900,57 +1129,49 @@ function getQueryParams(req) {
 }
 
 /* ============================================================
-   READ REQUEST BODY - UPDATED
+   READ REQUEST BODY
    ============================================================ */
 
 function readBody(req) {
-  return new Promise(function (resolve, reject) {
-    // Case 1: Catalyst has already parsed the JSON body.
-    if (req.body !== undefined && req.body !== null) {
-      if (typeof req.body === "object") {
-        resolve(req.body);
-        return;
-      }
+  // Handle Buffer before the generic object check.
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(req.body)) {
+    const raw = req.body.toString("utf8");
 
-      if (typeof req.body === "string") {
-        if (!req.body.trim()) {
-          resolve({});
-          return;
-        }
+    if (!raw.trim()) return Promise.resolve({});
 
-        try {
-          resolve(JSON.parse(req.body));
-        } catch (error) {
-          reject(new Error("Invalid JSON request body."));
-        }
-
-        return;
-      }
+    try {
+      return Promise.resolve(JSON.parse(raw));
+    } catch (error) {
+      return Promise.reject(new Error("Invalid JSON request body."));
     }
+  }
 
-    // Case 2: The request body is available as a raw buffer.
-    if (Buffer.isBuffer(req.body)) {
+  // Catalyst may already have parsed the request body.
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === "string") {
+      if (!req.body.trim()) return Promise.resolve({});
+
       try {
-        resolve(JSON.parse(req.body.toString("utf8")));
+        return Promise.resolve(JSON.parse(req.body));
       } catch (error) {
-        reject(new Error("Invalid JSON request body."));
+        return Promise.reject(new Error("Invalid JSON request body."));
       }
-
-      return;
     }
 
-    // Case 3: Read the raw request stream.
+    if (typeof req.body === "object") {
+      return Promise.resolve(req.body);
+    }
+  }
+
+  // Fallback: read the incoming stream.
+  return new Promise(function (resolve, reject) {
     let body = "";
-    let completed = false;
 
     req.on("data", function (chunk) {
-      body += chunk.toString();
+      body += chunk;
     });
 
     req.on("end", function () {
-      if (completed) return;
-      completed = true;
-
       if (!body.trim()) {
         resolve({});
         return;
@@ -963,11 +1184,7 @@ function readBody(req) {
       }
     });
 
-    req.on("error", function (error) {
-      if (completed) return;
-      completed = true;
-      reject(error);
-    });
+    req.on("error", reject);
   });
 }
 
@@ -1113,7 +1330,6 @@ function normalizeAuditPayload(item) {
     appraisal_year: String(appraisalYear).trim(),
   };
 }
-
 /* ============================================================
    GET AUDIT HISTORY
    ============================================================ */
@@ -1122,17 +1338,29 @@ async function getAuditHistory(req, res, a) {
   const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
 
   const table = datastore.table(AUDIT_TABLE_ID);
-
   const params = getQueryParams(req);
 
   const empId = String(params.emp_id || params.empId || "").trim();
 
+  const techEdOwnedEmpIds = await getTechEdOwnedEmpIds(
+    req,
+    a,
+    empId ? [empId] : null,
+  );
+
   access.guard(a, () => {
     if (empId) {
-      requireAuditEmpIds(a, [empId]);
+      const refused = !canSeeAuditEmp(a, empId, techEdOwnedEmpIds);
+
+      if (refused) {
+        requireAuditEmpIds(a, [empId]);
+      }
+
       return;
     }
 
+    // Allow appraisal users to load the collection.
+    // Returned records are still filtered by employee access.
     const allowed = ["appraisalSheet", "detailScreen"].some((screen) => {
       try {
         access.requireScreen(a, screen, "view");
@@ -1204,8 +1432,12 @@ async function getAuditHistory(req, res, a) {
 
   console.log("AUDIT TOTAL DATASTORE ROWS:", allRows.length);
 
+  /* ==========================================================
+     FILTER
+     ========================================================== */
+
   let filteredRows = allRows.filter(function (row) {
-    if (a && a.enforced && !canSeeAuditEmp(a, row.emp_id)) {
+    if (a && a.enforced && !canSeeAuditEmp(a, row.emp_id, techEdOwnedEmpIds)) {
       return false;
     }
 
@@ -1228,6 +1460,10 @@ async function getAuditHistory(req, res, a) {
     return true;
   });
 
+  /* ==========================================================
+     SORT NEWEST FIRST
+     ========================================================== */
+
   filteredRows.sort(function (a, b) {
     const dateA = new Date(a.changed_at || a.CREATEDTIME || 0).getTime();
 
@@ -1236,6 +1472,10 @@ async function getAuditHistory(req, res, a) {
     return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
   });
 
+  /* ==========================================================
+     LIMIT AFTER FILTERING
+     ========================================================== */
+
   const limitedRows = filteredRows.slice(0, limit);
 
   const data = limitedRows.map(function (row) {
@@ -1243,6 +1483,7 @@ async function getAuditHistory(req, res, a) {
   });
 
   console.log("AUDIT MATCHING ROWS:", filteredRows.length);
+
   console.log("AUDIT RETURNING ROWS:", data.length);
 
   sendJson(res, 200, {
@@ -1257,6 +1498,8 @@ async function getAuditHistory(req, res, a) {
    ============================================================ */
 
 async function createAuditRecords(req, res, a) {
+  // Authorized by the caller's access check; the admin scope reads and
+  // writes, so Data Store roles need no direct table access.
   const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
 
   const body = await readBody(req);
@@ -1264,7 +1507,6 @@ async function createAuditRecords(req, res, a) {
   console.log("==============================================");
   console.log("AUDIT POST RECEIVED");
   console.log("BODY:", JSON.stringify(body));
-  console.log("BODY TYPE:", Array.isArray(body) ? "ARRAY" : typeof body);
   console.log("TABLE:", AUDIT_TABLE_ID);
   console.log("==============================================");
 
@@ -1350,15 +1592,27 @@ async function createAuditRecords(req, res, a) {
   }
 
   /* ==========================================================
-     ACCESS: every employee in scope
+     ACCESS: every employee in scope (system rows: HR Admin only);
+     enforced → changed_by = signed-in user.
      ========================================================== */
 
-  access.guard(a, () =>
-    requireAuditEmpIds(
-      a,
-      rowsToInsert.map((row) => row.emp_id),
-    ),
+  const requestedEmpIds = rowsToInsert.map((row) => row.emp_id);
+
+  const techEdOwnedEmpIds = await getTechEdOwnedEmpIds(
+    req,
+    a,
+    requestedEmpIds.filter((id) => !isSystemEmpId(id)),
   );
+
+  access.guard(a, () => {
+    const refused = requestedEmpIds.filter(
+      (empId) => !canSeeAuditEmp(a, empId, techEdOwnedEmpIds),
+    );
+
+    if (refused.length) {
+      requireAuditEmpIds(a, refused);
+    }
+  });
 
   if (a && a.enforced) {
     const actor = (a.user && (a.user.email || a.user.name)) || "";
@@ -1430,6 +1684,7 @@ module.exports = async function (req, res) {
       return;
     }
 
+    // Enforced → 401/403 here; dry run → never refuses.
     const a = await checkAccess(req);
 
     if (method === "GET") {
