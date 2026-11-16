@@ -30,7 +30,7 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidatePayrollCycleReads));
 }
 
-async function sendPayrollCycleRequest(url, resource, method, body, plainRetry = false) {
+async function sendPayrollCycleRequest(url, resource, method, body, attempt = 0) {
   const response = await catalystFetch(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -45,12 +45,15 @@ async function sendPayrollCycleRequest(url, resource, method, body, plainRetry =
     payload = JSON.parse(raw);
   } catch (error) {
     readError = String(error?.message || "");
-    // A compressed (gz=1) reply that cannot be read: ask once more without
-    // compression. The server sends the same JSON uncompressed.
-    if (!plainRetry && String(method).toUpperCase() === "GET" && !body && url.searchParams.get("gz") === "1") {
-      const plain = new URL(url.toString());
-      plain.searchParams.delete("gz");
-      return sendPayrollCycleRequest(plain, resource, method, body, true);
+    // A read that comes back 200 with an empty / unreadable body is a dropped
+    // reply (it happens when several requests hit the function at once and it
+    // moves between resources). Reads are safe to repeat: try again after a
+    // short pause, without compression from the second try on.
+    if (attempt < 3 && String(method).toUpperCase() === "GET" && !body) {
+      const next = new URL(url.toString());
+      if (attempt >= 1) next.searchParams.delete("gz");
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      return sendPayrollCycleRequest(next, resource, method, body, attempt + 1);
     }
     // Not JSON: usually a platform error page (timeout, crash, size limit).
     // Say what came back so the cause can be found.
