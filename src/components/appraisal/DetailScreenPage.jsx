@@ -19,6 +19,7 @@ import {
 } from "react";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useAccess } from "@/lib/access-store";
 import {
   NEW_TITLES,
   INSTALLMENT_OPTIONS,
@@ -479,6 +480,49 @@ const HISTORY_COLUMNS = [
   { key: "targetPB", label: "Target PB", formula: "" },
   { key: "newBasePay", label: "New Base Pay", formula: "(A+E)" },
 ];
+// History column -> Appraisal Sheet field whose Access limit applies to it
+// (same map as the Appraisal Sheet history panel). Joining Bonus has no field.
+const HISTORY_COLUMN_FIELD = {
+  basePay: "currentAnnualBasePay",
+  performanceBonus: "allocatedPBAmount",
+  retentionBonus: "newRB",
+  totalBonus: "totalBonus",
+  hikeAmount: "hikeAmount",
+  newCTC: "totalCTCWithRewards",
+  targetPB: "targetPBNextYear",
+  newBasePay: "newBaseSalary",
+};
+// Names used in the "cannot change" message.
+const EDIT_FIELD_LABEL = {
+  hikeAmount: "Hike Amount",
+  hikePct: "Hike %",
+  allocatedPBAmount: "Performance Bonus",
+  pbInstallment: "PB Instalment",
+  newRB: "Retention Bonus",
+  targetPBNextYear: "Target PB for Next Year",
+  targetPBCriteria: "Target PB Criteria",
+  newTitle: "New Title",
+  eligibleForPromotion: "Eligible for Promotion",
+  compManagerRemarks: "Comp Manager Remarks",
+};
+// Fields the side panel / header read; a hidden one is blanked before it is passed on.
+const PANEL_FIELDS = [
+  "name", "designation", "reportingManager", "compManager", "wissenExperience",
+  "totalExperience", "managerRating", "interviewCount", "rrPercent", "grossMargin",
+  "currentAnnualBasePay", "targetPBAllocatedForMay", "pbToBePaid", "rbToBePaid",
+  "allocatedPBAmount", "newRB", "hikeAmount", "hikePct", "targetPBNextYear",
+  "targetPBCriteria", "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
+];
+// Same grey as ReadOnlyInput: a field you may view but not change.
+const lockedStyle = {
+  borderColor: "#AEBBC9",
+  background: "#D3DBE4",
+  color: "#1F2937",
+  WebkitTextFillColor: "#1F2937",
+  cursor: "not-allowed",
+};
+const LOCKED_TITLE = "You can view this field but not change it.";
+
 // priorVals()/the live row keep their original order (base, joining, PB, RB,
 // total bonus, hike, CTC, target PB, new base); this maps each displayed
 // column to its slot there, so Hike Amount shows before Total Bonus.
@@ -828,6 +872,7 @@ function EditInput({
   edited,
   invalid = false,
   className = "",
+  locked = false,
 }) {
   const controlled = value !== undefined;
   const valueProps = controlled ? { value } : { defaultValue };
@@ -836,6 +881,9 @@ function EditInput({
       type="text"
       inputMode="decimal"
       {...valueProps}
+      disabled={locked}
+      readOnly={locked}
+      title={locked ? LOCKED_TITLE : undefined}
       onChange={(e) => {
         // Numbers only: drop letters/symbols, keep digits, commas and one dot.
         const raw = e.target.value;
@@ -870,7 +918,9 @@ function EditInput({
       }}
       className={`h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={
-        invalid
+        locked
+          ? lockedStyle
+          : invalid
           ? {
               ...fieldStyle(edited),
               borderColor: "#C0392B",
@@ -1081,14 +1131,14 @@ function DiffValue({ value, caption }) {
   );
 }
 
-function FieldRow({ label, prev, children, diff, exc = [] }) {
+function FieldRow({ label, prev, children, diff, exc = [], hidePrev = false }) {
   return (
     <>
       <FieldCell label>{label}</FieldCell>
-      <FieldCell>{prev}</FieldCell>
+      <FieldCell>{hidePrev ? null : prev}</FieldCell>
       {exc.map((node, i) => (
         <FieldCell key={i} exc>
-          {node}
+          {hidePrev ? null : node}
         </FieldCell>
       ))}
       <FieldCell>{children}</FieldCell>
@@ -1148,7 +1198,6 @@ const histTextCell = (extra = {}) => ({
 });
 
 // Column widths (percent) are state: see useColumnResize in the page.
-const HIST_DEFAULT_WIDTHS = [9, 10, ...Array(9).fill(9)];
 const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 
 /* ------------------------------------------------------------------
@@ -1175,6 +1224,16 @@ export function DetailScreenPage({
   } = budgetContext;
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
+
+  // Access rules (permissive when accessapi is unavailable): Access -> Fields tab,
+  // "Detailed Screen". Hidden = not drawn, Read = grey and not editable.
+  const access = useAccess();
+  const detailEditable = access.canScreen("detailScreen", "edit");
+  const hid = (key) => access.isHidden(key);
+  const canEditF = (key) => detailEditable && access.canEditField(key);
+  const hikeEditable = canEditF("hikeAmount") && canEditF("hikePct");
+  const titleEditable = canEditF("newTitle") && canEditF("eligibleForPromotion");
+  const [blockedMsg, setBlockedMsg] = useState("");
  
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "")
@@ -1343,12 +1402,38 @@ export function DetailScreenPage({
       setSelectedEmpId(employee.empId);
     }
   }, [selectionSynced, employee?.empId]);
+  // The side panel reads many fields: blank the ones this login may not see.
+  const panelEmployee = useMemo(() => {
+    if (!employee) return employee;
+    const out = { ...employee };
+    PANEL_FIELDS.forEach((key) => {
+      if (access.isHidden(key)) out[key] = undefined;
+    });
+    return out;
+  }, [employee, access]);
   const feedbackData = useEmployeeFeedback(employee?.empId);
+  // History columns: a column whose field is Hidden is not drawn, and the widths
+  // restart from the defaults whenever the set of columns changes.
+  const histShowDesignation = !hid("designation");
+  const histShown = HISTORY_COLUMNS.map((col, j) => ({
+    col,
+    slot: HIST_VAL_ORDER[j],
+  })).filter(({ col }) => !hid(HISTORY_COLUMN_FIELD[col.key]));
+  const histSig = `detail-history|${histShowDesignation ? "d" : "-"}|${histShown
+    .map(({ col }) => col.key)
+    .join(",")}`;
+  const histDefaults = useMemo(() => {
+    const lead = histShowDesignation ? [9, 10] : [9];
+    if (!histShown.length) return lead.map(() => 100 / lead.length);
+    const rest = 100 - lead.reduce((a, b) => a + b, 0);
+    return [...lead, ...histShown.map(() => rest / histShown.length)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [histSig]);
   const {
     widths: histWidths,
     startResize: startHistResize,
     reset: resetHistWidths,
-  } = useColumnResize(HIST_DEFAULT_WIDTHS, "detail-history");
+  } = useColumnResize(histDefaults, histSig);
   const histGridRef = useRef(null);
 
 
@@ -1535,6 +1620,7 @@ export function DetailScreenPage({
   const [hikeErr, setHikeErr] = useState("");
   useEffect(() => {
     setHikeErr("");
+    setBlockedMsg("");
   }, [employee?.id]);
   const HIKE_MAX_MSG = "Hike % cannot exceed 100%.";
   const HIKE_EMPTY_MSG = "The hike cannot be empty. Enter 0 if you want no hike. Not saved.";
@@ -1549,12 +1635,16 @@ export function DetailScreenPage({
   const proposedPB = !employee
     ? 0
     : isBlank(employee.allocatedPBAmount)
-      ? employee.pbToBePaid
+      ? hid("pbToBePaid")
+        ? 0
+        : employee.pbToBePaid
       : employee.allocatedPBAmount;
   const proposedRB = !employee
     ? 0
     : isBlank(employee.newRB)
-      ? employee.rbToBePaid
+      ? hid("rbToBePaid")
+        ? 0
+        : employee.rbToBePaid
       : employee.newRB;
   const livePB = !employee
     ? 0
@@ -1603,18 +1693,19 @@ export function DetailScreenPage({
   /* ---- PB / RB "to be paid" floors + payment month ------------------- */
   const payFloors = useMemo(() => {
     if (!employee) return null;
-    const pbFloor = Number(employee.pbToBePaid) || 0; // sheet: PB to be Paid
-    const rbFloor = Number(employee.rbToBePaid) || 0; // sheet: RB to be Paid
+    const pbFloor = hid("pbToBePaid") ? 0 : Number(employee.pbToBePaid) || 0; // sheet: PB to be Paid
+    const rbFloor = hid("rbToBePaid") ? 0 : Number(employee.rbToBePaid) || 0; // sheet: RB to be Paid
     return {
       pbFloor,
-      pbMonth: employee.monthPB || employee.pbMonth || "", // sheet: Month (PB)
-      pbTarget: Number(employee.targetPBAllocatedForMay) || 0, // sheet: Target PB Set Last Year
+      pbMonth: hid("monthPB") ? "" : employee.monthPB || employee.pbMonth || "", // sheet: Month (PB)
+      pbTarget: hid("targetPBAllocatedForMay") ? 0 : Number(employee.targetPBAllocatedForMay) || 0, // sheet: Target PB Set Last Year
       rbFloor,
-      rbMonth: employee.monthRB || employee.rbMonth || "", // sheet: Month (RB)
+      rbMonth: hid("monthRB") ? "" : employee.monthRB || employee.rbMonth || "", // sheet: Month (RB)
       pbDiff: (Number(proposedPB) || 0) - pbFloor,
       rbDiff: (Number(proposedRB) || 0) - rbFloor,
     };
-  }, [employee]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee, access]);
 
   /* ---- Total CTC with Rewards vs last cycle's CTC (moves while typing) */
   const ctcCompare = useMemo(() => {
@@ -1635,19 +1726,35 @@ export function DetailScreenPage({
     if (!q) return;
     const found = rows.findIndex(
       (row) =>
-        String(row.name || "")
-          .toLowerCase()
-          .startsWith(q) || String(row.empId || "").toLowerCase() === q,
+        (!hid("name") &&
+          String(row.name || "")
+            .toLowerCase()
+            .startsWith(q)) ||
+        String(row.empId || "").toLowerCase() === q,
     );
     if (found > -1) setIndex(found);
   };
 
+  // Second safeguard behind the locked inputs: a field this login may not edit is
+  // never sent to the store (the store and the server check it again).
+  const refuseLocked = (keys) => {
+    const bad = keys.filter((key) => !canEditF(key));
+    if (!bad.length) return false;
+    setBlockedMsg(
+      `${bad.map((key) => EDIT_FIELD_LABEL[key] || key).join(", ")} cannot be changed with your access. Not saved.`,
+    );
+    return true;
+  };
   const commit = (field, value) => {
     const current = isBlank(employee[field]) ? "" : String(employee[field]);
     if (current === (isBlank(value) ? "" : String(value))) return;
+    if (refuseLocked([field])) return;
+    if (blockedMsg) setBlockedMsg("");
     updateCell(employee.id, field, value, "Detail screen edit");
   };
   const commitLinked = (fields) => {
+    if (refuseLocked(Object.keys(fields))) return;
+    if (blockedMsg) setBlockedMsg("");
     updateLinkedCells(employee.id, fields, "Detail screen edit");
   };
 
@@ -1852,23 +1959,33 @@ export function DetailScreenPage({
                   style={{ color: "#fff" }}
                 >
                   <div className="truncate">
-                    <b
-                      className="text-[14px]"
-                      style={{ color: "#fff", letterSpacing: "-.01em" }}
-                    >
-                      {employee.name}
-                    </b>{" "}
-                    ·{" "}
+                    {!hid("name") && (
+                      <>
+                        <b
+                          className="text-[14px]"
+                          style={{ color: "#fff", letterSpacing: "-.01em" }}
+                        >
+                          {employee.name}
+                        </b>{" "}
+                        ·{" "}
+                      </>
+                    )}
                     <span className="font-bold" style={{ color: "#7CE0C3" }}>
                       {employee.empId ?? "—"}
-                    </span>{" "}
-                    · {dash(employee.designation)}
+                    </span>
+                    {hid("designation") ? "" : ` · ${dash(employee.designation)}`}
                     {employee.band ? ` · ${employee.band}` : ""}
                   </div>
                   <div className="truncate" style={{ color: "#BCCCDC" }}>
-                    {yrs(employee.totalExperience)} ·{" "}
-                    {yrs(employee.wissenExperience)} here · Reports to{" "}
-                    {dash(employee.reportingManager)}
+                    {[
+                      hid("totalExperience") ? null : yrs(employee.totalExperience),
+                      hid("wissenExperience") ? null : `${yrs(employee.wissenExperience)} here`,
+                      hid("reportingManager")
+                        ? null
+                        : `Reports to ${dash(employee.reportingManager)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -1907,6 +2024,21 @@ export function DetailScreenPage({
                   <NotesButton employee={employee} />
                 </div>
               </div>
+
+              {(blockedMsg || !detailEditable) && (
+                <div
+                  role={blockedMsg ? "alert" : "status"}
+                  className="shrink-0 px-3 py-1.5 text-[13px] font-semibold"
+                  style={{
+                    background: blockedMsg ? "#FDECEA" : SOFT,
+                    color: blockedMsg ? RED : MUTED,
+                    borderBottom: `1px solid ${LINE}`,
+                  }}
+                >
+                  {blockedMsg ||
+                    "View only: you can see this screen but not change anything on it."}
+                </div>
+              )}
 
               {/* Table area: takes all leftover height; content is scaled to fit it */}
               <div
@@ -1949,7 +2081,9 @@ export function DetailScreenPage({
                         : null;
                     // "Current" cell of Target PB for Next Year = the Target PB allocated
                     // (sheet: Target PB Allocated for May).
-                    const prevTPB = Number(employee.targetPBAllocatedForMay) || 0;
+                    const prevTPB = hid("targetPBAllocatedForMay")
+                      ? 0
+                      : Number(employee.targetPBAllocatedForMay) || 0;
                     const vsLast = (live, prev) => (last ? live - prev : null);
                     // Red floor alert (value is still accepted): this year's PB / RB
                     // below the "to be Paid" amount OR below last year's PB / RB.
@@ -1971,6 +2105,20 @@ export function DetailScreenPage({
                     const rbLowMsg = rbUsesPrev
                       ? `Below last year's RB (${fmt(prevRB)})`
                       : `${fmt(payFloors.rbFloor)} is RB to be Paid`;
+                    // "to be Paid" / target notes: only the figures this login may see.
+                    const pbNote = [
+                      hid("pbToBePaid")
+                        ? null
+                        : `PB to be Paid ${fmt(payFloors.pbFloor)}${payFloors.pbMonth ? ` · ${payFloors.pbMonth}` : ""}`,
+                      hid("targetPBAllocatedForMay")
+                        ? null
+                        : `Target PB set ${fmt(payFloors.pbTarget)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    const rbNote = hid("rbToBePaid")
+                      ? ""
+                      : `RB to be Paid ${fmt(payFloors.rbFloor)}${payFloors.rbMonth ? ` · ${payFloors.rbMonth}` : ""}`;
                     const naBox = (
                       <div
                         style={{
@@ -2002,8 +2150,10 @@ export function DetailScreenPage({
                         <FieldHead right>Diff</FieldHead>
 
                         {/* New Base Pay + hike inputs */}
-                        <FieldRow
+                        {!(hid("hikeAmount") && hid("hikePct") && hid("newBaseSalary")) && (
+                          <FieldRow
                           label="Base Pay"
+                          hidePrev={hid("newBaseSalary")}
                           exc={excEach((rec) => (
                             <>
                               <div style={{ width: "62%", minWidth: 110 }}>
@@ -2033,13 +2183,16 @@ export function DetailScreenPage({
                             className="flex items-start gap-2"
                             key={`${employee.id}-hike`}
                           >
-                            <div style={{ width: "36%", minWidth: 100 }}>
-                              <ReadOnlyInput
-                                key={`${employee.id}-newBase`}
-                                value={draft.baseStr ?? fmt(derived.newBase)}
-                                bold
-                              />
-                            </div>
+                            {!hid("newBaseSalary") && (
+                              <div style={{ width: "36%", minWidth: 100 }}>
+                                <ReadOnlyInput
+                                  key={`${employee.id}-newBase`}
+                                  value={draft.baseStr ?? fmt(derived.newBase)}
+                                  bold
+                                />
+                              </div>
+                            )}
+                            {!hid("hikeAmount") && (
                             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                               <EditInput
                                 value={draft.hikeStr ?? fmt(employee.hikeAmount)}
@@ -2050,9 +2203,12 @@ export function DetailScreenPage({
                                 }}
                                 edited={isEdited("hikeAmount")}
                                 invalid={!!hikeErr}
+                                locked={!hikeEditable}
                               />
                               <span style={lab}>Hike Amount</span>
                             </div>
+                            )}
+                            {!hid("hikePct") && (
                             <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
                               <EditInput
                                 value={
@@ -2072,9 +2228,11 @@ export function DetailScreenPage({
                                 }}
                                 edited={isEdited("hikeAmount")}
                                 invalid={!!hikeErr}
+                                locked={!hikeEditable}
                               />
                               <span style={lab}>Hike%</span>
                             </div>
+                            )}
                           </div>
                           {hikeErr && (
                             <span
@@ -2085,6 +2243,7 @@ export function DetailScreenPage({
                             </span>
                           )}
                         </FieldRow>
+                        )}
 
                         {/* Joining Bonus */}
                         <FieldRow
@@ -2096,7 +2255,8 @@ export function DetailScreenPage({
                         </FieldRow>
 
                         {/* Performance Bonus / Instalment */}
-                        <FieldRow
+                        {!hid("allocatedPBAmount") && (
+                          <FieldRow
                           label="Performance Bonus (PB) / Instalment"
                           exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.performanceBonus)} />)}
                           prev={
@@ -2124,6 +2284,7 @@ export function DetailScreenPage({
                               className="flex-1"
                               defaultValue={fmtOrBlank(proposedPB)}
                               edited={isEdited("allocatedPBAmount")}
+                              locked={!canEditF("allocatedPBAmount")}
                               invalid={pbLow}
                               onLive={(v) => {
                                 setDraft({ pbStr: v });
@@ -2136,7 +2297,8 @@ export function DetailScreenPage({
                                 setPayErr((e) => ({ ...e, pb: "" }));
                                 if (
                                   !((Number(n) || 0) > 0) &&
-                                  !isBlank(employee.pbInstallment)
+                                  !isBlank(employee.pbInstallment) &&
+                                  canEditF("pbInstallment")
                                 ) {
                                   // PB 0 / cleared: Instalment resets to empty.
                                   commitLinked({
@@ -2149,9 +2311,12 @@ export function DetailScreenPage({
                                 clearDraft(["pbStr"]);
                               }}
                             />
+                            {!hid("pbInstallment") && (
                             <select
                               key={`${employee.id}-pbInstallment`}
+                              title={canEditF("pbInstallment") ? undefined : LOCKED_TITLE}
                               disabled={
+                                !canEditF("pbInstallment") ||
                                 !((Number(employee.allocatedPBAmount) || 0) > 0)
                               }
                               value={
@@ -2163,13 +2328,18 @@ export function DetailScreenPage({
                               }
                               onChange={(e) => commit("pbInstallment", e.target.value)}
                               className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
-                              style={fieldStyle(isEdited("pbInstallment"))}
+                              style={
+                                canEditF("pbInstallment")
+                                  ? fieldStyle(isEdited("pbInstallment"))
+                                  : lockedStyle
+                              }
                             >
                               <option value="">—</option>
                               {INSTALLMENT_OPTIONS.map((o) => (
                                 <option key={o}>{o}</option>
                               ))}
                             </select>
+                            )}
                           </div>
                           <span
                             role={payErr.pb || pbLow ? "alert" : undefined}
@@ -2182,14 +2352,14 @@ export function DetailScreenPage({
                             }}
                           >
                             {payErr.pb ||
-                              (pbLow
-                                ? pbLowMsg
-                                : `PB to be Paid ${fmt(payFloors.pbFloor)}${payFloors.pbMonth ? ` · ${payFloors.pbMonth}` : ""} · Target PB set ${fmt(payFloors.pbTarget)}`)}
+                              (pbLow ? pbLowMsg : pbNote)}
                           </span>
                         </FieldRow>
+                        )}
 
                         {/* Retention Bonus */}
-                        <FieldRow
+                        {!hid("newRB") && (
+                          <FieldRow
                           label="Retention Bonus (RB)"
                           exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.retentionBonus)} />)}
                           prev={
@@ -2215,6 +2385,7 @@ export function DetailScreenPage({
                             key={`${employee.id}-newRB-${payReset.rb}`}
                             defaultValue={fmt(proposedRB ?? 0)}
                             edited={isEdited("newRB")}
+                            locked={!canEditF("newRB")}
                             invalid={rbLow}
                             className="w-[75%]"
                             onLive={(v) => {
@@ -2241,14 +2412,14 @@ export function DetailScreenPage({
                             }}
                           >
                             {payErr.rb ||
-                              (rbLow
-                                ? rbLowMsg
-                                : `RB to be Paid ${fmt(payFloors.rbFloor)}${payFloors.rbMonth ? ` · ${payFloors.rbMonth}` : ""}`)}
+                              (rbLow ? rbLowMsg : rbNote)}
                           </span>
                         </FieldRow>
+                        )}
 
                         {/* Total CTC with Rewards */}
-                        <FieldRow
+                        {!hid("totalCTCWithRewards") && (
+                          <FieldRow
                           label="Total CTC with Rewards"
                           exc={excEach((rec) => <ReadOnlyInput value={rec.newCTC ? inr(rec.newCTC) : "—"} />)}
                           prev={<ReadOnlyInput value={ctcCompare.lastCtc ? inr(ctcCompare.lastCtc) : "—"} />}
@@ -2263,9 +2434,11 @@ export function DetailScreenPage({
                         >
                           <ReadOnlyInput value={inr(liveCtc)} bold />
                         </FieldRow>
+                        )}
 
                         {/* Target PB for Next Year */}
-                        <FieldRow
+                        {!hid("targetPBNextYear") && (
+                          <FieldRow
                           label="Target PB for Next Year"
                           exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.targetPB)} />)}
                           prev={<ReadOnlyInput value={fmt(prevTPB)} />}
@@ -2283,6 +2456,7 @@ export function DetailScreenPage({
                             key={`${employee.id}-targetPBNextYear`}
                             defaultValue={fmtOrBlank(employee.targetPBNextYear)}
                             edited={isEdited("targetPBNextYear")}
+                            locked={!canEditF("targetPBNextYear")}
                             onLive={(v) => setDraft({ tpbStr: v })}
                             onCommit={(v) => {
                               commit("targetPBNextYear", parseAmount(v));
@@ -2290,9 +2464,11 @@ export function DetailScreenPage({
                             }}
                           />
                         </FieldRow>
+                        )}
 
                         {/* Target PB Criteria */}
-                        <FieldRow
+                        {!hid("targetPBCriteria") && (
+                          <FieldRow
                           label="Target PB Criteria"
                           exc={excEach((rec) => <ReadOnlyInput value={dash(rec.criteria)} />)}
                           prev={
@@ -2309,28 +2485,42 @@ export function DetailScreenPage({
                             defaultValue={blankStr(employee.targetPBCriteria)}
                             onBlur={(e) => commit("targetPBCriteria", e.target.value)}
                             rows={2}
+                            disabled={!canEditF("targetPBCriteria")}
+                            title={canEditF("targetPBCriteria") ? undefined : LOCKED_TITLE}
                             className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={fieldStyle(isEdited("targetPBCriteria"))}
+                            style={
+                              canEditF("targetPBCriteria")
+                                ? fieldStyle(isEdited("targetPBCriteria"))
+                                : lockedStyle
+                            }
                           />
                         </FieldRow>
+                        )}
 
                         {/* Designation / New Title */}
-                        <FieldRow
+                        {!(hid("designation") && hid("newTitle")) && (
+                          <FieldRow
                           label="Designation / New Title"
+                          hidePrev={hid("designation")}
                           exc={excEach((rec) => <ReadOnlyInput value={dash(rec.designation === "—" ? "" : rec.designation)} />)}
                           prev={<ReadOnlyInput value={dash(employee.designation)} />}
                           diff={
                             <span style={{ ...subNote, fontWeight: 600 }}>
-                              Eligible: {dash(employee.eligibleForPromotion)}
+                              {hid("eligibleForPromotion")
+                                ? null
+                                : `Eligible: ${dash(employee.eligibleForPromotion)}`}
                             </span>
                           }
                         >
+                          {!hid("newTitle") && (
                           <select
                             key={`${employee.id}-newTitle`}
                             value={employee.newTitle || employee.designation || ""}
                             onChange={(e) => handleNewTitleChange(e.target.value)}
+                            disabled={!titleEditable}
+                            title={titleEditable ? undefined : LOCKED_TITLE}
                             className="h-[36px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={fieldStyle(isEdited("newTitle"))}
+                            style={titleEditable ? fieldStyle(isEdited("newTitle")) : lockedStyle}
                           >
                             {titleOptions.map((t) => {
                               const v = typeof t === "string" ? t : (t?.value ?? t?.label);
@@ -2342,10 +2532,13 @@ export function DetailScreenPage({
                               );
                             })}
                           </select>
+                          )}
                         </FieldRow>
+                        )}
 
                         {/* Comp Manager Remarks */}
-                        <FieldRow
+                        {!hid("compManagerRemarks") && (
+                          <FieldRow
                           label="Comp Manager Remarks"
                           exc={excEach((rec) => <ReadOnlyInput value={dash(rec.remarks)} />)}
                           prev={
@@ -2362,10 +2555,17 @@ export function DetailScreenPage({
                             onBlur={(e) => commit("compManagerRemarks", e.target.value)}
                             rows={2}
                             placeholder="Add remarks for this cycle"
+                            disabled={!canEditF("compManagerRemarks")}
+                            title={canEditF("compManagerRemarks") ? undefined : LOCKED_TITLE}
                             className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={fieldStyle(isEdited("compManagerRemarks"))}
+                            style={
+                              canEditF("compManagerRemarks")
+                                ? fieldStyle(isEdited("compManagerRemarks"))
+                                : lockedStyle
+                            }
                           />
                         </FieldRow>
+                        )}
                       </div>
                     );
                   })()}
@@ -2439,7 +2639,7 @@ export function DetailScreenPage({
             {cardOpen && (
             <aside className="ds-side" aria-label="Employee Info">
               <DetailSidePanel
-                employee={employee}
+                employee={panelEmployee}
                 rows={rows}
                 priorCycles={normalPrior}
                 feedbackItems={feedbackData.items}
@@ -2481,7 +2681,7 @@ export function DetailScreenPage({
             className="shrink-0 px-4 py-2 text-[14px] font-extrabold"
             style={{ background: NAVY, color: "#fff" }}
           >
-            Employee History — {employee.name} ·{" "}
+            Employee History — {hid("name") ? employee.empId : employee.name} ·{" "}
             {cycleCountText([{}, ...priorCycles])}
           </div>
 
@@ -2498,8 +2698,10 @@ export function DetailScreenPage({
             >
               {[
                 { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
-                { key: "designation", label: "Designation", formula: "" },
-                ...HISTORY_COLUMNS,
+                ...(histShowDesignation
+                  ? [{ key: "designation", label: "Designation", formula: "" }]
+                  : []),
+                ...histShown.map(({ col }) => col),
               ].map((c, i, all) => (
                 <div
                   key={c.key}
@@ -2588,20 +2790,22 @@ export function DetailScreenPage({
                       >
                         {currentCycleName} ★
                       </div>
-                      <div
-                        style={histTextCell({
-                          textAlign: "center",
-                          color: INK,
-                        })}
-                      >
-                        {feedbackDesignation(
-                          feedbackData.items,
-                          currentCycleName,
-                        ) ||
-                          employee.designation ||
-                          "—"}
-                      </div>
-                      {HIST_VAL_ORDER.map((i) => (
+                      {histShowDesignation && (
+                        <div
+                          style={histTextCell({
+                            textAlign: "center",
+                            color: INK,
+                          })}
+                        >
+                          {feedbackDesignation(
+                            feedbackData.items,
+                            currentCycleName,
+                          ) ||
+                            employee.designation ||
+                            "—"}
+                        </div>
+                      )}
+                      {histShown.map(({ slot: i }) => (
                         <HistCell
                           key={i}
                           value={cur[i]}
@@ -2640,23 +2844,25 @@ export function DetailScreenPage({
                   >
                     {h.cycleName || h.year}
                   </div>
-                  <div
-                    style={histTextCell({
-                      textAlign: "center",
-                      color: exc ? EXCEPTION_TEXT : INK,
-                    })}
-                  >
-                    {feedbackDesignation(
-                      feedbackData.items,
-                      h.cycleName,
-                      h.year,
-                    ) ||
-                      (h.designation && h.designation !== "—"
-                        ? h.designation
-                        : "") ||
-                      "—"}
-                  </div>
-                  {HIST_VAL_ORDER.map((c) => (
+                  {histShowDesignation && (
+                    <div
+                      style={histTextCell({
+                        textAlign: "center",
+                        color: exc ? EXCEPTION_TEXT : INK,
+                      })}
+                    >
+                      {feedbackDesignation(
+                        feedbackData.items,
+                        h.cycleName,
+                        h.year,
+                      ) ||
+                        (h.designation && h.designation !== "—"
+                          ? h.designation
+                          : "") ||
+                        "—"}
+                    </div>
+                  )}
+                  {histShown.map(({ slot: c }) => (
                     <HistCell
                       key={c}
                       value={vals[c]}

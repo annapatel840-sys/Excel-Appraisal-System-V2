@@ -31,6 +31,7 @@ import React, {
   useState,
 } from "react";
 import { useAppraisal, keyOfLabel } from "@/lib/appraisal-store";
+import { useAccess } from "@/lib/access-store";
 import { MANAGER_RATING_LABELS } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
@@ -238,6 +239,9 @@ const BulkOperations = forwardRef(function BulkOperations(
   }, [budgetCtx, distBudget?.applies, distBudget?.updatedBudget, distBudget?.pending, sheetRows]);
 
   /* The Appraisal Sheet's own rows, in the screen's row shape (Active + Eligible, by Employee ID). */
+  // Access -> Fields tab ("Bulk Edit"): the engine asks this for every field it draws or changes.
+  const access = useAccess();
+
   const sheetEmp = useMemo(() => {
     const edited = new Set(
       (sheetAudit || []).map((x) => String(x.empId || "").trim()).filter(Boolean),
@@ -284,7 +288,7 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
   live.current = {
-    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate,
+    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate, access,
     sheetAudit, storeFetchBulkHistory,
   };
   /* Bulk history read from the server (kept so a screen refresh does not re-download it). */
@@ -321,6 +325,18 @@ const BulkOperations = forwardRef(function BulkOperations(
         };
         if (!isRestore && meta && meta.id && meta.text) rememberBatchText(live.current.cycle, meta.id, meta.text);
         if (!bulkUpdate) throw new Error("Saving is not available right now.");
+        // Second safeguard: never send a field this login may only read or cannot see.
+        const accessNow = live.current.access;
+        if (accessNow) {
+          const blocked = [...new Set(changes.map((c) => STORE_KEY[c.field] || c.field))].filter(
+            (key) => !accessNow.canEditField(key),
+          );
+          if (blocked.length) {
+            throw new Error(
+              `Not saved: your access to ${blocked.join(", ")} is read-only or hidden.`,
+            );
+          }
+        }
         const idOf = {};
         (rows || []).forEach((r) => {
           idOf[String(r.empId)] = r.id;
@@ -358,6 +374,8 @@ const BulkOperations = forwardRef(function BulkOperations(
         return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
       },
       getSheetEmp: () => live.current.sheetEmp,
+      // "edit" | "read" | "hidden" for an Appraisal Sheet field key (Access -> Fields tab).
+      fieldLimit: (key) => (live.current.access ? live.current.access.fieldLimit(key) : "edit"),
       // Restore: true when this employee was edited by someone/something else after the batch started.
       // Entries of the batch itself (and of its own restore) do not count. null = audit not available.
       rowEditedSince: (empId, batch) => {

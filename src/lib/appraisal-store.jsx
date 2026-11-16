@@ -2381,6 +2381,7 @@ import {
 import { COLUMNS, normalizeManagerRating } from "./appraisal-data";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
+import { useAccess } from "./access-store";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
@@ -3883,6 +3884,25 @@ export function AppraisalProvider({ children }) {
     return true;
   }, []);
 
+  // Access -> Fields tab: a field this role may only read (or cannot see) is never
+  // saved, whichever screen asks (Appraisal Sheet, Detailed Screen, Bulk Edit,
+  // Import). Second safeguard: the screens already lock these fields, and the
+  // server refuses them too. Keys that are not access-controlled stay allowed.
+  const access = useAccess();
+  const accessRef = useRef(access);
+  accessRef.current = access;
+  const rejectLockedFields = useCallback((keys) => {
+    const current = accessRef.current;
+    const locked = (keys || []).filter((key) => !current.canEditField(key));
+    if (!locked.length) return false;
+    setSaveError(
+      `${locked.map(labelOf).join(", ")} cannot be changed: your access to ${
+        locked.length > 1 ? "these fields is" : "this field is"
+      } read-only or hidden.`,
+    );
+    return true;
+  }, []);
+
   // Hike Amount / Hike % are number columns: an empty value is refused by the
   // Data Store, so it is never sent (every screen, import and paste included).
   const rejectEmptyHike = useCallback((fieldValues) => {
@@ -4007,7 +4027,7 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   const applyEdits = useCallback((ids, key, compute, source, batchId) => {
-    if (rejectWhileShowingSaved() || rejectUnmappedFields([key])) {
+    if (rejectWhileShowingSaved() || rejectUnmappedFields([key]) || rejectLockedFields([key])) {
       return 0;
     }
 
@@ -4128,7 +4148,7 @@ export function AppraisalProvider({ children }) {
     });
 
     return entries.length;
-  }, [currentUserName, rejectUnmappedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure]);
+  }, [currentUserName, rejectUnmappedFields, rejectLockedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure]);
 
   /* ==========================================================
   APPLY LINKED FIELDS EDIT
@@ -4141,7 +4161,11 @@ export function AppraisalProvider({ children }) {
 
   const applyLinkedFieldsEdit = useCallback(
     (id, fieldValues, source = "Inline edit", batchId) => {
-      if (rejectWhileShowingSaved() || rejectUnmappedFields(Object.keys(fieldValues))) {
+      if (
+        rejectWhileShowingSaved() ||
+        rejectUnmappedFields(Object.keys(fieldValues)) ||
+        rejectLockedFields(Object.keys(fieldValues))
+      ) {
         return 0;
       }
 
@@ -4293,7 +4317,7 @@ export function AppraisalProvider({ children }) {
 
       return entries.length;
     },
-    [currentUserName, rejectUnmappedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure],
+    [currentUserName, rejectUnmappedFields, rejectLockedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure],
   );
 
   /* ==========================================================

@@ -98,7 +98,14 @@ function bucket(e){return e.rating==null?null:Math.min(5,Math.max(1,Math.round(e
 function nowT(){var d=new Date();return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function lvl(p){return p>100?"danger":p>90?"warn":""}
 function ruleBy(uid){return S.rules.filter(function(r){return r.uid===uid})[0]}
-function canEdit(key){return !apiMode()||!FA||!Object.keys(FA).length||!FA[key]||FA[key].access==="edit"}
+/* Access -> Fields tab, "Bulk Edit": the page passes cfg.fieldLimit(sheetField) = "edit" | "read" | "hidden".
+   Hidden = not drawn (columns, filters, "What to change"); Read = shown but cannot be picked or changed. */
+var SHEETK={hikeAmt:"hikeAmount",hikePct:"hikePct",newPB:"allocatedPBAmount",newRB:"newRB",tpbNext:"targetPBNextYear"};
+function fLim(k){var f=cfg&&cfg.fieldLimit;var v=f?f(k):"edit";return v==="hidden"||v==="read"?v:"edit"}
+function fHid(k){return fLim(k)==="hidden"}
+function floorTxt(F,e){return fHid(F.floor==="pbPaid"?"pbToBePaid":"rbToBePaid")?"":" ("+inr(e[F.floor])+")"}
+var FSHEET={designation:"designation",techEd:"appraiserTechED",compManager:"compManager",rating:"managerRating",rrPct:"rrPercent",grossMargin:"grossMargin",promo:"eligibleForPromotion",newTitle:"newTitle"};
+function canEdit(key){if(fLim(SHEETK[key]||key)!=="edit")return false;return !apiMode()||!FA||!Object.keys(FA).length||!FA[key]||FA[key].access==="edit"}
 function usedKeys(except){var u={};S.rules.forEach(function(r){if(r.uid!==except)u[FIELDS[r.field].key]=1});return u}
 
 var SC_VER=0,_sc={emp:null,sh:null,ver:-1,out:[]};
@@ -211,6 +218,7 @@ function passFilters(e){
 }
 function roleIs(rx){return apiMode()?!!(ME&&rx.test(String(ME.role||"")))&&true:false}
 function hiddenForRole(d){
+  if(FSHEET[d.id]&&fHid(FSHEET[d.id]))return true;
   if(d.field==="compManager")return S.role==="CM"||(ME&&/comp/i.test(String(ME.role||"")));
   if(d.field==="superManager")return apiMode()?!!(ME&&/tech|comp/i.test(String(ME.role||""))):S.role!=="HR";   // Tech ED filter is for the HR view only
   return false;
@@ -306,7 +314,7 @@ function renderRules(){
   S.rules.forEach(function(r,idx){
     var F=FIELDS[r.field],txt=F.kind==="txt",dist=r.method==="dist"&&F.kind==="amt",adj=r.method==="adj"&&F.kind==="amt",ted=r.method==="ted"&&F.kind!=="txt",taken=usedKeys(r.uid);
     h+='<div class="rrow" data-uid="'+r.uid+'">';
-    h+='<div class="f"><label>Field</label><select data-k="field">'+FORDER.map(function(f){
+    h+='<div class="f"><label>Field</label><select data-k="field">'+FORDER.filter(function(f){return f===r.field||!fHid(SHEETK[FIELDS[f].key])}).map(function(f){
       var off=!fieldOn(f)&&!(f==="hikePct"&&isHike(r.field)),dis=off||(taken[FIELDS[f].key]&&f!==r.field)||(!canEdit(FIELDS[f].key)&&f!==r.field);
       var cur=(f===r.field)||(f==="hikePct"&&isHike(r.field));return '<option value="'+f+'"'+(cur?' selected':'')+(dis&&!cur?' disabled':'')+'>'+esc((f==="hikePct"?"Hike":FIELDS[f].label)+(dis&&!cur?(off?" (coming soon)":taken[FIELDS[f].key]?" (already used)":" (no access)"):""))+'</option>';
     }).join("")+'</select></div>';
@@ -453,7 +461,7 @@ function computeRule(e,r,after,notes){
   if(r.method==="adj"){
     var a=Number(r.adjAmt)||0,v=(Number(e[F.key])||0)+(r.adjDir==="sub"?-a:a);
     if(v<0){v=0;notes.push({t:"warn",k:"adj",m:F.label+" limited to 0"})}
-    if(F.floor&&v<e[F.floor]){v=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount ("+inr(e[F.floor])+")"})}
+    if(F.floor&&v<e[F.floor]){v=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount"+floorTxt(F,e)})}
     after[F.key]=v;return;
   }
   if(r.method==="dist"){after[F.key]=(Number(e[F.key])||0)+((SH[r.uid]&&SH[r.uid][e.empId])||0);return}
@@ -463,7 +471,7 @@ function computeRule(e,r,after,notes){
   if(r.field==="hikePct")amt=hikeBasis(e)*val/100;
   else if(r.field==="hikeAmt")amt=val;
   else amt=r.unit==="pct"?hikeBasis(e)*val/100:val;
-  if(F.floor&&amt<e[F.floor]){amt=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount ("+inr(e[F.floor])+")"})}
+  if(F.floor&&amt<e[F.floor]){amt=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount"+floorTxt(F,e)})}
   after[F.key]=amt;
 }
 function computeRow(e){
@@ -575,11 +583,15 @@ function dispVal(r,e,v){
 }
 function showHp(){return !S.rules.some(function(r){return r.field==="hikePct"})}   // v34: the Hike % rule column already shows it
 function cols(){
-  var c=[{k:"name",t:"Employee",c:"c1"},{k:"rating",t:"Manager Rating",r:1},{k:"basePay",t:"Base Pay",r:1}];
+  var c=[{k:"name",t:"Employee",c:"c1"}];
+  if(!fHid("managerRating"))c.push({k:"rating",t:"Manager Rating",r:1});
+  if(!fHid("currentAnnualBasePay"))c.push({k:"basePay",t:"Base Pay",r:1});
   S.rules.forEach(function(r,i){var L=FIELDS[r.field].label;
     c.push({k:"cur"+i,t:"Current · "+L,r:1},{k:"prop"+i,t:"Proposed · "+L,r:1},{k:"chg"+i,t:"Change · "+L,r:1});});
-  if(showHp())c.push({k:"hikePct",t:"Hike% (After)",r:1});
-  c.push({k:"newBase",t:"New Base Salary (After)",r:1},{k:"ctc",t:"Total CTC with Rewards (After)",r:1},{k:"note",t:"Note",ns:1});
+  if(showHp()&&!fHid("hikePct")&&!fHid("hikeAmount"))c.push({k:"hikePct",t:"Hike% (After)",r:1});
+  if(!fHid("newBaseSalary"))c.push({k:"newBase",t:"New Base Salary (After)",r:1});
+  if(!fHid("totalCTCWithRewards"))c.push({k:"ctc",t:"Total CTC with Rewards (After)",r:1});
+  c.push({k:"note",t:"Note",ns:1});
   return c;
 }
 
@@ -777,10 +789,10 @@ function renderGrid(){
     }
     if(!S.pv||!p||p.st!=="chg"){if(e.bulk)notes+='<span class="tag t-ok">Bulk Applied</span>';else if(e.hand&&!(p&&p.st==="skip"))notes+='<span class="tag t-info">Edited Manually</span>'}
     var hp=af.hikeAmt/e.basePay*100;
-    b+='<tr><td class="c1" title="'+esc(e.empId+" - "+e.name+" - "+e.designation)+'"><div class="emp"><span class="eb'+(e.hand||e.bulk?'':' none')+'"></span><input type="checkbox" data-id="'+e.empId+'"'+(S.off[e.empId]?'':' checked')+'><div class="et"><span class="en">'+esc(e.empId)+' - '+esc(e.name)+'</span><span class="dsg">'+esc(e.designation)+'</span></div></div></td>'
-      +'<td class="r">'+(e.rating==null?'—':e.rating.toFixed(1))+'</td><td class="r">'+inr(e.basePay)+'</td>'
+    b+='<tr><td class="c1" title="'+esc(e.empId+(fHid("name")?"":" - "+e.name)+(fHid("designation")?"":" - "+e.designation))+'"><div class="emp"><span class="eb'+(e.hand||e.bulk?'':' none')+'"></span><input type="checkbox" data-id="'+e.empId+'"'+(S.off[e.empId]?'':' checked')+'><div class="et"><span class="en">'+esc(e.empId)+(fHid("name")?'':' - '+esc(e.name))+'</span><span class="dsg">'+(fHid("designation")?'':esc(e.designation))+'</span></div></div></td>'
+      +(fHid("managerRating")?'':'<td class="r">'+(e.rating==null?'—':e.rating.toFixed(1))+'</td>')+(fHid("currentAnnualBasePay")?'':'<td class="r">'+inr(e.basePay)+'</td>')
       +cells
-      +(showHp()?'<td class="r">'+pct(hp)+'</td>':'')+'<td class="r">'+inr(e.basePay+af.hikeAmt)+'</td><td class="r">'+inr(e.basePay+af.hikeAmt+af.newPB+af.newRB)+'</td><td>'+notes+'</td></tr>';
+      +((showHp()&&!fHid("hikePct")&&!fHid("hikeAmount"))?'<td class="r">'+pct(hp)+'</td>':'')+(fHid("newBaseSalary")?'':'<td class="r">'+inr(e.basePay+af.hikeAmt)+'</td>')+(fHid("totalCTCWithRewards")?'':'<td class="r">'+inr(e.basePay+af.hikeAmt+af.newPB+af.newRB)+'</td>')+'<td>'+notes+'</td></tr>';
   });
   if(!slice.length)b='<tr><td colspan="'+C.length+'" class="empty">No employees match the filters.</td></tr>';
   $("tb").innerHTML=b;
