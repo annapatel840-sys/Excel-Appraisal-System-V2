@@ -1941,16 +1941,6 @@ async function enrichPreviousAppraisalValues(
     const feedbackCycleLocation = String(
       cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
     ).trim().toLowerCase();
-    const employeeMaster = employeeMasterMap.get(empKey) || {};
-    const employeeLocationAliases = [
-      employeeMaster.location,
-      employeeMaster.location_name,
-      employeeMaster.location_code,
-      employeeMaster.work_location,
-      currentLocation,
-    ]
-      .map((value) => String(value || "").trim().toLowerCase())
-      .filter(Boolean);
     const feedbackCycleIsUnscoped =
       !feedbackCycleLocation ||
       ["all", "all locations", "alllocations"].includes(feedbackCycleLocation);
