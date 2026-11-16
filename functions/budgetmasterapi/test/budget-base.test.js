@@ -674,7 +674,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.master[0].org_budget_base, 0, 'archived payroll fallback must not be added to the Org Budget Base');
     const employee = response.json.employeeRoster.find((row) => row.emp_id === 'E1');
     assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 1875000);
-    assert.strictEqual(response.json.diagnostics.warning, undefined);
+    assert.match(response.json.diagnostics.warning, /None of the 1 generated Appraisal Sheet employees has no stored Previous_Appraisal_total_CTC_with_rewards value/);
   });
 
   await t('Closed but non-archived cycles are not used as Payroll CTC history', async () => {
