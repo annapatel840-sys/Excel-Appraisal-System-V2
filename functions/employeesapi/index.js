@@ -1797,21 +1797,28 @@ async function enrichPreviousAppraisalValues(
     const masterId = historyReference(record?.emp_id).toLowerCase();
     if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
     const master = employeeMasterMap.get(masterId) || {};
-    const employeeLocation = String(
-      master.location || master.location_name || master.location_code || master.work_location || "",
-    ).trim().toLowerCase();
+    const employeeLocations = [
+      master.location,
+      master.location_name,
+      master.location_code,
+      master.work_location,
+    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
     const previousCycleLocation = String(
       cycle.location || cycle.cycle_location || cycle.cycleLocation || "",
     ).trim().toLowerCase();
     const currentCycleLocation = String(
       currentCycle?.location || currentCycle?.cycle_location || currentCycle?.cycleLocation || "",
     ).trim().toLowerCase();
-    const expectedLocation = employeeLocation || currentCycleLocation;
+    const expectedLocations = employeeLocations.length
+      ? employeeLocations
+      : currentCycleLocation
+        ? [currentCycleLocation]
+        : [];
     if (
       previousCycleLocation &&
       !["all", "all locations", "alllocations"].includes(previousCycleLocation) &&
-      expectedLocation &&
-      previousCycleLocation !== expectedLocation
+      expectedLocations.length &&
+      !expectedLocations.includes(previousCycleLocation)
     )
       return;
     const archived = isArchivedCycle(cycle);
