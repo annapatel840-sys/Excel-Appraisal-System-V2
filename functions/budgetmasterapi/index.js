@@ -2845,7 +2845,7 @@ async function calculateBudgetBases(
       String(m.appraisal_cycle_id || "").trim(),
     ).length,
     baseColumns:
-      "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards for eligible current-cycle Appraisal Sheet employees; Payroll_Data historical Total CTC with Rewards only when the sheet snapshot is absent; current CTC only as a final fallback",
+      "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards from current-cycle generated rows only; no payroll or Employee_Master fallback",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning =
@@ -3387,12 +3387,21 @@ async function calculateBudgetBases(
         .length,
       budgetBaseRawCtcSum: orgBase,
       budgetBaseMissingEmployeeIds: orgBaseRows
-        .filter((row) => row.ctc === 0)
+        .filter((row) => !row.hasStoredCtc)
         .map((row) => row.employeeId)
         .slice(0, 20),
+      employeesWithBase: orgBaseRows.filter((row) => row.hasStoredCtc && row.ctc > 0).length,
+      baseColumns:
+        "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards from current-cycle generated rows only; no payroll or Employee_Master fallback",
       budgetBaseSheetRowCountMismatch:
         currentAppraisalRows.length !== legacyEligibilityCount,
     };
+    const missingOrgBaseRows = orgBaseRows.filter((row) => !row.hasStoredCtc).length;
+    if (orgBaseRows.length && missingOrgBaseRows) {
+      bundle.diagnostics.warning = orgBaseRows.length === missingOrgBaseRows
+        ? `None of the ${orgBaseRows.length} generated Appraisal Sheet employees has a stored Previous_Appraisal_total_CTC_with_rewards value, so the Org Budget Base is 0. Check the generated Appraisal_Sheet rows.`
+        : `${missingOrgBaseRows} of ${orgBaseRows.length} generated Appraisal Sheet employees have no stored Previous_Appraisal_total_CTC_with_rewards value. Org Budget Base includes only the stored values.`;
+    }
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
         key,
