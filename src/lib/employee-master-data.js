@@ -991,5 +991,6 @@ export async function fetchDelegationAssigneeOptions() {
   return {
     techEd: Array.isArray(result?.data?.techEd) ? result.data.techEd : [],
     compManagers: Array.isArray(result?.data?.compManagers) ? result.data.compManagers : [],
+    employees: Array.isArray(result?.data?.employees) ? result.data.employees : [],
   };
 }
