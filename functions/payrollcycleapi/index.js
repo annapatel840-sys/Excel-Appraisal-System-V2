@@ -2184,9 +2184,16 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const isArchivedCycle = (item) =>
     Boolean(item?.archived) ||
     String(item?.status || "").trim().toLowerCase() === "archived";
-  // Closed cycles are not historical sources. Only explicitly archived
-  // shared cycles may provide existing payroll/feedback to a location cycle.
-  const isAvailableSourceCycle = (item) => isArchivedCycle(item);
+  // A matching global cycle may supply the uploads already used when the
+  // location-specific cycles were created. Prefer Archived, but also allow
+  // the legacy global cycle when it is Closed (not Archived). This exception
+  // is limited below to the same cycle type/year and is never used to populate
+  // archived-history panels.
+  const isClosedSharedSourceCycle = (item) =>
+    String(item?.status || "").trim().toLowerCase() === "closed" &&
+    !item?.archived;
+  const isAvailableSourceCycle = (item) =>
+    isArchivedCycle(item) || isClosedSharedSourceCycle(item);
   const cycleOrder = (item) => {
     const date = String(item?.effective || item?.end || item?.start || "");
     const year = Number(cycleYear(item)) || 0;
@@ -2199,16 +2206,20 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
   const currentYear = cycleYear(cycle);
   const canonicalCycleName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
-  const sourceCycle = cycleLocationKey(cycle)
-    ? normalizedCycles.find((item) =>
+  const matchingSharedSourceCycles = cycleLocationKey(cycle)
+    ? normalizedCycles.filter((item) =>
         String(item.id) !== String(cycle.id) &&
         !cycleLocationKey(item) &&
         isAvailableSourceCycle(item) &&
         cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalCycleName &&
         cycleYear(item) === currentYear &&
         cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
-      ) || null
-    : null;
+      )
+    : [];
+  const sourceCycle =
+    matchingSharedSourceCycles.find((item) => isArchivedCycle(item)) ||
+    matchingSharedSourceCycles.find((item) => isClosedSharedSourceCycle(item)) ||
+    null;
   // Matching location cycles share the legacy source data. Keep the
   // explicit option for older callers, but do not require a separate upload
   // or confirmation for the location cycle.
