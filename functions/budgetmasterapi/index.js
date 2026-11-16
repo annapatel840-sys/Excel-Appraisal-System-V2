@@ -2135,6 +2135,39 @@ async function calculateBudgetBases(
     cycleById.get(String(cycleId)) ||
     cycleByName.get(String(cycleId).toLowerCase()) ||
     null;
+  const cycleMatchesEmployeeLocation = (cycle, employeeMasterRow, fallbackLocation = "") => {
+    const masterLocationValues = [
+      firstValue(employeeMasterRow, ["location", "work_location", "location_name", "location_code"]),
+    ].map(normalizeLocationKey).filter(Boolean);
+    const employeeLocationAliases = new Set(masterLocationValues);
+    if (employeeLocationAliases.size) {
+      const masterLocationKey = masterLocationValues[0];
+      const locationRecord = locationRows.find((location) =>
+        [
+          firstValue(location, ["location_name", "name", "location"]),
+          firstValue(location, ["location_code", "code", "short_code"]),
+          idOf(location),
+        ].some((alias) => normalizeLocationKey(alias) === masterLocationKey),
+      );
+      if (locationRecord) {
+        [
+          firstValue(locationRecord, ["location_name", "name", "location"]),
+          firstValue(locationRecord, ["location_code", "code", "short_code"]),
+          idOf(locationRecord),
+        ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => employeeLocationAliases.add(alias));
+      }
+    } else if (fallbackLocation) {
+      employeeLocationAliases.add(normalizeLocationKey(fallbackLocation));
+    }
+    const candidateLocation = normalizeLocationKey(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    );
+    return (
+      !candidateLocation ||
+      ["all", "alllocations"].includes(candidateLocation) ||
+      employeeLocationAliases.has(candidateLocation)
+    );
+  };
   const previousCycleFor = (cycleId, employeeMasterRow = {}) => {
     const current = currentCycleFor(cycleId);
     if (!current) return null;
@@ -2162,39 +2195,6 @@ async function calculateBudgetBases(
       });
       if (sameYearSource) return sameYearSource;
     }
-    const masterLocationValues = [
-      firstValue(employeeMasterRow, ["location", "work_location", "location_name", "location_code"]),
-    ].map(normalizeLocationKey).filter(Boolean);
-    const employeeLocationAliases = new Set(masterLocationValues);
-    if (employeeLocationAliases.size) {
-      const masterLocationKey = masterLocationValues[0];
-      const locationRecord = locationRows.find((location) =>
-        [
-          firstValue(location, ["location_name", "name", "location"]),
-          firstValue(location, ["location_code", "code", "short_code"]),
-          idOf(location),
-        ].some((alias) => normalizeLocationKey(alias) === masterLocationKey),
-      );
-      if (locationRecord) {
-        [
-          firstValue(locationRecord, ["location_name", "name", "location"]),
-          firstValue(locationRecord, ["location_code", "code", "short_code"]),
-          idOf(locationRecord),
-        ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => employeeLocationAliases.add(alias));
-      }
-    } else if (currentLocation) {
-      employeeLocationAliases.add(normalizeLocationKey(currentLocation));
-    }
-    const cycleMatchesEmployeeLocation = (candidate) => {
-      const candidateLocation = normalizeLocationKey(
-        firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
-      );
-      return (
-        !candidateLocation ||
-        ["all", "alllocations"].includes(candidateLocation) ||
-        employeeLocationAliases.has(candidateLocation)
-      );
-    };
     const currentRank = cycleRank(current);
     const earlier = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
@@ -2202,7 +2202,7 @@ async function calculateBudgetBases(
         cycleRank(cycle) > 0 &&
         currentRank > 0 &&
         cycleRank(cycle) < currentRank &&
-        cycleMatchesEmployeeLocation(cycle)
+        cycleMatchesEmployeeLocation(cycle, employeeMasterRow, currentLocation)
       )
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
@@ -2400,7 +2400,7 @@ async function calculateBudgetBases(
         // become a history source only after explicit archival.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
-          cycleMatchesEmployeeLocation(candidate, masterRow) &&
+          cycleMatchesEmployeeLocation(candidate, masterRow, activeCycleIsLocationScoped ? activeCycleLocation : "") &&
           (isHistoricalCycle(candidate) || candidateStatus === "active") &&
           !hidden &&
           !["cancelled", "canceled"].includes(candidateStatus);
