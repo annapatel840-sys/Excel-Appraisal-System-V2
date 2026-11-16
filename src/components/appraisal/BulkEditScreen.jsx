@@ -20,7 +20,8 @@ const pickCycle = (list) =>
 export default function BulkEditScreen() {
   // "View" on the Bulk Edit screen: preview only, nothing can be applied.
   const access = useAccess();
-  const readOnly = !access.canAction("bulkEdit");
+  const readOnly =
+    !access.canAction("bulkEdit") || !access.canScreen("bulkEditScreen", "edit");
   const [cycles, setCycles] = useState(() => cyclesCache || []);
   // The cycle is picked automatically (active one first); no manual selector.
   const [selectedId, setSelectedId] = useState(() => selectedCache);

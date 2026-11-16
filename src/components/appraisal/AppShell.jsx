@@ -611,7 +611,7 @@ export function AppShell({ children, headerActions, notifications }) {
             label: "Delegation",
             icon: Users,
           },
-          access.canAction("bulkEdit") && {
+          access.canScreen("bulkEditScreen") && {
             to: "/bulk-edit",
             label: "Bulk Edit",
             icon: SlidersHorizontal,
