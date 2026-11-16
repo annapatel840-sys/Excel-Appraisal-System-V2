@@ -26,6 +26,7 @@ import { useLetters } from "@/lib/letters-store";
 
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
 const STEPS = ["Upcoming", "Active", "Closed", "Archived"];
+const STEP_COLORS = ["#f5b301", "#16a34a", "#dc2626", "#27548a"];
 const SCREENS = {
   req: { label: "Requests", tab: "delegation", open: "Delegation" },
   elig: { label: "Eligibility", tab: "eligibility", open: "Eligibility List" },
@@ -688,8 +689,21 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       {activeCycle && (
         <div className="hrd-cyc">
           <div className="hrd-stp">
+            {step > 0 && (() => {
+              const run = {
+                width: `${step * 25}%`,
+                "--n": step,
+                background: `linear-gradient(90deg, ${STEP_COLORS.slice(0, step + 1).join(", ")})`,
+              };
+              return (
+                <>
+                  <span className="hrd-run base" style={run} />
+                  <span className="hrd-run go" style={run} />
+                </>
+              );
+            })()}
             {STEPS.map((s, i) => (
-              <div key={s} style={{ "--i": i }} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
+              <div key={s} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
             ))}
           </div>
           <span className="hrd-cycname">Cycle<b>{cycleName}</b></span>

@@ -22,24 +22,24 @@
 .hrd-stp{display:flex;align-items:flex-start;margin:0;flex:0 0 420px;max-width:100%}
 /* Stage colours: Upcoming yellow, Active green, Closed red, Archived blue. --p is the previous stage's colour. */
 .hrd-stp div{--c:#e5e7eb;--p:#e5e7eb;flex:1;text-align:center;position:relative;color:#6b7280;font-size:11px;font-weight:600}
-.hrd-stp div:nth-child(1){--c:#f5b301}
-.hrd-stp div:nth-child(2){--c:#16a34a;--p:#f5b301}
-.hrd-stp div:nth-child(3){--c:#dc2626;--p:#16a34a}
-.hrd-stp div:nth-child(4){--c:#27548a;--p:#dc2626}
+.hrd-stp div:nth-of-type(1){--c:#f5b301}
+.hrd-stp div:nth-of-type(2){--c:#16a34a;--p:#f5b301}
+.hrd-stp div:nth-of-type(3){--c:#dc2626;--p:#16a34a}
+.hrd-stp div:nth-of-type(4){--c:#27548a;--p:#dc2626}
 /* grey track, always there */
+.hrd-stp{position:relative}
 .hrd-stp div::before{content:"";position:absolute;top:7px;left:-50%;width:100%;height:3px;background:#e5e7eb}
-.hrd-stp div:first-child::before,.hrd-stp div:first-child::after{display:none!important}
-/* coloured fill that grows left to right over the track once the screen loads */
-.hrd-stp div::after{content:"";position:absolute;top:7px;left:-50%;width:100%;height:3px;background:linear-gradient(90deg,var(--p),var(--c));transform:scaleX(0);transform-origin:left center;display:none}
-.hrd-stp div.done::after,.hrd-stp div.on::after{display:block;animation:hrd-fill .55s ease-out forwards;animation-delay:calc((var(--i) - 1) * .75s)}
+.hrd-stp div:nth-of-type(1)::before{display:none}
 .hrd-stp i{display:block;width:17px;height:17px;border-radius:50%;background:#e5e7eb;margin:0 auto 5px;position:relative;z-index:1;box-sizing:border-box}
-.hrd-stp div.done i{background:var(--c);animation:hrd-pop .35s ease-out backwards;animation-delay:calc((var(--i) - 1) * .75s + .5s)}
-.hrd-stp div.on i{background:#fff;border:5px solid var(--c);animation:hrd-pop .35s ease-out backwards;animation-delay:calc((var(--i) - 1) * .75s + .5s)}
-.hrd-stp div:first-child.done i,.hrd-stp div:first-child.on i{animation-delay:0s}
+.hrd-stp div.done i{background:var(--c)}
+.hrd-stp div.on i{background:#fff;border:5px solid var(--c)}
 .hrd-stp div.on{color:#102a43;font-weight:800}
-@keyframes hrd-fill{to{transform:scaleX(1)}}
-@keyframes hrd-pop{0%{transform:scale(.3);opacity:0}70%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
-@media (prefers-reduced-motion:reduce){.hrd-stp div::after,.hrd-stp i{animation:none!important}.hrd-stp div.done::after,.hrd-stp div.on::after{transform:scaleX(1)}}
+/* Dots stay still. The line from Upcoming to the current stage is a faint static copy plus a bright copy that runs along it in a loop. */
+.hrd-run{z-index:1;position:absolute;top:7px;left:12.5%;height:3px;border-radius:2px;pointer-events:none}
+.hrd-run.base{opacity:.3}
+.hrd-run.go{transform-origin:left center;animation:hrd-run calc(var(--n) * .9s + .9s) ease-in-out infinite}
+@keyframes hrd-run{0%{transform:scaleX(0);opacity:1}70%{transform:scaleX(1);opacity:1}88%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hrd-run.go{animation:none}}
 .hrd-cycname{color:#4b5563;font-size:11.5px}
 .hrd-cycname b{color:#102a43;font-size:13px;margin-left:5px}
 .hrd-ag{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #eef0f3;background:#f6f9ff}
