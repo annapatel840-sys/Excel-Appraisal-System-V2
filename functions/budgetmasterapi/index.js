@@ -2407,9 +2407,9 @@ async function calculateBudgetBases(
     const storedPreviousCtc = previousRecord
       ? previousCtc(previousRecord)
       : null;
-    // The Appraisal Sheet displays the value mapped from payroll history
-    // (including the same-year New Joiners fallback), not a stale sheet
-    // snapshot. Use that same mapping for Org Budget Base.
+    // The generated Appraisal_Sheet Previous Total CTC with Rewards value
+    // is authoritative for this cycle's Org Budget Base. Payroll history is
+    // only a fallback for legacy rows where that exact sheet field is blank.
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
@@ -2421,10 +2421,12 @@ async function calculateBudgetBases(
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
-      Number.isFinite(Number(payrollCtcFallback)) &&
-      Number(payrollCtcFallback) > 0
-        ? Number(payrollCtcFallback)
-        : 0;
+      sheetPreviousCtc !== null && Number.isFinite(Number(sheetPreviousCtc))
+        ? Number(sheetPreviousCtc)
+        : Number.isFinite(Number(payrollCtcFallback)) &&
+            Number(payrollCtcFallback) > 0
+          ? Number(payrollCtcFallback)
+          : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
