@@ -507,9 +507,7 @@ export function AppraisalCycleMasterPage({
     return cycles.find((candidate) =>
       candidate.id !== cycle.id &&
       isAllCycleLocation(candidate.location) &&
-      ["Active", "Closed", "Archived", "Complete", "Completed"].includes(
-        statusOf(candidate),
-      ) &&
+      String(statusOf(candidate) || "").trim().toLowerCase() === "archived" &&
       cycleNameWithoutLocation(candidate.name).trim().toLowerCase() === sourceName,
     ) || null;
   };
