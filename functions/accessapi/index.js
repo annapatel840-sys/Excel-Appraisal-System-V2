@@ -2008,7 +2008,8 @@ app.post(
     const at = nowDT();
     let techSet = 0,
       compSet = 0,
-      skipped = 0;
+      skipped = 0,
+      selfCleared = 0;
     const rows = [];
     keys.forEach((k) => {
       if (!replace && existingBy[k]) {
@@ -2016,8 +2017,31 @@ app.post(
         return;
       }
       const empId = em[k] ? em[k].id : String(sheet[k][s.empId]).trim();
-      const t = techEdOf(k),
+      // Nobody appraises themselves. A self-assignment (e.g. Employee Master
+      // names the employee as their own Tech-ED) falls back to the employee's
+      // Employee Master director / Comp Manager; if that is also the employee,
+      // or blank, the field is left empty for HR to assign.
+      const isSelf = (id) => Boolean(id) && norm(id) === norm(empId);
+      const masterRef = (raw) => {
+        const text = String(raw || "").trim();
+        if (!text) return "";
+        const mm = text.match(EMP_REF_RE);
+        if (mm) return canon(mm[1]);
+        return em[norm(text)] ? em[norm(text)].id : "";
+      };
+      const masterRow = (em[k] && em[k].row) || {};
+      let t = techEdOf(k),
         cm = compMgrOf(k);
+      if (isSelf(t)) {
+        const fallback = masterRef(masterRow.director) || masterRef(masterRow.comp_manager);
+        t = isSelf(fallback) ? "" : fallback;
+        selfCleared++;
+      }
+      if (isSelf(cm)) {
+        const fallback = masterRef(masterRow.comp_manager) || masterRef(masterRow.director);
+        cm = isSelf(fallback) ? "" : fallback;
+        selfCleared++;
+      }
       if (t) techSet++;
       if (cm) compSet++;
       // Delegation.cycle_id and Delegation.emp_id are lookup fields.
@@ -2109,6 +2133,8 @@ app.post(
       skipped,
       techEdSet: techSet,
       compManagerSet: compSet,
+      // Self-assignments replaced by the director / Comp Manager (or left empty).
+      selfAssignmentsCleared: selfCleared,
       unmatched: {
         techEd: Array.from(unmatchedTech.values()),
         compManager: Array.from(unmatchedComp.values()),

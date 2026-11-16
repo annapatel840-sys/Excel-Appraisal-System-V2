@@ -1148,6 +1148,11 @@ module.exports = async (req, res) => {
       }
 
       let inScope = access.inScope(a, empId);
+      // Own record: allowed, and checked before the table-scanning fallbacks
+      // below (they read whole tables and took 4-8 s for this case).
+      if (!inScope && String(a?.user?.empId || "").trim().toUpperCase() === empId.toUpperCase()) {
+        inScope = true;
+      }
       if (!inScope && a.role === "compMgr") {
         inScope = await compManagerCurrentlyOwnsEmployee(req, a, empId);
       }
@@ -1159,9 +1164,6 @@ module.exports = async (req, res) => {
           cycleName,
           empId,
         );
-      }
-      if (!inScope && String(a?.user?.empId || "").trim().toUpperCase() === empId.toUpperCase()) {
-        inScope = true;
       }
       if (!inScope) {
         throw new access.HttpError(403, "You do not have access to employee " + empId + ".");
