@@ -2433,10 +2433,10 @@ async function calculateBudgetBases(
     // canonical base. Use historical Payroll_Data only when that sheet field
     // is absent, then fall back to the current CTC for new joiners/legacy rows.
     const sheetPreviousRaw = firstValue(row, [
-      // Live Appraisal_Sheet column (written by employeesapi).
-      "previous_year_CTC_with_rewards",
+      // Exact generated Appraisal_Sheet column shown to HR.
       "Previous_Appraisal_total_CTC_with_rewards",
       "previous_appraisal_total_ctc_with_rewards",
+      "previous_year_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
     ]);
     const sheetPreviousCtc =
