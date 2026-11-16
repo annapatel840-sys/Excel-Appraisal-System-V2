@@ -178,7 +178,7 @@ export function applyFilters(rows, filters, search) {
             !(
                 `${row.empId || row.employeeId || row.emp_id || ""} ${row.name || row.emp_name || ""} ${row.department || ""} ${row.designation || ""} ${row.manager || ""} ${row.reportingManager || row.reporting_manager || ""} ${row.compManager || row.comp_manager || ""}`
                     .toLowerCase()
-                    .replace(/\\s+/g, " ")
+                    .replace(/\s+/g, " ")
                     .includes(q)
             )
         ) {
