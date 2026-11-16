@@ -4849,6 +4849,10 @@ async function updateEmployee(req, res) {
       currentCycle?.appraisal_cycle_id,
       currentCycle?.cycleId,
       currentCycle?.appraisalCycleId,
+      currentCycle?.appraisal_id,
+      currentCycle?.appraisalId,
+      currentCycle?.cycle_master_id,
+      currentCycle?.appraisal_cycle_master_id,
       currentCycleName,
       currentCycle?.cycle_name,
       currentCycle?.cycleName,
@@ -4866,7 +4870,10 @@ async function updateEmployee(req, res) {
     return String(row.emp_id || row.employee_id || row.empId || "")
       .trim().toLowerCase() === empId.toLowerCase();
   });
-  const rowCycleReference = function (row) {
+  // A generated row can carry more than one legacy/current cycle reference.
+  // Do not stop at the first non-empty field: it may be an obsolete alias while
+  // a later appraisal_cycle_id (or appraisal_id) correctly identifies this cycle.
+  const rowCycleReferences = function (row) {
     return [
       row.cycle_id,
       row.appraisal_cycle_id,
@@ -4876,16 +4883,36 @@ async function updateEmployee(req, res) {
       row.cycle_name,
       row.appraisal_cycle,
       row.appraisal_year,
+      row.appraisal_id,
+      row.appraisalId,
+      row.cycle_master_id,
+      row.appraisal_cycle_master_id,
     ]
       .map(historyReference)
-      .find(Boolean)
-      ?.toLowerCase() || "";
+      .filter(Boolean)
+      .map(function (value) { return value.toLowerCase(); });
   };
   const exactCycleRows = employeeSheetRows.filter(function (row) {
-    const rawCycle = rowCycleReference(row);
-    return rawCycle && cycleAliases.has(rawCycle);
+    return rowCycleReferences(row).some(function (reference) {
+      return cycleAliases.has(reference);
+    });
   });
-  let appraisalRow = exactCycleRows.length === 1 ? exactCycleRows[0] : null;
+  // The budget roster also keeps the last Appraisal_Sheet row per employee
+  // when duplicate rows exist. Use the latest matching row here as well.
+  const latestRow = function (rows) {
+    return rows.slice().sort(function (left, right) {
+      const leftTime = Date.parse(String(left.MODIFIEDTIME || left.CREATEDTIME || "")) || 0;
+      const rightTime = Date.parse(String(right.MODIFIEDTIME || right.CREATEDTIME || "")) || 0;
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      const leftId = String(left.ROWID || left.rowid || "");
+      const rightId = String(right.ROWID || right.rowid || "");
+      const leftNumber = Number(leftId);
+      const rightNumber = Number(rightId);
+      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+      return leftId.localeCompare(rightId);
+    }).slice(-1)[0] || null;
+  };
+  let appraisalRow = latestRow(exactCycleRows);
 
   // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
   // employee has rows for several cycles, do not reject the current row just
@@ -4894,7 +4921,7 @@ async function updateEmployee(req, res) {
   // different cycle reference are never treated as the current cycle.
   if (!appraisalRow && exactCycleRows.length === 0) {
     const untaggedRows = employeeSheetRows.filter(function (row) {
-      return !rowCycleReference(row);
+      return rowCycleReferences(row).length === 0;
     });
     if (currentCycleLocation) {
       const locationCandidates = untaggedRows.filter(function (row) {

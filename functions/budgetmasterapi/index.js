@@ -1907,10 +1907,24 @@ async function calculateBudgetBases(
       .map((master) => cycleReference(master.appraisal_cycle_id).toLowerCase())
       .filter(Boolean),
   );
+  const cycleAliasesFor = (cycle) => {
+    const name = cycleNameOf(cycle);
+    const location = String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    return [
+      cycleIdOf(cycle),
+      firstValue(cycle, ["id", "ID", "cycle_id", "appraisal_cycle_id", "cycleId", "appraisalCycleId"]),
+      name,
+      firstValue(cycle, ["appraisal_year", "appraisalYear"]),
+      location && name ? location + " - " + name : "",
+    ]
+      .map(cycleReference)
+      .filter(Boolean)
+      .map((ref) => ref.trim().toLowerCase());
+  };
   const hasBudgetMaster = (cycle) =>
-    [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
-      budgetCycleRefs.has(String(ref || "").trim().toLowerCase()),
-    );
+    cycleAliasesFor(cycle).some((ref) => budgetCycleRefs.has(ref));
   // Every cycle is location-scoped. Select the Active cycle linked to its own
   // Budget_Master record; do not privilege a legacy unscoped cycle.
   const requestedLocation = String(selectedLocation || "").trim();
@@ -1996,26 +2010,31 @@ async function calculateBudgetBases(
     "appraisalCycleName",
     "cycle",
     "appraisal_cycle",
+    "appraisal_id",
+    "appraisalId",
+    "cycle_master_id",
+    "appraisal_cycle_master_id",
   ];
+  const sheetCycleReferences = (row) =>
+    sheetCycleFields
+      .map((field) => cycleReference(row && row[field]))
+      .filter(Boolean)
+      .map((ref) => ref.trim().toLowerCase());
+  const activeSheetCycleAliases = new Set(
+    activeSheetCycle ? cycleAliasesFor(activeSheetCycle) : [],
+  );
   const cycleScopedSheetRows = activeSheetCycle
-    ? appraisalRows.filter((row) => {
-        const raw = cycleReference(firstValue(row, sheetCycleFields));
-        return (
-          raw &&
-          (raw === activeSheetCycleId ||
-            raw.toLowerCase() === activeSheetCycleName.toLowerCase())
-        );
-      })
+    ? appraisalRows.filter((row) =>
+        sheetCycleReferences(row).some((ref) => activeSheetCycleAliases.has(ref)),
+      )
     : [];
   // Legacy deployments may have one sheet roster with no cycle key. Use that
   // only when the Active cycle has no explicitly tagged rows.
-  const sheetCycleReference = (row) =>
-    cycleReference(firstValue(row, sheetCycleFields));
-  const hasCycleTaggedSheetRows = appraisalRows.some((row) =>
-    Boolean(sheetCycleReference(row)),
+  const hasCycleTaggedSheetRows = appraisalRows.some(
+    (row) => sheetCycleReferences(row).length > 0,
   );
   const unscopedSheetRows = appraisalRows.filter(
-    (row) => !sheetCycleReference(row),
+    (row) => sheetCycleReferences(row).length === 0,
   );
   // Appraisal_Sheet is the generated roster for the active appraisal cycle in
   // this deployment. Some existing rows store cycle references in legacy formats
@@ -2080,12 +2099,10 @@ async function calculateBudgetBases(
     if (sourceCycle) {
       const sourceId = cycleIdOf(sourceCycle);
       const sourceName = cycleNameOf(sourceCycle).toLowerCase();
+      const sourceCycleAliases = new Set(cycleAliasesFor(sourceCycle));
       currentAppraisalRows = appraisalRows.filter((row) => {
-        const reference = cycleReference(firstValue(row, sheetCycleFields));
-        if (
-          reference !== sourceId &&
-          reference.toLowerCase() !== sourceName
-        ) return false;
+        const references = sheetCycleReferences(row);
+        if (!references.some((reference) => sourceCycleAliases.has(reference))) return false;
         const empId = employeeKeyFor(
           firstValue(row, ["emp_id", "empId", "employee_id", "employeeId"]),
         );
