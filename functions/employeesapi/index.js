@@ -525,6 +525,8 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
     const cycleLocation = String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "").trim();
     return [
       cycle?.ROWID, cycle?.rowid, cycle?.id, cycle?.ID,
+      cycle?.cycle_id, cycle?.appraisal_cycle_id,
+      cycle?.cycleId, cycle?.appraisalCycleId,
       name, cycle?.appraisal_year, cycle?.appraisalYear,
       cycleLocation && name ? cycleLocation + " - " + name : "",
     ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
