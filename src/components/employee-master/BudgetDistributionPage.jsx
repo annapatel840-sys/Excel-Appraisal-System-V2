@@ -412,7 +412,13 @@ export function BudgetDistributionPage() {
     if (linked) {
       const id = String(linked.employee_id || "").trim();
       const name = String(linked.name || "").trim();
-      return { key: normalize(id || linked.assignment || text), label: String(linked.assignment || (id && name ? id + " - " + name : id || name || text)).trim() };
+      const assignment = String(linked.assignment || "").trim();
+      const label = assignment.includes(" - ")
+        ? assignment
+        : id && name
+          ? id + " - " + name
+          : assignment || id || name || text;
+      return { key: normalize(id || assignment || text), label };
     }
     const employee = employeeRows.find((row) =>
       String(row.emp_id || row.employee_id || "").trim().toLowerCase() === compact ||
