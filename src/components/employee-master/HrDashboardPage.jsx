@@ -689,7 +689,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         <div className="hrd-cyc">
           <div className="hrd-stp">
             {STEPS.map((s, i) => (
-              <div key={s} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
+              <div key={s} style={{ "--i": i }} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
             ))}
           </div>
           <span className="hrd-cycname">Cycle<b>{cycleName}</b></span>
