@@ -2039,7 +2039,7 @@ export function TechEdBudgetDistribution() {
         String(myHistory[0].date || "") + String(myHistory[0].time || ""),
       pct: myPct,
     },
-    ...cmNodes.map((n) => ({
+    ...visibleCmNodes.map((n) => ({
       node: n,
       level: LEVELS[1],
       owner: n.name,
@@ -2058,8 +2058,8 @@ export function TechEdBudgetDistribution() {
   const allocRz = useColumnResize(ALLOC_W);
   const allocKeys = ALLOC_COLS.map((c) => c.key);
 
-  const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
-  const auditNames = [myName, ...cmNodes.map((c) => c.name)];
+  const cmLabel = LEVELS[1] + (visibleCmNodes.length === 1 ? "" : "s");
+  const auditNames = [myName, ...visibleCmNodes.map((c) => c.name)];
   let auditList = auditFor(auditNames);
   if (auditFilter !== "all")
     auditList = auditList.filter((x) => x.name === auditFilter);
