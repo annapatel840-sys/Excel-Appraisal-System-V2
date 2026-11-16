@@ -535,18 +535,25 @@ export function DashboardOverview() {
     .slice()
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
     .slice(0, 5);
-  // The audit "field" column keeps only 20 characters, so the stored label
-  // "Appraisal Sheet updated" arrives as "Appraisal Sheet upda". Show it
-  // whole instead of cut off.
+  // The audit "field" column keeps only 20 characters, so a longer stored label
+  // arrives cut off ("Appraisal Sheet upda", "Apply Criteria compl"). Give the
+  // full label back when the stored text is the start of exactly one known label.
+  const FULL_LABELS = [
+    "Appraisal Sheet updated",
+    "Appraisal Sheet generated",
+    "Appraisal Sheet feedback refreshed",
+    "Apply Criteria completed",
+    "Cycle deleted before its start date.",
+    "Employee import completed",
+    "Eligibility import partially completed",
+    "Bulk status partially completed",
+    "Change partially completed",
+  ];
   const fieldLabel = (v) => {
     const t = String(v ?? "");
-    if (t.length >= 16 && t !== "Appraisal Sheet updated" && "Appraisal Sheet updated".startsWith(t)) {
-      return "Appraisal Sheet update";
-    }
-    if (t.length >= 16 && t !== "Appraisal Sheet generated" && "Appraisal Sheet generated".startsWith(t)) {
-      return "Appraisal Sheet generated";
-    }
-    return t;
+    if (t.length < 18 || FULL_LABELS.includes(t)) return t;
+    const hits = FULL_LABELS.filter((label) => label.length > t.length && label.startsWith(t));
+    return hits.length === 1 ? hits[0] : t;
   };
   const fmtWhen = (v) => {
     const d = new Date(v);
