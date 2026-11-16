@@ -490,29 +490,15 @@ export function AppraisalCycleMasterPage({
     return out;
   })();
 
-  // Keep an active shared source visible so it can be closed, plus the
-  // matching shared cycle for each location cycle so it can be archived.
+  // All Locations shows every cycle (legacy global and location-scoped).
+  // A concrete location shows only cycles created for that location.
   const locationCycles = useMemo(() => {
     if (isAllCycleLocation(selectedCycleLocation)) return cycles;
-    const scoped = cycles.filter(
+    return cycles.filter(
       (cycle) =>
         !isAllCycleLocation(cycle.location) &&
         matchesLocation(cycle.location, selectedCycleLocation),
     );
-    const shared = cycles.filter(
-      (cycle) =>
-        isAllCycleLocation(cycle.location) &&
-        !isHidden(cycle) &&
-        (statusOf(cycle) === "Active" ||
-          scoped.some(
-            (locationCycle) =>
-              cycleNameWithoutLocation(locationCycle.name)
-                .trim()
-                .toLowerCase() ===
-              cycleNameWithoutLocation(cycle.name).trim().toLowerCase(),
-          )),
-    );
-    return [...scoped, ...shared];
   }, [cycles, selectedCycleLocation]);
 
   const sourceCycleFor = (cycle) => {
