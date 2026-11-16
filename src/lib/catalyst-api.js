@@ -8,9 +8,8 @@
 const PROJECT_FUNCTIONS_URL =
   "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server";
 
-const FUNCTIONS_BASE_URL = import.meta.env.DEV
-  ? "http://localhost:3000/server"
-  : import.meta.env.VITE_CATALYST_FUNCTIONS_URL || PROJECT_FUNCTIONS_URL;
+const FUNCTIONS_BASE_URL =
+  import.meta.env.VITE_CATALYST_FUNCTIONS_URL || PROJECT_FUNCTIONS_URL;
 
 const AUTH_TOKEN_TIMEOUT_MS = 15000;
 const SESSION_ENDED_MESSAGE =
@@ -63,8 +62,8 @@ function generateAuthTokenWithTimeout(auth) {
 
 // Catalyst applies a shared COMPONENT concurrency limit across functions.
 // A screen mount can request the roster, cycles, budget, feedback and audit at
- // once. Keep browser-originated function calls bounded so those independent
- // providers do not overwhelm Catalyst during initial load.
+// once. Keep browser-originated function calls bounded so those independent
+// providers do not overwhelm Catalyst during initial load.
 const MAX_CATALYST_REQUESTS = 2;
 let activeCatalystRequests = 0;
 const catalystRequestQueue = [];
@@ -92,7 +91,7 @@ function retryDelay(response, attempt) {
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
     return Math.min(retryAfter * 1000, 5000);
   }
-  return 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
+  return 400 * 2 ** attempt + Math.floor(Math.random() * 250);
 }
 
 export async function catalystFetch(input, options = {}) {
@@ -144,13 +143,22 @@ export async function catalystFetch(input, options = {}) {
           // Chrome): a dropped connection, or Catalyst turning the call away
           // without CORS headers. Reads are safe to try again; writes are not
           // (the first one may have landed), and a cancelled call stays cancelled.
-          const aborted = error?.name === "AbortError" || options.signal?.aborted;
+          const aborted =
+            error?.name === "AbortError" || options.signal?.aborted;
           if (!canRetryRead || aborted || attempt >= 2) throw error;
-          console.warn("Catalyst read got no response; retrying:", String(input), "attempt", attempt + 1);
-          await new Promise((resolve) => window.setTimeout(resolve, retryDelay(null, attempt)));
+          console.warn(
+            "Catalyst read got no response; retrying:",
+            String(input),
+            "attempt",
+            attempt + 1,
+          );
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, retryDelay(null, attempt)),
+          );
           continue;
         }
-        const retryable = canRetryRead && [408, 429, 502, 503, 504].includes(response.status);
+        const retryable =
+          canRetryRead && [408, 429, 502, 503, 504].includes(response.status);
         if (!retryable || attempt >= 3 || options.signal?.aborted) break;
         const delay = retryDelay(response, attempt);
         console.warn(
