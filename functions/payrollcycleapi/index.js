@@ -3676,10 +3676,45 @@ async function readRowsWhereIn(tables, tableName, column, values, numeric = fals
 /* Feedback for a team-scoped login (Tech ED / Comp Manager): the same rows and
    shape as getFeedbackData, but only the team's Employee_Master rows and their
    Feedback_And_Rating rows are read. The caller still applies access.inScope. */
+/* A team's finished feedback result is kept for a short while and reused only
+   while Feedback_And_Rating, Employee_Master and Appraisal_Cycle_Master are all
+   unchanged (row count + latest change, two tiny queries per table). Any
+   change, or a failed check, means a fresh read. Per server instance. */
+const SCOPED_FEEDBACK_CACHE = new Map(); // team key -> { fingerprint, at, data }
+const SCOPED_FEEDBACK_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+const SCOPED_FEEDBACK_CACHE_MAX_ENTRIES = 200;
+const SCOPED_FEEDBACK_TABLES = ["Feedback_And_Rating", "Employee_Master", "Appraisal_Cycle_Master"];
+
 async function getScopedFeedbackData(tables, query, scope) {
   if (!tables.zcql || typeof tables.zcql.executeZCQLQuery !== "function") return null;
   const rowIds = (scope.rowIds || []).map((v) => String(v).trim()).filter(Boolean);
   const empIds = (scope.empIds || []).map((v) => String(v).trim()).filter(Boolean);
+  const teamKey = require("crypto")
+    .createHash("sha1")
+    .update([...rowIds].sort().join(",") + "|" + [...empIds].sort().join(",") + "|" + fbText(query.cycleId || query.cycle_id))
+    .digest("hex");
+  let fingerprint = null;
+  try {
+    const states = await Promise.all(SCOPED_FEEDBACK_TABLES.map((name) => readTableFingerprint(tables.zcql, name)));
+    fingerprint = JSON.stringify(states.map((state) => state && state.fingerprint));
+  } catch (error) {
+    fingerprint = null;
+  }
+  const hit = fingerprint && SCOPED_FEEDBACK_CACHE.get(teamKey);
+  if (hit && hit.fingerprint === fingerprint && Date.now() - hit.at < SCOPED_FEEDBACK_CACHE_MAX_AGE_MS) {
+    return { cycles: hit.data.cycles.slice(), rows: hit.data.rows.slice(), batches: [] };
+  }
+  const data = await readScopedFeedback(tables, query, rowIds, empIds);
+  if (fingerprint && data) {
+    if (SCOPED_FEEDBACK_CACHE.size >= SCOPED_FEEDBACK_CACHE_MAX_ENTRIES) {
+      SCOPED_FEEDBACK_CACHE.delete(SCOPED_FEEDBACK_CACHE.keys().next().value);
+    }
+    SCOPED_FEEDBACK_CACHE.set(teamKey, { fingerprint, at: Date.now(), data });
+  }
+  return data ? { cycles: data.cycles.slice(), rows: data.rows.slice(), batches: [] } : null;
+}
+
+async function readScopedFeedback(tables, query, rowIds, empIds) {
   const [cycleRows, mastersByRowId] = await Promise.all([
     readTableFast(tables, "cycles"),
     readRowsWhereIn(tables, "Employee_Master", "ROWID", rowIds, true),
