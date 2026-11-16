@@ -57,8 +57,6 @@ const TABS = [
   { key: "screens", label: "Screens", title: "Screens By Role", sub: "None · View (read-only) · Edit" },
   { key: "actions", label: "Actions", title: "Actions By Role", sub: "Yes · No" },
   { key: "fields", label: "Fields", title: "Field Limits By Role", sub: "Edit · Read · Hidden" },
-  { key: "overrides", label: "Overrides", title: "Personal Overrides", sub: "Override → role. Locked rules always apply" },
-  { key: "scope", label: "Extra Scope", title: "Extra Scope", sub: "Extra teams for a set period" },
   { key: "audit", label: "Audit Trail", title: "Access Audit Trail", sub: "Includes role changes seen from Catalyst" },
 ];
 
@@ -1140,7 +1138,7 @@ function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) 
       <QuickCheck M={M} sel={sel} {...qcProps} />
       {card}
       <div className="sec">
-        <h4><span style={{ textTransform: "none" }}>Overrides ({ovs.length})</span><span className="link" onClick={() => onTab("overrides")}>See all ›</span></h4>
+        <h4><span style={{ textTransform: "none" }}>Overrides ({ovs.length})</span></h4>
         {ovs.length ? ovs.slice(0, 5).map((o) => {
           const x = M.personByEmp(o.empId);
           return <div className="li" key={o.id} onClick={() => onPick(o.empId)}><span>{x ? x.name : o.empId}</span><span>{M.ovText(o)}{o.to ? " · " + fmtD(o.to) : ""}</span></div>;
@@ -1359,8 +1357,6 @@ export default function AccessPage() {
         }
       />
     );
-  } else if (tab === "overrides" || tab === "scope") {
-    body = <OverridesTab M={M} team={tab === "scope"} today={today} onNew={(team) => setModal({ type: "ov", teamOnly: team, empId: sel })} onToggleRemove={onToggleRemove} onUndoAdd={onUndoAdd} />;
   } else body = <AuditTab M={M} filt={filt} setFilt={setFilt} />;
 
   return (
