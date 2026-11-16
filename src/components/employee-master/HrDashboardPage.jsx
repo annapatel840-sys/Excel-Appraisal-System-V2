@@ -697,8 +697,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
               };
               return (
                 <>
-                  <span className="hrd-run base" style={run} />
-                  <span className="hrd-run go" style={run} />
+                  <span className="hrd-run shine" style={run} />
                 </>
               );
             })()}
