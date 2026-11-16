@@ -463,6 +463,9 @@ export function BudgetDistributionPage() {
       .forEach((row) => {
         const identity = resolveTechRecord(row.tech_ed_id);
         if (!identity) return;
+        // A Tech-ED allocation is displayed only when that Tech-ED has at
+        // least one Active + Eligible Appraisal Sheet employee in this location.
+        if (!(liveCountByKey.get(identity.key) > 0)) return;
         const current = unique.get(identity.key);
         // Keep the most recently updated record for a Tech-Ed/cycle and do not
         // render legacy duplicate ROWID/employee-ID aliases as separate rows.
@@ -471,7 +474,7 @@ export function BudgetDistributionPage() {
         }
       });
     return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
-  }, [budgetRows, techEdOwners, employeeRows, activeCycleId]);
+  }, [budgetRows, techEdOwners, employeeRows, activeCycleId, liveCountByKey]);
  
   // Header filters / sort for the table (display only; no data is refetched).
   const tableItems = rows.map((row) => {
