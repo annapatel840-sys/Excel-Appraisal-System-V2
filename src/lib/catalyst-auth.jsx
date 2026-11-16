@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
+import wissenMark from "@/assets/wissen-mark.png";
+
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
 import { payrollCycleRequest } from "./payroll-cycle-api";
 import { applyHomeLocationOnSignIn, forgetHomeLocationApplied } from "./location-store";
@@ -198,8 +200,8 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
         <section className="grid w-full overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid-cols-[0.9fr_1.1fr]">
           <div className="hidden bg-slate-900 p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
-              <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-xl font-bold">
-                CT
+              <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-white">
+                <img src={wissenMark} alt="Wissen" className="h-7 w-auto" />
               </div>
               <p className="text-sm font-medium capitalize tracking-[0.2em] text-blue-300">
                 Wissen Technologies
@@ -215,8 +217,8 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
 
           <div className="p-6 sm:p-10">
             <div className="mx-auto w-full max-w-md">
-              <div className="lg:hidden mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
-                CT
+              <div className="lg:hidden mb-6 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white">
+                <img src={wissenMark} alt="Wissen" className="h-6 w-auto" />
               </div>
 
               {state === "loading" ? (

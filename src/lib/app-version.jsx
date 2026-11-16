@@ -120,7 +120,7 @@ export function NewVersionBanner() {
         maxWidth: "calc(100vw - 32px)",
       }}
     >
-      <span>A new version of the app is available. Save your work, then reload.</span>
+      <span>A new version of the app is available. Please Reload.</span>
       <button
         type="button"
         onClick={() => window.location.reload()}
