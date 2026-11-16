@@ -1709,6 +1709,14 @@ async function enrichPreviousAppraisalValues(
     )
       .trim()
       .toLowerCase();
+  // A cycle is historical only after HR explicitly archives it.
+  // Closed cycles remain closed operational records, never prior-appraisal data.
+  const isArchivedCycle = (cycle) =>
+    cycle?.archived === true ||
+    ["true", "1", "yes", "archived"].includes(
+      String(cycle?.archived ?? "").trim().toLowerCase(),
+    ) ||
+    cycleStatusOf(cycle) === "archived";
   const cycleById = new Map(
     cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id),
   );
@@ -1781,25 +1789,16 @@ async function enrichPreviousAppraisalValues(
       eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
   });
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
-  // Each employee's Previous_Delegation row from the latest closed or
-  // archived cycle before the current one, by Employee_Master ROWID.
+  // Each employee's Previous_Delegation row from the latest archived cycle
+  // before the current one, by Employee_Master ROWID.
   const previousDelegationByEmployee = new Map();
   previousDelegationRows.forEach((record) => {
     const cycle = cycleById.get(historyReference(record?.cycle_id));
     const masterId = historyReference(record?.emp_id).toLowerCase();
     if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
-    const closed =
-      cycle.archived === true ||
-      ["true", "1", "yes"].includes(
-        String(cycle.archived ?? "")
-          .trim()
-          .toLowerCase(),
-      ) ||
-      ["archived", "closed", "complete", "completed"].includes(
-        cycleStatusOf(cycle),
-      );
+    const archived = isArchivedCycle(cycle);
     const rank = historyCycleRank(cycle);
-    if (!closed || (currentRank > 0 && rank >= currentRank)) return;
+    if (!archived || (currentRank > 0 && rank >= currentRank)) return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -1890,7 +1889,7 @@ async function enrichPreviousAppraisalValues(
             );
           return (
             unscoped &&
-            (archived || ["active", "closed", "complete", "completed"].includes(status)) &&
+            archived &&
             cycleYearOfName(historyCycleName(candidate)) === currentYear &&
             canonicalCycleName(candidate) === canonicalCycleName(currentCycle)
           );
@@ -2024,21 +2023,14 @@ async function enrichPreviousAppraisalValues(
     }
     const rank = historyCycleRank(cycle);
     const priorStatus = cycleStatusOf(cycle);
-    const archived =
-      cycle?.archived === true ||
-      ["true", "1", "yes", "archived"].includes(
-        String(cycle?.archived ?? "")
-          .trim()
-          .toLowerCase(),
-      ) ||
-      ["archived", "closed", "complete", "completed"].includes(priorStatus);
+    const archived = isArchivedCycle(cycle);
     if (!archived) return;
     const sameYearNewJoinerCycle =
       isNewJoinerCycle(cycle) &&
       cycleYearOf(cycle) !== "" &&
       cycleYearOf(cycle) === currentYear;
-    // Keep closed payroll rows for the employee-specific bonus source:
-    // same-year closed New Joiner cycle wins; otherwise latest closed Annual.
+    // Only archived payroll cycles are eligible history sources:
+    // same-year archived New Joiner wins; otherwise latest archived Annual.
     if (currentRank <= 0 || rank < currentRank || sameYearNewJoinerCycle) {
       const candidates = bonusHistoryCandidatesByEmployee.get(empKey) || [];
       candidates.push({
@@ -2149,15 +2141,7 @@ async function enrichPreviousAppraisalValues(
       });
     if (!cycle) return;
     const cycleStatus = cycleStatusOf(cycle);
-    const closed =
-      cycle.archived === true ||
-      ["true", "1", "yes", "archived"].includes(
-        String(cycle.archived ?? "")
-          .trim()
-          .toLowerCase(),
-      ) ||
-      ["archived", "closed", "complete", "completed"].includes(cycleStatus);
-    if (!closed) return;
+    if (!isArchivedCycle(cycle)) return;
     const entry = {
       index,
       row,
@@ -2256,15 +2240,7 @@ async function enrichPreviousAppraisalValues(
           (item) =>
             isAnnualCycle(item.cycle) &&
             (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
-            (item.cycle.archived === true ||
-              ["true", "1", "yes", "archived"].includes(
-                String(item.cycle.archived ?? "")
-                  .trim()
-                  .toLowerCase(),
-              ) ||
-              ["archived", "closed", "complete", "completed"].includes(
-                cycleStatusOf(item.cycle),
-              )),
+            isArchivedCycle(item.cycle),
         )
         .sort(
           (a, b) =>
@@ -2285,7 +2261,7 @@ async function enrichPreviousAppraisalValues(
     // Prefer the selected payroll cycle when it matches, but don't require the
     // Payroll_Data cycle reference to be identical to the Appraisal_Sheet one.
     // New employees are identified by having a same-year New Joiners sheet row;
-    // everyone else uses the most recent closed Annual sheet row.
+    // everyone else uses the most recent archived Annual sheet row.
     const assignmentCycle = selectedPayrollSource?.cycle || null;
     const assignmentCycleId = assignmentCycle ? cycleIdOf(assignmentCycle) : "";
     const assignmentCycleName = assignmentCycle
@@ -2577,9 +2553,9 @@ async function enrichPreviousAppraisalValues(
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
     };
-    // PB/RB-to-be-paid always come from a closed-cycle Payroll_Data row.
-    // New joiners use their same-year closed New Joiner cycle (e.g. New Joiner
-    // 2027); everyone else uses the latest closed Annual cycle (e.g. Annual 2026).
+    // PB/RB-to-be-paid always come from an archived-cycle Payroll_Data row.
+    // New joiners use their same-year archived New Joiner cycle; everyone else
+    // uses the latest archived Annual cycle.
     const bonusSource = bonusPayroll || null;
     const payrollPreviousPB = bonusSource
       ? payrollAmount(
