@@ -2727,6 +2727,7 @@ export default function DelegationScreen({
   });
   const [allRows, setRows] = useState(() => initialRows || []);
   const [globalTechEdOptions, setGlobalTechEdOptions] = useState([]);
+  const [globalEmployeeOptions, setGlobalEmployeeOptions] = useState([]);
   const globalTechEdOptionsRequest = useRef(null);
   // Delegation shows only the selected location's employees; saves and
   // snapshots keep working on the complete roster (allRows).
@@ -2737,8 +2738,8 @@ export default function DelegationScreen({
   );
   const [stagedChanges, setStagedChanges] = useState({});
   const resolverRows = useMemo(
-    () => [...rows, ...globalTechEdOptions],
-    [rows, globalTechEdOptions],
+    () => [...rows, ...globalTechEdOptions, ...globalEmployeeOptions],
+    [rows, globalTechEdOptions, globalEmployeeOptions],
   );
   const resolveName = useMemo(() => makeResolver(resolverRows), [resolverRows]);
   const [activeCycleName, setActiveCycleName] = useState("");
@@ -3130,7 +3131,7 @@ export default function DelegationScreen({
       return globalTechEdOptionsRequest.current;
     }
     globalTechEdOptionsRequest.current = fetchDelegationAssigneeOptions()
-      .then(({ techEd }) => {
+      .then(({ techEd, employees }) => {
         const options = techEd
           .map((person) => ({
             id: String(person.empId || "").trim(),
@@ -3138,6 +3139,12 @@ export default function DelegationScreen({
           }))
           .filter((person) => person.id);
         setGlobalTechEdOptions(options);
+        setGlobalEmployeeOptions(
+          (Array.isArray(employees) ? employees : []).map((person) => ({
+            id: String(person.empId || "").trim(),
+            name: String(person.name || "").trim(),
+          })).filter((person) => person.id),
+        );
         return options;
       })
       .catch((error) => {
@@ -3304,9 +3311,9 @@ export default function DelegationScreen({
   );
   const people = useMemo(() => {
     const uniquePeople = new Map();
-    rows.forEach((row) => {
-      const id = String(row.id || "").trim();
-      const name = String(row.name || "").trim();
+    [...globalEmployeeOptions, ...rows].forEach((person) => {
+      const id = String(person.id || person.empId || "").trim();
+      const name = String(person.name || "").trim();
       if (!id) return;
       const key = id.toLowerCase();
       const label = name ? `${id} - ${name}` : id;
@@ -3318,7 +3325,7 @@ export default function DelegationScreen({
     return Array.from(uniquePeople.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [rows]);
+  }, [globalEmployeeOptions, rows]);
   const techEdPeople = useMemo(() => {
     const uniquePeople = new Map();
     const add = (raw) => {
