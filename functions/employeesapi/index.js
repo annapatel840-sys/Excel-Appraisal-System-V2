@@ -1918,9 +1918,38 @@ async function enrichPreviousAppraisalValues(
       cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     const feedbackCycleId = cycle ? cycleIdOf(cycle) : "";
     const isCurrentCycleFeedback = feedbackCycleId === currentCycleId;
-    const isSharedSourceFeedback =
-      sharedSourceCycleId && feedbackCycleId === sharedSourceCycleId;
-    if (!empKey || (!isCurrentCycleFeedback && !isSharedSourceFeedback)) return;
+    const feedbackCycleLocation = String(
+      cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+    ).trim().toLowerCase();
+    const employeeMaster = employeeMasterMap.get(empKey) || {};
+    const employeeLocationAliases = [
+      employeeMaster.location,
+      employeeMaster.location_name,
+      employeeMaster.location_code,
+      employeeMaster.work_location,
+      currentLocation,
+    ]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    const feedbackCycleIsUnscoped =
+      !feedbackCycleLocation ||
+      ["all", "all locations", "alllocations"].includes(feedbackCycleLocation);
+    const feedbackLocationMatches =
+      feedbackCycleIsUnscoped ||
+      employeeLocationAliases.includes(feedbackCycleLocation);
+    const feedbackRank = cycle ? historyCycleRank(cycle) : 0;
+    const isArchivedHistoryFeedback =
+      Boolean(cycle) &&
+      isArchivedCycle(cycle) &&
+      feedbackLocationMatches &&
+      currentRank > 0 &&
+      feedbackRank > 0 &&
+      (feedbackRank < currentRank || feedbackCycleId === sharedSourceCycleId);
+    if (
+      !empKey ||
+      (!isCurrentCycleFeedback && !isArchivedHistoryFeedback)
+    )
+      return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -1929,11 +1958,14 @@ async function enrichPreviousAppraisalValues(
       !existing ||
       (isCurrentCycleFeedback && !existing.isCurrentCycle) ||
       (isCurrentCycleFeedback === existing.isCurrentCycle &&
-        rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0)
+        (feedbackRank > (existing.rank || 0) ||
+          (feedbackRank === (existing.rank || 0) &&
+            rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0)))
     ) {
       currentFeedbackByEmployee.set(empKey, {
         row: record,
         rowTime,
+        rank: feedbackRank,
         isCurrentCycle: isCurrentCycleFeedback,
       });
     }
