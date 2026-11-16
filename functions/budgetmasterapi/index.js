@@ -2144,14 +2144,14 @@ async function calculateBudgetBases(
     ].map((field) => normalizeLocationKey(firstValue(employeeMasterRow, [field]))).filter(Boolean);
     const employeeLocationAliases = new Set(masterLocationValues);
     if (employeeLocationAliases.size) {
-      const masterLocationKey = masterLocationValues[0];
-      const locationRecord = locationRows.find((location) =>
-        [
+      const locationRecord = locationRows.find((location) => {
+        const aliases = [
           firstValue(location, ["location_name", "name", "location"]),
           firstValue(location, ["location_code", "code", "short_code"]),
           idOf(location),
-        ].some((alias) => normalizeLocationKey(alias) === masterLocationKey),
-      );
+        ].map(normalizeLocationKey);
+        return masterLocationValues.some((masterAlias) => aliases.includes(masterAlias));
+      });
       if (locationRecord) {
         [
           firstValue(locationRecord, ["location_name", "name", "location"]),
