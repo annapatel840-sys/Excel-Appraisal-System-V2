@@ -3028,7 +3028,7 @@ SAVE EMPLOYEE CHANGE
 
 // oldValue: what the grid showed before the edit. employeesapi refuses the save
 // (409) when the stored value has changed since, i.e. someone else saved first.
-const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) => {
+const saveEmployeeChangeToCatalyst = async ({ empId, appraisalRowId, key, newValue, oldValue }) => {
   const catalystField = REACT_TO_CATALYST_FIELD[key];
 
   if (!catalystField) {
@@ -3087,6 +3087,7 @@ const savePreviousAppraisalChangeToCatalyst = async ({
     },
     body: JSON.stringify({
       emp_id: String(empId),
+      appraisal_row_id: String(appraisalRowId || ""),
       appraisal_year: APPRAISAL_YEAR,
       [historyField]: historyValue,
     }),
@@ -4069,6 +4070,7 @@ export function AppraisalProvider({ children }) {
 
       persistenceQueue.push({
         empId: row.empId,
+        appraisalRowId: row.id,
         key,
         newValue: next,
         oldValue: before,
@@ -4095,14 +4097,14 @@ export function AppraisalProvider({ children }) {
       ...touched,
     }));
 
-    persistenceQueue.forEach(({ empId, key, newValue, oldValue, auditEntry }) => {
+    persistenceQueue.forEach(({ empId, appraisalRowId, key, newValue, oldValue, auditEntry }) => {
       markPendingCells(pendingCellsRef.current, empId, [key]);
 
       void queueEmployeeSave(empId, async () => {
         let employeeSaved = false;
 
         try {
-          await saveEmployeeChangeToCatalyst({ empId, key, newValue, oldValue });
+          await saveEmployeeChangeToCatalyst({ empId, appraisalRowId, key, newValue, oldValue });
 
           employeeSaved = true;
 
