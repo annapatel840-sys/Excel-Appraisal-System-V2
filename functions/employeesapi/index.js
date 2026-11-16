@@ -2171,8 +2171,14 @@ async function enrichPreviousAppraisalValues(
         return aliases.includes(rawCycle.toLowerCase());
       });
     if (!cycle) return;
-    const cycleStatus = cycleStatusOf(cycle);
     if (!isArchivedCycle(cycle)) return;
+    const historyRank = historyCycleRank(cycle);
+    if (
+      currentRank > 0 &&
+      historyRank >= currentRank &&
+      cycleIdOf(cycle) !== sharedSourceCycleId
+    )
+      return;
     const entry = {
       index,
       row,
