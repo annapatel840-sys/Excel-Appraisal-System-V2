@@ -38,10 +38,19 @@ async function sendPayrollCycleRequest(url, resource, method, body) {
   });
 
   let payload;
+  let raw = "";
   try {
-    payload = await response.json();
+    raw = await response.text();
+    payload = JSON.parse(raw);
   } catch {
-    throw new Error(`The ${resource} service returned an invalid response.`);
+    // Not JSON: usually a platform error page (timeout, crash, size limit).
+    // Say which HTTP status came back so the cause can be found.
+    const hint = String(raw || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+    const error = new Error(
+      `The ${resource} service returned an invalid response (HTTP ${response.status})${hint ? `: ${hint}` : "."}`,
+    );
+    error.status = response.status;
+    throw error;
   }
 
   if (!response.ok || payload.success !== true) {
