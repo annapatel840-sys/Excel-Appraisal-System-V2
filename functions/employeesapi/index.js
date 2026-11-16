@@ -3260,9 +3260,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       })(),
       department: String(master.department || row.department || ""),
       location: String(
-        masterValue("location", "work_location") ||
-          row.location ||
+        row.location ||
           row.work_location ||
+          masterValue("location", "work_location") ||
           "",
       ),
       source_of_hire: String(

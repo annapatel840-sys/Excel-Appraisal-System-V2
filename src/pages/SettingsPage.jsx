@@ -3,11 +3,27 @@ import { LogOut, RotateCcw, Save, Settings2 } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
-import { useCatalystSignOut } from "@/lib/catalyst-auth";
+import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
+  const user = useCatalystUser();
+  const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isHR = role === "hr" || role === "hradmin";
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [repairPreview, setRepairPreview] = useState(null);
+  const [repairResult, setRepairResult] = useState(null);
+  const [repairError, setRepairError] = useState("");
+  const runRepair = async (mode) => {
+    setRepairLoading(true); setRepairError(""); setRepairResult(null);
+    try {
+      const result = await payrollCycleRequest("repair-metadata", { method: "POST", body: { mode }, fresh: true });
+      if (mode === "preview") setRepairPreview(result); else { setRepairResult(result); setRepairPreview(null); }
+    } catch (error) { setRepairError(error?.message || "Metadata repair failed."); }
+    finally { setRepairLoading(false); }
+  };
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
@@ -45,6 +61,19 @@ export function SettingsPage() {
             </p>
           )}
         </section>
+        {isHR && (
+          <section className="rounded-lg border border-amber-300 bg-card p-4">
+            <h3 className="text-sm font-semibold">Temporary Cycle & Location Repair</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Appraisal_Sheet: cycle ID, Appraiser Tech-ED reference and location. Eligibility_List: location only. Appraisal values, eligibility decisions and budgets are not changed.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" disabled={repairLoading} onClick={() => runRepair("preview")}>{repairLoading ? "Working..." : "Preview Repair"}</Button>
+              {repairPreview && <Button type="button" disabled={repairLoading} onClick={() => { if (window.confirm("Apply the metadata updates shown in this preview?")) runRepair("run"); }}>Confirm & Run Repair</Button>}
+            </div>
+            {repairPreview && <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs"><p className="font-semibold">Preview — no data changed</p><p>Cycles scanned: {repairPreview.cyclesScanned}</p><p>Appraisal_Sheet: {repairPreview.appraisalSheet?.toUpdate} to update · {repairPreview.appraisalSheet?.alreadyCorrect} correct · {repairPreview.appraisalSheet?.skipped} skipped</p><p>Eligibility_List: {repairPreview.eligibilityList?.toUpdate} to update · {repairPreview.eligibilityList?.alreadyCorrect} correct · {repairPreview.eligibilityList?.skipped} skipped</p></div>}
+            {repairResult && <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs"><p className="font-semibold">Repair result</p><p>Appraisal_Sheet updated: {repairResult.updated?.appraisalSheet ?? 0}</p><p>Eligibility_List updated: {repairResult.updated?.eligibilityList ?? 0}</p><p>Failed: {(repairResult.failed?.appraisalSheet || 0) + (repairResult.failed?.eligibilityList || 0)} · Remaining: {(repairResult.remaining?.appraisalSheet || 0) + (repairResult.remaining?.eligibilityList || 0)}</p></div>}
+            {repairError && <p className="mt-3 text-xs text-red-600">{repairError}</p>}
+          </section>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3">
           <button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"><RotateCcw className="size-3.5" />Reset to Default</button>
           <button type="button" onClick={signOut} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"><LogOut className="size-3.5" />Sign Out</button>

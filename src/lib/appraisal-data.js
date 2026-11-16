@@ -308,6 +308,13 @@ export const COLUMNS = [
     width: 130,
   },
   {
+    key: "location",
+    label: "Location",
+    type: "text",
+    editable: false,
+    width: 120,
+  },
+  {
     key: "compManager",
     label: "Comp. Manager",
     type: "text",

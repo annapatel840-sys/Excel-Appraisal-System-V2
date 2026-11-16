@@ -110,6 +110,8 @@ const WIDTHS = {
   empId: 84,
   name: 190, // combined Employee column (id - name on top, designation below)
   sourceOfHire: 130,
+  location: 120,
+  location: 120,
   designation: 150,
   reportingManager: 125,
   compManager: 125,
