@@ -61,10 +61,9 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidateDelegationRoster));
 }
 
-async function fetchRosterPage(pageNo, fallbackMessage, location, cycleId) {
-  const query = "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1&location=" + encodeURIComponent(location || "All") + (cycleId ? "&cycleId=" + encodeURIComponent(cycleId) : "");
+async function fetchRosterPage(pageNo, fallbackMessage, location) {
   const response = await catalystFetch(
-    EMPLOYEE_API_URL + query,
+    EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1&location=" + encodeURIComponent(location || "All"),
     { method: "GET", cache: "no-store" },
   );
   const payload = await response.json();
@@ -76,13 +75,13 @@ async function fetchRosterPage(pageNo, fallbackMessage, location, cycleId) {
 
 // Page 1, then any remaining pages together (a roster over 5,000 rows).
 // Resolves to every raw row, in the order employeesapi returned them.
-async function loadRosterRows(location, cycleId) {
-  const first = await fetchRosterPage(1, "Unable to load appraisal employees.", location, cycleId);
+async function loadRosterRows(location) {
+  const first = await fetchRosterPage(1, "Unable to load appraisal employees.", location);
   const all = Array.isArray(first.data) ? [...first.data] : [];
   const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
   const rest = await Promise.all(
     Array.from({ length: totalPages - 1 }, (_, index) =>
-      fetchRosterPage(index + 2, "Unable to load the remaining delegation employees.", location, cycleId),
+      fetchRosterPage(index + 2, "Unable to load the remaining delegation employees.", location),
     ),
   );
   rest.forEach((payload) => {
@@ -94,8 +93,8 @@ async function loadRosterRows(location, cycleId) {
 /* Raw Delegation roster rows. `fresh: true` skips a shared copy (used for the
    screen's explicit reloads). The rows are read-only for callers: the screen
    maps them into its own objects. */
-export function fetchDelegationRoster({ fresh = false, prefetch = false, location = getSelectedLocation(), cycleId = "" } = {}) {
-  const locationKey = String(location || "All").trim().toLowerCase() + "::" + String(cycleId || "").trim();
+export function fetchDelegationRoster({ fresh = false, prefetch = false, location = getSelectedLocation() } = {}) {
+  const locationKey = String(location || "All").trim().toLowerCase();
   if (!fresh && inFlight && inFlight.locationKey === locationKey && Date.now() - inFlight.startedAt <= inFlight.windowMs) {
     return inFlight.promise;
   }
@@ -105,7 +104,7 @@ export function fetchDelegationRoster({ fresh = false, prefetch = false, locatio
     windowMs: prefetch ? PREFETCH_SHARE_WINDOW_MS : SHARE_WINDOW_MS,
     locationKey,
   };
-  entry.promise = loadRosterRows(location, cycleId).catch((error) => {
+  entry.promise = loadRosterRows(location).catch((error) => {
     // A failed load is never shared; the next caller tries again.
     if (inFlight === entry) inFlight = null;
     throw error;
@@ -116,9 +115,9 @@ export function fetchDelegationRoster({ fresh = false, prefetch = false, locatio
 
 // Starts the roster request early; the screen's own load then joins it.
 export function prefetchDelegationRoster() {
-  // The screen resolves the selected location's active cycle before requesting
-  // its roster. A cycle-less prefetch could cache a different location's data.
-  // Keep this hook intentionally quiet; the screen's first load is authoritative.
+  fetchDelegationRoster({ prefetch: true }).catch(() => {
+    /* the screen's own load reports the error */
+  });
 }
 
 /* Warm-up for users who can open Delegation but did not land on it. The
