@@ -3329,34 +3329,59 @@ async function calculateBudgetBases(
     const sheetBaseValue = (employee) => n(employee?.base);
     const previousExpenseValue = (employee) => n(employee?.last_year_expenses);
 
-    // Sum the same Previous Total CTC with Rewards value exposed in the
-    // Appraisal Sheet/Budget roster. The canonical sheet field is preferred;
-    // when a legacy generated row has that field blank, employeesForBudgetCycle
-    // resolves the displayed value from the employee's previous-cycle payroll
-    // mapping (and the established new-joiner fallback). Summing only the raw
-    // snapshot property made a valid displayed base become zero.
-    // Keep the exact same active + cycle-eligible roster as the Appraisal Sheet.
-    const orgBaseRows = cycleFilteredEmployees.map((employee) => {
-      const rawCtc = employee.base;
-      const hasMappedCtc =
-        rawCtc !== null && rawCtc !== undefined && String(rawCtc).trim() !== "";
-      return {
-        employeeId: String(employee.employeeId || employee.emp_id || "").trim(),
-        ctc: hasMappedCtc ? n(rawCtc) : 0,
-        hasStoredCtc: hasMappedCtc,
-      };
+    // Org Budget Base must be the literal sum of the generated rows for
+    // this cycle, using only Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards.
+    // Do not add Employee_Master/payroll fallbacks or apply another eligibility
+    // filter here: that can make the base differ from the employees HR sees in
+    // the generated Appraisal Sheet. Collapse legacy duplicate rows by employee
+    // and keep the latest row in the current cycle.
+    const orgBaseSheetRowsByEmployee = new Map();
+    currentAppraisalRows.forEach((sheetRow) => {
+      const employeeId = String(
+        firstValue(sheetRow, [
+          "emp_id",
+          "empId",
+          "employee_id",
+          "employeeId",
+          "employee_id_text",
+        ]) || idOf(sheetRow),
+      ).trim();
+      if (employeeId) {
+        orgBaseSheetRowsByEmployee.set(employeeId.toLowerCase(), {
+          employeeId,
+          sheetRow,
+        });
+      }
     });
+    const orgBaseRows = Array.from(orgBaseSheetRowsByEmployee.values()).map(
+      ({ employeeId, sheetRow }) => {
+        const rawCtc = firstValue(sheetRow, [
+          "Previous_Appraisal_total_CTC_with_rewards",
+          "previous_appraisal_total_ctc_with_rewards",
+          "previousAppraisalTotalCtcWithRewards",
+        ]);
+        const hasStoredCtc =
+          rawCtc !== null &&
+          rawCtc !== undefined &&
+          String(rawCtc).trim() !== "";
+        return {
+          employeeId,
+          ctc: hasStoredCtc ? n(rawCtc) : 0,
+          hasStoredCtc,
+        };
+      },
+    );
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "active cycle-eligible Appraisal Sheet Previous Total CTC with Rewards mapped values",
-      budgetBaseSheetRows: orgBaseRows.length,
+        "current-cycle generated Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards raw values",
+      budgetBaseSheetRows: currentAppraisalRows.length,
+      budgetBaseGeneratedEmployees: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
-      budgetBaseEligibleRows: cycleFilteredEmployees.length,
-      budgetBaseCycleEligibilityRows: cycleFilteredEmployees.length,
-      budgetBaseEligibilityFilterDelta:
-        cycleFilteredEmployees.length - eligibleEmployees.length,
+      budgetBaseEligibleRows: orgBaseRows.length,
+      budgetBaseCycleEligibilityRows: orgBaseRows.length,
+      budgetBaseEligibilityFilterDelta: 0,
       budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,
       budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc)
         .length,
