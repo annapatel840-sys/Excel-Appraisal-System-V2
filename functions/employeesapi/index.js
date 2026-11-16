@@ -506,30 +506,45 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
   }
 }
 
-async function activeCycleRowId(datastore, requestedCycleId = "") {
+async function activeCycleRecord(datastore, requestedCycleId = "", requestedLocation = "") {
   const cycles = await readAllDataStoreRows(
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
-  const requested = String(requestedCycleId || "").trim();
-  const active = cycles.find(function (cycle) {
-    const id = String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
-    if (requested && id !== requested) return false;
-    const status = String(cycle?.status ?? cycle?.cycle_status ?? "")
+  const requested = String(requestedCycleId || "").trim().toLowerCase();
+  const location = String(requestedLocation || "").trim().toLowerCase();
+  const available = cycles.filter(function (cycle) {
+    const status = String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "")
       .trim()
       .toLowerCase();
-    const archived = ["true", "1", "yes"].includes(
-      String(cycle?.archived ?? "")
-        .trim()
-        .toLowerCase(),
-    );
-    const hidden = ["true", "1", "yes"].includes(
-      String(cycle?.hidden ?? "")
-        .trim()
-        .toLowerCase(),
-    );
+    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
+    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
     return status === "active" && !archived && !hidden;
   });
-  return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
+  const aliasesFor = function (cycle) {
+    const name = String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? "").trim();
+    const cycleLocation = String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "").trim();
+    return [
+      cycle?.ROWID, cycle?.rowid, cycle?.id, cycle?.ID,
+      name, cycle?.appraisal_year, cycle?.appraisalYear,
+      cycleLocation && name ? cycleLocation + " - " + name : "",
+    ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
+  };
+  const locationOf = function (cycle) {
+    return String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "")
+      .trim().toLowerCase();
+  };
+  const active = requested
+    ? available.find(function (cycle) { return aliasesFor(cycle).includes(requested); })
+    : available.find(function (cycle) {
+        const cycleLocation = locationOf(cycle);
+        return !location || !cycleLocation || ["all", "all locations", "alllocations"].includes(cycleLocation) || cycleLocation === location;
+      });
+  return active || null;
+}
+
+async function activeCycleRowId(datastore, requestedCycleId = "") {
+  const active = await activeCycleRecord(datastore, requestedCycleId);
+  return active ? String(active.ROWID ?? active.rowid ?? active.id ?? active.ID ?? "").trim() : "";
 }
 
 // Employee_Master ROWID for a Delegation value: a ROWID, an employee ID, or
@@ -4797,27 +4812,52 @@ async function updateEmployee(req, res) {
     if (rows && rows.some(isEmployee)) return rows;
     return readAllDataStoreRows(table);
   };
-  const [appraisalRows, masterRows, currentCycleId] = await Promise.all([
+  const [appraisalRows, masterRows, currentCycle] = await Promise.all([
     readOwnRows("Appraisal_Sheet", appraisalTable),
     changedColumns.includes("appraiser_tech_ed")
       ? readAllDataStoreRows(masterTable)
       : readOwnRows("Employee_Master", masterTable),
-    // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
-    // With an Active cycle and no row for it, the sheet is not generated yet.
-    activeCycleRowId(adminApp.datastore(), body.cycle_id || body.appraisal_cycle_id),
+    // Resolve the cycle selected by the Appraisal Sheet, including location.
+    activeCycleRecord(
+      adminApp.datastore(),
+      body.cycle_id || body.appraisal_cycle_id || body.appraisal_year,
+      body.location,
+    ),
   ]);
-  // Only the Active cycle's row is ever edited; without an Active cycle there
-  // is no current Appraisal Sheet row to change.
-  const appraisalRow = currentCycleId
-    ? (appraisalRows || []).find(function (row) {
-        return (
-          String(row.emp_id || "")
-            .trim()
-            .toLowerCase() === empId.toLowerCase() &&
-          String(row.cycle_id || "").trim() === currentCycleId
-        );
-      })
-    : undefined;
+  const currentCycleId = currentCycle
+    ? String(currentCycle.ROWID ?? currentCycle.rowid ?? currentCycle.id ?? currentCycle.ID ?? "").trim()
+    : "";
+  const currentCycleName = String(
+    currentCycle?.cycle_name ?? currentCycle?.cycleName ?? currentCycle?.name ?? currentCycle?.appraisal_year ?? "",
+  ).trim();
+  const currentCycleLocation = String(
+    currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? "",
+  ).trim().toLowerCase();
+  const cycleAliases = new Set(
+    [currentCycleId, currentCycleName]
+      .filter(Boolean)
+      .map(function (value) { return value.trim().toLowerCase(); }),
+  );
+  if (currentCycleLocation && currentCycleName) {
+    cycleAliases.add((currentCycleLocation + " - " + currentCycleName).toLowerCase());
+  }
+  const employeeSheetRows = (appraisalRows || []).filter(function (row) {
+    return String(row.emp_id || row.employee_id || row.empId || "")
+      .trim().toLowerCase() === empId.toLowerCase();
+  });
+  const appraisalRow = employeeSheetRows.find(function (row) {
+    const rawCycle = historyReference(
+      row.cycle_id ?? row.appraisal_cycle_id ?? row.appraisalCycleId ??
+      row.appraisal_cycle_name ?? row.appraisalCycleName ?? row.cycle_name ??
+      row.appraisal_cycle ?? row.appraisal_year,
+    ).toLowerCase();
+    if (rawCycle) return cycleAliases.has(rawCycle);
+    const rowLocation = String(row.location ?? row.work_location ?? "").trim().toLowerCase();
+    const locationMatches = !currentCycleLocation || !rowLocation || rowLocation === currentCycleLocation;
+    // Legacy single-cycle rows may have no cycle reference. Only accept one
+    // unambiguous employee row; never write to an older cycle by accident.
+    return locationMatches && employeeSheetRows.length === 1;
+  });
   const masterRow = (masterRows || []).find(function (row) {
     return (
       String(row.emp_id || "")
