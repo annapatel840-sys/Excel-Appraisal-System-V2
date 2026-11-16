@@ -3796,7 +3796,13 @@ async function repairCycleLocationMetadata(tables, mode, actor) {
   const cycles = cycleRows.map(normalizeCycle);
   const cycleById = new Map(cycles.map((c) => [String(c.id), c]));
   const masterByEmp = new Map();
-  masterRows.forEach((m) => { const k = String(m.emp_id || "").trim().toLowerCase(); if (k && !masterByEmp.has(k)) masterByEmp.set(k, m); });
+  const masterByRowId = new Map();
+  masterRows.forEach((m) => {
+    const k = String(m.emp_id || "").trim().toLowerCase();
+    const rowKey = String(m.ROWID || m.rowid || "").trim();
+    if (k && !masterByEmp.has(k)) masterByEmp.set(k, m);
+    if (rowKey) masterByRowId.set(rowKey, m);
+  });
   const eligibilityByEmp = new Map();
   eligibilityRows.forEach((r) => {
     const k = String(r.emp_id || r.employee_id || "").trim().toLowerCase();
@@ -3816,9 +3822,12 @@ async function repairCycleLocationMetadata(tables, mode, actor) {
     return String(master && (master.location || master.work_location || master.location_name) || "").trim();
   };
   const cycleForSheet = (row, empKey, master) => {
+    const eligibleCycles = [...new Map((eligibilityByEmp.get(empKey) || []).map((c) => [c.id, c])).values()];
     const existingId = String(row.cycle_id || "").trim();
-    if (existingId && cycleById.has(existingId)) return cycleById.get(existingId);
-    let candidates = [...new Map((eligibilityByEmp.get(empKey) || []).map((c) => [c.id, c])).values()];
+    if (existingId && cycleById.has(existingId) && eligibleCycles.some((c) => String(c.id) === existingId)) {
+      return cycleById.get(existingId);
+    }
+    let candidates = eligibleCycles;
     const hint = String(row.appraisal_cycle_name || row.cycle_name || row.appraisal_year || row.cycle || "").trim().toLowerCase();
     if (hint) {
       const matched = candidates.filter((c) => c.name.toLowerCase() === hint || c.name.toLowerCase().includes(hint) || (cycleYear(c) && hint.includes(cycleYear(c))));
@@ -3834,14 +3843,17 @@ async function repairCycleLocationMetadata(tables, mode, actor) {
   const sheetUpdates = []; const eligibilityUpdates = [];
   let sheetSkipped = 0; let eligibilitySkipped = 0; let sheetCorrect = 0; let eligibilityCorrect = 0;
   for (const row of sheetRows) {
-    const empKey = String(row.emp_id || "").trim().toLowerCase(); const master = masterByEmp.get(empKey);
-    const cycle = cycleForSheet(row, empKey, master);
+    const empKey = String(row.emp_id || "").trim().toLowerCase();
+    const master = masterByEmp.get(empKey) || masterByRowId.get(String(row.emp_master_row_id || "").trim());
+    const resolvedEmpKey = String(master && master.emp_id || empKey).trim().toLowerCase();
+    const cycle = cycleForSheet(row, resolvedEmpKey, master);
     if (!empKey || !master || !cycle) { sheetSkipped++; continue; }
     const location = locationFor(cycle, master); if (!location) { sheetSkipped++; continue; }
     const update = { ROWID: rowId(row) };
     if (String(row.cycle_id || "").trim() !== String(cycle.id)) update.cycle_id = String(cycle.id);
     if (String(row.location || "").trim() !== location) update.location = location;
-    const delegation = delegationByKey.get(String(cycle.id) + "|" + empKey);
+    const delegation = delegationByKey.get(String(cycle.id) + "|" + resolvedEmpKey) ||
+      delegationByKey.get(String(cycle.id) + "|" + String(master && (master.ROWID || master.rowid) || "").trim().toLowerCase());
     const assigned = String(delegation && delegation.appraiser_tech_ed || master.appraiser_tech_ed || master.appraiserTechED || master.super_manager || master.superManager || "").trim();
     const appraiserId = resolveEmployeeReference(assigned, masterRows);
     if (appraiserId && /^\\d+$/.test(appraiserId) && String(row.appraiser_tech_ed || "").trim() !== appraiserId) update.appraiser_tech_ed = appraiserId;
@@ -3849,7 +3861,8 @@ async function repairCycleLocationMetadata(tables, mode, actor) {
   }
   for (const row of eligibilityRows) {
     const cycle = cycleById.get(String(row.appraisal_cycle_id || "").trim());
-    const empKey = String(row.emp_id || row.employee_id || "").trim().toLowerCase(); const master = masterByEmp.get(empKey);
+    const empKey = String(row.emp_id || row.employee_id || "").trim().toLowerCase();
+    const master = masterByEmp.get(empKey) || masterByRowId.get(empKey);
     if (!cycle || !master) { eligibilitySkipped++; continue; }
     const location = locationFor(cycle, master); if (!location) { eligibilitySkipped++; continue; }
     if (String(row.location || "").trim() === location) eligibilityCorrect++;
