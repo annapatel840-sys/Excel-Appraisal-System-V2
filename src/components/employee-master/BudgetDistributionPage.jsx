@@ -291,6 +291,7 @@ export function BudgetDistributionPage() {
     budgetRows,
     employeeCounts,
     employeeRows = [],
+    locationEmployeeRows = [],
     techEdOwners = [],
     budgetMasterRows = [],
     totals,
@@ -445,6 +446,23 @@ export function BudgetDistributionPage() {
     if (!record) return 0;
     return liveCountByKey.get(record.key) || 0;
   };
+  // Presence is based on the full generated Appraisal Sheet roster in this
+  // location, not only Active + Eligible employees used for budget utilisation.
+  const locationTeamCountByKey = useMemo(() => {
+    const counts = new Map();
+    (locationEmployeeRows || []).forEach((employee) => {
+      const inSheet =
+        employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
+      if (!inSheet) return;
+      const key = resolveTechRecord(
+        employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || "",
+      )?.key;
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  }, [locationEmployeeRows, resolveCache]);
 
   // Newest recorded budget change for a Tech-ED (browser audit trail), else
   // the row's own saved timestamp from Budget_Distribution.
@@ -474,7 +492,7 @@ export function BudgetDistributionPage() {
         }
       });
     return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
-  }, [budgetRows, techEdOwners, employeeRows, activeCycleId, liveCountByKey]);
+  }, [budgetRows, techEdOwners, employeeRows, activeCycleId, locationTeamCountByKey]);
  
   // Header filters / sort for the table (display only; no data is refetched).
   const tableItems = rows.map((row) => {
