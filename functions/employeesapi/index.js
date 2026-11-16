@@ -525,6 +525,8 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
     const cycleLocation = String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "").trim();
     return [
       cycle?.ROWID, cycle?.rowid, cycle?.id, cycle?.ID,
+      cycle?.cycle_id, cycle?.appraisal_cycle_id,
+      cycle?.cycleId, cycle?.appraisalCycleId,
       name, cycle?.appraisal_year, cycle?.appraisalYear,
       cycleLocation && name ? cycleLocation + " - " + name : "",
     ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
@@ -4833,8 +4835,27 @@ async function updateEmployee(req, res) {
   const currentCycleLocation = String(
     currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? body.location ?? "",
   ).trim().toLowerCase();
+  // Generated Appraisal_Sheet rows have existed with more than one
+  // cycle identifier shape: Catalyst ROWID, the cycle's logical id, or a
+  // cycle-name alias. Match every identifier exposed by the selected cycle,
+  // not only ROWID, so a valid row is not rejected when those IDs differ.
   const cycleAliases = new Set(
-    [currentCycleId, currentCycleName]
+    [
+      currentCycle?.ROWID,
+      currentCycle?.rowid,
+      currentCycle?.id,
+      currentCycle?.ID,
+      currentCycle?.cycle_id,
+      currentCycle?.appraisal_cycle_id,
+      currentCycle?.cycleId,
+      currentCycle?.appraisalCycleId,
+      currentCycleName,
+      currentCycle?.cycle_name,
+      currentCycle?.cycleName,
+      currentCycle?.appraisal_year,
+      currentCycle?.appraisalYear,
+    ]
+      .map(historyReference)
       .filter(Boolean)
       .map(function (value) { return value.trim().toLowerCase(); }),
   );
