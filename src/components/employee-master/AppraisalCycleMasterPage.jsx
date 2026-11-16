@@ -532,18 +532,36 @@ export function AppraisalCycleMasterPage({
   }, [locationCycles, type, showHidden, q]);
 
   // Keep the selected cycle inside the currently visible location scope.
+  // Changing the System Location (including back to All Locations) always
+  // re-picks the cycle shown in the side panel for that scope; otherwise the
+  // previously chosen location's cycle stayed selected because it is also
+  // part of the All Locations list.
+  const lastLocationRef = useRef(selectedCycleLocation);
   useEffect(() => {
     if (!locationCycles.length) {
       setSel(null);
       return;
     }
-    if (!current || current.type !== type || !locationCycles.some((c) => c.id === sel)) {
+    const locationChanged = lastLocationRef.current !== selectedCycleLocation;
+    lastLocationRef.current = selectedCycleLocation;
+    if (
+      locationChanged ||
+      !current ||
+      current.type !== type ||
+      !locationCycles.some((c) => c.id === sel)
+    ) {
+      const ofType = locationCycles.filter((c) => c.type === type);
       const first =
-        locationCycles.find((c) => c.type === type && isOpenCycle(c)) ||
-        locationCycles.find((c) => c.type === type && !isHidden(c));
+        // All Locations: prefer the cycle that covers every location.
+        (isAllCycleLocation(selectedCycleLocation)
+          ? ofType.find((c) => isAllCycleLocation(c.location) && isOpenCycle(c)) ||
+            ofType.find((c) => isAllCycleLocation(c.location) && !isHidden(c))
+          : null) ||
+        ofType.find((c) => isOpenCycle(c)) ||
+        ofType.find((c) => !isHidden(c));
       setSel(first?.id || null);
     }
-  }, [locationCycles, type, current, sel]);
+  }, [locationCycles, type, current, sel, selectedCycleLocation]);
 
   const pages = Math.max(1, Math.ceil(gridRows.length / size));
   const safePage = Math.min(page, pages);
@@ -1489,7 +1507,7 @@ export function AppraisalCycleMasterPage({
       <div className="acx-gwrap">
         <table className="acx-g">
           <colgroup>
-            {[70, 150, 110, 100, 120, 120, 120, 100, 110, 110].map((w, i) => (
+            {[70, 150, 110, 100, 120, 120, 120, 100, 110].map((w, i) => (
               <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
@@ -2864,7 +2882,7 @@ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);
 .acx-ttabs .ty[data-ty="Exceptional"]{--c:#6D4FC2;--t:#EFEAFB;--x:#5B3FB0}
 .acx-ttabs .ty[data-ty="New Joiner"]{--c:#475569;--t:#EEF1F5;--x:#334155}
 .acx-gwrap{border:1px solid var(--hl);border-radius:8px;overflow:auto;max-height:276px}
-.acx-g{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed}
+.acx-g{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px;table-layout:fixed}
 .acx-g th{background:var(--hb);color:var(--navy);font-size:11px;font-weight:700;text-align:left;padding:8px;border-bottom:1px solid var(--hl);white-space:nowrap;position:sticky;top:0;z-index:2;overflow:hidden;text-overflow:ellipsis}
 .acx-g td{padding:8px;border-bottom:1px solid var(--row-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acx-g tbody tr{cursor:pointer}

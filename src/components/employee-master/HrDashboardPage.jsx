@@ -688,7 +688,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
 
       {activeCycle && (
         <div className="hrd-cyc">
-          <div className="hrd-stp">
+          <div className={`hrd-stp${step > 0 ? " run" : ""}`} style={{ "--n": step }}>
             {step > 0 && (() => {
               const run = {
                 width: `${step * 25}%`,
@@ -697,8 +697,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
               };
               return (
                 <>
-                  <span className="hrd-run base" style={run} />
-                  <span className="hrd-run go" style={run} />
+                  <span className="hrd-run shine" style={run} />
                 </>
               );
             })()}
