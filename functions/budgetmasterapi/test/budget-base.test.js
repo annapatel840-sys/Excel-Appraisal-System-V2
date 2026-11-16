@@ -113,7 +113,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
-        { cycle_name: 'Apr-25', start_date: '2025-04-01', status: 'Closed' },
+        { cycle_name: 'Apr-25', start_date: '2025-04-01', status: 'Archived', archived: true },
         { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
@@ -199,8 +199,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
-        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Closed' },
-        { cycle_name: 'New Joiners 2027', start_date: '2027-01-01', status: 'Closed' },
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Archived', archived: true },
+        { cycle_name: 'New Joiners 2027', start_date: '2027-01-01', status: 'Archived', archived: true },
         { cycle_name: 'Annual 2027', start_date: '2027-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
@@ -677,7 +677,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.diagnostics.warning, undefined);
   });
 
-  await t('Org Budget Base reads Payroll CTC from Closed prior cycles', async () => {
+  await t('Closed but non-archived cycles are not used as Payroll CTC history', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -685,7 +685,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
-        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Closed' },
+        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Closed', archived: false },
         { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
@@ -706,8 +706,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     });
     const response = await get(load(store));
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.master[0].org_budget_base, 1875000);
-    assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 1875000);
+    assert.strictEqual(response.json.master[0].org_budget_base, 0, 'Closed is not archived history');
+    assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 0);
   });
 
   await t('location-cycle Org Budget Base reuses the active shared Annual payroll value', async () => {
