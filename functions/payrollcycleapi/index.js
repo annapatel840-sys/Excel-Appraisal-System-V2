@@ -3680,16 +3680,20 @@ async function getScopedFeedbackData(tables, query, scope) {
   if (!tables.zcql || typeof tables.zcql.executeZCQLQuery !== "function") return null;
   const rowIds = (scope.rowIds || []).map((v) => String(v).trim()).filter(Boolean);
   const empIds = (scope.empIds || []).map((v) => String(v).trim()).filter(Boolean);
-  const empIdVariants = [...new Set(empIds.flatMap((v) => [v, v.toUpperCase(), v.toLowerCase()]))];
-  const [cycleRows, mastersByRowId, mastersByEmpId] = await Promise.all([
+  const [cycleRows, mastersByRowId] = await Promise.all([
     readTableFast(tables, "cycles"),
     readRowsWhereIn(tables, "Employee_Master", "ROWID", rowIds, true),
-    readRowsWhereIn(tables, "Employee_Master", "emp_id", empIdVariants),
   ]);
+  // Team members the scope names only by employee code (no ROWID): look those up too.
+  const foundCodes = new Set(mastersByRowId.map((row) => fbText(row.emp_id).toLowerCase()));
+  const missingCodes = empIds.filter((code) => !foundCodes.has(code.toLowerCase()));
+  const mastersByEmpId = missingCodes.length
+    ? await readRowsWhereIn(tables, "Employee_Master", "emp_id", missingCodes)
+    : [];
   const masterRows = [...mastersByRowId, ...mastersByEmpId];
-  // Feedback rows name the employee by Employee_Master ROWID (older rows may use the code).
-  const feedbackKeys = [...new Set([...masterRows.map((row) => rowId(row)), ...rowIds, ...empIdVariants])];
-  const feedbackRows = await readRowsWhereIn(tables, "Feedback_And_Rating", "emp_ID", feedbackKeys);
+  // Feedback_And_Rating.emp_ID is a bigint column holding the Employee_Master ROWID.
+  const feedbackKeys = [...new Set([...masterRows.map((row) => rowId(row)), ...rowIds])];
+  const feedbackRows = await readRowsWhereIn(tables, "Feedback_And_Rating", "emp_ID", feedbackKeys, true);
 
   const masterByRowId = new Map();
   const masterByEmpId = new Map();
