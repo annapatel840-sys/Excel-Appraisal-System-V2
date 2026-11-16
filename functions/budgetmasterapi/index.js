@@ -3323,11 +3323,10 @@ async function calculateBudgetBases(
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
-    // Org Budget Base is Previous Total Rewards CTC from the current
-    // Appraisal Sheet. Tech-Ed and Comp Manager allocation bases are instead
-    // the sum of each employee's previous-cycle expenses.
+    // All three levels use the same Previous Total Rewards CTC value shown
+    // by the generated Appraisal Sheet. This keeps Org, Tech-Ed and Comp
+    // Manager bases reconcilable for every selected cycle.
     const sheetBaseValue = (employee) => n(employee?.base);
-    const previousExpenseValue = (employee) => n(employee?.last_year_expenses);
 
     // The Appraisal Sheet API enriches each generated row with the employee's
     // previous_appraisal_total_ctc_with_rewards value from the matching
@@ -3337,7 +3336,7 @@ async function calculateBudgetBases(
     // keeping the roster strictly limited to the current generated sheet.
     // Never add employees from Employee_Master, Eligibility_List, or payroll.
     const orgBaseRowsByEmployee = new Map();
-    appraisalSheetEmployees.forEach((employee) => {
+    cycleFilteredEmployees.forEach((employee) => {
       const employeeId = String(
         firstValue(employee, ["emp_id", "employeeId", "employee_id"]) ||
           employee.employeeId ||
@@ -3360,7 +3359,7 @@ async function calculateBudgetBases(
       budgetBaseSheetRows: currentAppraisalRows.length,
       budgetBaseGeneratedEmployees: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
-      budgetBaseEligibleRows: orgBaseRows.length,
+      budgetBaseEligibleRows: cycleFilteredEmployees.length,
       budgetBaseCycleEligibilityRows: orgBaseRows.length,
       budgetBaseEligibilityFilterDelta: 0,
       budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc > 0).length,
@@ -3476,7 +3475,7 @@ async function calculateBudgetBases(
           count: 0,
           utilized: 0,
         };
-        tech.base += previousExpenseValue(employee);
+        tech.base += sheetBaseValue(employee);
         // count (all sheet rows) seeds the Original Count above; Current Count
         // follows the same active, eligible employees as the base and budget.
         tech.current = (tech.current || 0) + 1;
@@ -3486,7 +3485,7 @@ async function calculateBudgetBases(
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
-        comp.base += previousExpenseValue(employee);
+        comp.base += sheetBaseValue(employee);
         comp.current = (comp.current || 0) + 1;
         comp.utilized += consumed;
         compBases.set(key, comp);
@@ -3503,7 +3502,7 @@ async function calculateBudgetBases(
       if (!row) {
         const created = await distributionTable.insertRow({
           appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: String(ownerName || techKey).slice(0, 20),
+          appraiser_tech_ed_id: String(techKey).slice(0, 20),
           percentage: null,
           budget_base: 0,
           [distCalcField]: 0,
