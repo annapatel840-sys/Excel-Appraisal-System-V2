@@ -2135,7 +2135,7 @@ async function calculateBudgetBases(
     cycleById.get(String(cycleId)) ||
     cycleByName.get(String(cycleId).toLowerCase()) ||
     null;
-  const previousCycleFor = (cycleId) => {
+  const previousCycleFor = (cycleId, employeeMasterRow = {}) => {
     const current = currentCycleFor(cycleId);
     if (!current) return null;
     const currentLocation = String(
@@ -2162,10 +2162,48 @@ async function calculateBudgetBases(
       });
       if (sameYearSource) return sameYearSource;
     }
+    const masterLocationValues = [
+      firstValue(employeeMasterRow, ["location", "work_location", "location_name", "location_code"]),
+    ].map(normalizeLocationKey).filter(Boolean);
+    const employeeLocationAliases = new Set(masterLocationValues);
+    if (employeeLocationAliases.size) {
+      const masterLocationKey = masterLocationValues[0];
+      const locationRecord = locationRows.find((location) =>
+        [
+          firstValue(location, ["location_name", "name", "location"]),
+          firstValue(location, ["location_code", "code", "short_code"]),
+          idOf(location),
+        ].some((alias) => normalizeLocationKey(alias) === masterLocationKey),
+      );
+      if (locationRecord) {
+        [
+          firstValue(locationRecord, ["location_name", "name", "location"]),
+          firstValue(locationRecord, ["location_code", "code", "short_code"]),
+          idOf(locationRecord),
+        ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => employeeLocationAliases.add(alias));
+      }
+    } else if (currentLocation) {
+      employeeLocationAliases.add(normalizeLocationKey(currentLocation));
+    }
+    const cycleMatchesEmployeeLocation = (candidate) => {
+      const candidateLocation = normalizeLocationKey(
+        firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
+      );
+      return (
+        !candidateLocation ||
+        ["all", "alllocations"].includes(candidateLocation) ||
+        employeeLocationAliases.has(candidateLocation)
+      );
+    };
     const currentRank = cycleRank(current);
     const earlier = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
-      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
+      .filter((cycle) =>
+        cycleRank(cycle) > 0 &&
+        currentRank > 0 &&
+        cycleRank(cycle) < currentRank &&
+        cycleMatchesEmployeeLocation(cycle)
+      )
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
   };
@@ -2249,10 +2287,6 @@ async function calculateBudgetBases(
   const currentCycleId =
     cycleIdOf(activeCycleRow) ||
     String(bundle.master[0]?.appraisal_cycle_id || "");
-  const previousCycle = previousCycleFor(currentCycleId);
-  const previousCycleId = previousCycle
-    ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
-    : "";
   const currentCycle = currentCycleFor(currentCycleId);
   const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
   const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
@@ -2292,6 +2326,12 @@ async function calculateBudgetBases(
       "techEd",
     ];
     const masterRow = masterByEmployee.get(employeeId) || {};
+    // Prior cycle is employee-location specific: one location's archived cycle
+    // must never become another location's payroll/history source.
+    const previousCycle = previousCycleFor(currentCycleId, masterRow);
+    const previousCycleId = previousCycle
+      ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
+      : "";
     const rawTechEd = String(
       firstValue(row, techEdFields) || firstValue(masterRow, techEdFields) || "",
     ).trim();
@@ -2360,6 +2400,7 @@ async function calculateBudgetBases(
         // become a history source only after explicit archival.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
+          cycleMatchesEmployeeLocation(candidate, masterRow) &&
           (isHistoricalCycle(candidate) || candidateStatus === "active") &&
           !hidden &&
           !["cancelled", "canceled"].includes(candidateStatus);
