@@ -717,21 +717,13 @@ function isHistoricalCycle(cycle) {
       ? archivedValue.trim().toLowerCase()
       : archivedValue,
   );
-  // Match employeesapi: a prior appraisal can be Closed, Archived, or Completed.
-  return (
-    archived || ["archived", "closed", "complete", "completed"].includes(status)
-  );
+  // Closed is not history. Only an explicitly archived cycle may supply
+  // prior payroll, appraisal, or budget history to a newer location cycle.
+  return archived || status === "archived";
 }
 
 function isReusableSharedSourceCycle(cycle) {
-  return (
-    isHistoricalCycle(cycle) ||
-    String(
-      firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
-    )
-      .trim()
-      .toLowerCase() === "active"
-  );
+  return isHistoricalCycle(cycle);
 }
 
 function cycleRank(cycle) {
