@@ -228,7 +228,9 @@ export function AppraisalCycleMasterPage({
 }) {
   const user = useCatalystUser();
   const access = useAccess();
-  // Cycle Master has its own All Locations inventory filter, independent of\n  // the universal header location used by operational screens.\n  const [selectedCycleLocation, setSelectedCycleLocation] = useState(ALL_CYCLE_LOCATIONS);
+  // Cycle Master has its own All Locations inventory filter, independent of
+  // the universal header location used by operational screens.
+  const [selectedCycleLocation, setSelectedCycleLocation] = useState(ALL_CYCLE_LOCATIONS);
   const canManageCycles =
     String(user?.role || "")
       .trim()
