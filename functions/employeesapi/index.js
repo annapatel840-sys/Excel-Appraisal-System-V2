@@ -4845,19 +4845,50 @@ async function updateEmployee(req, res) {
     return String(row.emp_id || row.employee_id || row.empId || "")
       .trim().toLowerCase() === empId.toLowerCase();
   });
-  const appraisalRow = employeeSheetRows.find(function (row) {
-    const rawCycle = historyReference(
+  const rowCycleReference = function (row) {
+    return historyReference(
       row.cycle_id ?? row.appraisal_cycle_id ?? row.appraisalCycleId ??
       row.appraisal_cycle_name ?? row.appraisalCycleName ?? row.cycle_name ??
       row.appraisal_cycle ?? row.appraisal_year,
     ).toLowerCase();
-    if (rawCycle) return cycleAliases.has(rawCycle);
-    const rowLocation = String(row.location ?? row.work_location ?? "").trim().toLowerCase();
-    const locationMatches = !currentCycleLocation || !rowLocation || rowLocation === currentCycleLocation;
-    // Legacy single-cycle rows may have no cycle reference. Only accept one
-    // unambiguous employee row; never write to an older cycle by accident.
-    return locationMatches && employeeSheetRows.length === 1;
+  };
+  const exactCycleRows = employeeSheetRows.filter(function (row) {
+    const rawCycle = rowCycleReference(row);
+    return rawCycle && cycleAliases.has(rawCycle);
   });
+  let appraisalRow = exactCycleRows.length === 1 ? exactCycleRows[0] : null;
+
+  // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
+  // employee has rows for several cycles, do not reject the current row just
+  // because the employee has more than one row: use the selected cycle's
+  // location to identify the single untagged row. Rows with a non-empty,
+  // different cycle reference are never treated as the current cycle.
+  if (!appraisalRow && exactCycleRows.length === 0) {
+    const untaggedRows = employeeSheetRows.filter(function (row) {
+      return !rowCycleReference(row);
+    });
+    if (currentCycleLocation) {
+      const locationCandidates = untaggedRows.filter(function (row) {
+        const rowLocation = String(row.location ?? row.work_location ?? "")
+          .trim()
+          .toLowerCase();
+        return rowLocation === currentCycleLocation;
+      });
+      if (locationCandidates.length === 1) {
+        appraisalRow = locationCandidates[0];
+      }
+    }
+    // If there is no location on the cycle row, retain the original strict
+    // single-row fallback. Never guess between multiple untagged records.
+    if (!appraisalRow && untaggedRows.length === 1 && employeeSheetRows.length === 1) {
+      const rowLocation = String(
+        untaggedRows[0].location ?? untaggedRows[0].work_location ?? "",
+      ).trim().toLowerCase();
+      if (!currentCycleLocation || !rowLocation || rowLocation === currentCycleLocation) {
+        appraisalRow = untaggedRows[0];
+      }
+    }
+  }
   const masterRow = (masterRows || []).find(function (row) {
     return (
       String(row.emp_id || "")
@@ -4936,6 +4967,12 @@ async function updateEmployee(req, res) {
 
   const masterUpdate = { ROWID: masterRow.ROWID };
   const appraisalUpdate = { ROWID: appraisalRow ? appraisalRow.ROWID : "" };
+  // Backfill the active cycle reference on legacy rows during the first
+  // successful edit. This keeps subsequent saves deterministic and avoids
+  // requiring a separate migration or adding a Data Store column.
+  if (appraisalRow && !rowCycleReference(appraisalRow) && currentCycleId) {
+    appraisalUpdate.cycle_id = currentCycleId;
+  }
 
   changedColumns.forEach(function (column) {
     const value = body[column];
