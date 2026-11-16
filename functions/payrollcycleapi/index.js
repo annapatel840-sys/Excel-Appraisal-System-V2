@@ -3805,10 +3805,16 @@ async function repairCycleLocationMetadata(tables, mode, actor) {
   });
   const eligibilityByEmp = new Map();
   eligibilityRows.forEach((r) => {
-    const k = String(r.emp_id || r.employee_id || "").trim().toLowerCase();
+    const rawKey = String(r.emp_id || r.employee_id || "").trim().toLowerCase();
     const c = cycleById.get(String(r.appraisal_cycle_id || "").trim());
-    if (!k || !c) return;
-    const list = eligibilityByEmp.get(k) || []; list.push(c); eligibilityByEmp.set(k, list);
+    if (!rawKey || !c) return;
+    const master = masterByEmp.get(rawKey) || masterByRowId.get(rawKey);
+    const keys = new Set([rawKey, String(master && master.emp_id || "").trim().toLowerCase()].filter(Boolean));
+    keys.forEach((k) => {
+      const list = eligibilityByEmp.get(k) || [];
+      list.push(c);
+      eligibilityByEmp.set(k, list);
+    });
   });
   const delegationByKey = new Map();
   delegationRows.forEach((r) => { const k = String(r.cycle_id || "").trim() + "|" + String(r.emp_id || "").trim().toLowerCase(); if (k !== "|") delegationByKey.set(k, r); });
