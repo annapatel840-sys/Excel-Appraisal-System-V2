@@ -2,6 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      /* Blank-page guard. Slate caches this page, so a browser can keep an old
+         copy whose /assets/ files a later deploy removed; the app then never
+         starts. If an /assets/ file fails to load, reload once (a reload
+         always fetches the current page). At most once a minute, so no loop. */
+      (function () {
+        var KEY = "appraisal.assetReloadAt";
+        window.addEventListener(
+          "error",
+          function (event) {
+            var el = event && event.target;
+            if (!el || (el.tagName !== "SCRIPT" && el.tagName !== "LINK")) return;
+            var url = el.src || el.href || "";
+            if (url.indexOf("/assets/") === -1) return;
+            var last = 0;
+            try {
+              last = Number(window.sessionStorage.getItem(KEY)) || 0;
+              if (Date.now() - last < 60000) return;
+              window.sessionStorage.setItem(KEY, String(Date.now()));
+            } catch (e) {
+              return;
+            }
+            window.location.reload();
+          },
+          true,
+        );
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
