@@ -2523,6 +2523,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   } catch (error) {
     console.warn("Could not inspect Appraisal_Sheet columns; using standard generation mapping:", error?.message || error);
   }
+  if (appraisalSheetColumns && !appraisalSheetColumns.has("location")) {
+    throw new ApiError("Add the location column to Appraisal_Sheet in Catalyst Data Store before generating this cycle. The generated grid needs the stored cycle location.", 409, "APPRAISAL_LOCATION_COLUMN_MISSING");
+  }
 
   let created = 0;
   let updated = 0;
