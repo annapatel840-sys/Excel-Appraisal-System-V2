@@ -306,10 +306,6 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "employeeMaster", "edit");
     return;
   }
-  if (resource === "repair-metadata" && method === "POST") {
-    access.requireScreen(a, "cycleMaster", "edit");
-    return;
-  }
   if (resource === "generate-sheet" && method === "POST") {
     if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
     else access.requireScreen(a, "cycleMaster", "edit");
@@ -3790,101 +3786,6 @@ async function getFeedbackData(tables, query, includeBatches = true) {
   return { cycles, rows, batches };
 }
 
-async function repairCycleLocationMetadata(tables, mode, actor) {
-  if (!["preview", "run"].includes(mode)) throw new ApiError("Choose preview or run.", 400);
-  const [cycleRows, masterRows, eligibilityRows, sheetRows, delegationRows] = await Promise.all([
-    getAllRows(tables.cycles), getAllRows(tables.employeeMaster), getAllRows(tables.eligibility),
-    getAllRows(tables.employees), getAllRows(tables.delegation),
-  ]);
-  const cycles = cycleRows.map(normalizeCycle);
-  const cycleById = new Map(cycles.map((c) => [String(c.id), c]));
-  const masterByEmp = new Map();
-  const masterByRowId = new Map();
-  masterRows.forEach((m) => {
-    const k = String(m.emp_id || "").trim().toLowerCase();
-    const rowKey = String(m.ROWID || m.rowid || "").trim();
-    if (k && !masterByEmp.has(k)) masterByEmp.set(k, m);
-    if (rowKey) masterByRowId.set(rowKey, m);
-  });
-  const eligibilityByEmp = new Map();
-  eligibilityRows.forEach((r) => {
-    const rawKey = String(r.emp_id || r.employee_id || "").trim().toLowerCase();
-    const c = cycleById.get(String(r.appraisal_cycle_id || "").trim());
-    if (!rawKey || !c) return;
-    const master = masterByEmp.get(rawKey) || masterByRowId.get(rawKey);
-    const keys = new Set([rawKey, String(master && master.emp_id || "").trim().toLowerCase()].filter(Boolean));
-    keys.forEach((k) => {
-      const list = eligibilityByEmp.get(k) || [];
-      list.push(c);
-      eligibilityByEmp.set(k, list);
-    });
-  });
-  const delegationByKey = new Map();
-  delegationRows.forEach((r) => { const k = String(r.cycle_id || "").trim() + "|" + String(r.emp_id || "").trim().toLowerCase(); if (k !== "|") delegationByKey.set(k, r); });
-  const [sheetColumns, eligibilityColumns] = await Promise.all([tables.employees.getAllColumns(), tables.eligibility.getAllColumns()]);
-  const sheetNames = new Set((sheetColumns || []).map((c) => String(c.column_name || "")));
-  const eligibilityNames = new Set((eligibilityColumns || []).map((c) => String(c.column_name || "")));
-  if (!sheetNames.has("location") || !eligibilityNames.has("location")) throw new ApiError("The location column must exist in both Appraisal_Sheet and Eligibility_List. No data was changed.", 409, "LOCATION_COLUMN_MISSING");
-  const locationFor = (cycle, master) => {
-    const loc = String(cycle && cycle.location || "").trim();
-    if (loc && !["all", "all locations"].includes(loc.toLowerCase())) return loc;
-    return String(master && (master.location || master.work_location || master.location_name) || "").trim();
-  };
-  const cycleForSheet = (row, empKey, master) => {
-    const eligibleCycles = [...new Map((eligibilityByEmp.get(empKey) || []).map((c) => [c.id, c])).values()];
-    const existingId = String(row.cycle_id || "").trim();
-    if (existingId && cycleById.has(existingId) && eligibleCycles.some((c) => String(c.id) === existingId)) {
-      return cycleById.get(existingId);
-    }
-    let candidates = eligibleCycles;
-    const hint = String(row.appraisal_cycle_name || row.cycle_name || row.appraisal_year || row.cycle || "").trim().toLowerCase();
-    if (hint) {
-      const matched = candidates.filter((c) => c.name.toLowerCase() === hint || c.name.toLowerCase().includes(hint) || (cycleYear(c) && hint.includes(cycleYear(c))));
-      if (matched.length) candidates = matched;
-    }
-    const masterLoc = String(master && (master.location || master.work_location) || "").trim().toLowerCase();
-    if (masterLoc && candidates.length > 1) {
-      const matched = candidates.filter((c) => { const loc = String(c.location || "").trim().toLowerCase(); return !loc || ["all", "all locations"].includes(loc) || loc === masterLoc; });
-      if (matched.length) candidates = matched;
-    }
-    return candidates.length === 1 ? candidates[0] : null;
-  };
-  const sheetUpdates = []; const eligibilityUpdates = [];
-  let sheetSkipped = 0; let eligibilitySkipped = 0; let sheetCorrect = 0; let eligibilityCorrect = 0;
-  for (const row of sheetRows) {
-    const empKey = String(row.emp_id || "").trim().toLowerCase();
-    const master = masterByEmp.get(empKey) || masterByRowId.get(String(row.emp_master_row_id || "").trim());
-    const resolvedEmpKey = String(master && master.emp_id || empKey).trim().toLowerCase();
-    const cycle = cycleForSheet(row, resolvedEmpKey, master);
-    if (!empKey || !master || !cycle) { sheetSkipped++; continue; }
-    const location = locationFor(cycle, master); if (!location) { sheetSkipped++; continue; }
-    const update = { ROWID: rowId(row) };
-    if (String(row.cycle_id || "").trim() !== String(cycle.id)) update.cycle_id = String(cycle.id);
-    if (String(row.location || "").trim() !== location) update.location = location;
-    const delegation = delegationByKey.get(String(cycle.id) + "|" + resolvedEmpKey) ||
-      delegationByKey.get(String(cycle.id) + "|" + String(master && (master.ROWID || master.rowid) || "").trim().toLowerCase());
-    const assigned = String(delegation && delegation.appraiser_tech_ed || master.appraiser_tech_ed || master.appraiserTechED || master.super_manager || master.superManager || "").trim();
-    const appraiserId = resolveEmployeeReference(assigned, masterRows);
-    if (appraiserId && /^\\d+$/.test(appraiserId) && String(row.appraiser_tech_ed || "").trim() !== appraiserId) update.appraiser_tech_ed = appraiserId;
-    if (Object.keys(update).length > 1 && rowId(row)) sheetUpdates.push(update); else sheetCorrect++;
-  }
-  for (const row of eligibilityRows) {
-    const cycle = cycleById.get(String(row.appraisal_cycle_id || "").trim());
-    const empKey = String(row.emp_id || row.employee_id || "").trim().toLowerCase();
-    const master = masterByEmp.get(empKey) || masterByRowId.get(empKey);
-    if (!cycle || !master) { eligibilitySkipped++; continue; }
-    const location = locationFor(cycle, master); if (!location) { eligibilitySkipped++; continue; }
-    if (String(row.location || "").trim() === location) eligibilityCorrect++;
-    else if (rowId(row)) eligibilityUpdates.push({ ROWID: rowId(row), location }); else eligibilitySkipped++;
-  }
-  const summary = { mode, cyclesScanned: cycles.length, appraisalSheet: { total: sheetRows.length, toUpdate: sheetUpdates.length, alreadyCorrect: sheetCorrect, skipped: sheetSkipped }, eligibilityList: { total: eligibilityRows.length, toUpdate: eligibilityUpdates.length, alreadyCorrect: eligibilityCorrect, skipped: eligibilitySkipped } };
-  if (mode === "preview") return summary;
-  const deadline = Date.now() + WRITE_TIME_LIMIT_MS;
-  const sheetResults = await writeRowsInBatches(tables.employees, sheetUpdates, "update", deadline);
-  const eligibilityResults = await writeRowsInBatches(tables.eligibility, eligibilityUpdates, "update", deadline);
-  const count = (items, kind) => items.filter((x) => kind === "ok" ? x.ok : kind === "skipped" ? x.skipped : !x.ok && !x.skipped).length;
-  return { ...summary, updated: { appraisalSheet: count(sheetResults, "ok"), eligibilityList: count(eligibilityResults, "ok") }, failed: { appraisalSheet: count(sheetResults, "failed"), eligibilityList: count(eligibilityResults, "failed") }, remaining: { appraisalSheet: count(sheetResults, "skipped"), eligibilityList: count(eligibilityResults, "skipped") }, completed: [...sheetResults, ...eligibilityResults].every((x) => x.ok), actor };
-}
 async function routeRequest(req, res, identity, resource, a) {
   const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
@@ -3916,13 +3817,6 @@ async function routeRequest(req, res, identity, resource, a) {
   const query = getQuery(req);
   const actor = identity.name || identity.email;
 
-  if (resource === "repair-metadata" && req.method === "POST") {
-    const callerRole = String(a && a.role || identity.role || "").trim().toLowerCase();
-    if (!callerRole.includes("hr")) return sendJson(res, 403, { success: false, message: "HR access is required for this temporary data repair." });
-    const body = await readBody(req);
-    const result = await repairCycleLocationMetadata(tables, String(body.mode || "preview").trim().toLowerCase(), actor);
-    return sendJson(res, 200, { success: true, data: result });
-  }
   if (resource === "schema" && req.method === "GET") {
     const schema = await getProjectSchema(adminApp);
     return sendJson(res, 200, { success: true, data: schema });
@@ -4777,7 +4671,6 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
-    if (resource === "repair-metadata" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "feedback" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
