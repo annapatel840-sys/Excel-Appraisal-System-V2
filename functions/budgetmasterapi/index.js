@@ -2137,8 +2137,11 @@ async function calculateBudgetBases(
     null;
   const cycleMatchesEmployeeLocation = (cycle, employeeMasterRow, fallbackLocation = "") => {
     const masterLocationValues = [
-      firstValue(employeeMasterRow, ["location", "work_location", "location_name", "location_code"]),
-    ].map(normalizeLocationKey).filter(Boolean);
+      "location",
+      "work_location",
+      "location_name",
+      "location_code",
+    ].map((field) => normalizeLocationKey(firstValue(employeeMasterRow, [field]))).filter(Boolean);
     const employeeLocationAliases = new Set(masterLocationValues);
     if (employeeLocationAliases.size) {
       const masterLocationKey = masterLocationValues[0];
