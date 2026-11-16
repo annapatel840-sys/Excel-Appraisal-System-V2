@@ -1796,6 +1796,7 @@ async function enrichPreviousAppraisalValues(
     const cycle = cycleById.get(historyReference(record?.cycle_id));
     const masterId = historyReference(record?.emp_id).toLowerCase();
     if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
+    if (!cycleLocationMatchesEmployee(cycle, masterId)) return;
     const archived = isArchivedCycle(cycle);
     const rank = historyCycleRank(cycle);
     if (!archived || (currentRank > 0 && rank > currentRank)) return;
@@ -1861,6 +1862,32 @@ async function enrichPreviousAppraisalValues(
       currentCycle?.cycleLocation ??
       "",
   ).trim();
+  // Resolve a historical location against Employee_Master first. Only
+  // legacy global cycles (All Locations) are shared by every employee.
+  const employeeLocationAliasesFor = (employeeKey) => {
+    const master = employeeMasterMap.get(String(employeeKey || "").trim()) || {};
+    const aliases = [
+      master.location,
+      master.location_name,
+      master.location_code,
+      master.work_location,
+    ]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    return aliases.length
+      ? aliases
+      : currentLocation
+        ? [currentLocation.toLowerCase()]
+        : [];
+  };
+  const cycleLocationMatchesEmployee = (cycle, employeeKey) => {
+    const location = String(
+      cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+    ).trim().toLowerCase();
+    if (!location || ["all", "all locations", "alllocations"].includes(location))
+      return true;
+    return employeeLocationAliasesFor(employeeKey).includes(location);
+  };
   const sharedSourceCycle =
     currentCycle &&
     currentLocation &&
@@ -1929,7 +1956,7 @@ async function enrichPreviousAppraisalValues(
       ["all", "all locations", "alllocations"].includes(feedbackCycleLocation);
     const feedbackLocationMatches =
       feedbackCycleIsUnscoped ||
-      employeeLocationAliases.includes(feedbackCycleLocation);
+      cycleLocationMatchesEmployee(cycle, empKey);
     const feedbackRank = cycle ? historyCycleRank(cycle) : 0;
     const isArchivedHistoryFeedback =
       Boolean(cycle) &&
@@ -2016,6 +2043,7 @@ async function enrichPreviousAppraisalValues(
     const cycle =
       cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
+    const locationMatches = cycleLocationMatchesEmployee(cycle, empKey);
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
     );
@@ -2033,6 +2061,7 @@ async function enrichPreviousAppraisalValues(
         rowTime,
         cycle,
         empKey,
+        locationMatches,
       });
     }
     // Keep the active-cycle row as a compatibility fallback, but select the
@@ -2046,6 +2075,7 @@ async function enrichPreviousAppraisalValues(
         currentPayrollByEmployee.set(empKey, { row: record, rowTime });
       return;
     }
+    if (!locationMatches) return;
     const rank = historyCycleRank(cycle);
     const archived = isArchivedCycle(cycle);
     if (!archived) return;
@@ -2189,12 +2219,12 @@ async function enrichPreviousAppraisalValues(
         row?.employee_master_row_id ??
         row?.emp_master_id,
     ).toLowerCase();
-    if (rowEmp)
+    if (rowEmp && cycleLocationMatchesEmployee(cycle, rowEmp))
       historyByRowEmployee.set(rowEmp, [
         ...(historyByRowEmployee.get(rowEmp) || []),
         entry,
       ]);
-    if (rowMasterId)
+    if (rowMasterId && cycleLocationMatchesEmployee(cycle, rowMasterId))
       historyByRowMasterId.set(rowMasterId, [
         ...(historyByRowMasterId.get(rowMasterId) || []),
         entry,
@@ -2246,6 +2276,7 @@ async function enrichPreviousAppraisalValues(
       employeePayrollRows
         .filter(
           (item) =>
+            item.locationMatches &&
             isNewJoinerCycle(item.cycle) &&
             cycleYearOf(item.cycle) !== "" &&
             cycleYearOf(item.cycle) === currentYear &&
@@ -2264,6 +2295,7 @@ async function enrichPreviousAppraisalValues(
       employeePayrollRows
         .filter(
           (item) =>
+            item.locationMatches &&
             isAnnualCycle(item.cycle) &&
             (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
             isArchivedCycle(item.cycle),
