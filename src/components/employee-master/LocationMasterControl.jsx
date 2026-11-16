@@ -633,6 +633,7 @@ export function LocationMasterControl({
   managerOnly = false,
   // View-only (Access level "View"): no add / edit / activate controls.
   readOnly = false,
+  showAllLocations = true,
 }) {
   // Access -> Fields -> Location Master: Hidden fields are not shown, Read only ones are locked.
   const lf = useScreenFields("locationMaster");
@@ -751,6 +752,11 @@ export function LocationMasterControl({
   }, [modal, saving]);
 
   const active = locations.filter((x) => x.status === "Active");
+  useEffect(() => {
+    if (!showAllLocations && (!value || ["all", "all locations"].includes(String(value).trim().toLowerCase())) && active.length) {
+      onChange?.(active[0][valueKey] || active[0].location_name);
+    }
+  }, [showAllLocations, value, valueKey, active, onChange]);
   const allLocationsSelected =
     !value || ["all", "all locations"].includes(String(value).trim().toLowerCase());
   // The shared selection may be held as a name or a code (set from another
@@ -1051,18 +1057,20 @@ export function LocationMasterControl({
             </button>
             {menu && (
               <div className="em-location-menu" role="listbox">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={allLocationsSelected}
-                  onClick={() => {
-                    onChange?.("All");
-                    setMenu(false);
-                  }}
-                >
-                  <span>All Locations</span>
-                  {allLocationsSelected && <Check size={14} />}
-                </button>
+                {showAllLocations && (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={allLocationsSelected}
+                    onClick={() => {
+                      onChange?.("All");
+                      setMenu(false);
+                    }}
+                  >
+                    <span>All Locations</span>
+                    {allLocationsSelected && <Check size={14} />}
+                  </button>
+                )}
                 {active.map((loc) => (
                   <button
                     key={loc.id || loc.location_code}

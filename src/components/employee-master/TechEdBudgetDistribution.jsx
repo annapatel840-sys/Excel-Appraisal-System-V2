@@ -1735,6 +1735,26 @@ export function TechEdBudgetDistribution() {
     isCompManagerLogin,
     selectedCompManager,
   ]);
+  // Hide Comp Manager allocations that have no Appraisal Sheet employees
+  // in the currently selected location. Keep the underlying allocation data
+  // intact so switching locations restores the correct rows.
+  const visibleCmNodes = useMemo(
+    () =>
+      cmNodes.filter((node) =>
+        assignedTeam.some((employee) =>
+          managerIdentityMatches(
+            employee.comp_manager ||
+              employee.comp_manager_id ||
+              employee.compManager ||
+              employee.comp_manager_name ||
+              employee.comp_manager_display ||
+              "",
+            node.name,
+          ),
+        ),
+      ),
+    [cmNodes, assignedTeam],
+  );
   const allTeam = assignedTeam;
   const myPct = isCompManagerView
     ? num(selectedManagerNode?.pct)
@@ -2004,7 +2024,7 @@ export function TechEdBudgetDistribution() {
 
   // Rows behind the Allocation table's column filters (display only).
   const allocItems = [
-    {
+    ...(assignedTeam.length ? [{
       self: true,
       level: LEVELS[0],
       owner: String(loginTechOwner).split(/\s+-\s+/)[1] || myName,
@@ -2018,8 +2038,8 @@ export function TechEdBudgetDistribution() {
       lastSort:
         String(myHistory[0].date || "") + String(myHistory[0].time || ""),
       pct: myPct,
-    },
-    ...cmNodes.map((n) => ({
+    }] : []),
+    ...visibleCmNodes.map((n) => ({
       node: n,
       level: LEVELS[1],
       owner: n.name,
@@ -2038,8 +2058,8 @@ export function TechEdBudgetDistribution() {
   const allocRz = useColumnResize(ALLOC_W);
   const allocKeys = ALLOC_COLS.map((c) => c.key);
 
-  const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
-  const auditNames = [myName, ...cmNodes.map((c) => c.name)];
+  const cmLabel = LEVELS[1] + (visibleCmNodes.length === 1 ? "" : "s");
+  const auditNames = [myName, ...visibleCmNodes.map((c) => c.name)];
   let auditList = auditFor(auditNames);
   if (auditFilter !== "all")
     auditList = auditList.filter((x) => x.name === auditFilter);

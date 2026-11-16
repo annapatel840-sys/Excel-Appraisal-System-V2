@@ -2727,6 +2727,7 @@ export default function DelegationScreen({
   });
   const [allRows, setRows] = useState(() => initialRows || []);
   const [globalTechEdOptions, setGlobalTechEdOptions] = useState([]);
+  const [globalEmployeeOptions, setGlobalEmployeeOptions] = useState([]);
   const globalTechEdOptionsRequest = useRef(null);
   // Delegation shows only the selected location's employees; saves and
   // snapshots keep working on the complete roster (allRows).
@@ -2737,8 +2738,8 @@ export default function DelegationScreen({
   );
   const [stagedChanges, setStagedChanges] = useState({});
   const resolverRows = useMemo(
-    () => [...rows, ...globalTechEdOptions],
-    [rows, globalTechEdOptions],
+    () => [...rows, ...globalTechEdOptions, ...globalEmployeeOptions],
+    [rows, globalTechEdOptions, globalEmployeeOptions],
   );
   const resolveName = useMemo(() => makeResolver(resolverRows), [resolverRows]);
   const [activeCycleName, setActiveCycleName] = useState("");
@@ -2985,17 +2986,11 @@ export default function DelegationScreen({
           setShowingSaved(true);
         });
       }
-      // The roster does not depend on the cycle lookup (employeesapi finds the
-      // active cycle itself), so start page 1 together with the cycle list
-      // instead of after it. Only page 1 writes lookups, so this is safe.
-      // The roster is the slow call, so it is queued before the (tiny) cycle
-      // list: catalystFetch runs at most two requests at a time.
-      // The first load joins the request the sign-in prefetch already started
-      // (if any); explicit reloads always ask the server again.
+      // The roster request remains location-scoped for the selected cycle.
+      // Dropdown options are loaded separately from the full Employee_Master.
       const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
       firstPromise.catch(() => {}); // reported where it is awaited below
-      const cyclesPromise = payrollCycleRequest("cycles");
-      const cycles = await cyclesPromise;
+      const cycles = await payrollCycleRequest("cycles");
       const allLocationsSelected =
         !selectedLocation ||
         ["all", "all locations"].includes(String(selectedLocation).trim().toLowerCase());
@@ -3129,7 +3124,7 @@ export default function DelegationScreen({
       return globalTechEdOptionsRequest.current;
     }
     globalTechEdOptionsRequest.current = fetchDelegationAssigneeOptions()
-      .then(({ techEd }) => {
+      .then(({ techEd, employees }) => {
         const options = techEd
           .map((person) => ({
             id: String(person.empId || "").trim(),
@@ -3137,6 +3132,12 @@ export default function DelegationScreen({
           }))
           .filter((person) => person.id);
         setGlobalTechEdOptions(options);
+        setGlobalEmployeeOptions(
+          (Array.isArray(employees) ? employees : []).map((person) => ({
+            id: String(person.empId || "").trim(),
+            name: String(person.name || "").trim(),
+          })).filter((person) => person.id),
+        );
         return options;
       })
       .catch((error) => {
@@ -3303,9 +3304,9 @@ export default function DelegationScreen({
   );
   const people = useMemo(() => {
     const uniquePeople = new Map();
-    rows.forEach((row) => {
-      const id = String(row.id || "").trim();
-      const name = String(row.name || "").trim();
+    [...globalEmployeeOptions, ...rows].forEach((person) => {
+      const id = String(person.id || person.empId || "").trim();
+      const name = String(person.name || "").trim();
       if (!id) return;
       const key = id.toLowerCase();
       const label = name ? `${id} - ${name}` : id;
@@ -3317,7 +3318,7 @@ export default function DelegationScreen({
     return Array.from(uniquePeople.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [rows]);
+  }, [globalEmployeeOptions, rows]);
   const techEdPeople = useMemo(() => {
     const uniquePeople = new Map();
     const add = (raw) => {

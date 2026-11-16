@@ -6,7 +6,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { matchesLocation, useSelectedLocation } from "@/lib/location-store";
+import { matchesLocation } from "@/lib/location-store";
 import {
   cycleNameLocation,
   cycleNameWithoutLocation,
@@ -228,7 +228,9 @@ export function AppraisalCycleMasterPage({
 }) {
   const user = useCatalystUser();
   const access = useAccess();
-  const [selectedLocation, setSelectedLocation] = useSelectedLocation();
+  // Cycle Master has its own All Locations inventory filter, independent of
+  // the universal header location used by operational screens.
+  const [selectedCycleLocation, setSelectedCycleLocation] = useState(ALL_CYCLE_LOCATIONS);
   const canManageCycles =
     String(user?.role || "")
       .trim()
@@ -488,30 +490,16 @@ export function AppraisalCycleMasterPage({
     return out;
   })();
 
-  // Keep an active shared source visible so it can be closed, plus the
-  // matching shared cycle for each location cycle so it can be archived.
+  // All Locations shows every cycle (legacy global and location-scoped).
+  // A concrete location shows only cycles created for that location.
   const locationCycles = useMemo(() => {
-    if (isAllCycleLocation(selectedLocation)) return cycles;
-    const scoped = cycles.filter(
+    if (isAllCycleLocation(selectedCycleLocation)) return cycles;
+    return cycles.filter(
       (cycle) =>
         !isAllCycleLocation(cycle.location) &&
-        matchesLocation(cycle.location, selectedLocation),
+        matchesLocation(cycle.location, selectedCycleLocation),
     );
-    const shared = cycles.filter(
-      (cycle) =>
-        isAllCycleLocation(cycle.location) &&
-        !isHidden(cycle) &&
-        (statusOf(cycle) === "Active" ||
-          scoped.some(
-            (locationCycle) =>
-              cycleNameWithoutLocation(locationCycle.name)
-                .trim()
-                .toLowerCase() ===
-              cycleNameWithoutLocation(cycle.name).trim().toLowerCase(),
-          )),
-    );
-    return [...scoped, ...shared];
-  }, [cycles, selectedLocation]);
+  }, [cycles, selectedCycleLocation]);
 
   const sourceCycleFor = (cycle) => {
     if (!cycle || isAllCycleLocation(cycle.location)) return null;
@@ -519,9 +507,7 @@ export function AppraisalCycleMasterPage({
     return cycles.find((candidate) =>
       candidate.id !== cycle.id &&
       isAllCycleLocation(candidate.location) &&
-      ["Active", "Closed", "Archived", "Complete", "Completed"].includes(
-        statusOf(candidate),
-      ) &&
+      String(statusOf(candidate) || "").trim().toLowerCase() === "archived" &&
       cycleNameWithoutLocation(candidate.name).trim().toLowerCase() === sourceName,
     ) || null;
   };
@@ -2311,9 +2297,10 @@ export function AppraisalCycleMasterPage({
                     System Location
                   </span>
                   <LocationMasterControl
-                    value={selectedLocation}
-                    onChange={setSelectedLocation}
-                    ariaLabel="Set system location for appraisal screens"
+                    value={selectedCycleLocation}
+                    onChange={setSelectedCycleLocation}
+                    showAllLocations={true}
+                    ariaLabel="Filter appraisal cycles by location"
                   />
                 </span>
               )}
@@ -2641,12 +2628,23 @@ export function AppraisalCycleMasterPage({
           }
         >
           <div className="acx-hint">
-            This cycle is set up once for all active locations. Each location
-            keeps its own employee records and budget allocation under the same
-            cycle name.
+            Choose All Locations to create a separate cycle for every active location, or select one location to create only that location's cycle.
             {cycleLocationsError
               ? ` Location list warning: ${cycleLocationsError}`
-              : ` ${cycleLocations.length} active locations will be configured.`}
+              : ` ${cycleLocations.length} active locations are available.`}
+          </div>
+          <div>
+            <label className="acx-fl">Location</label>
+            <select
+              disabled={saving}
+              value={newForm.location}
+              onChange={(e) => setNewForm((f) => ({ ...f, location: e.target.value }))}
+            >
+              <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+              {cycleLocations.map((location) => (
+                <option key={location} value={location}>{location}</option>
+              ))}
+            </select>
           </div>
           <div className="acx-row2">
             <div>

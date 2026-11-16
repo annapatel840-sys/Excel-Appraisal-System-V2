@@ -717,21 +717,13 @@ function isHistoricalCycle(cycle) {
       ? archivedValue.trim().toLowerCase()
       : archivedValue,
   );
-  // Match employeesapi: a prior appraisal can be Closed, Archived, or Completed.
-  return (
-    archived || ["archived", "closed", "complete", "completed"].includes(status)
-  );
+  // Closed is not history. Only an explicitly archived cycle may supply
+  // prior payroll, appraisal, or budget history to a newer location cycle.
+  return archived || status === "archived";
 }
 
 function isReusableSharedSourceCycle(cycle) {
-  return (
-    isHistoricalCycle(cycle) ||
-    String(
-      firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
-    )
-      .trim()
-      .toLowerCase() === "active"
-  );
+  return isHistoricalCycle(cycle);
 }
 
 function cycleRank(cycle) {
@@ -2143,7 +2135,43 @@ async function calculateBudgetBases(
     cycleById.get(String(cycleId)) ||
     cycleByName.get(String(cycleId).toLowerCase()) ||
     null;
-  const previousCycleFor = (cycleId) => {
+  const cycleMatchesEmployeeLocation = (cycle, employeeMasterRow, fallbackLocation = "") => {
+    const masterLocationValues = [
+      "location",
+      "work_location",
+      "location_name",
+      "location_code",
+    ].map((field) => normalizeLocationKey(firstValue(employeeMasterRow, [field]))).filter(Boolean);
+    const employeeLocationAliases = new Set(masterLocationValues);
+    if (employeeLocationAliases.size) {
+      const locationRecord = locationRows.find((location) => {
+        const aliases = [
+          firstValue(location, ["location_name", "name", "location"]),
+          firstValue(location, ["location_code", "code", "short_code"]),
+          idOf(location),
+        ].map(normalizeLocationKey);
+        return masterLocationValues.some((masterAlias) => aliases.includes(masterAlias));
+      });
+      if (locationRecord) {
+        [
+          firstValue(locationRecord, ["location_name", "name", "location"]),
+          firstValue(locationRecord, ["location_code", "code", "short_code"]),
+          idOf(locationRecord),
+        ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => employeeLocationAliases.add(alias));
+      }
+    } else if (fallbackLocation) {
+      employeeLocationAliases.add(normalizeLocationKey(fallbackLocation));
+    }
+    const candidateLocation = normalizeLocationKey(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    );
+    return (
+      !candidateLocation ||
+      ["all", "alllocations"].includes(candidateLocation) ||
+      employeeLocationAliases.has(candidateLocation)
+    );
+  };
+  const previousCycleFor = (cycleId, employeeMasterRow = {}) => {
     const current = currentCycleFor(cycleId);
     if (!current) return null;
     const currentLocation = String(
@@ -2173,7 +2201,12 @@ async function calculateBudgetBases(
     const currentRank = cycleRank(current);
     const earlier = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
-      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
+      .filter((cycle) =>
+        cycleRank(cycle) > 0 &&
+        currentRank > 0 &&
+        cycleRank(cycle) < currentRank &&
+        cycleMatchesEmployeeLocation(cycle, employeeMasterRow, currentLocation)
+      )
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
   };
@@ -2257,10 +2290,6 @@ async function calculateBudgetBases(
   const currentCycleId =
     cycleIdOf(activeCycleRow) ||
     String(bundle.master[0]?.appraisal_cycle_id || "");
-  const previousCycle = previousCycleFor(currentCycleId);
-  const previousCycleId = previousCycle
-    ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
-    : "";
   const currentCycle = currentCycleFor(currentCycleId);
   const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
   const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
@@ -2300,6 +2329,12 @@ async function calculateBudgetBases(
       "techEd",
     ];
     const masterRow = masterByEmployee.get(employeeId) || {};
+    // Prior cycle is employee-location specific: one location's archived cycle
+    // must never become another location's payroll/history source.
+    const previousCycle = previousCycleFor(currentCycleId, masterRow);
+    const previousCycleId = previousCycle
+      ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
+      : "";
     const rawTechEd = String(
       firstValue(row, techEdFields) || firstValue(masterRow, techEdFields) || "",
     ).trim();
@@ -2361,17 +2396,15 @@ async function calculateBudgetBases(
         const candidateName = cycleNameOf(candidate);
         const candidateYear = cycleYearOf(candidate);
         const candidateStatus = String(candidate.status || "").trim().toLowerCase();
-        const archived = [true, 1, "true", "1", "yes", "archived"].includes(
-          typeof candidate.archived === "string" ? candidate.archived.trim().toLowerCase() : candidate.archived,
-        );
         const hidden = [true, 1, "true", "1", "yes"].includes(
           typeof candidate.hidden === "string" ? candidate.hidden.trim().toLowerCase() : candidate.hidden,
         );
-        // New Joiner cycles can remain Active because their process is None.
-        // Their same-year payroll upload is still the authoritative source.
+        // New Joiner process=None cycles may remain Active; once closed they
+        // become a history source only after explicit archival.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
-          !archived &&
+          cycleMatchesEmployeeLocation(candidate, masterRow, activeCycleIsLocationScoped ? activeCycleLocation : "") &&
+          (isHistoricalCycle(candidate) || candidateStatus === "active") &&
           !hidden &&
           !["cancelled", "canceled"].includes(candidateStatus);
       })
@@ -2400,10 +2433,10 @@ async function calculateBudgetBases(
     // canonical base. Use historical Payroll_Data only when that sheet field
     // is absent, then fall back to the current CTC for new joiners/legacy rows.
     const sheetPreviousRaw = firstValue(row, [
-      // Live Appraisal_Sheet column (written by employeesapi).
-      "previous_year_CTC_with_rewards",
+      // Exact generated Appraisal_Sheet column shown to HR.
       "Previous_Appraisal_total_CTC_with_rewards",
       "previous_appraisal_total_ctc_with_rewards",
+      "previous_year_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
     ]);
     const sheetPreviousCtc =
@@ -2415,9 +2448,9 @@ async function calculateBudgetBases(
     const storedPreviousCtc = previousRecord
       ? previousCtc(previousRecord)
       : null;
-    // The Appraisal Sheet displays the value mapped from payroll history
-    // (including the same-year New Joiners fallback), not a stale sheet
-    // snapshot. Use that same mapping for Org Budget Base.
+    // The generated Appraisal_Sheet Previous Total CTC with Rewards value
+    // is authoritative for this cycle's Org Budget Base. Payroll history is
+    // only a fallback for legacy rows where that exact sheet field is blank.
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
@@ -2429,10 +2462,12 @@ async function calculateBudgetBases(
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
-      Number.isFinite(Number(payrollCtcFallback)) &&
-      Number(payrollCtcFallback) > 0
-        ? Number(payrollCtcFallback)
-        : 0;
+      sheetPreviousCtc !== null && Number.isFinite(Number(sheetPreviousCtc))
+        ? Number(sheetPreviousCtc)
+        : Number.isFinite(Number(payrollCtcFallback)) &&
+            Number(payrollCtcFallback) > 0
+          ? Number(payrollCtcFallback)
+          : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord

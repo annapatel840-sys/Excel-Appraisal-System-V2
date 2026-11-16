@@ -2134,11 +2134,12 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const allCycles = Array.isArray(options.allCycles)
     ? options.allCycles
     : (await getAllRows(tables.cycles)).map(normalizeCycle);
-  const [sheetRows, payrollRows, feedbackRows, delegationRows] = await Promise.all([
+  const [sheetRows, payrollRows, feedbackRows, delegationRows, locationRows] = await Promise.all([
     getAllRows(tables.employees),
     getAllRows(tables.payroll),
     getAllRows(tables.feedback),
     getAllRows(tables.delegation),
+    getAllRows(tables.locations),
   ]);
   const cycleKeys = new Set(
     [cycle.id, cycle.name]
@@ -2180,10 +2181,12 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
   const isNewJoinerCycle = (item) => /new[\s_-]*joiners?/i.test(String(item?.name || ""));
   const isAnnualCycle = (item) => /\bannual\b/i.test(String(item?.name || ""));
-  const isClosedCycle = (item) =>
-    String(item?.status || "").toLowerCase() === "closed" || Boolean(item?.archived);
-  const isAvailableSourceCycle = (item) =>
-    isClosedCycle(item) || String(item?.status || "").toLowerCase() === "active";
+  const isArchivedCycle = (item) =>
+    Boolean(item?.archived) ||
+    String(item?.status || "").trim().toLowerCase() === "archived";
+  // Closed cycles are not historical sources. Only explicitly archived
+  // shared cycles may provide existing payroll/feedback to a location cycle.
+  const isAvailableSourceCycle = (item) => isArchivedCycle(item);
   const cycleOrder = (item) => {
     const date = String(item?.effective || item?.end || item?.start || "");
     const year = Number(cycleYear(item)) || 0;
@@ -2329,17 +2332,20 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       row,
     ]).filter(([id]) => id),
   );
+  const employeeMasterByRowId = new Map(
+    employeeMasterRows.map((row) => [
+      referenceText(row.ROWID ?? row.rowid ?? row.id).toLowerCase(),
+      row,
+    ]).filter(([id]) => id),
+  );
   const basePayrollCandidatesByEmployee = new Map();
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
-    if (
-      !candidateCycle ||
-      (!isClosedCycle(candidateCycle) &&
-        String(candidateCycle.id) !== String(sourceCycle?.id || ""))
-    )
-      return;
+    if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    const directMaster = employeeMasterByBusinessId.get(masterId.toLowerCase());
+    const directMaster =
+      employeeMasterByBusinessId.get(masterId.toLowerCase()) ||
+      employeeMasterByRowId.get(masterId.toLowerCase());
     const empId = masterIdToEmpId.get(masterId) ||
       String(fieldValue(directMaster || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() ||
       String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
@@ -2348,6 +2354,15 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
     const sameYearNewJoiner = isNewJoinerCycle(candidateCycle) && sourceYear && sourceYear === currentYear;
     const priorAnnual = isAnnualCycle(candidateCycle) && isBeforeCurrentCycle(candidateCycle);
+    const activeNewJoiner =
+      sameYearNewJoiner &&
+      String(candidateCycle.status || "").trim().toLowerCase() === "active" &&
+      !candidateCycle.archived;
+    if (
+      !inCycleLocation(candidateCycle, directMaster, locationRows) ||
+      (!isArchivedCycle(candidateCycle) && !activeNewJoiner && !matchingSharedSource)
+    )
+      return;
     if (!matchingSharedSource && !sameYearNewJoiner && !priorAnnual) return;
     const candidate = {
       row,
