@@ -3299,18 +3299,14 @@ async function calculateBudgetBases(
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
     // second lookup can disagree with the already-generated rows and change the
     // budget total while the Appraisal Sheet's Total row stays the same.
+    // Match the Appraisal Sheet's actual frontend filter exactly:
+    // isActiveEligible() checks response status + eligible_status. Do not
+    // substitute Employee_Master status or re-resolve Eligibility_List here;
+    // those sources can disagree with the generated sheet visible to HR.
     const cycleFilteredEmployees = appraisalSheetEmployees.filter(
-      (employee) => {
-        const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-        const employeeStatus = String(employee.master_status || employee.status)
-          .trim()
-          .toLowerCase();
-        const active = !employeeStatus || employeeStatus === "active";
-        return (
-          active &&
-          (cycleEligibility ? cycleEligibility.eligible : employee.eligible)
-        );
-      },
+      (employee) =>
+        String(employee.status || "").trim().toLowerCase() === "active" &&
+        String(employee.eligible_status || "").trim().toLowerCase() === "eligible",
     );
     // Keep the legacy explicit sheet/master eligibility roster for the
     // existing count and allocation calculations below. Budget base itself
