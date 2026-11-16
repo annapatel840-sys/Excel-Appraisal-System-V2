@@ -29,6 +29,7 @@ export function LocationSwitcher({ isVertical }) {
           value={selectedLocation}
           onChange={setSelectedLocation}
           ariaLabel="Location shown on every screen"
+          showAllLocations={false}
           triggerClassName="app-header-location-trigger"
         />
       </div>
