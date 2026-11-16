@@ -1137,7 +1137,7 @@
 //       .forEach((row) => {
 //         const owner = row.appraiser_tech_ed_id || "";
 //         const key = resolveTechOwnerKey(owner);
-//         if (!key || !ownerValues.has(key)) return;
+//         if (!key || !ownerValues.has(key) || !(locationTeamCounts.get(key) > 0)) return;
 //         // Multiple legacy records may point to the same Tech-Ed using ROWID,
 //         // employee ID, or label. Keep one display row per canonical roster key.
 //         if (seenOwners.has(key)) {
@@ -3777,6 +3777,19 @@ function HRApplyBudget() {
       }
       return canonicalOwnerKey(text, employeeRows);
     };
+    // Full current-cycle Appraisal Sheet roster for this location. A Tech-ED
+    // with no employee here must not appear in Budget Master, even if a stale
+    // Budget_Distribution row still exists from another location.
+    const locationTeamCounts = new Map();
+    (Array.isArray(locationEmployeeRows) ? locationEmployeeRows : []).forEach((employee) => {
+      const inSheet =
+        employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
+      if (!inSheet) return;
+      const key = resolveTechOwnerKey(employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || "");
+      if (key) locationTeamCounts.set(key, (locationTeamCounts.get(key) || 0) + 1);
+    });
     // Same rule as DashboardOverview: Active + Eligible rows, grouped by
     // the Appraisal Sheet Tech-Ed assignment.
     const dashboardCurrentCounts = new Map();
