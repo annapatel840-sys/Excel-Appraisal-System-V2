@@ -544,6 +544,21 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
   return active || null;
 }
 
+// ROWIDs of every Active cycle (one per location).
+async function activeCycleRowIds(datastore) {
+  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID));
+  const ids = new Set();
+  cycles.forEach(function (cycle) {
+    const status = String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "")
+      .trim().toLowerCase();
+    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
+    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
+    const id = String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
+    if (status === "active" && !archived && !hidden && id) ids.add(id);
+  });
+  return ids;
+}
+
 async function activeCycleRowId(datastore, requestedCycleId = "") {
   const active = await activeCycleRecord(datastore, requestedCycleId);
   return active ? String(active.ROWID ?? active.rowid ?? active.id ?? active.ID ?? "").trim() : "";
@@ -4954,6 +4969,23 @@ async function updateEmployee(req, res) {
       if (!currentCycleLocation || !rowLocation || rowLocation === currentCycleLocation) {
         appraisalRow = untaggedRows[0];
       }
+    }
+  }
+  // Each location has its own Active cycle. The sheet may send another
+  // location's cycle (after a header switch, or with "All Locations"), so an
+  // employee in the Canada cycle was "not found" in the India one. Use the
+  // employee's row in an Active cycle: the row the grid sent if it is in one,
+  // otherwise the only Active-cycle row this employee has.
+  if (!appraisalRow && employeeSheetRows.length) {
+    const activeIds = await activeCycleRowIds(adminApp.datastore());
+    const inActiveCycle = function (row) {
+      return activeIds.has(String(row.cycle_id ?? row.appraisal_cycle_id ?? "").trim());
+    };
+    if (requestedRow && inActiveCycle(requestedRow)) {
+      appraisalRow = requestedRow;
+    } else {
+      const inActive = employeeSheetRows.filter(inActiveCycle);
+      if (inActive.length === 1) appraisalRow = inActive[0];
     }
   }
   const masterRow = (masterRows || []).find(function (row) {
