@@ -4846,11 +4846,19 @@ async function updateEmployee(req, res) {
       .trim().toLowerCase() === empId.toLowerCase();
   });
   const rowCycleReference = function (row) {
-    return historyReference(
-      row.cycle_id ?? row.appraisal_cycle_id ?? row.appraisalCycleId ??
-      row.appraisal_cycle_name ?? row.appraisalCycleName ?? row.cycle_name ??
-      row.appraisal_cycle ?? row.appraisal_year,
-    ).toLowerCase();
+    return [
+      row.cycle_id,
+      row.appraisal_cycle_id,
+      row.appraisalCycleId,
+      row.appraisal_cycle_name,
+      row.appraisalCycleName,
+      row.cycle_name,
+      row.appraisal_cycle,
+      row.appraisal_year,
+    ]
+      .map(historyReference)
+      .find(Boolean)
+      ?.toLowerCase() || "";
   };
   const exactCycleRows = employeeSheetRows.filter(function (row) {
     const rawCycle = rowCycleReference(row);
