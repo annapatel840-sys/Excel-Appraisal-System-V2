@@ -3930,7 +3930,7 @@ function HRApplyBudget() {
       .forEach((row) => {
         const owner = row.appraiser_tech_ed_id || "";
         const key = resolveTechOwnerKey(owner);
-        if (!key || !ownerValues.has(key)) return;
+        if (!key || !ownerValues.has(key) || !(locationTeamCounts.get(key) > 0)) return;
         // Multiple legacy records may point to the same Tech-Ed using ROWID,
         // employee ID, or label. Keep one display row per canonical roster key.
         if (seenOwners.has(key)) {
@@ -4111,7 +4111,7 @@ function HRApplyBudget() {
     // Appraisal Sheet is the source of truth for the Tech-ED assignments.
     // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
     ownerValues.forEach((owner, key) => {
-      if (seenOwners.has(key)) return;
+      if (seenOwners.has(key) || !(locationTeamCounts.get(key) > 0)) return;
       const label = ownerName(owner, employeeRows);
       nextRows.push({
         id: "tech-ed-" + key,
