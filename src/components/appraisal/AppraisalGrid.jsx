@@ -32,6 +32,11 @@ import {
   newTitleChoices,
 } from "@/lib/designation-master-api";
 import { cycleNameWithoutLocation } from "@/lib/cycle-name";
+import {
+  isAllLocations,
+  locationOfRow,
+  useSelectedLocation,
+} from "@/lib/location-store";
 // ============================================================
 // API
 // ============================================================
@@ -792,7 +797,12 @@ const buildHistoryView = (
       : row;
 
   return [
-    applyCurrentYearSheetValues(currentRecord, viewRow, currentCycleName),
+    {
+      ...applyCurrentYearSheetValues(currentRecord, viewRow, currentCycleName),
+      // Always display the selected employee's location-qualified current
+      // cycle label, even when the matched source payroll row is global.
+      cycleName: currentCycleName,
+    },
     ...olderRecords,
   ];
 };
@@ -1972,6 +1982,16 @@ export function AppraisalGrid({
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
+  const [selectedLocation] = useSelectedLocation();
+  const cycleDisplayNameForEmployee = (employee) => {
+    const employeeLocation =
+      locationOfRow(employee) ||
+      (!isAllLocations(selectedLocation) ? selectedLocation : "");
+    const baseCycleName = cycleNameWithoutLocation(currentCycleName);
+    return employeeLocation && baseCycleName
+      ? `${employeeLocation} - ${baseCycleName}`
+      : currentCycleName;
+  };
 
 //  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
   const [designationRules, setDesignationRules] = useState(null);
@@ -2824,9 +2844,9 @@ export function AppraisalGrid({
       buildHistoryView(
         historyState?.data || [],
         liveHistoryRow,
-        currentCycleName,
+        cycleDisplayNameForEmployee(liveHistoryRow),
       ),
-    [historyState, liveHistoryRow, currentCycleName],
+    [historyState, liveHistoryRow, currentCycleName, selectedLocation],
   );
 
   // History panel: Designation per cycle (Feedback & Rating), column order,
@@ -4666,7 +4686,11 @@ export function AppraisalGrid({
     }
 
     const state = historyByEmpId[String(baseRow.empId || "").trim()];
-    const records = buildHistoryView(state?.data || [], draft, currentCycleName);
+    const records = buildHistoryView(
+      state?.data || [],
+      draft,
+      cycleDisplayNameForEmployee(baseRow),
+    );
 
     let warning = "";
     if (valid && typing.colKey === "allocatedPBAmount" && entered < pbFloor) {

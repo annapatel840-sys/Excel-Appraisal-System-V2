@@ -2184,9 +2184,16 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const isArchivedCycle = (item) =>
     Boolean(item?.archived) ||
     String(item?.status || "").trim().toLowerCase() === "archived";
-  // Closed cycles are not historical sources. Only explicitly archived
-  // shared cycles may provide existing payroll/feedback to a location cycle.
-  const isAvailableSourceCycle = (item) => isArchivedCycle(item);
+  // A matching global cycle may supply the uploads already used when the
+  // location-specific cycles were created. Prefer Archived, but also allow
+  // the legacy global cycle when it is Closed (not Archived). This exception
+  // is limited below to the same cycle type/year and is never used to populate
+  // archived-history panels.
+  const isClosedSharedSourceCycle = (item) =>
+    String(item?.status || "").trim().toLowerCase() === "closed" &&
+    !item?.archived;
+  const isAvailableSourceCycle = (item) =>
+    isArchivedCycle(item) || isClosedSharedSourceCycle(item);
   const cycleOrder = (item) => {
     const date = String(item?.effective || item?.end || item?.start || "");
     const year = Number(cycleYear(item)) || 0;
@@ -2199,16 +2206,20 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
   const currentYear = cycleYear(cycle);
   const canonicalCycleName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
-  const sourceCycle = cycleLocationKey(cycle)
-    ? normalizedCycles.find((item) =>
+  const matchingSharedSourceCycles = cycleLocationKey(cycle)
+    ? normalizedCycles.filter((item) =>
         String(item.id) !== String(cycle.id) &&
         !cycleLocationKey(item) &&
         isAvailableSourceCycle(item) &&
         cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalCycleName &&
         cycleYear(item) === currentYear &&
         cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
-      ) || null
-    : null;
+      )
+    : [];
+  const sourceCycle =
+    matchingSharedSourceCycles.find((item) => isArchivedCycle(item)) ||
+    matchingSharedSourceCycles.find((item) => isClosedSharedSourceCycle(item)) ||
+    null;
   // Matching location cycles share the legacy source data. Keep the
   // explicit option for older callers, but do not require a separate upload
   // or confirmation for the location cycle.
@@ -2339,6 +2350,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     ]).filter(([id]) => id),
   );
   const basePayrollCandidatesByEmployee = new Map();
+  // Keep the same-year New Joiner cycle tied to its employee. Its feedback
+  // and rating must come from that employee's New Joiner cycle, not the shared
+  // Annual source cycle used for existing employees.
+  const newJoinerCycleKeysByEmployee = new Map();
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
     if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
@@ -2390,6 +2405,13 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const latestAnnual = candidates.filter((item) => isAnnualCycle(item.cycle) && isBeforeCurrentCycle(item.cycle)).sort(compareNewest)[0];
     const selected = sharedSource || sameYearNewJoiner || latestAnnual;
     if (!selected) return;
+    if (selected.sameYearNewJoiner) {
+      newJoinerCycleKeysByEmployee.set(empId, new Set(
+        [selected.cycle.id, selected.cycle.sourceRowId, selected.cycle.name]
+          .map((value) => referenceText(value).toLowerCase())
+          .filter(Boolean),
+      ));
+    }
     const sourceMasterId = referenceText(selected.row.emp_id ?? selected.row.employee_master_id);
     if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
     // Also index by actual Employee_Master ROWID when payroll emp_id stores
@@ -2431,7 +2453,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const feedbackCycle = referenceText(fieldValue(
       row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year",
     )).toLowerCase();
-    if (!rawEmployee || !feedbackCycleKeys.has(feedbackCycle)) return;
+    if (!rawEmployee) return;
 
     // emp_ID is a lookup to Employee_Master.ROWID in current uploads, but
     // older records may contain the employee's business ID instead.
@@ -2443,6 +2465,11 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const empId = master
       ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
       : rawEmployee.toLowerCase();
+    const employeeNewJoinerCycleKeys = newJoinerCycleKeysByEmployee.get(empId);
+    if (
+      !feedbackCycleKeys.has(feedbackCycle) &&
+      !employeeNewJoinerCycleKeys?.has(feedbackCycle)
+    ) return;
 
     const previousMaster = feedbackByMasterId.get(masterId);
     if (!previousMaster ||
