@@ -2971,7 +2971,7 @@ export default function DelegationScreen({
     const startedGeneration = delegationGeneration();
     const savedKey = delegationSnapshotKey(
       catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "",
-      "All",
+      selectedLocation,
     );
     let freshApplied = false;
     try {
@@ -2986,10 +2986,10 @@ export default function DelegationScreen({
           setShowingSaved(true);
         });
       }
-      // Resolve the location's active cycle first, then request that exact
-      // cycle's roster without a location filter. Delegation assignment options
-      // must include all employees across locations, while the universal header
-      // still determines which cycle is being worked on.
+      // The roster request remains location-scoped for the selected cycle.
+      // Dropdown options are loaded separately from the full Employee_Master.
+      const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
+      firstPromise.catch(() => {}); // reported where it is awaited below
       const cycles = await payrollCycleRequest("cycles");
       const allLocationsSelected =
         !selectedLocation ||
@@ -3027,13 +3027,6 @@ export default function DelegationScreen({
       );
       setActiveCycleId(cycleId);
       setActiveCycleName(cycleName);
-
-      const firstPromise = fetchDelegationRoster({
-        fresh: !initial,
-        location: "All",
-        cycleId,
-      });
-      firstPromise.catch(() => {}); // reported where it is awaited below
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
