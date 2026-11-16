@@ -243,7 +243,7 @@ function renderChips(){
   S.active.forEach(function(id){
     var d=fdef(id);if(!d||hiddenForRole(d))return;
     var v=S.filt[id]||[],txt=v.length?(d.type==="num"?numLabel(v):v.map(function(x){return valLabel(d,x)}).join(", ")):"All";
-    h+='<span class="fchip'+(v.length?' has':'')+'"><button class="fc-b" type="button" data-open="'+id+'"><b>'+esc(d.label)+'</b> '+esc(txt)+'</button><button class="fc-x" type="button" data-rm="'+id+'" title="Remove this filter">✕</button></span>';
+    h+='<span class="fchip'+(v.length?' has':'')+'"><button class="fc-b" type="button" data-open="'+id+'" title="'+esc(d.label+": "+txt)+'"><b>'+esc(d.label)+'</b> '+esc(txt)+'</button><button class="fc-x" type="button" data-rm="'+id+'" title="Remove this filter">✕</button></span>';
   });
   $("fbChips").innerHTML=h;
   var avail=FDEFS.filter(function(d){return d.type!=="search"&&S.active.indexOf(d.id)<0&&!hiddenForRole(d)});

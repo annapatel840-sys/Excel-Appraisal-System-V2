@@ -280,7 +280,8 @@
 .bo #fbSearch input{width:100%;padding-left:30px}
 .bo .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
 .bo .fchip{height:28px;border-radius:16px}
-.bo .fchip .fc-b{padding:0 6px 0 12px;font-weight:600;display:inline-flex;gap:4px}
+.bo .fchip{max-width:100%;min-width:0}
+.bo .fchip .fc-b{padding:0 6px 0 12px;font-weight:600;display:block;min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .bo .fchip .fc-b b{font-weight:800}
 .bo .fchip .fc-x{padding:0 10px 0 4px}
 .bo .addf{display:inline-flex;align-items:center;gap:4px;height:28px;border:1px dashed #CBD2DA;border-radius:16px;padding:0 12px;font-family:inherit;font-size:12px;font-weight:700;color:var(--link);background:#fff;cursor:pointer}
