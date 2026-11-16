@@ -2022,15 +2022,15 @@ async function calculateBudgetBases(
     "appraisal_cycle",
   ];
   const sheetCycleReferences = (row) => {
-    const idReferences = sheetCycleIdFields
-      .map((field) => cycleReference(row && row[field]))
-      .filter(Boolean)
-      .map((ref) => ref.trim().toLowerCase());
-    if (idReferences.length) return idReferences;
-    return sheetCycleNameFields
-      .map((field) => cycleReference(row && row[field]))
-      .filter(Boolean)
-      .map((ref) => ref.trim().toLowerCase());
+    for (const field of sheetCycleIdFields) {
+      const reference = cycleReference(row && row[field]);
+      if (reference) return [reference.trim().toLowerCase()];
+    }
+    for (const field of sheetCycleNameFields) {
+      const reference = cycleReference(row && row[field]);
+      if (reference) return [reference.trim().toLowerCase()];
+    }
+    return [];
   };
   const activeSheetCycleAliases = new Set(
     activeSheetCycle ? cycleAliasesFor(activeSheetCycle) : [],
