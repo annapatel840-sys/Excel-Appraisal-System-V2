@@ -42,10 +42,14 @@ const SCREEN_FIELDS = {
     "targetPBNextYear", "targetPBCriteria", "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
     "totalOfPB", "totalBonus", "newBaseSalary", "totalCTCWithRewards", "totalRewardsHikePct",
   ],
+  // Bulk Edit: only the fields the screen reads or writes. It changes Hike (Amount / %), PB, RB and
+  // Target PB for Next Year; PB / RB to be Paid are the floors it enforces; Name, Manager Rating, Base Pay,
+  // New Base Salary and Total CTC are its table columns; the rest are its filters (For Whom) and group-bys.
   bulkEdit: [
-    "name", "designation", "compManager", "appraiserTechED", "managerRating", "currentAnnualBasePay", "rbToBePaid", "pbToBePaid",
-    "allocatedPBAmount", "pbInstallment", "newRB", "hikeAmount", "hikePct", "targetPBNextYear", "targetPBCriteria",
-    "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
+    "name", "designation", "compManager", "appraiserTechED", "managerRating", "rrPercent", "grossMargin",
+    "eligibleForPromotion", "newTitle", "currentAnnualBasePay", "pbToBePaid", "rbToBePaid",
+    "allocatedPBAmount", "newRB", "hikeAmount", "hikePct", "targetPBNextYear",
+    "newBaseSalary", "totalCTCWithRewards",
   ],
 };
 const screensOfField = (f) => (f.group
