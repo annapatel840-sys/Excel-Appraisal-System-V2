@@ -102,7 +102,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(r.json.diagnostics.warning, undefined);
   });
 
-  await t('Org Budget Base sums only stored generated Appraisal Sheet previous rewards values', async () => {
+  await t('Org Budget Base matches enriched previous rewards values for generated Appraisal Sheet employees', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -156,7 +156,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 27000, 'Org Budget Base must not add payroll-derived fallback values missing from the generated sheet snapshot');
+    assert.strictEqual(r.json.master[0].org_budget_base, 27000 + 905000, 'Org Budget Base must match the enriched previous CTC values shown for generated sheet employees');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 27000);
@@ -167,7 +167,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(fresh.rb_to_be_paid, 8250, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
-    const orgBase = 27000;
+    const orgBase = 27000 + 905000;
     const orgOriginal = orgBase * 0.08;
     assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
     const techRow = r.json.techEd[0];
@@ -188,7 +188,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 0.10);
   });
 
-  await t('budget base uses the same-year New Joiners payroll value shown by the Appraisal Sheet', async () => {
+  await t('Org Budget Base uses the same-year New Joiners value shown by the Appraisal Sheet', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [],
@@ -222,7 +222,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const response = await get(load(store));
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.master[0].org_budget_base, 0, 'Org Budget Base uses the generated sheet snapshot, not a payroll fallback');
+    assert.strictEqual(response.json.master[0].org_budget_base, 1027000, 'Org Budget Base matches the same-year New Joiner value shown in the Appraisal Sheet');
     assert.strictEqual(response.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1').budget_base, 1027000);
     assert.strictEqual(response.json.employeeRoster[0].previous_appraisal_total_ctc_with_rewards, 1027000);
   });
@@ -642,7 +642,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster[0].previous_appraisal_total_ctc_with_rewards, 2750000);
   });
 
-  await t('Archived payroll may enrich the roster, but Org Budget Base uses only the generated sheet snapshot', async () => {
+  await t('Archived payroll enrichment is included in Org Budget Base for generated sheet employees', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -671,10 +671,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     });
     const response = await get(load(store));
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.master[0].org_budget_base, 0, 'archived payroll fallback must not be added to the Org Budget Base');
+    assert.strictEqual(response.json.master[0].org_budget_base, 1875000, 'Org Budget Base matches the archived payroll value shown in the generated Appraisal Sheet roster');
     const employee = response.json.employeeRoster.find((row) => row.emp_id === 'E1');
     assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 1875000);
-    assert.match(response.json.diagnostics.warning, /None of the 1 generated Appraisal Sheet employees has a stored Previous_Appraisal_total_CTC_with_rewards value/);
+    assert.strictEqual(response.json.diagnostics.warning, undefined);
   });
 
   await t('Closed but non-archived cycles are not used as Payroll CTC history', async () => {
@@ -710,7 +710,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 0);
   });
 
-  await t('location-cycle roster can reuse archived payroll while Org Budget Base stays on the generated sheet snapshot', async () => {
+  await t('location-cycle Org Budget Base matches archived payroll enrichment for generated sheet employees', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -742,7 +742,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const response = await get(load(store));
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.master[0].org_budget_base, 0, 'shared payroll fallback must not be added to Org Budget Base');
+    assert.strictEqual(response.json.master[0].org_budget_base, 777000, 'Org Budget Base matches the shared archived payroll value shown in the generated Appraisal Sheet roster');
     assert.strictEqual(
       response.json.employeeRoster.find((row) => row.emp_id === 'E1')
         .previous_appraisal_total_ctc_with_rewards,
