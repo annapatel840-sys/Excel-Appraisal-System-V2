@@ -2313,9 +2313,10 @@ export function AppraisalCycleMasterPage({
                     System Location
                   </span>
                   <LocationMasterControl
-                    value={selectedLocation}
-                    onChange={setSelectedLocation}
-                    ariaLabel="Set system location for appraisal screens"
+                    value={selectedCycleLocation}
+                    onChange={setSelectedCycleLocation}
+                    showAllLocations={true}
+                    ariaLabel="Filter appraisal cycles by location"
                   />
                 </span>
               )}
