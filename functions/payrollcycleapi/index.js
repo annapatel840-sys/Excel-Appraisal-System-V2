@@ -2242,12 +2242,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   // payroll where applicable, then the latest earlier Archived Annual payroll.
   // A location cycle must not require a duplicate upload when its source history
   // already exists under the original Annual cycle.
-  const currentCyclePayrollRows = payrollRowsWithCycle.filter(
-    ({ cycle: rowCycle }) => rowCycle && (
-      String(rowCycle.id) === String(cycle.id) ||
-      (reuseExistingCycleData && sourceCycle && String(rowCycle.id) === String(sourceCycle.id))
-    ),
-  );
   const sourceHasPayroll = Boolean(sourceCycle && payrollRowsWithCycle.some(
     ({ cycle: rowCycle }) => rowCycle && String(rowCycle.id) === String(sourceCycle.id),
   ));
@@ -2271,7 +2265,8 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const isCancelledPayrollCycle = (item) =>
     ["cancelled", "canceled"].includes(String(item?.status || "").trim().toLowerCase());
   const isUsableHistoryCycle = (item) => {
-    if (!item || String(item.id) === String(cycle.id) || isCancelledPayrollCycle(item)) return false;
+    if (!item || isCancelledPayrollCycle(item)) return false;
+    if (String(item.id) === String(cycle.id)) return true;
     if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
     if (isNewJoinerCycle(item)) {
       return cycleYear(item) === currentYear &&
