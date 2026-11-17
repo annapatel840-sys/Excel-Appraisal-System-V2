@@ -3378,13 +3378,12 @@ async function calculateBudgetBases(
 
     // The Appraisal Sheet API enriches each generated row with the employee's
     // previous_appraisal_total_ctc_with_rewards value from the matching
-    // archived/shared payroll source. That value is returned in the sheet
-    // response; it is not a physical Appraisal_Sheet column in every legacy
-    // Catalyst schema. Budget Master must use that same enriched value, while
-    // keeping the roster strictly limited to the current generated sheet.
-    // Never add employees from Employee_Master, Eligibility_List, or payroll.
+    // archived/shared payroll source. Use every employee in the generated
+    // Appraisal Sheet roster, matching the grid Total row when search, filters
+    // and Edited Only are cleared. Do not filter by Active/Eligible here.
+    // Never add employees that are not in the current generated sheet.
     const orgBaseRowsByEmployee = new Map();
-    cycleFilteredEmployees.forEach((employee) => {
+    appraisalSheetEmployees.forEach((employee) => {
       const employeeId = String(
         firstValue(employee, ["emp_id", "employeeId", "employee_id"]) ||
           employee.employeeId ||
@@ -3507,8 +3506,31 @@ async function calculateBudgetBases(
     });
     let orgUtilized = 0;
 
-    // Allocation bases must use exactly the same cycle-eligible rows as
-    // Org Budget Base and the Appraisal Sheet's Previous Total CTC with Rewards.
+    // Tech-Ed and Comp Manager allocation bases must reconcile to Org Budget
+    // Base, so they also include every generated Appraisal Sheet employee.
+    // This is deliberately independent of status/eligibility filters.
+    appraisalSheetEmployees.forEach((employee) => {
+      const techKey = ownerKey(employee.techEd);
+      const compKey = ownerKey(employee.compManager);
+      if (techKey) {
+        const tech = techBases.get(techKey) || {
+          base: 0,
+          count: 0,
+          utilized: 0,
+        };
+        tech.base += sheetBaseValue(employee);
+        techBases.set(techKey, tech);
+      }
+      if (techKey && compKey) {
+        const key = techKey + "::" + compKey;
+        const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
+        comp.base += sheetBaseValue(employee);
+        compBases.set(key, comp);
+      }
+    });
+
+    // Utilisation and Current Count retain their existing Active + Eligible
+    // rule; only the budget-base sum follows the unfiltered Appraisal Sheet.
     cycleFilteredEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
@@ -3523,9 +3545,6 @@ async function calculateBudgetBases(
           count: 0,
           utilized: 0,
         };
-        tech.base += sheetBaseValue(employee);
-        // count (all sheet rows) seeds the Original Count above; Current Count
-        // follows the same active, eligible employees as the base and budget.
         tech.current = (tech.current || 0) + 1;
         tech.utilized += consumed;
         techBases.set(techKey, tech);
@@ -3533,7 +3552,6 @@ async function calculateBudgetBases(
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
-        comp.base += sheetBaseValue(employee);
         comp.current = (comp.current || 0) + 1;
         comp.utilized += consumed;
         compBases.set(key, comp);
