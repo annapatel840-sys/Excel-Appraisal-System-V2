@@ -193,7 +193,7 @@ async function setup() {
     await apply(post, c.id);
     const result = await post('generate-sheet', { cycleId: c.id });
     assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || result.json.error || '', /Payroll data has not been uploaded/i);
+    assert.match(result.json.message || result.json.error || '', /No payroll history was found for the eligible employees/i);
   });
 
   await t('Appraisal Sheet generation requires cycle Feedback and Rating values', async () => {
