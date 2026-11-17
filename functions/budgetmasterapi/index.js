@@ -2489,10 +2489,9 @@ async function calculateBudgetBases(
       (sheetPreviousCtc !== null && sheetPreviousCtc > 0 ? sheetPreviousCtc : null) ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
-    // Match employeesapi and the Appraisal Sheet's displayed Previous Total
-    // CTC with Rewards: use the employee's resolved payroll-history value first.
-    // A stored Appraisal_Sheet value is a fallback only when no usable payroll
-    // history value exists; stale generated values must not inflate/deflate Org Base.
+    // Keep the Appraisal Sheet's displayed Previous Total CTC with Rewards
+    // sourced from the resolved payroll history. This value may differ from the
+    // generated row's stored snapshot after later payroll enrichment.
     const previousAppraisalCtc =
       Number.isFinite(Number(payrollCtcFallback)) &&
       Number(payrollCtcFallback) > 0
@@ -2500,14 +2499,13 @@ async function calculateBudgetBases(
         : sheetPreviousCtc !== null && sheetPreviousCtc > 0
           ? sheetPreviousCtc
           : 0;
-    // Budget allocation must use the value physically stored on the generated
-    // Appraisal_Sheet row when present. Payroll enrichment remains the displayed
-    // previous-CTC value, but must not override a stored sheet budget baseline.
-    // Use the same employee-level resolved Previous Total CTC with Rewards
-    // that the Appraisal Sheet displays. A stored sheet value can be stale
-    // after payroll enrichment, so it must not override the resolved payroll
-    // source used for Org, Tech-Ed and Comp Manager budget bases.
-    const budgetBaseValue = previousAppraisalCtc;
+    // Org/Tech-Ed/Comp Manager allocation must sum the value stored on each
+    // generated Appraisal_Sheet row. Only reconstruct from payroll when that
+    // row's Previous_Appraisal_total_CTC_with_rewards is blank.
+    const budgetBaseValue =
+      sheetPreviousCtc !== null && sheetPreviousCtc > 0
+        ? sheetPreviousCtc
+        : previousAppraisalCtc;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
@@ -2574,12 +2572,13 @@ async function calculateBudgetBases(
     )
       .trim()
       .toLowerCase();
-    // Employee_Master is authoritative for whether the person is still
-    // employed. The generated Appraisal_Sheet can retain a stale Active value
-    // after an employee is made Inactive; do not include that person in budgets.
+    // The generated Appraisal_Sheet status is authoritative when populated,
+    // because it is the roster for this cycle. Fall back to Employee_Master only
+    // for legacy sheet rows without a status; this still excludes employees
+    // whose master record was made Inactive before the sheet captured status.
     const rawStatus = String(
-      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
-        firstValue(row, ["emp_status", "status", "employee_status"]) ||
+      firstValue(row, ["emp_status", "status", "employee_status"]) ||
+        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
         "",
     )
       .trim()
