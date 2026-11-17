@@ -3351,9 +3351,9 @@ async function calculateBudgetBases(
         String(employee.status || "").trim().toLowerCase() === "active" &&
         String(employee.eligible_status || "").trim().toLowerCase() === "eligible",
     );
-    // Keep the legacy explicit sheet/master eligibility roster for the
-    // existing count and allocation calculations below. Budget base itself
-    // uses cycleFilteredEmployees so it follows the exact cycle eligibility.
+    // Keep the legacy explicit sheet/master eligibility roster for
+    // eligibility-based calculations. Org/Tech-Ed/Comp Manager budget bases
+    // use the complete generated Appraisal Sheet roster below.
     const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
       const employeeStatus = String(employee.status || employee.master_status)
         .trim()
@@ -3402,7 +3402,7 @@ async function calculateBudgetBases(
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource:
-        "current-cycle generated Appraisal_Sheet employees using the same enriched Previous_Appraisal_total_CTC_with_rewards values returned by the Appraisal Sheet",
+        "all current-cycle generated Appraisal_Sheet employees using the same enriched Previous_Appraisal_total_CTC_with_rewards values returned by the Appraisal Sheet; no Active/Eligible filter",
       budgetBaseSheetRows: currentAppraisalRows.length,
       budgetBaseGeneratedEmployees: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
@@ -3418,7 +3418,7 @@ async function calculateBudgetBases(
         .slice(0, 20),
       employeesWithBase: orgBaseRows.filter((row) => row.hasPreviousCtc).length,
       baseColumns:
-        "Appraisal_Sheet current-cycle generated employee roster enriched with previous_appraisal_total_ctc_with_rewards; no additional employees",
+        "all current-cycle generated Appraisal_Sheet employees enriched with previous_appraisal_total_ctc_with_rewards; no status/eligibility filter and no additional employees",
       budgetBaseSheetRowCountMismatch:
         currentAppraisalRows.length !== legacyEligibilityCount,
     };
