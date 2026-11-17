@@ -426,6 +426,18 @@ function FieldMenu({ S, family, onInsert, onClose }) {
   );
 }
 
+const AlignIcon = ({ kind }) => {
+  const x = (l) => (kind === "l" || kind === "j" ? 0 : kind === "r" ? 14 - l : (14 - l) / 2);
+  const rows = kind === "j" ? [[1, 14], [4.5, 14], [8, 14], [11.5, 14]] : [[1, 14], [4.5, 8], [8, 14], [11.5, 8]];
+  return (
+    <svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">
+      <g stroke="#374151" strokeWidth="1.5">
+        {rows.map(([y, w]) => <line key={y} x1={x(w)} x2={x(w) + w} y1={y} y2={y} />)}
+      </g>
+    </svg>
+  );
+};
+
 function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, font, size, lineSpacing, setFont, setSize, setLineSpacing, fieldOpen, setFieldOpen, S, family }) {
   const run = (command, value = null) => {
     const editor = editorRef.current;
@@ -461,14 +473,16 @@ function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, 
   );
   return (
     <div className="lt-editor-toolbar" onMouseUp={rememberRange}>
-      <select aria-label="Font" value={font} onChange={(e) => { setFont(e.target.value); run("fontName", e.target.value); }}>
-        {LETTER_FONTS.map((item) => <option key={item}>{item}</option>)}
+      <select aria-label="Font" value="" onChange={(e) => e.target.value && run("fontName", e.target.value)}>
+        <option value="">Font</option>
+        {LETTER_FONTS.map((item) => <option key={item} value={item} style={{ fontFamily: item }}>{item}</option>)}
       </select>
-      <select aria-label="Font Size" value={size} onChange={(e) => { setSize(Number(e.target.value)); run("fontSize", Number(e.target.value)); }}>
+      <select aria-label="Font Size" value="" onChange={(e) => e.target.value && run("fontSize", Number(e.target.value))}>
+        <option value="">Size</option>
         {LETTER_SIZES.map((item) => <option key={item} value={item}>{item}</option>)}
       </select>
-      <select aria-label="Text Style" defaultValue="p" onChange={(e) => run("formatBlock", e.target.value)}>
-        <option value="p">Style</option><option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option>
+      <select aria-label="Text Style" value="" onChange={(e) => e.target.value && run("formatBlock", "<" + e.target.value + ">")}>
+        <option value="">Style</option><option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option>
       </select>
       <span className="lt-format-divider" />
       {button("bold", "Bold", <b>B</b>)}
@@ -476,12 +490,13 @@ function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, 
       {button("underline", "Underline", <u>U</u>)}
       <label className="lt-format-color" title="Font Colour">A<input type="color" defaultValue="#111827" onChange={(e) => run("foreColor", e.target.value)} /></label>
       <span className="lt-format-divider" />
-      {button("justifyLeft", "Align Left", "≡")}
-      {button("justifyCenter", "Align Centre", "☰")}
-      {button("justifyRight", "Align Right", "≣")}
-      {button("justifyFull", "Justify", "▤")}
-      <select aria-label="Line Spacing" value={lineSpacing} onChange={(e) => { setLineSpacing(e.target.value); const editor = editorRef.current; if (editor) editor.querySelectorAll("p,li,h1,h2,div").forEach((node) => { node.style.lineHeight = e.target.value; }); onDirty(); }}>
-        {LETTER_SPACING.map((item) => <option key={item} value={item}>{item === "1.15" ? "Spacing" : item}</option>)}
+      {button("justifyLeft", "Align Left", <AlignIcon kind="l" />)}
+      {button("justifyCenter", "Align Centre", <AlignIcon kind="c" />)}
+      {button("justifyRight", "Align Right", <AlignIcon kind="r" />)}
+      {button("justifyFull", "Justify", <AlignIcon kind="j" />)}
+      <select aria-label="Line Spacing" value="" onChange={(e) => { if (!e.target.value) return; setLineSpacing(e.target.value); const editor = editorRef.current; if (editor) editor.querySelectorAll("p,li,h1,h2,div").forEach((node) => { node.style.lineHeight = e.target.value; }); onDirty(); }}>
+        <option value="">Spacing</option>
+        {LETTER_SPACING.map((item) => <option key={item} value={item}>{item}</option>)}
       </select>
       <span className="lt-format-divider" />
       {button("insertUnorderedList", "Bullet List", "• List")}
@@ -493,11 +508,11 @@ function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, 
       {button("redo", "Redo", "↷")}
       <span className="lt-format-divider" />
       <div className="lt-field-picker-wrap">
-        <button type="button" className="lt-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert field ▾</button>
+        <button type="button" className="lt-btn sm2" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert field ▾</button>
         {fieldOpen && <FieldMenu S={S} family={family} onInsert={onInsertField} onClose={() => setFieldOpen(false)} />}
       </div>
       <span className="lt-sp" />
-      <button type="button" className="lt-btn lt-import-button" onMouseDown={(e) => e.preventDefault()} onClick={onImport}>Import from Word</button>
+      <button type="button" className="lt-btn sm2 lt-import-button" onMouseDown={(e) => e.preventDefault()} onClick={onImport}>Import from Word</button>
     </div>
   );
 }
@@ -609,9 +624,9 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
       <div className="lt-editor-upload" key={kind}>
         <span className="lt-editor-label-text">{label}</span>
         <div className="lt-upload-row">
-          <button type="button" className="lt-btn lt-upload-trigger" onClick={() => inputRef.current?.click()}>Upload</button>
+          <button type="button" className="lt-btn sm2 lt-upload-trigger" onClick={() => inputRef.current?.click()}>Upload</button>
           <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => importImage(kind, e.target.files?.[0])} />
-          <span className="lt-upload-name">{fileName || "No File Chosen"}</span>
+          <span className="lt-upload-name">{fileName || "Nothing uploaded"}</span>
         </div>
         {data && <img className={kind === "logo" ? "lt-logo-thumb" : "lt-signature-thumb"} src={data} alt={kind === "logo" ? "Company Logo Preview" : "Signature Preview"} />}
       </div>
@@ -688,6 +703,7 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
               <input list="lt-template-families" value={draft.family} onChange={(e) => update({ family: e.target.value })} />
               <datalist id="lt-template-families">{fams.map((family) => <option key={family} value={family} />)}</datalist>
             </label>
+            <div className="lt-rp-note">The family decides which letters can be issued together (one per family) and which fields Insert field shows first.</div>
             <label className="lt-editor-label">Location
               <select value={draft.location || ""} disabled={!!draft.locked} onChange={(e) => update({ location: e.target.value })}>
                 <option value="">Choose a location</option>
@@ -696,24 +712,24 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
             </label>
             <div className="lt-rp-note">{draft.locked ? "A saved template stays with its location. Clone it to make the letter for another location." : "Each location has its own template and its own storage bucket. The same name can be used once per location."}</div>
             <div className="lt-editor-grid2">
-              <label className="lt-editor-label">Letter Font<select value={font} onChange={(e) => { setFont(e.target.value); update({ font: e.target.value }); }}>{LETTER_FONTS.map((item) => <option key={item}>{item}</option>)}</select></label>
-              <label className="lt-editor-label">Size (Pt)<select value={size} onChange={(e) => { setSize(Number(e.target.value)); update({ fsize: Number(e.target.value) }); }}>{LETTER_SIZES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+              <label className="lt-editor-label">Letter font<select value={font} onChange={(e) => { setFont(e.target.value); update({ font: e.target.value }); }}>{LETTER_FONTS.map((item) => <option key={item}>{item}</option>)}</select></label>
+              <label className="lt-editor-label">Size (pt)<select value={size} onChange={(e) => { setSize(Number(e.target.value)); update({ fsize: Number(e.target.value) }); }}>{LETTER_SIZES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             </div>
-            <label className="lt-editor-label">Line Spacing<select value={lineSpacing} onChange={(e) => { setLineSpacing(e.target.value); update({ lh: e.target.value }); }}>{LETTER_SPACING.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label className="lt-editor-label">Line spacing<select value={lineSpacing} onChange={(e) => { setLineSpacing(e.target.value); update({ lh: e.target.value }); }}>{LETTER_SPACING.map((item) => <option key={item}>{item}</option>)}</select></label>
           </section>
           <section className="lt-editor-card">
             <h4>Letterhead and signature</h4>
             {labelInput("company", "Company name")}
-            {imageUpload("logo", "Company Logo (Top Right Of The Letter)", logoRef)}
-            {labelInput("name", "Signatory Name")}
-            {labelInput("title", "Signatory Designation")}
-            {imageUpload("signature", "Signature Image", signatureRef)}
-            {labelInput("letterDate", "Letter Date")}
+            {imageUpload("logo", "Company logo (top right of the letter)", logoRef)}
+            {labelInput("name", "Signatory name")}
+            {labelInput("title", "Signatory designation")}
+            {imageUpload("signature", "Signature image", signatureRef)}
+            {labelInput("letterDate", "Letter date")}
           </section>
           <section className="lt-editor-card">
-            <h4>Cover Email</h4>
-            {labelInput("from", "Sent From (HR Mailbox)", "email")}
-            {labelInput("cc", "CC (Comma Separated)")}
+            <h4>Cover email</h4>
+            {labelInput("from", "Sent from (HR mailbox)", "email")}
+            {labelInput("cc", "cc (comma separated)")}
             {labelInput("subject", "Subject")}
             <label className="lt-editor-label">Body<textarea rows={4} value={sg.body || ""} onChange={(e) => updateSign("body", e.target.value)} /></label>
             <div className="lt-email-tags"><span>Insert:</span>{["Name", "Cycle Name", "Company Name"].map((tag) => <button type="button" key={tag} onClick={() => updateSign("body", `${sg.body || ""}{{${tag}}}`)}>{tag}</button>)}</div>
@@ -808,9 +824,11 @@ function TemplatePreview({ S, src, version, onClose, onTest }) {
           <button type="button" className="lt-btn" onClick={() => onTest(row, version)}>Send test to HR mailbox</button>
           <button type="button" className="lt-rp-ic" style={{ marginLeft: 8 }} aria-label="Close" onClick={onClose}>&#10005;</button>
         </div>
+        <div className="lt-preview-body">
         <div className="lt-preview-page" style={letterFontStyle(src)}>
           {src.sg.logoData ? <img className="lt-preview-logo" src={src.sg.logoData} alt="Company logo" /> : <div className="lt-logo-ph">{src.sg.logoFile || "Company logo"}</div>}
           <div dangerouslySetInnerHTML={{ __html: mg.html }} />
+        </div>
         </div>
         <div className="lt-preview-foot">
           {mg.miss.length ? <span className="err">Empty for this employee: {mg.miss.join(", ")}</span> : <span className="lt-mut">Every field has a value for this employee.</span>}

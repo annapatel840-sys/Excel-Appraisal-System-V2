@@ -375,10 +375,9 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   const startResize = (e) => {
     e.preventDefault();
-    const right = asideRef.current ? asideRef.current.getBoundingClientRect().right : window.innerWidth;
     let w = panelW;
     const move = (ev) => {
-      w = Math.max(320, Math.min(760, right - ev.clientX));
+      w = Math.max(320, Math.min(760, window.innerWidth - 24 - ev.clientX));
       setPanelW(w);
     };
     const up = () => {
@@ -590,6 +589,13 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         ))}
       </div>
       <div className="lt-rp-body">{tplPanel ? renderTplPanel() : ptab === "stats" ? renderStatsTab() : renderViewTab()}</div>
+      <div className="lt-rp-foot">
+        <form onSubmit={(e) => e.preventDefault()}>
+          <input placeholder="Ask about this screen..." autoComplete="off" />
+          <button type="submit" className="lt-ag-send">Send</button>
+        </form>
+        <div className="lt-rp-note">Facts only &middot; no predictions &middot; every question logged</div>
+      </div>
     </aside>
   );
 
@@ -616,9 +622,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             <span className={"lt-chip " + STATUS_CLASS[l.status]} style={{ marginRight: 10 }}>{l.status}</span>
             <button type="button" className="lt-rp-ic" aria-label="Close" onClick={() => setPv(null)}>&#10005;</button>
           </div>
+          <div className="lt-preview-body">
           <div className="lt-preview-page" style={letterFontStyle(t)}>
             {t.sg.logoData ? <img className="lt-preview-logo" src={t.sg.logoData} alt="Company logo" /> : <div className="lt-logo-ph">{t.sg.logoFile || "Company logo"}</div>}
             <div dangerouslySetInnerHTML={{ __html: mg.html }} />
+          </div>
           </div>
           <div className="lt-preview-foot">
             <span className="err">{note}</span>
@@ -689,7 +697,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         />
         <ClientPager page={paged.page} pages={paged.pages} from={paged.from} to={paged.to} total={view.length} allTotal={secRows.length} onPage={paged.setPage} grid={grid} />
       </div>
-      <div className="lt-foot2">
+      <div className="lt-foot2 tot">
         <span><b>{view.length}</b> Letters</span>
         {sel.size > 0 && <span><b>{sel.size}</b> selected</span>}
         {sums.map(([label, total]) => (
@@ -701,20 +709,6 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   return (
     <div className="lt">
-      {store.LETTERS_DEMO && (
-        <div className="lt-note">
-          <span>Sample Data — Letters Are Saved In This Browser Only; Nothing Is Emailed.</span>
-          <span className="sp">
-            <button type="button" className="lt-btn sm" disabled={S.letters.length > 0} onClick={() => { store.loadSampleLetters(actor); toast("Sample letters loaded"); }}>
-              Load Sample History
-            </button>
-            <button type="button" className="lt-btn sm" onClick={() => { store.resetSampleData(); setSel(new Set()); toast("Sample data reset"); }}>
-              Reset Sample Data
-            </button>
-          </span>
-        </div>
-      )}
-
       <div className="lt-tabrow">
         <button type="button" className={"lt-tab" + (visibleTab === "letters" ? " on" : "")} onClick={() => changeTab("letters")}>Letters</button>
         {canEdit &&
@@ -741,7 +735,6 @@ export function LettersPage({ canEdit = true, onNavigate }) {
               </div>
             )}
           </span>
-          <button type="button" className="lt-btn" onClick={() => setPanelOpen((o) => !o)}>{panelOpen ? "Panel ‹" : "Panel ›"}</button>
           <span className="lt-pw" ref={menuRef}>
             <button type="button" className="lt-btn pri" onClick={() => setMenuOpen((o) => !o)}>Menu ▾</button>
             {menuOpen && (
@@ -761,6 +754,12 @@ export function LettersPage({ canEdit = true, onNavigate }) {
                 >
                   Export to Excel
                 </button>
+                {store.LETTERS_DEMO && (
+                  <>
+                    <button type="button" className="item" role="menuitem" disabled={S.letters.length > 0} style={S.letters.length > 0 ? { opacity: 0.4, cursor: "not-allowed" } : undefined} onClick={() => { setMenuOpen(false); store.loadSampleLetters(actor); toast("Sample letters loaded"); }}>Load sample history</button>
+                    <button type="button" className="item" role="menuitem" onClick={() => { setMenuOpen(false); store.resetSampleData(); setSel(new Set()); toast("Sample data reset"); }}>Reset sample data</button>
+                  </>
+                )}
               </div>
             )}
           </span>
@@ -785,7 +784,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} />}
           {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} sync={sync} selectedId={tplSel} setSelectedId={setTplSel} />}
         </div>
-        {panelOpen && renderPanel()}
+        {panelOpen ? renderPanel() : <button type="button" className="lt-flap" aria-label="Open panel" onClick={() => setPanelOpen(true)}>Panel ›</button>}
       </div>
       {renderPreview()}
       {toastEl}

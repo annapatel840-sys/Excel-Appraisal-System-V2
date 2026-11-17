@@ -760,3 +760,30 @@
 .lt-swt i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: 0.15s; }
 .lt-swt input:checked + i { background: #22a06b; }
 .lt-swt input:checked + i::after { left: 18px; }
+
+/* ===== Exact-match overrides to the HTML reference ===== */
+.lt { --lt-gutter: #D5DFEB; background: var(--lt-gutter); border-radius: 14px; margin: 10px 12px 12px; padding: 12px; box-sizing: border-box; }
+.lt-tabrow { height: 44px; border-radius: 10px; }
+.lt-pane { border-radius: 12px; }
+.lt-pane.main, .lt-pane { height: calc(100vh - 142px); }
+.lt-body { position: relative; }
+
+/* right panel: fixed to the viewport edge, like the reference */
+.lt-rp { position: fixed; right: 24px; top: 116px; bottom: 20px; width: 360px; z-index: 30; border-radius: 12px; box-shadow: 0 8px 28px rgba(16,42,67,.18); }
+.lt-flap { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 30; writing-mode: vertical-rl; background: #102A43; color: #fff; border: 0; border-radius: 8px 0 0 8px; padding: 14px 6px; font: 600 12px/1 inherit; cursor: pointer; letter-spacing: .04em; }
+.lt-flap:hover { background: #1559A6; }
+.lt-rp-body { flex: 1 1 0; min-height: 0; overflow: auto; }
+.lt-rp-foot { flex: none; border-top: 1px solid var(--lt-line); padding: 8px 10px; background: #fff; }
+.lt-rp-foot form { display: flex; gap: 6px; }
+.lt-rp-foot input { flex: 1; min-width: 0; height: 30px; border: 1px solid #D1D5DB; border-radius: 8px; padding: 0 8px; font-size: 12px; }
+.lt-ag-send { height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #2F6FED; color: #fff; font-weight: 600; cursor: pointer; }
+.lt-rp-note { color: #6B7280; font-size: 11px; margin: 6px 0 0; }
+
+/* grid footer / totals */
+.lt-foot2.tot { background: #DFE8F3; font-weight: 600; }
+
+/* small buttons in the editor ribbon */
+.lt-btn.sm2 { height: 26px; padding: 0 10px; font-size: 12px; }
+
+/* preview modal body scrolls, footer stays */
+.lt-preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; background: #E5E7EB; padding: 16px; }
