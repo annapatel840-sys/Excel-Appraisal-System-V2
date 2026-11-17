@@ -2503,10 +2503,11 @@ async function calculateBudgetBases(
     // Budget allocation must use the value physically stored on the generated
     // Appraisal_Sheet row when present. Payroll enrichment remains the displayed
     // previous-CTC value, but must not override a stored sheet budget baseline.
-    const budgetBaseValue =
-      sheetPreviousCtc !== null && sheetPreviousCtc > 0
-        ? sheetPreviousCtc
-        : previousAppraisalCtc;
+    // Use the same employee-level resolved Previous Total CTC with Rewards
+    // that the Appraisal Sheet displays. A stored sheet value can be stale
+    // after payroll enrichment, so it must not override the resolved payroll
+    // source used for Org, Tech-Ed and Comp Manager budget bases.
+    const budgetBaseValue = previousAppraisalCtc;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
@@ -2573,9 +2574,12 @@ async function calculateBudgetBases(
     )
       .trim()
       .toLowerCase();
+    // Employee_Master is authoritative for whether the person is still
+    // employed. The generated Appraisal_Sheet can retain a stale Active value
+    // after an employee is made Inactive; do not include that person in budgets.
     const rawStatus = String(
-      firstValue(row, ["emp_status", "status", "employee_status"]) ||
-        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+        firstValue(row, ["emp_status", "status", "employee_status"]) ||
         "",
     )
       .trim()
