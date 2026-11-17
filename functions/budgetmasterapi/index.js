@@ -1336,6 +1336,11 @@ function filterOwn(
 ) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
 
+  // HR owns the Org -> Tech-Ed allocation workflow. Access scopes may limit
+  // employee screens, but must not hide Tech-Ed allocation rows from HR.
+  // The bundle is already restricted to the requested active cycle/location.
+  if (a.role === "hr" || isHR(a.user)) return bundle;
+
   const employeeRoster = bundle.employeeRoster || [];
   if (a.role === "compMgr") {
     // Keep the employee roster scoped by access, but resolve the parent
@@ -2484,11 +2489,16 @@ async function calculateBudgetBases(
       (sheetPreviousCtc !== null && sheetPreviousCtc > 0 ? sheetPreviousCtc : null) ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
+    // Org Budget Base must reconcile to the value stored on the generated
+    // Appraisal_Sheet row. Payroll history is only a fallback when that exact
+    // sheet value is blank; it must never override a populated sheet value.
     const previousAppraisalCtc =
-      Number.isFinite(Number(payrollCtcFallback)) &&
-      Number(payrollCtcFallback) > 0
-        ? Number(payrollCtcFallback)
-        : 0;
+      sheetPreviousCtc !== null
+        ? sheetPreviousCtc
+        : Number.isFinite(Number(payrollCtcFallback)) &&
+            Number(payrollCtcFallback) > 0
+          ? Number(payrollCtcFallback)
+          : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
