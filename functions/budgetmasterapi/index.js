@@ -3519,7 +3519,12 @@ async function calculateBudgetBases(
       if (!row) {
         const created = await distributionTable.insertRow({
           appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: String(techKey).slice(0, 20),
+          // Keep the business ID's original casing in Data Store. ownerKey is
+          // intentionally lower-case for comparisons, but UI/test lookups and
+          // existing allocation rows use the canonical Employee ID casing.
+          appraiser_tech_ed_id: String(
+            String(ownerName || techKey).split(/\\s+-\\s+/)[0].trim() || techKey,
+          ).slice(0, 20),
           percentage: null,
           budget_base: 0,
           [distCalcField]: 0,
@@ -3989,7 +3994,7 @@ async function calculateBudgetBases(
       master.id,
       masterColumns,
       ["current_headcount"],
-      eligibleEmployees.length,
+      cycleFilteredEmployees.length,
     );
     await persistOptional(
       masterTable,
@@ -4005,7 +4010,7 @@ async function calculateBudgetBases(
       applied_budget: orgUpdated,
       budget_utilized: orgUtilized,
       current_budget_base: orgBase,
-      current_headcount: eligibleEmployees.length,
+      current_headcount: cycleFilteredEmployees.length,
       original_headcount: orgOriginalCountStored ? savedOrgOriginalCount : "",
     });
   }
