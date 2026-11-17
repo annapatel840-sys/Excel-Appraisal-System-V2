@@ -852,7 +852,7 @@ function ReadOnlyInput({ value, bold }) {
       readOnly
       disabled
       value={value}
-      className="h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px]"
+      className="h-[42px] w-full min-w-0 rounded border px-2.5 text-[15.5px]"
       style={{
         borderColor: "#AEBBC9",
         background: "#D3DBE4",
@@ -916,7 +916,7 @@ function EditInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className={`h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px] outline-none focus:border-[#0B7A75] ${className}`}
+      className={`h-[42px] w-full min-w-0 rounded border px-2.5 text-[15.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={
         locked
           ? lockedStyle
@@ -2100,10 +2100,10 @@ export function DetailScreenPage({
                     const pbLow = livePB < pbLimit;
                     const rbLow = liveRB < rbLimit;
                     const pbLowMsg = pbUsesPrev
-                      ? `Below last year's PB (${fmt(prevPB)})`
+                      ? `PB to be Paid (${fmt(prevPB)})`
                       : `${fmt(payFloors.pbFloor)} is PB to be Paid`;
                     const rbLowMsg = rbUsesPrev
-                      ? `Below last year's RB (${fmt(prevRB)})`
+                      ? `RB to be Paid (${fmt(prevRB)})`
                       : `${fmt(payFloors.rbFloor)} is RB to be Paid`;
                     // "to be Paid" / target notes: only the figures this login may see.
                     const pbNote = [
@@ -2327,7 +2327,7 @@ export function DetailScreenPage({
                                     : String(employee.pbInstallment)
                               }
                               onChange={(e) => commit("pbInstallment", e.target.value)}
-                              className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
+                              className="h-[42px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
                               style={
                                 canEditF("pbInstallment")
                                   ? fieldStyle(isEdited("pbInstallment"))
@@ -2362,18 +2362,7 @@ export function DetailScreenPage({
                           <FieldRow
                           label="Retention Bonus (RB)"
                           exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.retentionBonus)} />)}
-                          prev={
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "minmax(0,1fr) 70px",
-                                gap: 6,
-                              }}
-                            >
-                              <ReadOnlyInput value={dashPrev(last?.retentionBonus)} />
-                              <ReadOnlyInput value={payFloors.rbMonth || "—"} />
-                            </div>
-                          }
+                          prev={<ReadOnlyInput value={dashPrev(last?.retentionBonus)} />}
                           diff={
                             <DiffValue
                               value={vsLast(liveRB, last?.retentionBonus || 0)}
@@ -2519,7 +2508,7 @@ export function DetailScreenPage({
                             onChange={(e) => handleNewTitleChange(e.target.value)}
                             disabled={!titleEditable}
                             title={titleEditable ? undefined : LOCKED_TITLE}
-                            className="h-[36px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                            className="h-[42px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
                             style={titleEditable ? fieldStyle(isEdited("newTitle")) : lockedStyle}
                           >
                             {titleOptions.map((t) => {
@@ -2572,35 +2561,7 @@ export function DetailScreenPage({
                 </div>
               </div>
 
-              {/* Legend + counter + Previous / Save & next: normal flow, always visible */}
-              <div className="shrink-0 border-t px-3 py-1.5" style={{ borderColor: LINE }}>
-                <div
-                  className="flex flex-wrap items-center gap-3 text-[12.5px]"
-                  style={{ color: MUTED }}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <i
-                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: "#D3DBE4", borderColor: "#AEBBC9" }}
-                    />
-                    Read-only
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i
-                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: EDITABLE_BG, borderColor: EDITABLE_BORDER }}
-                    />
-                    Editable
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i
-                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: EDITED_BG, borderColor: EDITED_BORDER }}
-                    />
-                    Edited this cycle
-                  </span>
-                </div>
-              </div>
+              {/* Counter + Previous / Save & next: normal flow, always visible */}
               <div className="ds-foot" style={{ borderTop: `1px solid ${LINE}` }}>
                 <div className="flex w-full items-center justify-between gap-3">
                   <span className="text-[14px]" style={{ color: MUTED }}>
