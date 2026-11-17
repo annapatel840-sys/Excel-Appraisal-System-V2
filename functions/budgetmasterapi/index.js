@@ -2500,6 +2500,13 @@ async function calculateBudgetBases(
         : sheetPreviousCtc !== null && sheetPreviousCtc > 0
           ? sheetPreviousCtc
           : 0;
+    // Budget allocation must use the value physically stored on the generated
+    // Appraisal_Sheet row when present. Payroll enrichment remains the displayed
+    // previous-CTC value, but must not override a stored sheet budget baseline.
+    const budgetBaseValue =
+      sheetPreviousCtc !== null && sheetPreviousCtc > 0
+        ? sheetPreviousCtc
+        : previousAppraisalCtc;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
@@ -2698,6 +2705,7 @@ async function calculateBudgetBases(
       master_status: masterStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
+      budget_base_value: budgetBaseValue,
       // Previous-cycle expense is a separate allocation base: base pay +
       // previous hike + previous PB/RB/JB for this employee.
       last_year_expenses: lastYearExpenses,
@@ -3144,7 +3152,7 @@ async function calculateBudgetBases(
       eligibility: employee.eligible_status,
       eligible_status: employee.eligible_status,
       in_appraisal_sheet: Boolean(employee.in_appraisal_sheet),
-      budget_base: employee.base,
+      budget_base: employee.budget_base_value ?? employee.base,
       previous_appraisal_total_ctc_with_rewards:
         employee.previous_appraisal_total_ctc_with_rewards,
       Previous_Appraisal_total_CTC_with_rewards:
@@ -3356,7 +3364,8 @@ async function calculateBudgetBases(
     // All three levels use the same Previous Total Rewards CTC value shown
     // by the generated Appraisal Sheet. This keeps Org, Tech-Ed and Comp
     // Manager bases reconcilable for every selected cycle.
-    const sheetBaseValue = (employee) => n(employee?.base);
+    const sheetBaseValue = (employee) =>
+      n(employee?.budget_base_value ?? employee?.base);
 
     // The Appraisal Sheet API enriches each generated row with the employee's
     // previous_appraisal_total_ctc_with_rewards value from the matching
@@ -3375,8 +3384,8 @@ async function calculateBudgetBases(
       if (!employeeId) return;
       orgBaseRowsByEmployee.set(employeeId.toLowerCase(), {
         employeeId,
-        ctc: n(employee.base),
-        hasPreviousCtc: n(employee.base) > 0,
+        ctc: sheetBaseValue(employee),
+        hasPreviousCtc: sheetBaseValue(employee) > 0,
         sheetPreviousCtc: n(employee.sheet_previous_appraisal_ctc),
       });
     });
