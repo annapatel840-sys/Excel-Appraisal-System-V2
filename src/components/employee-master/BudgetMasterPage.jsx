@@ -3792,6 +3792,26 @@ function HRApplyBudget() {
           techOwnerByAlias.set(normalizeOwnerKey(alias), key);
         });
     });
+    // Register owners from the active Appraisal Sheet as well. The HR
+    // allocation list must not depend on the supplementary directory being
+    // complete for every employee in this cycle.
+    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
+      const assignment = String(
+        employee.appraiserTechED ||
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed ||
+          employee.appraiser_tech_ed_id ||
+          "",
+      ).trim();
+      if (!assignment) return;
+      const key = canonicalOwnerKey(assignment, employeeRows);
+      if (!key) return;
+      const label = ownerName(assignment, employeeRows) || assignment;
+      if (!ownerValues.has(key)) ownerValues.set(key, label);
+      [assignment, key, label].forEach((alias) => {
+        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+      });
+    });
     const resolveTechOwnerKey = (raw) => {
       const text = String(raw || "").trim();
       if (!text) return "";
