@@ -109,6 +109,22 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(row('RNULL').allocated_pb_amount, null, 'no-cycle row untouched');
   });
 
+  await t('a supplied Appraisal Sheet ROWID is validated against employee and Active cycle', async () => {
+    seed();
+    const stale = await patch({ emp_id: 'EMP022', appraisal_row_id: 'R25', hike_amount: 40000 });
+    assert.strictEqual(stale.status, 409, JSON.stringify(stale.json));
+    assert.strictEqual(row('R25').hike_amount, undefined, 'closed-cycle row untouched');
+    assert.strictEqual(row('R27').hike_amount, '25000', 'Active-cycle row untouched after stale ID');
+
+    const missing = await patch({ emp_id: 'EMP022', appraisal_row_id: 'MISSING', hike_amount: 45000 });
+    assert.strictEqual(missing.status, 404, JSON.stringify(missing.json));
+    assert.strictEqual(row('R27').hike_amount, '25000', 'unknown ROWID must not fall back to another row');
+
+    const valid = await patch({ emp_id: 'EMP022', appraisal_row_id: 'R27', hike_amount: 50000 });
+    assert.strictEqual(valid.status, 200, JSON.stringify(valid.json));
+    assert.strictEqual(row('R27').hike_amount, 50000);
+  });
+
   await t('without an Active cycle nothing is saved (409), no fallback row', async () => {
     seed('Closed');
     const r = await patch({ emp_id: 'EMP022', allocated_pb_amount: 30 });
