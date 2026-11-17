@@ -791,11 +791,11 @@ function validate(payload, db) {
       multipleNextIds: list,
       groupId: type === "G" ? text(d.groupId) : "",
     };
-    if (d.status === "Active" && isUnmapped(row, options)) {
-      errors.push(
-        `${name}: not mapped. Map the next designation first, then make it Active.`,
-      );
-    }
+    // if (d.status === "Active" && isUnmapped(row, options)) {
+    //   errors.push(
+    //     `${name}: not mapped. Map the next designation first, then make it Active.`,
+    //   );
+    // }
   });
 
   // groups
