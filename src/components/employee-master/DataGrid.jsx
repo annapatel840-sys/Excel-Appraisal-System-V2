@@ -345,6 +345,7 @@ export function DataGrid({
                         <ColumnFilter
                           boxed
                           alwaysBelow
+                          scrollToHeader
                           allowGroup={false}
                           columnKey={`emx:${d.key}`}
                           label={d.label}

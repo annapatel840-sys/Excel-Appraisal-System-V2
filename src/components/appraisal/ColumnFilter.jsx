@@ -82,6 +82,35 @@ const numberOf = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
+/* Opening a column filter scrolls the page so the header of the table it belongs to is on screen. */
+function revealTableHeader(trigger) {
+  try {
+    const th = trigger?.closest("th");
+    const table = trigger?.closest("table");
+    if (!th || !table) return;
+    // The scrolling box around the table (if any); otherwise the table itself.
+    let box = table.parentElement;
+    while (box && box !== document.body) {
+      const o = getComputedStyle(box).overflowY;
+      if ((o === "auto" || o === "scroll") && box.scrollHeight > box.clientHeight + 1) break;
+      box = box.parentElement;
+    }
+    const target = box && box !== document.body ? box : table;
+    const head = th.getBoundingClientRect();
+    const view = window.innerHeight;
+    // Header already comfortably in the upper part of the screen: leave the page alone.
+    if (head.top >= 70 && head.bottom <= view * 0.5) return;
+    const prev = target.style.scrollMarginTop;
+    target.style.scrollMarginTop = "72px"; // clear the app's top bar
+    target.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+    setTimeout(() => {
+      target.style.scrollMarginTop = prev;
+    }, 700);
+  } catch (_) {
+    /* scrolling is a convenience only */
+  }
+}
+
 function MenuItem({ children, onClick, disabled, icon, active, className, ...rest }) {
   return (
     <div
@@ -112,6 +141,7 @@ const Divider = () => <hr className="my-[3px] border-0 border-t border-[#d1d5db]
 
 export function ColumnFilter({
   boxed = false, // Appraisal Sheet header look: white boxed button
+  scrollToHeader = false, // on open, bring this table's header into view if it is cut off / far down the page
   columnKey,
   filter,
   options = [],
@@ -433,6 +463,7 @@ export function ColumnFilter({
             const rect = triggerRef.current.getBoundingClientRect();
             setAlignEnd(rect.left + 262 + 8 > window.innerWidth);
           }
+          if (next && scrollToHeader) revealTableHeader(triggerRef.current);
           setOpen(next);
         }}
       >
