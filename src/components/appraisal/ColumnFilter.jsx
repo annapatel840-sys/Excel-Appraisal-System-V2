@@ -129,8 +129,22 @@ export function revealTableHeader(trigger, instant = false) {
     const scroller = spaceHolder === document.body ? document.scrollingElement || document.documentElement : spaceHolder;
     const room = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
     if (delta > room) {
-      const spacer = Math.ceil(delta - room) + 8;
-      spaceHolder.style.paddingBottom = `${(parseFloat(getComputedStyle(spaceHolder).paddingBottom) || 0) + spacer}px`;
+      // A real empty block at the end of the scrolling area (padding is not counted by every layout).
+      // It goes inside the pane's child that holds this table, so it sits after the content (not at the
+      // bottom of the visible area, which is where a flex pane would put a direct child).
+      let holder = table;
+      while (holder.parentElement && holder.parentElement !== spaceHolder) holder = holder.parentElement;
+      if (holder === table || !holder.parentElement) holder = spaceHolder;
+      let spacerEl = Array.from(holder.children).find((c) => c.hasAttribute("data-filter-scroll-spacer"));
+      if (!spacerEl) {
+        spacerEl = document.createElement("div");
+        spacerEl.setAttribute("data-filter-scroll-spacer", "");
+        spacerEl.setAttribute("aria-hidden", "true");
+        spacerEl.style.cssText = "flex:none;width:1px;pointer-events:none;";
+        holder.appendChild(spacerEl);
+      }
+      const have = parseFloat(spacerEl.style.height) || 0;
+      spacerEl.style.height = `${have + Math.ceil(delta - room) + 8}px`;
     }
     const prev = table.style.scrollMarginTop;
     table.style.scrollMarginTop = "72px"; // clear the app's top bar
