@@ -2874,13 +2874,16 @@ function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
   // Legacy payroll rows may store either the cycle name or Appraisal_Cycle_Master ROWID.
   // Resolve by name first, then by ROWID, and normalize the displayed value back to the cycle name.
   const cycle = cycleByName.get(cycleKey.toLowerCase()) || cycleById.get(cycleKey);
-  const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
+  const employeeReference = row.emp_id && typeof row.emp_id === "object"
+    ? String(row.emp_id.ROWID ?? row.emp_id.rowid ?? row.emp_id.id ?? row.emp_id.emp_id ?? "")
+    : String(row.emp_id || "").trim();
+  const employee = employeeById.get(employeeReference.toLowerCase());
   const businessEmpId = employee?.emp_id ?? "";
   const employeeName = employee?.emp_name || employee?.name || "";
   const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
   const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
   const locationColumn = Object.keys(employee || {}).find((key) =>
-    ["location", "work_location", "location_name"].includes(key.toLowerCase()),
+    ["location", "work_location", "location_name", "office_location", "base_location"].includes(key.toLowerCase()),
   );
   return {
     ...row, id: rowId(row),
@@ -3646,6 +3649,7 @@ function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
   return {
     rowId: rowId(row),
     cid: cycleId,
+    location: fbText(fbCol(master, "location", "work_location", "location_name", "office_location", "base_location")),
     id: fbText(master.emp_id) || empKey,
     name: fbText(master.emp_name || master.name),
     desig: fbText(fbCol(row, "designation")) || fbText(master.designation),
