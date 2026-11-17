@@ -2236,11 +2236,26 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       ? [sourceCycle.id, sourceCycle.sourceRowId, sourceCycle.name].map((value) => referenceText(value).toLowerCase()).filter(Boolean)
       : [],
   );
+  const firstNonEmptyField = (row, ...names) => {
+    for (const name of names) {
+      const value = fieldValue(row, name);
+      const text = referenceText(value);
+      if (text) return value;
+    }
+    return "";
+  };
   const payrollRowsWithCycle = payrollRows.map((row) => {
-    const rawCycle = referenceText(
-      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
-    );
-    return { row, rawCycle, cycle: cycleByReference.get(rawCycle.toLowerCase()) || null };
+    const rawCycle = referenceText(firstNonEmptyField(
+      row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year",
+    ));
+    const normalizedCycleKey = rawCycle.toLowerCase();
+    const matchedCycle = cycleByReference.get(normalizedCycleKey) ||
+      normalizedCycles.find((item) =>
+        [item.id, item.sourceRowId, item.name].some((value) =>
+          referenceText(value).toLowerCase() === normalizedCycleKey
+        )
+      ) || null;
+    return { row, rawCycle, cycle: matchedCycle };
   });
 
   // Payroll prerequisite follows the same per-employee history order as the
@@ -2557,9 +2572,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   } catch (error) {
     console.warn("Could not inspect Appraisal_Sheet columns; using standard generation mapping:", error?.message || error);
   }
-  if (appraisalSheetColumns && !appraisalSheetColumns.has("location")) {
-    throw new ApiError("Add the location column to Appraisal_Sheet in Catalyst Data Store before generating this cycle. The generated grid needs the stored cycle location.", 409, "APPRAISAL_LOCATION_COLUMN_MISSING");
-  }
+  // Location is optional on legacy Appraisal_Sheet tables. Location is still
+  // enforced against Employee_Master before generation; do not require a new
+  // Data Store column just to generate an otherwise valid cycle.
 
   let created = 0;
   let updated = 0;
