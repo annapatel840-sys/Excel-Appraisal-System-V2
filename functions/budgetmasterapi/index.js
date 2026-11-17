@@ -2477,11 +2477,32 @@ async function calculateBudgetBases(
       : null;
     // Match employeesapi's live Appraisal Sheet resolver: a matching shared
     // source payroll wins; otherwise same-year New Joiner payroll, then the
-    // employee's latest earlier archived Annual payroll. Do not trust a stale
-    // physical Appraisal_Sheet cache ahead of the payroll source.
+    // latest earlier Archived Annual payroll. previousCycleFor() may also
+    // return an older Annual cycle, so do not automatically put that record
+    // ahead of a same-year New Joiner record.
+    const previousPayrollCtc = previousPayrollRecord
+      ? previousCtc(previousPayrollRecord)
+      : null;
+    const previousCycleLocation = String(
+      firstValue(previousCycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    const currentCanonicalName = cycleNameOf(activeCycleRow).toLowerCase().startsWith(
+      (activeCycleLocation + " - ").toLowerCase(),
+    )
+      ? cycleNameOf(activeCycleRow).slice(activeCycleLocation.length + 3).toLowerCase()
+      : cycleNameOf(activeCycleRow).toLowerCase();
+    const previousCycleIsSharedSource =
+      activeCycleIsLocationScoped &&
+      (!previousCycleLocation || ["all", "all locations", "alllocations"].includes(previousCycleLocation.toLowerCase())) &&
+      cycleYearOf(previousCycle) === cycleYearOf(activeCycleRow) &&
+      cycleNameOf(previousCycle).toLowerCase() === currentCanonicalName &&
+      isReusableSharedSourceCycle(previousCycle);
     const payrollCtcFallback =
-      (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
+      (previousCycleIsSharedSource && previousPayrollCtc > 0
+        ? previousPayrollCtc
+        : null) ??
       sameYearNewJoinerPayrollRecord?.value ??
+      previousPayrollCtc ??
       (previousRecord ? previousCtc(previousRecord) : null) ??
       currentCyclePayrollCtc ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
