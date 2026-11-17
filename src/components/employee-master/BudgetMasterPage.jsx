@@ -2769,6 +2769,15 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { matchesCycleLocation } from "@/lib/location-store";
+import {
+  FilterStatus,
+  FilterTh,
+  ResizableCols,
+  filterTableCss,
+  resizableTableStyle,
+  useColumnResize,
+  useTableFilters,
+} from "./FilterableTable";
 
 const NAVY = "#102A43";
 const TEAL = "#2F6FED";
@@ -3281,6 +3290,21 @@ const HR_COLS = [
   ["Last Changed", false, false],
 ];
 
+// Default pixel widths of the Apply Budget grid (each column resizes on its own).
+const HR_W = {
+  name: 210,
+  base: 120,
+  pct: 130,
+  budget: 120,
+  original: 120,
+  updated: 120,
+  origCount: 120,
+  curCount: 120,
+  reason: 200,
+  update: 150,
+  last: 130,
+};
+
 const BUDGET_MASTER_CSS = `
 .bm-root{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--info-bg:#DCEBFF;--info-border:#B9D3F5;--info:#1D4FA8;--main:#2F6FED;--edited:#FFE066;--edited-border:#C9A400;--err:#C0392B;--ok:#15803D;width:100%;padding:12px;background:#D5DFEB;border-radius:14px;color:var(--ink);font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
@@ -3333,12 +3357,11 @@ const BUDGET_MASTER_CSS = `
 .bm-tw{border:1px solid var(--th-line);border-radius:8px;overflow:auto;max-height:68vh}
 .bm-table{width:100%;border-collapse:collapse}
 .bm-table th{position:sticky;top:0;z-index:4;background:var(--th-bg);color:var(--navy);font-size:10.5px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1px solid var(--th-line);vertical-align:top;line-height:1.25;white-space:normal}
-.bm-table td{padding:8px 11px;border-bottom:1px solid #F0F1F3;white-space:nowrap;vertical-align:top;font-variant-numeric:tabular-nums}
+.bm-table td{padding:8px 11px;border-bottom:1px solid #F0F1F3;white-space:normal;overflow-wrap:anywhere;overflow:hidden;vertical-align:top;font-variant-numeric:tabular-nums}
 .bm-table .bm-n{text-align:right}
 .bm-table tbody tr.bm-bo td{background:var(--row-odd)}
 .bm-table tbody tr.bm-be td{background:var(--row-even)}
 /* frozen first column, sticky header and Total row */
-.bm-table th:first-child,.bm-table td:first-child{min-width:150px}
 .bm-table th:first-child{left:0;z-index:6}
 .bm-table tbody tr:not(.bm-sub):not(.bm-tot) td:first-child{position:sticky;left:0;z-index:2;box-shadow:inset -1px 0 0 var(--th-line)}
 .bm-table tr.bm-tot td{position:sticky;bottom:0;z-index:3}
@@ -3367,10 +3390,10 @@ const BUDGET_MASTER_CSS = `
 .bm-tag{color:var(--muted);font-weight:500}
 .bm-empty{padding:16px!important;color:var(--muted);text-align:left}
 .bm-pin-cell{display:flex;align-items:center}
-.bm-table .bm-pin{width:84px}
+.bm-table .bm-pin{width:100%;max-width:84px;min-width:44px}
 .bm-table .bm-pin.bad{border-color:var(--err);outline:1px solid var(--err)}
-.bm-reason{width:150px;height:28px;font-size:12px}
-.bm-ract{white-space:nowrap}
+.bm-reason{width:100%;min-width:0;height:28px;font-size:12px}
+.bm-ract{white-space:nowrap;overflow:hidden}
 .bm-hbtn{border:1px solid #D1D5DB;border-radius:12px;padding:2px 9px;font-size:11px;color:#4B5563;background:#fff;cursor:pointer}
 .bm-hbtn:disabled{opacity:.4;cursor:default}
 .bm-hbtn-apply:not(:disabled){background:var(--main);color:#fff;border-color:var(--main);font-weight:700}
@@ -3386,6 +3409,13 @@ const BUDGET_MASTER_CSS = `
 
 @media(max-width:1050px){.bm-pans{grid-template-columns:1fr}}
 @media(max-width:760px){.bm-root{padding:8px}.bm-sheet{padding:12px 12px 0}.bm-foot{margin:0 -12px}.bm-pan-row{flex-wrap:wrap}}
+
+${filterTableCss(".bm-root", ".bm-table")}
+.bm-root .bm-table th.ft-th{position:sticky;top:0}
+.bm-root .bm-table th.ft-th:first-child{left:0}
+.bm-root .bm-table th.bm-n .ft-label{text-align:right}
+.bm-root .bm-table th.bm-n .ft-head{justify-content:flex-end}
+.bm-root .bm-tw .ft-status{margin:0}
 `;
 
 function deltaNode(from, to) {
@@ -3581,6 +3611,9 @@ function HRApplyBudget() {
     access.canAction("changeBudgetConfig");
   const canAudit = access.canAction("viewAudit");
   const [rows, setRows] = useState([]);
+  // Remembers "EMP001 - Name" labels so a later refresh can never downgrade a
+  // Tech-ED to just the employee ID.
+  const ownerLabelCache = useRef(new Map());
   const [orgPct, setOrgPct] = useState("");
   const [pending, setPending] = useState({});
   const [staged, setStaged] = useState({});
@@ -3592,24 +3625,6 @@ function HRApplyBudget() {
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
   const [origSnap, setOrigSnap] = useState(() => readOriginalSnapshots());
-  // Column menu state: filters / sort / wrap per column index.
-  const [gridFilters, setGridFilters] = useState({});
-  const [gridSort, setGridSort] = useState(null);
-  const [gridWrap, setGridWrap] = useState({});
-  const [colMenu, setColMenu] = useState(null);
-  useEffect(() => {
-    if (!colMenu) return undefined;
-    const close = (event) => {
-      if (
-        event.target.closest?.("[data-bm-menu]") ||
-        event.target.closest?.(".bm-dd")
-      )
-        return;
-      setColMenu(null);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [colMenu]);
   const [history, setHistory] = useState({});
   const [auditState, setAuditState] = useState(() => readBudgetAudit());
   useEffect(() => {
@@ -3791,6 +3806,36 @@ function HRApplyBudget() {
       [assignment, key, label].forEach((alias) => {
         techOwnerByAlias.set(normalizeOwnerKey(alias), key);
       });
+    });
+    // Keep the "EMP ID - Name" label. If a refresh only has the bare ID (for
+    // example the directory has not loaded yet), recover the name from the
+    // employee directory / Appraisal Sheet rows or from the last good label.
+    const hasPersonName = (text) => /\S\s-\s\S/.test(String(text || ""));
+    const nameById = new Map();
+    [
+      ...(Array.isArray(employeeRows) ? employeeRows : []),
+      ...(Array.isArray(dashboardRows) ? dashboardRows : []),
+    ].forEach((person) => {
+      const pid = String(
+        person?.emp_id || person?.employee_id || person?.empId || "",
+      ).trim();
+      const pname = String(
+        person?.name || person?.employee_name || person?.emp_name || "",
+      ).trim();
+      if (pid && pname) nameById.set(normalizeOwnerKey(pid), pname);
+    });
+    ownerValues.forEach((label, key) => {
+      let next = String(label || "").trim();
+      if (!hasPersonName(next)) {
+        const found =
+          nameById.get(key) || nameById.get(normalizeOwnerKey(next));
+        if (found && next && normalizeOwnerKey(found) !== normalizeOwnerKey(next))
+          next = next + " - " + found;
+      }
+      if (hasPersonName(next)) ownerLabelCache.current.set(key, next);
+      else if (ownerLabelCache.current.has(key))
+        next = ownerLabelCache.current.get(key);
+      ownerValues.set(key, next);
     });
     const resolveTechOwnerKey = (raw) => {
       const text = String(raw || "").trim();
@@ -4142,7 +4187,7 @@ function HRApplyBudget() {
     // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
     ownerValues.forEach((owner, key) => {
       if (seenOwners.has(key) || !(locationTeamCounts.get(key) > 0)) return;
-      const label = ownerName(owner, employeeRows);
+      const label = owner;
       nextRows.push({
         id: "tech-ed-" + key,
         canonicalKey: key,
@@ -4784,45 +4829,26 @@ function HRApplyBudget() {
 
   // Updated = the saved Org budget; a pending Org % shows as "After pending".
   const displayedOrgUpdated = savedOrgUpdated;
-  // Text shown in each filterable column (used by the column menu).
-  const cellText = (row, col) => {
-    switch (col) {
-      case 0:
-        return String(row.name || "");
-      case 1:
-        return money(row.base);
-      case 2:
-        return String(previewPct(row));
-      case 3:
-        return money(previewBudget(row));
-      case 4:
-        return money(rowOriginal(row));
-      case 5:
-        return money(row.updated);
-      case 6:
-        return String(row.team0);
-      case 7:
-        return String(row.team);
-      default:
-        return "";
-    }
-  };
-  const visibleRows = (() => {
-    const filterEntries = Object.entries(gridFilters);
-    let list = rows.filter((row) =>
-      filterEntries.every(([col, f]) =>
-        passesColumnFilter(f, cellText(row, Number(col))),
-      ),
-    );
-    if (gridSort) {
-      list = [...list].sort(
-        (a, b) =>
-          compareCells(cellText(a, gridSort.c), cellText(b, gridSort.c)) *
-          gridSort.d,
-      );
-    }
-    return list;
-  })();
+  // Column definitions for the shared header filter (same icon + popup as
+  // Employee Master) and the per-column resize.
+  const blankable = (v) =>
+    v === "" || v === null || v === undefined || !Number.isFinite(Number(v))
+      ? ""
+      : Number(v);
+  const hrCols = [
+    { key: "name", label: "Tech-ED", kind: "text", get: (r) => String(r.name || "") },
+    { key: "base", label: "Budget Base", kind: "number", num: true, get: (r) => blankable(r.base) },
+    { key: "pct", label: "% Applied", kind: "number", get: (r) => blankable(previewPct(r)) },
+    { key: "budget", label: "Budget", kind: "number", num: true, get: (r) => blankable(previewBudget(r)) },
+    { key: "original", label: "Original", kind: "number", num: true, get: (r) => blankable(rowOriginal(r)) },
+    { key: "updated", label: "Updated", kind: "number", num: true, get: (r) => blankable(r.updated) },
+    { key: "origCount", label: "Original Count", kind: "number", num: true, get: (r) => blankable(r.team0) },
+    { key: "curCount", label: "Current Count", kind: "number", num: true, get: (r) => blankable(r.team) },
+  ];
+  const tf = useTableFilters(rows, hrCols);
+  const rz = useColumnResize(HR_W);
+  const hrKeys = [...hrCols.map((c) => c.key), "reason", "update", "last"];
+  const visibleRows = tf.rows;
   const visibleTotal = visibleRows.reduce(
     (s2, r) => ({
       base: s2.base + r.base,
@@ -4834,25 +4860,6 @@ function HRApplyBudget() {
     }),
     { base: 0, budget: 0, original: 0, updated: 0, team0: 0, team: 0 },
   );
-  function openColMenu(event, col) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setColMenu((current) =>
-      current && current.c === col
-        ? null
-        : {
-            c: col,
-            rect: { left: rect.left, bottom: rect.bottom },
-            values: [...new Set(rows.map((row) => cellText(row, col)))].sort(
-              compareCells,
-            ),
-          },
-    );
-  }
-
-  const wrapStyle = (col) =>
-    gridWrap[col] === false
-      ? { whiteSpace: "nowrap" }
-      : { whiteSpace: "normal" };
   const displayedUtilized = amount(
     selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization,
   );
@@ -5090,33 +5097,23 @@ function HRApplyBudget() {
         <span className="bm-chip">Tech-EDs</span>
 
         <div className="bm-tw">
-          <table className="bm-table">
+          <FilterStatus tf={tf} noun="Tech-EDs" />
+          <table className="bm-table" style={resizableTableStyle(rz, hrKeys)}>
+            <ResizableCols rz={rz} keys={hrKeys} />
             <thead>
               <tr>
-                {HR_COLS.map(([h, right, menu], i) => (
-                  <th
-                    key={h}
-                    className={
-                      (right ? "bm-n" : "") + (gridFilters[i] ? " bm-filt" : "")
-                    }
-                  >
-                    {h}
-                    {menu ? (
-                      <button
-                        type="button"
-                        className="bm-dd"
-                        aria-label={h + " column menu"}
-                        onClick={(e) => openColMenu(e, i)}
-                      >
-                        {gridSort && gridSort.c === i
-                          ? gridSort.d > 0
-                            ? "↑"
-                            : "↓"
-                          : "▾"}
-                      </button>
-                    ) : null}
-                  </th>
+                {hrCols.map((c) => (
+                  <FilterTh
+                    key={c.key}
+                    tf={tf}
+                    rz={rz}
+                    col={c}
+                    className={c.num ? "bm-n" : ""}
+                  />
                 ))}
+                <FilterTh tf={tf} rz={rz} noFilter col={{ key: "reason", label: "Reason" }} />
+                <FilterTh tf={tf} rz={rz} noFilter col={{ key: "update", label: "Update" }} />
+                <FilterTh tf={tf} rz={rz} noFilter col={{ key: "last", label: "Last Changed" }} />
               </tr>
             </thead>
             <tbody>
@@ -5156,7 +5153,7 @@ function HRApplyBudget() {
                           (hasPending ? " bm-edrow" : "")
                         }
                       >
-                        <td className="bm-rl" style={wrapStyle(0)}>
+                        <td className="bm-rl">
                           {r.name}
                           {tag ? (
                             <>
@@ -5165,7 +5162,7 @@ function HRApplyBudget() {
                             </>
                           ) : null}
                         </td>
-                        <td className="bm-n" style={wrapStyle(1)}>
+                        <td className="bm-n">
                           {money(r.base)}
                         </td>
                         <td className="bm-in">
@@ -5209,19 +5206,19 @@ function HRApplyBudget() {
                             </div>
                           ) : null}
                         </td>
-                        <td className="bm-n bm-calc" style={wrapStyle(3)}>
+                        <td className="bm-n bm-calc">
                           {money(previewBudget(r))}
                         </td>
-                        <td className="bm-n" style={wrapStyle(4)}>
+                        <td className="bm-n">
                           {money(rowOriginal(r))}
                         </td>
-                        <td className="bm-n" style={wrapStyle(5)}>
+                        <td className="bm-n">
                           {money(r.updated)}
                         </td>
-                        <td className="bm-n" style={wrapStyle(6)}>
+                        <td className="bm-n">
                           {r.team0}
                         </td>
-                        <td className="bm-n" style={wrapStyle(7)}>
+                        <td className="bm-n">
                           {r.team}
                         </td>
                         <td>
@@ -5327,38 +5324,6 @@ function HRApplyBudget() {
             </tbody>
           </table>
         </div>
-
-        {colMenu ? (
-          <ColumnMenu
-            key={colMenu.c}
-            rect={colMenu.rect}
-            values={colMenu.values}
-            filter={gridFilters[colMenu.c]}
-            wrap={gridWrap[colMenu.c] !== false}
-            onSort={(d) => {
-              setGridSort({ c: colMenu.c, d });
-              setColMenu(null);
-            }}
-            onWrap={(on) => setGridWrap((w) => ({ ...w, [colMenu.c]: on }))}
-            onApply={(f) => {
-              setGridFilters((cur) => {
-                const next = { ...cur };
-                if (f) next[colMenu.c] = f;
-                else delete next[colMenu.c];
-                return next;
-              });
-              setColMenu(null);
-            }}
-            onClear={() => {
-              setGridFilters((cur) => {
-                const next = { ...cur };
-                delete next[colMenu.c];
-                return next;
-              });
-              setColMenu(null);
-            }}
-          />
-        ) : null}
 
         <div className="bm-foot">
           {!orgApplied
