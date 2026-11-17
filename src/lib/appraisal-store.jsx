@@ -3091,7 +3091,6 @@ const savePreviousAppraisalChangeToCatalyst = async ({
     },
     body: JSON.stringify({
       emp_id: String(empId),
-      appraisal_row_id: String(appraisalRowId || ""),
       appraisal_year: APPRAISAL_YEAR,
       [historyField]: historyValue,
     }),
