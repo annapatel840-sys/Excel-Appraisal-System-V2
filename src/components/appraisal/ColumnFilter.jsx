@@ -115,21 +115,29 @@ export function revealTableHeader(trigger, instant = false) {
     }
 
     // The page (or a pane) scrolls. A table near the end of the page cannot reach the top because there is
-    // nothing left to scroll, so the pane gets extra room at its bottom, just enough for this table.
-    const pane = box && box !== document.body ? box : document.scrollingElement || document.documentElement;
-    const paneTop = pane === document.scrollingElement || pane === document.documentElement ? 0 : pane.getBoundingClientRect().top;
-    const delta = table.getBoundingClientRect().top - Math.max(paneTop, 0) - 72;
-    const room = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
-    if (delta > room) {
-      const spacer = Math.ceil(delta - room);
-      const base = parseFloat(getComputedStyle(pane).paddingBottom) || 0;
-      if (pane === document.scrollingElement || pane === document.documentElement) {
-        document.body.style.paddingBottom = `${(parseFloat(getComputedStyle(document.body).paddingBottom) || 0) + spacer}px`;
-      } else {
-        pane.style.paddingBottom = `${base + spacer}px`;
-      }
+    // nothing left to scroll, so the scrolling area gets extra room at its bottom, just enough for this table.
+    // The browser then does the scrolling itself (scrollIntoView finds whichever element really scrolls).
+    let pane = table.parentElement;
+    while (pane && pane !== document.body) {
+      const o = getComputedStyle(pane).overflowY;
+      if ((o === "auto" || o === "scroll") && pane.clientHeight > 200 && pane.scrollHeight > pane.clientHeight) break;
+      pane = pane.parentElement;
     }
-    pane.scrollBy({ top: delta, behavior });
+    const spaceHolder = pane && pane !== document.body ? pane : document.body;
+    const paneTop = spaceHolder === document.body ? 0 : spaceHolder.getBoundingClientRect().top;
+    const delta = table.getBoundingClientRect().top - Math.max(paneTop, 0) - 72;
+    const scroller = spaceHolder === document.body ? document.scrollingElement || document.documentElement : spaceHolder;
+    const room = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+    if (delta > room) {
+      const spacer = Math.ceil(delta - room) + 8;
+      spaceHolder.style.paddingBottom = `${(parseFloat(getComputedStyle(spaceHolder).paddingBottom) || 0) + spacer}px`;
+    }
+    const prev = table.style.scrollMarginTop;
+    table.style.scrollMarginTop = "72px"; // clear the app's top bar
+    table.scrollIntoView({ block: "start", inline: "nearest", behavior });
+    setTimeout(() => {
+      table.style.scrollMarginTop = prev;
+    }, 700);
   } catch (_) {
     /* scrolling is a convenience only */
   }
