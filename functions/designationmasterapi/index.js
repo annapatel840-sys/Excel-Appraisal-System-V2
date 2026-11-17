@@ -489,7 +489,7 @@ async function syncFromEmployeeMaster(app, cycle, locations) {
       department: clip(p.department),
       band: "",
       next_type: "",
-      status: false,
+      status: true,
     };
     if (p.locId) row.location = p.locId;
     toAdd.push(row);
@@ -903,7 +903,7 @@ async function saveData(app, cycle, actor, payload) {
         location: text(d.locationId),
         band: "",
         next_type: "",
-        status: false,
+        status: true,
       })),
     );
     (Array.isArray(inserted) ? inserted : []).forEach((row, i) => {

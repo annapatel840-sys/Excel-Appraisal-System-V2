@@ -473,7 +473,7 @@ export function DesignationMasterPage({ readOnly = false }) {
             id, name, department: "", locationId: loc.id, locationName: loc.name,
             inMaster: false, band: addForm.band,
             nextType: addForm.nt, singleNextId: "", multipleNextIds: [],
-            groupId: "", status: "Inactive", isNew: true,
+            groupId: "", status: "Active", isNew: true,
           },
         ],
       }));
