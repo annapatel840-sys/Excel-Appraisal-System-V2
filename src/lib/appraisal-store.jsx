@@ -3577,6 +3577,8 @@ export function AppraisalProvider({ children }) {
   const [modifiedLive, setModified] = useState({});
 
   const [loading, setLoading] = useState(true);
+  const loadingRef = useRef(true);
+  loadingRef.current = loading;
 
   const [error, setError] = useState("");
 
@@ -3919,9 +3921,12 @@ export function AppraisalProvider({ children }) {
     return true;
   }, []);
 
-  // Edits wait until the fresh roster has replaced the saved copy.
+  // A saved roster is read-only only while the fresh request is actually
+  // running. If the request has already settled, allow the server-side ROWID,
+  // active-cycle and expected-value checks to decide whether this edit is safe;
+  // otherwise one failed refresh would leave the sheet permanently uneditable.
   const rejectWhileShowingSaved = useCallback(() => {
-    if (!showingSavedRef.current) return false;
+    if (!showingSavedRef.current || !loadingRef.current) return false;
     setSaveError("The latest Appraisal Sheet data is still loading. Try again in a moment.");
     return true;
   }, []);

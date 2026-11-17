@@ -37,13 +37,13 @@ function makeStore(data) {
   return store;
 }
 
-function load(store) {
+function load(store, accessResult) {
   const dir = path.resolve(__dirname, '..');
   Object.keys(require.cache).forEach((k) => { if (k.startsWith(dir) && !k.includes('node_modules')) delete require.cache[k]; });
   class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
   const accessStub = {
     HttpError,
-    check: async () => ({ dryRun: true, enforced: false, scope: { all: true } }),
+    check: async () => accessResult || ({ dryRun: true, enforced: false, scope: { all: true } }),
     isEnforced: () => false,
     guard: (a, fn) => fn(),
     requireScreen: () => {},
@@ -76,6 +76,33 @@ let pass = 0, fail = 0;
 async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name); } catch (e) { fail++; console.log('FAIL', name, '\n   ', e.message); } }
 
 (async () => {
+  await t('HR with a restricted employee scope still receives all Tech-Ed allocation rows', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 10 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'T1', emp_name: 'Tech Ed One', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
+      Eligibility_List: [], Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 100000 },
+      ],
+    });
+    store.tables.Budget_Master[0].appraisal_cycle_id = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    const restrictedHr = {
+      enforced: true,
+      role: 'hr',
+      user: { role: 'HR', role_details: { role_name: 'HR' } },
+      scope: { all: false, empIds: [] },
+    };
+    const r = await get(load(store, restrictedHr));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.ok(r.json.techEd.some((row) => row.appraiser_tech_ed_id === 'T1'), 'HR must see the Tech-Ed allocation row');
+  });
+
   await t('formatted amounts (commas, ₹, lakh) give the right org and Tech-ED base', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
@@ -110,6 +137,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Employee_Master: [
         { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' },
         { emp_id: 'E2', emp_name: 'New Employee', emp_status: 'Active', eligibility: 'Eligible' },
+        // Employee_Master can lag the generated cycle roster. The sheet's
+        // current-cycle Active + Eligible values must take precedence.
+        { emp_id: 'E3', emp_name: 'Cycle Active Employee', emp_status: 'Inactive', eligibility: 'Not Eligible' },
       ],
       Eligibility_List: [],
       Payroll_Data: [],
@@ -118,8 +148,11 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 27000, current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
-        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 800000, hike_amount: 50000, allocated_pb_amount: 40000, new_pb_to_be_offered: 10000, new_rb: 5000 },
+        // Stored Appraisal Sheet previous rewards value must win over the
+        // different historical payroll reconstruction (2,500,000).
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 27000, current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
+        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: 800000, hike_amount: 50000, allocated_pb_amount: 40000, new_pb_to_be_offered: 10000, new_rb: 5000 },
+        { emp_id: 'E3', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 500000, current_annual_base_pay: 450000 },
       ],
     });
     const previousCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
@@ -129,6 +162,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Eligibility_List.push(
       { ROWID: '99881', appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
       { ROWID: '99882', appraisal_cycle_id: currentCycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+      { ROWID: '99883', appraisal_cycle_id: currentCycleId, emp_id: 'E3', eligibility_status: 'Eligible' },
     );
     store.tables.Payroll_Data.push({
       ROWID: '99991',
@@ -157,7 +191,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000, 'Org Budget Base must match the same archived payroll CTC resolved for generated sheet employees');
+    assert.strictEqual(r.json.master[0].org_budget_base, 27000 + 905000 + 500000, 'Org Budget Base must sum the stored Appraisal Sheet previous rewards value, using payroll only when the sheet value is blank');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);

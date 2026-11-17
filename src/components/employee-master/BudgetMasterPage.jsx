@@ -986,7 +986,27 @@
 //           techOwnerByAlias.set(normalizeOwnerKey(alias), key);
 //         });
 //     });
-//     const resolveTechOwnerKey = (raw) => {
+//     // Also register owners directly from the active Appraisal Sheet rows.
+    // This keeps HR's allocation table populated even if the supplementary
+    // Employee_Master Tech-ED directory is incomplete for a cycle.
+    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
+      const assignment = String(
+        employee.appraiserTechED ||
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed ||
+          employee.appraiser_tech_ed_id ||
+          "",
+      ).trim();
+      if (!assignment) return;
+      const key = canonicalOwnerKey(assignment, employeeRows);
+      if (!key) return;
+      const label = ownerName(assignment, employeeRows) || assignment;
+      if (!ownerValues.has(key)) ownerValues.set(key, label);
+      [assignment, key, label].forEach((alias) => {
+        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+      });
+    });
+    const resolveTechOwnerKey = (raw) => {
 //       const text = String(raw || "").trim();
 //       if (!text) return "";
 //       const pair = text.match(/^([a-z]*\\d+)\\s*-\\s*(.+)$/i);
@@ -3772,6 +3792,26 @@ function HRApplyBudget() {
           techOwnerByAlias.set(normalizeOwnerKey(alias), key);
         });
     });
+    // Register owners from the active Appraisal Sheet as well. The HR
+    // allocation list must not depend on the supplementary directory being
+    // complete for every employee in this cycle.
+    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
+      const assignment = String(
+        employee.appraiserTechED ||
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed ||
+          employee.appraiser_tech_ed_id ||
+          "",
+      ).trim();
+      if (!assignment) return;
+      const key = canonicalOwnerKey(assignment, employeeRows);
+      if (!key) return;
+      const label = ownerName(assignment, employeeRows) || assignment;
+      if (!ownerValues.has(key)) ownerValues.set(key, label);
+      [assignment, key, label].forEach((alias) => {
+        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+      });
+    });
     const resolveTechOwnerKey = (raw) => {
       const text = String(raw || "").trim();
       if (!text) return "";
@@ -3786,14 +3826,18 @@ function HRApplyBudget() {
     // Full current-cycle Appraisal Sheet roster for this location. A Tech-ED
     // with no employee here must not appear in Budget Master, even if a stale
     // Budget_Distribution row still exists from another location.
+    // dashboardRows are the active, location-filtered Appraisal Sheet rows.
+    // Do not require the supplementary budget roster's in_appraisal_sheet flag:
+    // older API responses omit it, which hid every Tech-Ed in HR's table.
     const locationTeamCounts = new Map();
-    (Array.isArray(locationEmployeeRows) ? locationEmployeeRows : []).forEach((employee) => {
-      const inSheet =
-        employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
-        String(employee.in_appraisal_sheet ?? "").trim() === "1";
-      if (!inSheet) return;
-      const key = resolveTechOwnerKey(employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || "");
+    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
+      const assignedTechEd =
+        employee.appraiserTechED ||
+        employee.appraiser_tech_ed_appraisal_sheet ||
+        employee.appraiser_tech_ed ||
+        employee.appraiser_tech_ed_id ||
+        "";
+      const key = resolveTechOwnerKey(assignedTechEd);
       if (key) locationTeamCounts.set(key, (locationTeamCounts.get(key) || 0) + 1);
     });
     // Same rule as DashboardOverview: Active + Eligible rows, grouped by
