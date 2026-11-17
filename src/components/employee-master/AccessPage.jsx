@@ -103,7 +103,7 @@ function roleClass(roleObj, key) {
 /* =====================================================================
    Model — a pure port of the design's access logic, over saved data + pending changes
    ===================================================================== */
-function buildModel(data, pending, today, cycleName) {
+function buildModel(data, pending, today, cycleName, location) {
   const SCREENS = (data?.catalog?.screens || []).filter((s) => s.key !== "changeMismatch");
   const ACTIONS = data?.catalog?.actions || [];
   const FIELDS = (data?.catalog?.fields || []).map((f) => ({ ...f, deps: Array.isArray(f.deps) ? f.deps : [] }));
@@ -144,6 +144,24 @@ function buildModel(data, pending, today, cycleName) {
   function cur(kind, role, key) {
     const p = pending[kind + "|" + role + "|" + key];
     return p ? p.to : saved(kind, role, key);
+  }
+  // Screens tab, per System Location. No location chosen = None everywhere (nothing to edit).
+  // A saved location row wins, otherwise the role's normal level applies to that location.
+  const locKeyOf = (role, loc) => {
+    const rows = (matrix.locScreens && matrix.locScreens[role]) || {};
+    const want = String(loc || "").trim().toLowerCase();
+    return Object.keys(rows).find((k) => k.trim().toLowerCase() === want);
+  };
+  function savedLoc(role, key, loc) {
+    if (!loc) return "none";
+    const k = locKeyOf(role, loc);
+    const v = k ? matrix.locScreens[role][k][key] : undefined;
+    return v !== undefined ? v : saved("screen", role, key);
+  }
+  function curLoc(role, key, loc) {
+    if (!loc) return "none";
+    const p = pending["screen|" + role + "|" + key + "@@" + loc];
+    return p ? p.to : savedLoc(role, key, loc);
   }
 
   const peopleBy = {};
@@ -280,7 +298,7 @@ function buildModel(data, pending, today, cycleName) {
 
   return {
     SCREENS, ACTIONS, FIELDS, people, deleg, overrides, log, savedRoles,
-    roles: () => activeRoles, roleOf, roleLabel, isNewRole, itemOf, saved, cur, personByEmp,
+    roles: () => activeRoles, roleOf, roleLabel, isNewRole, itemOf, saved, cur, savedLoc, curLoc, personByEmp,
     activeOverrides, ovFor, baseRole, effRole, canLogIn, effScreen, effAction, limitsFor, effField,
     teamOf, ovText, flagsOf, pendFor, ovRows, lastRoleChange, valText, eff,
   };
@@ -290,7 +308,7 @@ function buildModel(data, pending, today, cycleName) {
 function changeList(pending) {
   const order = { roleAdd: 0, roleRetire: 1, screen: 2, action: 2, field: 2, ovAdd: 3, ovRemove: 3 };
   return Object.values(pending).sort((a, b) => order[a.kind] - order[b.kind]).map((p) => {
-    if (p.kind === "screen" || p.kind === "action" || p.kind === "field") return { kind: p.kind, role: p.role, key: p.key, to: p.to };
+    if (p.kind === "screen" || p.kind === "action" || p.kind === "field") return { kind: p.kind, role: p.role, key: p.key, to: p.to, ...(p.location ? { location: p.location } : {}) };
     if (p.kind === "roleAdd") return { kind: "roleAdd", role: { key: p.role.key, label: p.role.label, catalystRole: p.role.catalystRole, seesAll: p.role.seesAll } };
     if (p.kind === "roleRetire") return { kind: "roleRetire", key: p.key };
     if (p.kind === "ovAdd") return { kind: "ovAdd", ov: { empId: p.ov.empId, type: p.ov.type, key: p.ov.key, value: p.ov.value, to: p.ov.to, reason: p.ov.reason } };
@@ -370,7 +388,7 @@ function Modal({ title, onClose, children }) {
 /* =====================================================================
    Tabs
    ===================================================================== */
-function ScreensTab({ M, pending, setVal, onRetire, onAddRole }) {
+function ScreensTab({ M, pending, location, setLocVal, onRetire, onAddRole }) {
   const rs = M.roles();
   const retiring = Object.values(pending).filter((p) => p.kind === "roleRetire");
   let g = null;
@@ -388,7 +406,7 @@ function ScreensTab({ M, pending, setVal, onRetire, onAddRole }) {
         ) : (
           <>
             {rs.map((r) => (
-              <td key={r.key}><Seg value={M.cur("screen", r.key, s.key)} savedValue={M.saved("screen", r.key, s.key)} onSet={(o) => setVal("screen", r.key, s.key, o)} /></td>
+              <td key={r.key}><Seg value={M.curLoc(r.key, s.key, location)} savedValue={M.savedLoc(r.key, s.key, location)} disabled={!location} onSet={(o) => setLocVal(r.key, s.key, o)} /></td>
             ))}
             <td />
           </>
@@ -397,6 +415,8 @@ function ScreensTab({ M, pending, setVal, onRetire, onAddRole }) {
     );
   });
   return (
+    <>
+    {!location && <div className="msg">Select a System Location to see and change screen access for it.</div>}
     <table>
       <thead>
         <tr>
@@ -414,6 +434,7 @@ function ScreensTab({ M, pending, setVal, onRetire, onAddRole }) {
       </thead>
       <tbody>{rows}</tbody>
     </table>
+    </>
   );
 }
 
@@ -1171,8 +1192,8 @@ export default function AccessPage() {
   const [enforced, setEnforced] = useState(null);
   const [pending, setPending] = useState({});
   const [tab, setTab] = useState("screens");
-  // System Location of the Screens tab. Starts empty: the dropdown has no "All Locations"
-  // and picks the first active Location Master location by itself.
+  // System Location of the Screens tab. Starts empty (nothing selected, every screen shows None);
+  // the dropdown has no "All Locations".
   const [systemLocation, setSystemLocation] = useState("");
   const [sel, setSel] = useState(null);
   const [filt, setFiltState] = useState({ fieldScreen: "", fieldSearch: "", fieldKind: "", fieldShowRole: "", fieldShowLim: "", peopleRole: "", peopleSearch: "", logFrom: "", logTo: "" });
@@ -1252,7 +1273,7 @@ export default function AccessPage() {
   }, [cyc, loadData]);
 
   const cycleName = (cyc.list.find((c) => c.id === cyc.activeId) || {}).name || "";
-  const M = useMemo(() => buildModel(data, pending, today, cycleName), [data, pending, today, cycleName]);
+  const M = useMemo(() => buildModel(data, pending, today, cycleName, systemLocation), [data, pending, today, cycleName, systemLocation]);
 
   /* ---------- pending changes ---------- */
   const setVal = (kind, role, key, to) => {
@@ -1261,6 +1282,17 @@ export default function AccessPage() {
       const next = { ...prev };
       if (M.saved(kind, role, key) === to) delete next[k];
       else next[k] = { kind, role, key, to };
+      return next;
+    });
+  };
+  // Screens tab: a change belongs to the chosen System Location only.
+  const setLocVal = (role, key, to) => {
+    if (!systemLocation) return;
+    setPending((prev) => {
+      const k = "screen|" + role + "|" + key + "@@" + systemLocation;
+      const next = { ...prev };
+      if (M.savedLoc(role, key, systemLocation) === to) delete next[k];
+      else next[k] = { kind: "screen", role, key, to, location: systemLocation };
       return next;
     });
   };
@@ -1347,7 +1379,7 @@ export default function AccessPage() {
 
   let body;
   if (!data) body = <div className="empty">{loading ? "Loading access settings…" : "Access settings could not be loaded."}</div>;
-  else if (tab === "screens") body = <ScreensTab M={M} pending={pending} setVal={setVal} onRetire={onRetire} onAddRole={() => setModal({ type: "role" })} />;
+  else if (tab === "screens") body = <ScreensTab M={M} pending={pending} location={systemLocation} setLocVal={setLocVal} onRetire={onRetire} onAddRole={() => setModal({ type: "role" })} />;
   else if (tab === "actions") body = <ActionsTab M={M} setVal={setVal} onRetire={onRetire} />;
   else if (tab === "fields") body = <FieldsTab M={M} setVal={setVal} onRetire={onRetire} filt={filt} setFilt={setFilt} />;
   else if (tab === "people") {
@@ -1394,6 +1426,7 @@ export default function AccessPage() {
                   value={systemLocation}
                   onChange={setSystemLocation}
                   showAllLocations={false}
+                  allowEmpty
                   ariaLabel="System Location"
                 />
               </span>

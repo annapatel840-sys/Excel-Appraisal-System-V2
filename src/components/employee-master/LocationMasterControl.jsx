@@ -634,6 +634,9 @@ export function LocationMasterControl({
   // View-only (Access level "View"): no add / edit / activate controls.
   readOnly = false,
   showAllLocations = true,
+  // Opt-in (Access screen only): with showAllLocations={false}, do not pick the first location by
+  // itself; show "Select location" until the user chooses one. Default false = unchanged behaviour.
+  allowEmpty = false,
 }) {
   // Access -> Fields -> Location Master: Hidden fields are not shown, Read only ones are locked.
   const lf = useScreenFields("locationMaster");
@@ -753,7 +756,7 @@ export function LocationMasterControl({
 
   const active = locations.filter((x) => x.status === "Active");
   useEffect(() => {
-    if (!showAllLocations && (!value || ["all", "all locations"].includes(String(value).trim().toLowerCase())) && active.length) {
+    if (!showAllLocations && !allowEmpty && (!value || ["all", "all locations"].includes(String(value).trim().toLowerCase())) && active.length) {
       onChange?.(active[0][valueKey] || active[0].location_name);
     }
   }, [showAllLocations, value, valueKey, active, onChange]);
@@ -1042,7 +1045,9 @@ export function LocationMasterControl({
             >
               <span>
                 {allLocationsSelected
-                  ? "All Locations"
+                  ? !showAllLocations && allowEmpty
+                    ? "Select location"
+                    : "All Locations"
                   : locations.find(isSelected)?.location_name || value || "Select location"}
                 {showCurrencyCode &&
                   !allLocationsSelected &&

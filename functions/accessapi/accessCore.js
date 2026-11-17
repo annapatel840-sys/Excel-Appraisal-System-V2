@@ -331,12 +331,23 @@ function defaultLimit(f, roleKey) {
 async function loadMatrix(zcql, C, roles) {
   const z = zq(zcql);
   const [s, a, f] = await Promise.all([selectAll(z, T.screen), selectAll(z, T.action), selectAll(z, T.field)]);
-  const m = { screens: {}, actions: {}, fields: {}, rowids: { screen: {}, action: {}, field: {} } };
+  const m = { screens: {}, actions: {}, fields: {}, locScreens: {}, rowids: { screen: {}, action: {}, field: {} }, locRowids: { screen: {} } };
   roles.forEach((r) => {
     m.screens[r.key] = {}; m.actions[r.key] = {}; m.fields[r.key] = {};
     C.screens.forEach((x) => { m.screens[r.key][x.key] = defaultLevel(C, x, r.key); });
     C.actions.forEach((x) => { m.actions[r.key][x.key] = defaultAllowed(x, r.key); });
     C.fields.forEach((x) => { let d = defaultLimit(x, r.key); if (d && HR_FIELD_GROUPS.has(x.group) && r.key !== 'hr') d = 'hidden'; if (d) m.fields[r.key][x.key] = d; });
+  });
+  // Per-location screen levels: RoleScreen rows with screen_key '<screen>@@<location>'.
+  // m.locScreens[role][location][screen] = level; no row = the role's normal level applies.
+  s.forEach((x) => {
+    const at = String(x.screen_key || '').indexOf('@@');
+    if (at < 1) return;
+    const sk = x.screen_key.slice(0, at), loc = x.screen_key.slice(at + 2).trim();
+    const it = C.screenBy[sk];
+    if (!it || it.hrOnly || !loc || !m.screens[x.role_key] || LEVELS.indexOf(x.level) < 0) return;
+    ((m.locScreens[x.role_key] = m.locScreens[x.role_key] || {})[loc] = m.locScreens[x.role_key][loc] || {})[sk] = x.level;
+    m.locRowids.screen[x.role_key + '|' + sk + '@@' + loc] = x.ROWID;
   });
   s.forEach((x) => { const it = C.screenBy[x.screen_key]; if (!it || !m.screens[x.role_key]) return; m.rowids.screen[x.role_key + '|' + x.screen_key] = x.ROWID; if (!it.hrOnly && LEVELS.indexOf(x.level) > -1) m.screens[x.role_key][x.screen_key] = x.level; });
   a.forEach((x) => { const it = C.actionBy[x.action_key]; if (!it || !m.actions[x.role_key]) return; m.rowids.action[x.role_key + '|' + x.action_key] = x.ROWID; if (!it.fixed) m.actions[x.role_key][x.action_key] = bool(x.allowed); });
@@ -602,7 +613,15 @@ function accessOf(C, roles, m, person, roleKey, ovs) {
     if (o.type === 'field' && lim[o.key] !== undefined && LIMITS.indexOf(o.value) > -1 && !(C.fieldBy[o.key].kind !== 'input' && o.value === 'edit')) lim[o.key] = o.value;
   });
   resolveFields(C, lim);
-  return { role, roleOverride: !!ro, screens, actions, fields: lim, teams: mine.filter((o) => o.type === 'team').map((o) => o.key) };
+  // Location rules of this role (a personal screen override still wins over them).
+  const locScreens = {};
+  const lr = role && m.locScreens ? m.locScreens[role] : null;
+  if (lr) Object.keys(lr).forEach((loc) => {
+    const out = {};
+    Object.keys(lr[loc]).forEach((k) => { if (!mine.find((x) => x.type === 'screen' && x.key === k)) out[k] = lr[loc][k]; });
+    if (Object.keys(out).length) locScreens[loc] = out;
+  });
+  return { role, roleOverride: !!ro, screens, actions, fields: lim, locScreens, teams: mine.filter((o) => o.type === 'team').map((o) => o.key) };
 }
 
 /* ---------------------------------------------------------------------
@@ -710,7 +729,7 @@ async function get(cat, opts) {
     version: base.version,
     user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
-    screens: a.screens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
+    screens: a.screens, locationScreens: a.locScreens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
   };
 }
 

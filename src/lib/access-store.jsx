@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystSignOut, useCatalystUser } from "./catalyst-auth";
+import { isAllLocations, matchesLocation, useSelectedLocation } from "./location-store";
 
 // Per-user access rules from accessapi /me (see docs/ACCESS_SPEC.md).
 // Fallback: whenever /me is unavailable (not deployed, 404, network error,
@@ -121,6 +122,7 @@ export function AccessProvider({ children }) {
   const cacheId = String(user?.email || user?.email_id || user?.user_id || "me").toLowerCase();
   const [state, setState] = useState({ loading: true, me: null, error: "" });
   const [nonce, setNonce] = useState(0);
+  const [selectedLocation] = useSelectedLocation();
 
   useEffect(() => {
     let active = true;
@@ -150,7 +152,16 @@ export function AccessProvider({ children }) {
     const me = state.me;
     const ok = me?.ok === true;
     const enforced = me?.enforced === true;
-    const screens = (ok && me.screens) || {};
+    // Screens tab (Access) can set a screen level for one System Location. It applies when the
+    // top-bar Location is that location; other locations keep the role's normal level.
+    const screens = { ...((ok && me.screens) || {}) };
+    if (ok && me.locationScreens) {
+      Object.keys(me.locationScreens).forEach((loc) => {
+        if (selectedLocation && !isAllLocations(selectedLocation) && matchesLocation(loc, selectedLocation)) {
+          Object.assign(screens, me.locationScreens[loc]);
+        }
+      });
+    }
     const actions = (ok && me.actions) || {};
     const fields = (ok && me.fields) || {};
 
@@ -188,7 +199,7 @@ export function AccessProvider({ children }) {
       screenFieldLimit: (screen, label) => fieldLimit(screenFieldKey(screen, label)),
       reload,
     };
-  }, [state, reload]);
+  }, [state, reload, selectedLocation]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }

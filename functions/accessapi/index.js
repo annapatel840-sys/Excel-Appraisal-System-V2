@@ -702,6 +702,7 @@ app.get(
     ]);
     const shown = listDeleg || deleg;
     delete m.rowids;
+    delete m.locRowids;
 
     // People = Delegation (Tech ED / Comp Manager) + Catalyst role holders + anyone with an override
     const em = {};
@@ -978,11 +979,25 @@ app.post(
             );
           if (A.LEVELS.indexOf(c.to) < 0)
             throw new HttpError(422, where + "use None, View or Edit.");
-          const id = m.rowids.screen[rk + "|" + c.key],
-            old = m.screens[rk] ? m.screens[rk][c.key] : "none";
+          // A location change is its own RoleScreen row: screen_key '<screen>@@<location>'.
+          const loc = String(c.location || "").trim();
+          const sk = loc ? c.key + "@@" + loc : c.key;
+          const locOld =
+            loc && m.locScreens[rk] && m.locScreens[rk][loc]
+              ? m.locScreens[rk][loc][c.key]
+              : undefined;
+          const id = loc
+              ? m.locRowids.screen[rk + "|" + sk]
+              : m.rowids.screen[rk + "|" + c.key],
+            old =
+              locOld !== undefined
+                ? locOld
+                : m.screens[rk]
+                  ? m.screens[rk][c.key]
+                  : "none";
           const row = {
             role_key: rk,
-            screen_key: c.key,
+            screen_key: sk,
             level: c.to,
             updated_by: me.user.email,
             updated_at: at,
@@ -999,7 +1014,7 @@ app.post(
           );
           logs.push({
             kind: "screen",
-            target: c.key,
+            target: loc ? c.key + " @ " + loc : c.key,
             role: rk,
             old_value: old,
             new_value: c.to,
