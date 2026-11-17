@@ -2489,15 +2489,16 @@ async function calculateBudgetBases(
       (sheetPreviousCtc !== null && sheetPreviousCtc > 0 ? sheetPreviousCtc : null) ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
-    // Org Budget Base must reconcile to the value stored on the generated
-    // Appraisal_Sheet row. Payroll history is only a fallback when that exact
-    // sheet value is blank; it must never override a populated sheet value.
+    // Match employeesapi and the Appraisal Sheet's displayed Previous Total
+    // CTC with Rewards: use the employee's resolved payroll-history value first.
+    // A stored Appraisal_Sheet value is a fallback only when no usable payroll
+    // history value exists; stale generated values must not inflate/deflate Org Base.
     const previousAppraisalCtc =
-      sheetPreviousCtc !== null
-        ? sheetPreviousCtc
-        : Number.isFinite(Number(payrollCtcFallback)) &&
-            Number(payrollCtcFallback) > 0
-          ? Number(payrollCtcFallback)
+      Number.isFinite(Number(payrollCtcFallback)) &&
+      Number(payrollCtcFallback) > 0
+        ? Number(payrollCtcFallback)
+        : sheetPreviousCtc !== null && sheetPreviousCtc > 0
+          ? sheetPreviousCtc
           : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
