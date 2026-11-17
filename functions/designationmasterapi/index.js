@@ -236,13 +236,32 @@ const isAllLocation = (v) => ALL_LOCATION_WORDS.includes(lower(v));
 
 /* Location Master rows, best effort: if the table cannot be read the raw value
    is still compared, so the screen keeps working. */
+// async function readLocations(app) {
+//   try {
+//     return await readAll(app, TBL.locations);
+//   } catch (e) {
+//     if (isTransientCatalystError(e)) throw e;
+//     console.warn("designationmasterapi: Location Master not read:", e.message);
+//     return [];
+//   }
+// }
 async function readLocations(app) {
   try {
-    return await readAll(app, TBL.locations);
+    const rows = await readAll(app, TBL.locations);
+
+    console.log(
+      "Designation Master - Location Master records:",
+      rows.length
+    );
+
+    return rows;
   } catch (e) {
-    if (isTransientCatalystError(e)) throw e;
-    console.warn("designationmasterapi: Location Master not read:", e.message);
-    return [];
+    console.error(
+      "Designation Master - Location Master read failed:",
+      e.message
+    );
+
+    throw e;
   }
 }
 
