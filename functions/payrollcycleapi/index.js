@@ -907,23 +907,22 @@ async function requireIdentity(req) {
   if (!user || !user.user_id) return null;
   const email = String(user.email_id || user.email || "").trim().toLowerCase();
   let employeeLocation = "";
+  let employeeEmpId = "";
   if (email) {
     try {
-      const masterTable = userApp.datastore().table(TABLES.employeeMaster);
-      const masterRows = await getAllRows(masterTable);
+      const datastore = userApp.datastore();
+      const [masterRows, locationRows] = await Promise.all([
+        getAllRows(datastore.table(TABLES.employeeMaster)),
+        getAllRows(datastore.table(TABLES.locations)),
+      ]);
       const matches = masterRows.filter((row) =>
         String(row.email_id || row.email || "").trim().toLowerCase() === email
       );
       const selected = matches.find((row) =>
         String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
       ) || matches[0];
-      const rawLocation = selected && (
-        selected.location || selected.work_location || selected.location_name ||
-        selected.office_location || selected.base_location
-      );
-      employeeLocation = rawLocation && typeof rawLocation === "object"
-        ? String(rawLocation.location_name || rawLocation.name || rawLocation.location_code || rawLocation.code || "")
-        : String(rawLocation || "");
+      employeeEmpId = String(selected?.emp_id || selected?.employee_id || selected?.emp_code || "").trim();
+      employeeLocation = employeeLocationName(selected, locationRows);
     } catch (error) {
       console.warn("[payrollcycleapi] session Employee_Master location lookup failed:", error?.message || error);
     }
@@ -934,6 +933,7 @@ async function requireIdentity(req) {
     email: user.email_id || "",
     role: user.role_details?.role_name || user.role_name || "",
     location: employeeLocation,
+    empId: employeeEmpId,
     user,
   };
 }
@@ -3921,7 +3921,7 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "session") {
     return sendJson(res, 200, { success: true, data: {
       id: identity.id, name: identity.name, email: identity.email,
-      role: identity.role, location: identity.location || "",
+      role: identity.role, location: identity.location || "", empId: identity.empId || "",
     } });
   }
   const techEdUser = !enforced && isTechEd(identity.user);
