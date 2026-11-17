@@ -358,11 +358,15 @@ export function FeedbackRatingMasterPage({
     setNoteText("");
   };
   useEffect(() => {
-    // The current Feedback & Rating view follows the Active cycle only.
-    // Historical rows remain stored and can be used by next-cycle calculations,
-    // but no closed cycle is selected as a fallback when there is no Active one.
-    setCid(activeCycle ? activeCycle.id : null);
-  }, [CYCLES]);
+    // Prefer the Active cycle when it has uploaded data. If its upload was
+    // stored under an archived/shared source cycle, open the newest cycle that
+    // actually has feedback rows so the master never appears blank.
+    const activeHasRows = activeCycle && ROWS.some((row) => String(row.cid) === String(activeCycle.id));
+    const latestCycleWithRows = [...CYCLES]
+      .filter((cycle) => ROWS.some((row) => String(row.cid) === String(cycle.id)))
+      .sort((a, b) => String(b.start || b.effective || "").localeCompare(String(a.start || a.effective || "")))[0];
+    setCid((activeHasRows ? activeCycle : latestCycleWithRows || activeCycle)?.id || null);
+  }, [CYCLES, ROWS]);
 
   // Close pop-ups on outside click / Escape.
   useEffect(() => {
@@ -624,8 +628,8 @@ export function FeedbackRatingMasterPage({
         <div className="tr-right" onClick={(e) => e.stopPropagation()}>
           <span className="flt">
             <span className="lbl">Cycle</span>
-            <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} disabled={!activeCycle} onChange={(e) => onCycle(e.target.value)}>
-              {!activeCycle && <option value="">No active cycle</option>}
+            <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} disabled={!CYCLES.length} onChange={(e) => onCycle(e.target.value)}>
+              {!CYCLES.length && <option value="">No cycle data</option>}
               {CYCLES.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.status}
