@@ -35,6 +35,12 @@ const FIELD_SCREEN_OPTIONS = [
   ["historicalImport", "Historical Import"], ["teamChanges", "Team Changes"],
   ["budgetDistribution", "Budget Distribution"], ["delegation", "Delegation"], ["letters", "Letters"],
 ];
+// Fields-tab screen -> the screen it is under on the Screens tab (for the per-location lock).
+const FIELD_SCREEN_TO_SCREEN = {
+  appraisalSheet: "appraisalSheet", detailScreen: "detailScreen", bulkEdit: "bulkEditScreen",
+  budgetMaster: "budgetAllocation", budgetDistribution: "budgetDistribution", teamChanges: "teamChanges",
+  delegation: "delegation",
+};
 const SCREEN_FIELDS = {
   detailScreen: [
     "name", "designation", "reportingManager", "compManager", "wissenExperience", "totalExperience", "lastAppraisalDate",
@@ -463,8 +469,16 @@ function ActionsTab({ M, setVal, onRetire }) {
   );
 }
 
-function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
+function FieldsTab({ M, setVal, onRetire, filt, setFilt, location }) {
   const rs = M.roles();
+  // A screen set to None for a role at the chosen System Location: its field cells stay visible
+  // but can't be changed. Only for a chosen screen and a chosen location; HR-only screens are not
+  // location based.
+  const screenKey = FIELD_SCREEN_TO_SCREEN[filt.fieldScreen];
+  const screenDef = screenKey ? M.SCREENS.find((s) => s.key === screenKey && !s.hrOnly) : null;
+  const lockedRoles = {};
+  if (location && screenDef) rs.forEach((r) => { if (M.curLoc(r.key, screenDef.key, location) === "none") lockedRoles[r.key] = true; });
+  const lockedLabels = rs.filter((r) => lockedRoles[r.key]).map((r) => r.label);
   const lims = {};
   rs.forEach((r) => { lims[r.key] = M.limitsFor(r.key, []); });
   const q = filt.fieldSearch.toLowerCase();
@@ -500,6 +514,9 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
           <option value="">anything</option><option value="edit">Edit (can edit)</option><option value="read">Read</option><option value="hidden">Hidden (can’t see)</option>
         </select>
       </div>
+      {lockedLabels.length > 0 && (
+        <div className="msg">{screenDef.label} is None for {lockedLabels.join(", ")} at {location}, so those fields are view-only here.</div>
+      )}
       <table>
         <thead><tr><th>Field</th><th>Kind</th><RoleHeads M={M} onRetire={onRetire} /></tr></thead>
         <tbody>
@@ -520,7 +537,7 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
                   return (
                     <td key={r.key}>
                       <span className={"cell" + (v !== sv ? " chg" : "")}>
-                        <select className={"lim lim-" + v} value={v} onChange={(e) => setVal("field", r.key, f.key, e.target.value)}>
+                        <select className={"lim lim-" + v} value={v} disabled={!!lockedRoles[r.key]} title={lockedRoles[r.key] ? screenDef.label + " is None for this role at " + location : undefined} onChange={(e) => setVal("field", r.key, f.key, e.target.value)}>
                           {opts.map((o) => <option key={o} value={o}>{LIMIT_LABEL[o]}</option>)}
                         </select>
                       </span>
@@ -1381,7 +1398,7 @@ export default function AccessPage() {
   if (!data) body = <div className="empty">{loading ? "Loading access settings…" : "Access settings could not be loaded."}</div>;
   else if (tab === "screens") body = <ScreensTab M={M} pending={pending} location={systemLocation} setLocVal={setLocVal} onRetire={onRetire} onAddRole={() => setModal({ type: "role" })} />;
   else if (tab === "actions") body = <ActionsTab M={M} setVal={setVal} onRetire={onRetire} />;
-  else if (tab === "fields") body = <FieldsTab M={M} setVal={setVal} onRetire={onRetire} filt={filt} setFilt={setFilt} />;
+  else if (tab === "fields") body = <FieldsTab M={M} setVal={setVal} onRetire={onRetire} filt={filt} setFilt={setFilt} location={systemLocation} />;
   else if (tab === "people") {
     body = (
       <PeopleTab
@@ -1419,7 +1436,7 @@ export default function AccessPage() {
                 </button>
               );
             })}
-            {tab === "screens" && (
+            {(tab === "screens" || tab === "fields") && (
               <span className="acx-syslocation">
                 <span className="lbl">System Location</span>
                 <LocationMasterControl
