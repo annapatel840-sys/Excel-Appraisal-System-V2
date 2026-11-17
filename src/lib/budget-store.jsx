@@ -217,11 +217,14 @@ export function BudgetProvider({ children }) {
     .filter((row) => {
       if (!initialCycleId) return false;
       const childCycle = String(row.appraisal_cycle_id || "").trim();
-      if (childCycle) return childCycle === initialCycleId;
       const parent = initialTechEd.find(
         (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
       );
-      return String(parent?.appraisal_cycle_id || "").trim() === initialCycleId;
+      // The parent Tech-Ed allocation is the authoritative cycle relationship.
+      // Legacy child rows can store the cycle name (or an older cycle reference)
+      // while their budget_distribution_id correctly links to this active parent.
+      return childCycle === initialCycleId ||
+        String(parent?.appraisal_cycle_id || "").trim() === initialCycleId;
     });
 
   const roleText = String(currentUser.role || "")
@@ -463,11 +466,13 @@ export function BudgetProvider({ children }) {
         .filter((row) => {
           if (!activeCycleId) return false;
           const childCycle = String(row.appraisal_cycle_id || "").trim();
-          if (childCycle) return childCycle === activeCycleId;
           const parent = normalizedTechEd.find(
             (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
           );
-          return String(parent?.appraisal_cycle_id || "").trim() === activeCycleId;
+          // Keep a child when its parent belongs to this active cycle, even if
+          // the legacy child cycle value is a name or stale reference.
+          return childCycle === activeCycleId ||
+            String(parent?.appraisal_cycle_id || "").trim() === activeCycleId;
         });
       // Keep the existing budgetRows API shape for current screens, while
       // exposing the three relational levels to every budget consumer.
