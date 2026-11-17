@@ -765,12 +765,14 @@
 .lt { --lt-gutter: #D5DFEB; background: var(--lt-gutter); border-radius: 14px; margin: 10px 12px 12px; padding: 12px; box-sizing: border-box; }
 .lt-tabrow { height: 44px; border-radius: 10px; }
 .lt-pane { border-radius: 12px; }
-.lt-pane.main, .lt-pane { height: calc(100vh - 142px); }
+.lt { display: flex; flex-direction: column; height: calc(100vh - 74px); overflow: hidden; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.lt button, .lt input, .lt select, .lt textarea { font-family: inherit; }
+.lt-pane { height: auto; }
 .lt-body { position: relative; }
 
 /* right panel: fixed to the viewport edge, like the reference */
 .lt-rp { position: fixed; right: 24px; top: 116px; bottom: 20px; width: 360px; z-index: 30; border-radius: 12px; box-shadow: 0 8px 28px rgba(16,42,67,.18); }
-.lt-flap { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 30; writing-mode: vertical-rl; background: #102A43; color: #fff; border: 0; border-radius: 8px 0 0 8px; padding: 14px 6px; font: 600 12px/1 inherit; cursor: pointer; letter-spacing: .04em; }
+.lt-flap { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 30; writing-mode: vertical-rl; background: #102A43; color: #fff !important; border: 0; border-radius: 8px 0 0 8px; padding: 16px 8px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: .04em; cursor: pointer; }
 .lt-flap:hover { background: #1559A6; }
 .lt-rp-body { flex: 1 1 0; min-height: 0; overflow: auto; }
 .lt-rp-foot { flex: none; border-top: 1px solid var(--lt-line); padding: 8px 10px; background: #fff; }
@@ -787,3 +789,10 @@
 
 /* preview modal body scrolls, footer stays */
 .lt-preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; background: #E5E7EB; padding: 16px; }
+
+/* panel: white text on the navy header/tabs, Inter throughout */
+.lt-rp, .lt-rp * { font-family: 'Inter', system-ui, sans-serif; }
+.lt-rp-head, .lt-rp-hd, .lt-rp-tabs { background: #102A43; color: #fff; }
+.lt-rp-head *, .lt-rp-hd *, .lt-rp-tabs * { color: #fff; }
+.lt-rp-tabs button { background: transparent; opacity: .75; }
+.lt-rp-tabs button[aria-selected="true"] { opacity: 1; border-bottom: 2px solid #fff; }
