@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
+import { useSelectedLocation } from "@/lib/location-store";
 import {
   PARAM_MASTERS,
   defaultCutoffForCycle,
@@ -150,16 +151,18 @@ export function EligibilityCriteria({
     [employees],
   );
 
+  // Designations are kept per location, so the lists follow the selected location.
+  const [selectedLocation] = useSelectedLocation();
   const [designationRows, setDesignationRows] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    loadDesignationMaster()
+    loadDesignationMaster({ location: selectedLocation })
       .then((data) => !cancelled && setDesignationRows(data?.designations || []))
       .catch((error) => console.error("Could not load Designation table for criteria:", error));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedLocation]);
 
   const departments = useMemo(() => {
     const t = [...new Set(designationRows.map((r) => r.department))].filter(Boolean).sort();

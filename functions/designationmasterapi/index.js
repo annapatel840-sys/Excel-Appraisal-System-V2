@@ -3,6 +3,15 @@
 /* ---------------------------------------------------------------------
    designationmasterapi - Designation Master (HR Operations > Masters)
 
+   Every GET takes an optional ?location=<name or code> (the system location
+   selected in the top bar). Designations are shown per location: the location's
+   own Active cycle is used (a cycle named "Dubai - Annual 2027" belongs to Dubai;
+   a cycle with no location is org-wide), and only designations that employees of
+   that location hold (or that HR added by hand) are synced and shown. A location
+   with no Active cycle of its own falls back to the org-wide Active cycle.
+   POST uses the cycleId the screen was loaded with, so a save always lands in the
+   cycle (location) that was on screen.
+
    GET  /                  -> { success, data }  current-cycle designations, groups,
                               options, audit. Every GET first syncs Employee_Master:
                               a designation that is not in the Designation table yet
@@ -43,6 +52,7 @@ const TBL = {
   cycles: "Appraisal_Cycle_Master",
   employees: "Employee_Master",
   audit: "Appraisal_Audit",
+  locations: "Location_Master",
 };
 
 const SOURCE = "Designation Master";
@@ -187,8 +197,10 @@ async function readRecent(app, table, where, max = 1000) {
   return [first, ...rest].flat().slice(0, max);
 }
 
-/* Distinct designation + department pairs from Employee_Master. DISTINCT keeps
-   this to a handful of small queries instead of reading every employee row. */
+/* Distinct designation + department + location triples from Employee_Master.
+   DISTINCT keeps this to a handful of small queries instead of reading every
+   employee row. All locations are read; the cycle's location filters them in
+   code (see pairsForCycle), so no location text is ever put into a query. */
 async function readMasterPairs(app) {
   const zcql = app.zcql();
   const out = [];
@@ -196,7 +208,7 @@ async function readMasterPairs(app) {
     for (let off = 0; off < 6000; off += 300) {
       const result = await runZcql(
         zcql,
-        `SELECT DISTINCT designation, department FROM ${TBL.employees} ` +
+        `SELECT DISTINCT designation, department, location FROM ${TBL.employees} ` +
           `ORDER BY designation ASC LIMIT ${off}, 300`,
         "Employee_Master designation pairs",
       );
@@ -210,8 +222,48 @@ async function readMasterPairs(app) {
   } catch (e) {
     if (isTransientCatalystError(e)) throw e;
     console.error("designationmasterapi: DISTINCT read failed, scanning:", e.message);
-    return readAll(app, TBL.employees, "", "ROWID, designation, department");
+    return readAll(app, TBL.employees, "", "ROWID, designation, department, location");
   }
+}
+
+/* ---------- locations ---------- */
+const ALL_LOCATION_WORDS = ["", "all", "all locations", "alllocations"];
+const isAllLocation = (v) => ALL_LOCATION_WORDS.includes(lower(v));
+
+/* Location Master rows, best effort: if the table cannot be read the raw value
+   is still compared, so the screen keeps working. */
+async function readLocations(app) {
+  try {
+    return await readAll(app, TBL.locations);
+  } catch (e) {
+    if (isTransientCatalystError(e)) throw e;
+    console.warn("designationmasterapi: Location Master not read:", e.message);
+    return [];
+  }
+}
+
+/* Every spelling (name and code) that identifies one location. */
+function locationAliases(value, locations) {
+  const key = lower(value);
+  if (!key) return new Set();
+  const hit = (locations || []).find(
+    (l) => lower(l.location_name ?? l.name) === key || lower(l.location_code ?? l.code) === key,
+  );
+  return new Set(
+    [key, lower(hit && (hit.location_name ?? hit.name)), lower(hit && (hit.location_code ?? hit.code))]
+      .filter(Boolean),
+  );
+}
+
+/* A cycle's own location ("" = org-wide). The Appraisal_Cycle_Master `location`
+   column is optional, so a "<Location> - <Type> <Year>" cycle name also counts. */
+const CYCLE_TYPE_START = /^(annual|mid-year|exceptional|new joiner)\b/i;
+function cycleLocationOf(row) {
+  const own = text(row && (row.location ?? row.cycle_location ?? row.cycleLocation));
+  if (own) return isAllLocation(own) ? "" : own;
+  const name = text(row && row.cycle_name);
+  const m = name.match(/^(.+?)\s+-\s+(.+)$/);
+  return m && CYCLE_TYPE_START.test(m[2]) ? text(m[1]) : "";
 }
 
 async function readBody(req) {
@@ -276,20 +328,64 @@ async function authorize(req, method, rulesOnly = false) {
 }
 
 /* ---------- cycle ---------- */
-async function getActiveCycle(app) {
+/* The Active cycle for one location. There is one Active cycle per location, so
+   designations follow the location through its cycle:
+     cycleId given  -> exactly that cycle, if it is still Active (saves)
+     a location     -> that location's own cycle, else the org-wide cycle
+     no location    -> the org-wide cycle, else the first Active cycle
+   Returns { id, name, location } where location "" means org-wide. */
+async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
   const rows = await readAll(app, TBL.cycles);
-  const row = rows.find(
-    (r) => lower(r.status) === "active" && !isOn(r.archived),
+  const active = rows.filter(
+    (r) => lower(r.status) === "active" && !isOn(r.archived) && !isOn(r.hidden),
   );
+  const shape = (r) => ({ id: rowId(r), name: text(r.cycle_name), location: cycleLocationOf(r) });
+
+  if (text(cycleId)) {
+    const row = active.find((r) => rowId(r) === text(cycleId));
+    if (!row) {
+      throw fail(409, "The appraisal cycle changed. Refresh Designation Master before saving.");
+    }
+    return shape(row);
+  }
+
+  if (!isAllLocation(location)) {
+    const locations = await readLocations(app);
+    const wanted = locationAliases(location, locations);
+    // The cycle may store the code while the screen sends the name (or the reverse),
+    // so the two are compared by every spelling Location Master knows.
+    const own = active.find((r) => {
+      const loc = cycleLocationOf(r);
+      return loc && [...locationAliases(loc, locations)].some((a) => wanted.has(a));
+    });
+    const row = own || active.find((r) => !cycleLocationOf(r));
+    if (!row) throw fail(409, `No active appraisal cycle was found for ${text(location)}.`);
+    return shape(row);
+  }
+
+  const row = active.find((r) => !cycleLocationOf(r)) || active[0];
   if (!row) throw fail(409, "No active appraisal cycle was found.");
-  return { id: rowId(row), name: text(row.cycle_name) };
+  return shape(row);
+}
+
+/* Is this Designation row shown for the cycle's location? (see loadData) */
+const inCycleLocation = (cycle, row, masterNames) =>
+  !cycle.location || masterNames.has(lower(row.name)) || !text(row.department);
+
+/* The employees' designations that belong to a cycle: every employee for an
+   org-wide cycle, otherwise only the cycle location's employees. */
+async function pairsForCycle(app, cycle) {
+  const all = await readMasterPairs(app);
+  if (!cycle.location) return all;
+  const aliases = locationAliases(cycle.location, await readLocations(app));
+  return all.filter((r) => aliases.has(lower(r.location)));
 }
 
 /* ---------- load ---------- */
 async function syncFromEmployeeMaster(app, cycle) {
   const [desRows, empRows] = await Promise.all([
     readCycle(app, TBL.designations, cycle.id),
-    readMasterPairs(app),
+    pairsForCycle(app, cycle),
   ]);
   const known = new Set(desRows.map((r) => lower(r.name)));
   const pairs = new Map();
@@ -357,7 +453,7 @@ async function checkSchema(app) {
     [TBL.members, "ROWID, group_id, des_id"],
     [TBL.config, "ROWID, type, status"],
     [TBL.cycles, "ROWID, cycle_name, status, archived"],
-    [TBL.employees, "ROWID, designation, department"],
+    [TBL.employees, "ROWID, designation, department, location"],
     [TBL.audit, "ROWID, emp_id, employee_name, field_name, old_value, new_value, changed_by, changed_at, source, batch_id, appraisal_year, details"],
   ];
   const problems = [];
@@ -382,7 +478,14 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   await checkSchema(app);
 
   const synced = sync ? await syncFromEmployeeMaster(app, cycle) : null;
-  const masterNames = synced ? synced.names : new Set();
+  // Designations that employees of the cycle's location hold. Without a sync
+  // (the reload after a save) they are read again, but only for a location
+  // cycle: an org-wide cycle shows every designation and needs no filter.
+  const masterNames = synced
+    ? synced.names
+    : cycle.location
+      ? new Set((await pairsForCycle(app, cycle)).map((r) => lower(r.designation)).filter(Boolean))
+      : new Set();
 
 
   const [allDes, allGroups, memberRows, nextRows, cfgRows, auditRows] = await Promise.all([
@@ -396,17 +499,20 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
     withAudit ? readRecent(app, TBL.audit, `source = '${SOURCE}'`) : Promise.resolve([]),
   ]);
 
-  // keep one row per designation name (guards against a double sync)
+  // Only this location's designations: ones its employees hold, plus ones HR
+  // added by hand (no department yet). Rows an earlier all-location sync put
+  // into this cycle for other locations stay in the table but are not shown.
+  // The location filter runs BEFORE the one-row-per-name guard (double sync), so
+  // a hidden row can never hide a visible one of the same name.
   const seenDes = new Set();
   const desRows = allDes.filter((r) => {
     const k = lower(r.name);
     if (!k || seenDes.has(k)) return false;
+    if (!inCycleLocation(cycle, r, masterNames)) return false;
     seenDes.add(k);
     return true;
   });
 
-  const groupRows = allGroups;
-  const groupIds = new Set(groupRows.map(rowId));
   const desIds = new Set(desRows.map(rowId));
 
   const nextByDesignation = new Map();
@@ -422,8 +528,19 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
     membersByGroup.get(key).push(refId(m.des_id));
   });
 
+  // A group that has members, none of them in this location, belongs to another
+  // location's designations and is not shown here. Its row and members are left
+  // alone, and so is any mapping that points at a designation of another location.
+  const groupRows = allGroups.filter((g) => {
+    const mine = membersByGroup.get(rowId(g)) || [];
+    return !mine.length || mine.some((desId) => desIds.has(desId));
+  });
+  const groupIds = new Set(groupRows.map(rowId));
+
   const designations = desRows.map((r) => {
     const id = rowId(r);
+    const single = refId(r.single_next_designation);
+    const group = refId(r.group_id);
     return {
       id,
       name: text(r.name),
@@ -431,9 +548,9 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
       inMaster: masterNames.has(lower(r.name)) || !!text(r.department),
       band: text(r.band),
       nextType: text(r.next_type).toUpperCase(),
-      singleNextId: refId(r.single_next_designation),
-      multipleNextIds: [...(nextByDesignation.get(id) || [])],
-      groupId: refId(r.group_id),
+      singleNextId: desIds.has(single) ? single : "",
+      multipleNextIds: (nextByDesignation.get(id) || []).filter((x) => desIds.has(x)),
+      groupId: groupIds.has(group) ? group : "",
       status: isOn(r.status) ? "Active" : "Inactive",
     };
   });
@@ -483,7 +600,7 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
       text: d.txt || `${text(r.field_name)}: ${text(r.old_value)} → ${text(r.new_value)}`,
     }));
 
-  return { cycle, designations, groups, options, bands: BANDS, audit };
+  return { cycle, location: cycle.location || "All", designations, groups, options, bands: BANDS, audit };
 }
 
 /* ---------- rules (spec: VALIDATIONS) ---------- */
@@ -711,13 +828,19 @@ async function saveData(app, cycle, actor, payload) {
       memberIds: (g.memberIds || []).map(mapDes),
     })),
   );
+  // The screen only lists this location's designations, so only their group
+  // memberships can be removed here; members from other locations are untouched.
+  const shownDesIds = new Set(db.designations.map((d) => d.id));
   for (const g of grpPayload) {
     const gid = grpMap.get(String(g.id));
     const want = [...new Set((g.memberIds || []).map(mapDes))];
-    const have = memberRowsAll.filter((m) => refId(m.group_id) === gid);
+    const have = memberRowsAll.filter(
+      (m) => refId(m.group_id) === gid && shownDesIds.has(refId(m.des_id)),
+    );
     const haveIds = have.map((m) => refId(m.des_id));
+    const allHaveIds = memberRowsAll.filter((m) => refId(m.group_id) === gid).map((m) => refId(m.des_id));
     const drop = have.filter((m) => !want.includes(refId(m.des_id))).map(rowId);
-    const add = want.filter((id) => !haveIds.includes(id));
+    const add = want.filter((id) => !allHaveIds.includes(id));
     for (const part of chunks(drop)) await tMem.deleteRows(part);
     for (const part of chunks(add))
       await tMem.insertRows(part.map((id) => ({ group_id: gid, des_id: id })));
@@ -863,12 +986,15 @@ async function saveData(app, cycle, actor, payload) {
    the sheet treats that as not mapped too. */
 async function loadRules(app, cycle) {
   await resolveDesignationsTable(app);
-  const [allDes, memberRows, nextRows, cfgRows] = await Promise.all([
+  const [allDes, memberRows, nextRows, cfgRows, locationPairs] = await Promise.all([
     readCycle(app, TBL.designations, cycle.id),
     readAll(app, TBL.members),
     readAll(app, TBL.next),
     readAll(app, TBL.config),
+    // only a location cycle needs the employees' designations (to filter by location)
+    cycle.location ? pairsForCycle(app, cycle) : Promise.resolve([]),
   ]);
+  const masterNames = new Set(locationPairs.map((r) => lower(r.designation)).filter(Boolean));
 
   const options = { S: false, M: false, G: false, F: false };
   cfgRows.forEach((r) => {
@@ -881,6 +1007,7 @@ async function loadRules(app, cycle) {
   const rows = allDes.filter((r) => {
     const k = lower(r.name);
     if (!k || seen.has(k)) return false;
+    if (!inCycleLocation(cycle, r, masterNames)) return false; // another location's designation
     seen.add(k);
     return true;
   });
@@ -977,16 +1104,19 @@ module.exports = async function designationMasterApi(req, res) {
     }
     let rulesOnly = false;
     let view = "";
+    let location = "";
     try {
-      view = req.method === "GET" ? new URL(req.url, "https://x").searchParams.get("view") || "" : "";
+      const params = new URL(req.url, "https://x").searchParams;
+      view = req.method === "GET" ? params.get("view") || "" : "";
+      location = text(params.get("location"));
       rulesOnly = view === "appraisal";
     } catch (e) {
       rulesOnly = false;
     }
     const { adminApp, actor } = await authorize(req, req.method, rulesOnly);
-    const cycle = await getActiveCycle(adminApp);
 
     if (req.method === "GET") {
+      const cycle = await getActiveCycle(adminApp, { location });
       if (view === "summary") {
         return sendJson(res, 200, { success: true, data: await loadSummary(adminApp, cycle) });
       }
@@ -997,9 +1127,12 @@ module.exports = async function designationMasterApi(req, res) {
     }
 
     const payload = await readBody(req);
-    if (payload.cycleId && String(payload.cycleId) !== cycle.id) {
-      throw fail(409, "The appraisal cycle changed. Refresh Designation Master before saving.");
-    }
+    // A save goes to the cycle (location) the screen was loaded with; it fails
+    // with 409 if that cycle is no longer Active.
+    const cycle = await getActiveCycle(adminApp, {
+      cycleId: payload.cycleId,
+      location: payload.location || location,
+    });
     return sendJson(res, 200, { success: true, data: await saveData(adminApp, cycle, actor, payload) });
   } catch (error) {
     const status = error.status || 500;

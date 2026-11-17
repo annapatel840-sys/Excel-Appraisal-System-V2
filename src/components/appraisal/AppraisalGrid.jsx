@@ -2018,7 +2018,7 @@ export function AppraisalGrid({
     setDesignationRulesError("");
 
     try {
-      const rules = await loadDesignationRules();
+      const rules = await loadDesignationRules(selectedLocation);
 
       if (!cancelled) {
         setDesignationRules(rules);
@@ -2041,7 +2041,8 @@ export function AppraisalGrid({
   return () => {
     cancelled = true;
   };
-}, []);
+  // The rules are per location, so they are read again when the location changes.
+}, [selectedLocation]);
 // This uses the employee's existing row.designation as the current designation. The API then determines whether Single, Multiple, Group, or Free Select applies.
 
   const getNewTitleRule = (row) => {

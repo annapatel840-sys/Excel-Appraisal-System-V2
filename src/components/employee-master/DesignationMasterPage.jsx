@@ -4,6 +4,7 @@ import {
   loadDesignationMaster,
   saveDesignationMaster,
 } from "@/lib/designation-master-api";
+import { useSelectedLocation } from "@/lib/location-store";
 import {
   ClientPager,
   DataGrid,
@@ -19,13 +20,21 @@ import "./employee-master-ui.css";
    Follows "Designation Master v1" (HTML) and the Catalyst spec:
    Designations | Groups | Band | Options tabs, in-grid editing,
    unsaved-changes bar, History column, Preview / My view / Audit panel.
+
+   Designations are kept per location. The screen follows the system location
+   selected in the top bar and shows that location's designations (read from
+   its own Active cycle); changing the location loads the other location.
+
+   Names (designation, department, group) are shown in Title Case. This is a
+   display rule only: the stored value is kept, and a group is only renamed in
+   the database when the person really edits its name.
    ------------------------------------------------------------------ */
 
 const TYPES = {
-  S: "Single designation",
-  M: "Multiple designations",
+  S: "Single Designation",
+  M: "Multiple Designations",
   G: "Group",
-  F: "Free select",
+  F: "Free Select",
 };
 const TYPE_HELP = {
   S: "One fixed next designation. It is pre-filled on the Appraisal Sheet.",
@@ -43,6 +52,53 @@ const EMPTY = {
   bands: [],
   audit: [],
 };
+
+/* Title Case for names shown on this screen (designations, departments, groups).
+   Display only: stored values are never rewritten. Small joining words stay
+   lower case (except first), acronyms / Roman numerals stay upper case, words
+   that already mix cases (DevOps, iOS) are left alone, and spacing and
+   separators are kept as typed, so it is safe to run while someone types. */
+const MINOR = new Set([
+  "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the", "to", "via", "vs",
+]);
+
+const ACRONYMS = new Set([
+  "hr", "it", "qa", "qc", "vp", "svp", "avp", "evp", "ceo", "cto", "cfo", "coo", "cio", "cxo", "cmo",
+  "ui", "ux", "ai", "ml", "bi", "sde", "sdet", "sre", "pmo", "erp", "sap", "dba", "seo", "bpo", "kpo",
+  "crm", "api", "qe", "rpa", "ii", "iii", "iv", "vi", "vii", "viii", "ix", "xi", "xii",
+]);
+
+const hasInnerCaps = (w) => /[a-z]/.test(w) && /[A-Z]/.test(w.slice(1));
+
+function titleWord(word, first) {
+  if (!word) return word;
+  const lowerWord = word.toLowerCase();
+  if (hasInnerCaps(word)) return word; // DevOps, iOS
+  if (/\d/.test(word) && !/[a-z]/i.test(word.replace(/\d+/g, ""))) return word; // "2024", "L2"-style stay as typed
+  if (!first && MINOR.has(lowerWord)) return lowerWord;
+  if (ACRONYMS.has(lowerWord)) return word.toUpperCase();
+  // short all-caps or single letters: PM, TL, "Grade A"
+  if (word.length === 1) return word.toUpperCase();
+  if (word.length === 2 && word === word.toUpperCase()) return word;
+  // Capitalise the first letter; apostrophes keep the rest small: "women's" -> "Women's"
+  return lowerWord.charAt(0).toUpperCase() + lowerWord.slice(1);
+}
+
+function toTitleCase(value) {
+  const input = value === undefined || value === null ? "" : String(value);
+  if (!input) return "";
+  let first = true;
+  // Split on whitespace and separators but keep them, so spacing is untouched.
+  return input
+    .split(/(\s+|[-/(),&·→:]+)/)
+    .map((part) => {
+      if (!part || /^(\s+|[-/(),&·→:]+)$/.test(part)) return part;
+      const out = titleWord(part, first);
+      first = false;
+      return out;
+    })
+    .join("");
+}
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -88,6 +144,7 @@ function isUnmapped(row, options) {
 
 /* ------------------------- component ------------------------- */
 export function DesignationMasterPage({ readOnly = false }) {
+  const [selectedLocation] = useSelectedLocation();
   const [saved, setSaved] = useState(EMPTY);
   const [draft, setDraft] = useState(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -117,6 +174,7 @@ export function DesignationMasterPage({ readOnly = false }) {
   const undoStack = useRef([]);
   const toastTimer = useRef(null);
   const tempId = useRef(1);
+  const loadSeq = useRef(0); // only the newest read may fill the screen (location switches)
 
   const toast = useCallback((m) => {
     setToastMsg(m);
@@ -126,11 +184,16 @@ export function DesignationMasterPage({ readOnly = false }) {
 
   /* ---------- load ---------- */
   const refresh = useCallback(async (event) => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
     try {
       // Retry / Refresh pass their click event and always read from the server.
-      const r = await loadDesignationMaster({ fresh: Boolean(event && event.type) });
+      const r = await loadDesignationMaster({
+        fresh: Boolean(event && event.type),
+        location: selectedLocation,
+      });
+      if (seq !== loadSeq.current) return; // another location was picked meanwhile
       const data = {
         ...EMPTY,
         ...r,
@@ -138,6 +201,8 @@ export function DesignationMasterPage({ readOnly = false }) {
         designations: (r.designations || []).map((d) => ({
           ...d,
           id: sid(d.id),
+          name: toTitleCase(d.name),
+          department: toTitleCase(d.department),
           nextType: d.nextType || "",
           singleNextId: sid(d.singleNextId),
           multipleNextIds: (d.multipleNextIds || []).map(sid),
@@ -148,10 +213,16 @@ export function DesignationMasterPage({ readOnly = false }) {
         groups: (r.groups || []).map((g) => ({
           ...g,
           id: sid(g.id),
+          rawName: g.name, // as stored; sent back unless the person edits the name
+          name: toTitleCase(g.name),
           memberIds: (g.memberIds || []).map(sid),
         })),
         bands: r.bands || [],
-        audit: r.audit || [],
+        audit: (r.audit || []).map((a) => ({
+          ...a,
+          rowName: toTitleCase(a.rowName),
+          text: toTitleCase(a.text),
+        })),
       };
       setSaved(clone(data));
       setDraft(clone(data));
@@ -159,11 +230,12 @@ export function DesignationMasterPage({ readOnly = false }) {
       setAdding(false);
       setMenu(null);
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       setError(e.message || "Unable to load Designation Master.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
-  }, []);
+  }, [selectedLocation]);
 
   useEffect(() => {
     refresh();
@@ -196,21 +268,21 @@ export function DesignationMasterPage({ readOnly = false }) {
     ids
       .map((id) => {
         const d = desById.get(id);
-        return d ? d.name + (d.status === "Active" ? "" : " (inactive)") : "";
+        return d ? d.name + (d.status === "Active" ? "" : " (Inactive)") : "";
       })
       .filter(Boolean)
-      .join(", ") || "(none)";
+      .join(", ") || "(None)";
   const nxText = (d) => {
     const t = d.nextType;
-    if (!t) return "Not mapped";
-    if (!draft.options[t]) return `${TYPES[t]} is switched off`;
-    if (t === "S") return d.singleNextId ? dname(d.singleNextId) : "(not set)";
+    if (!t) return "Not Mapped";
+    if (!draft.options[t]) return `${TYPES[t]} (Switched Off)`;
+    if (t === "S") return d.singleNextId ? dname(d.singleNextId) : "(Not Set)";
     if (t === "M")
       return d.multipleNextIds.length
         ? d.multipleNextIds.map(dname).join(", ")
-        : "(not set)";
-    if (t === "G") return d.groupId ? gname(d.groupId) : "(not set)";
-    return "Any active designation";
+        : "(Not Set)";
+    if (t === "G") return d.groupId ? gname(d.groupId) : "(Not Set)";
+    return "Any Active Designation";
   };
   const unmappedList = useMemo(
     () => draft.designations.filter((d) => isUnmapped(d, draft.options)),
@@ -340,8 +412,11 @@ export function DesignationMasterPage({ readOnly = false }) {
     try {
       await saveDesignationMaster({
         cycleId: draft.cycle?.id,
+        location: draft.cycle?.location || "",
         designations: draft.designations,
-        groups: draft.groups,
+        groups: draft.groups.map((g) =>
+          g.rawName !== undefined && g.name === toTitleCase(g.rawName) ? { ...g, name: g.rawName } : g,
+        ),
         options: draft.options,
       });
       await refresh();
@@ -363,7 +438,7 @@ export function DesignationMasterPage({ readOnly = false }) {
   /* ---------- add designation / group ---------- */
   const submitAdd = () => {
     if (readOnly) return;
-    const name = addForm.name.trim();
+    const name = toTitleCase(addForm.name.trim());
     if (!name) return setAddErr("Name is required");
     if (tab === "des") {
       if (draft.designations.some((d) => d.name.toLowerCase() === name.toLowerCase()))
@@ -429,7 +504,7 @@ export function DesignationMasterPage({ readOnly = false }) {
   const typeOptions = (d) => (
     <>
       <option value="">
-        {d.nextType && !draft.options[d.nextType] ? "(choose a type)" : "(none)"}
+        {d.nextType && !draft.options[d.nextType] ? "(Choose a Type)" : "(None)"}
       </option>
       {Object.keys(TYPES)
         .filter((t) => draft.options[t])
@@ -474,17 +549,17 @@ export function DesignationMasterPage({ readOnly = false }) {
     },
     {
       key: "dept", label: "Department",
-      get: (d) => d.department || "(not in Employee Master yet)",
+      get: (d) => d.department || "(Not in Employee Master Yet)",
     },
     {
-      key: "band", label: "Band", get: (d) => d.band || "(none)",
+      key: "band", label: "Band", get: (d) => d.band || "(None)",
       render: (d) => (
         <select
           className={"dmx-ctl" + (edDes(d.id, "band") ? " ed" : "")}
           value={d.band}
           onChange={(e) => patchDes(d.id, { band: e.target.value })}
         >
-          <option value="">(none)</option>
+          <option value="">(None)</option>
           {draft.bands.map((b) => (
             <option key={b} value={b}>{b}</option>
           ))}
@@ -492,7 +567,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       ),
     },
     {
-      key: "nt", label: "Next Type", get: (d) => TYPES[d.nextType] || "(none)",
+      key: "nt", label: "Next Type", get: (d) => TYPES[d.nextType] || "(None)",
       render: (d) => (
         <select
           className={"dmx-ctl" + (edDes(d.id, "nextType") ? " ed" : "")}
@@ -518,12 +593,12 @@ export function DesignationMasterPage({ readOnly = false }) {
               value={d.singleNextId}
               onChange={(e) => patchDes(d.id, { singleNextId: e.target.value })}
             >
-              <option value="">(not set)</option>
+              <option value="">(Not Set)</option>
               {draft.designations
                 .filter((x) => x.id !== d.id)
                 .map((x) => (
                   <option key={x.id} value={x.id}>
-                    {x.name}{x.status === "Active" ? "" : " (inactive)"}
+                    {x.name}{x.status === "Active" ? "" : " (Inactive)"}
                   </option>
                 ))}
             </select>
@@ -542,7 +617,7 @@ export function DesignationMasterPage({ readOnly = false }) {
                 value={d.groupId}
                 onChange={(e) => patchDes(d.id, { groupId: e.target.value })}
               >
-                <option value="">(not set)</option>
+                <option value="">(Not Set)</option>
                 {draft.groups.map((x) => (
                   <option key={x.id} value={x.id}>{x.name}</option>
                 ))}
@@ -554,7 +629,7 @@ export function DesignationMasterPage({ readOnly = false }) {
                       const x = desById.get(m);
                       return (
                         <span key={m} className={"dmx-chip" + (x?.status === "Active" ? "" : " gi")}>
-                          {x?.name}{x?.status === "Active" ? "" : " (inactive)"}
+                          {x?.name}{x?.status === "Active" ? "" : " (Inactive)"}
                         </span>
                       );
                     })
@@ -581,17 +656,17 @@ export function DesignationMasterPage({ readOnly = false }) {
               {d.multipleNextIds.length ? (
                 <span>{d.multipleNextIds.map(dname).join(", ")}</span>
               ) : (
-                <span className="dmx-unmp">Not mapped</span>
+                <span className="dmx-unmp">Not Mapped</span>
               )}
             </div>
           );
         }
-        if (t === "F") return <span>Any active designation</span>;
+        if (t === "F") return <span>Any Active Designation</span>;
         return (
           <>
-            <span className="dmx-unmp">Not mapped</span>
+            <span className="dmx-unmp">Not Mapped</span>
             {d.nextType && !draft.options[d.nextType] && (
-              <span className="dmx-mut"> {TYPES[d.nextType]} is switched off</span>
+              <span className="dmx-mut"> {TYPES[d.nextType]} (Switched Off)</span>
             )}
           </>
         );
@@ -633,8 +708,12 @@ export function DesignationMasterPage({ readOnly = false }) {
             "dmx-ctl" + (edGrp(g.id, "name") ? " ed" : "") + (g.name.trim() ? "" : " bad")
           }
           value={g.name}
-          placeholder="Group name"
+          placeholder="Group Name"
           onChange={(e) => patchGrp(g.id, { name: e.target.value })}
+          onBlur={(e) => {
+            const nice = toTitleCase(e.target.value.trim());
+            if (nice && nice !== g.name) patchGrp(g.id, { name: nice });
+          }}
         />
       ),
     },
@@ -776,13 +855,13 @@ export function DesignationMasterPage({ readOnly = false }) {
       const d = desById.get(menu.id);
       if (!d) return null;
       return {
-        title: `Next designations for ${d.name}`,
+        title: `Next Designations for ${d.name}`,
         items: draft.designations.filter((x) => x.id !== d.id),
         picked: d.multipleNextIds,
       };
     }
     return {
-      title: `Designations in band ${menu.id}`,
+      title: `Designations in Band ${menu.id}`,
       items: draft.designations,
       picked: draft.designations.filter((d) => d.band === menu.id).map((d) => d.id),
     };
@@ -810,10 +889,10 @@ export function DesignationMasterPage({ readOnly = false }) {
   /* ---------- right panel ---------- */
   const panelTitle = () => {
     if (tab === "des" && selRow)
-      return `${selRow.name} · ${selRow.department || "not in Employee Master yet"} · next: ${TYPES[selRow.nextType] || "none"}`;
-    if (tab === "grp" && selRow) return `${selRow.name} · ${activeMembers(selRow).length} designations`;
-    if (tab === "band" && selRow) return `Band ${selRow.code} · ${selRow.ids.length} designations`;
-    return `Designation Master · ${draft.designations.length} designations · ${draft.groups.length} groups`;
+      return `${selRow.name} · ${selRow.department || "Not in Employee Master Yet"} · Next: ${TYPES[selRow.nextType] || "None"}`;
+    if (tab === "grp" && selRow) return `${selRow.name} · ${activeMembers(selRow).length} Designations`;
+    if (tab === "band" && selRow) return `Band ${selRow.code} · ${selRow.ids.length} Designations`;
+    return `Designation Master · ${draft.designations.length} Designations · ${draft.groups.length} Groups`;
   };
 
   const depts = useMemo(
@@ -852,25 +931,25 @@ export function DesignationMasterPage({ readOnly = false }) {
     };
     let body = null;
     if (!cur) body = <div className="dmx-card"><div className="dmx-mut">No active designations in this department</div></div>;
-    else if (!t) body = <div className="dmx-call gr"><span className="tg">No next designation</span><div className="ln"><b>✓ Nothing pre-filled</b></div></div>;
-    else if (!draft.options[t]) body = <div className="dmx-call am"><span className="tg">Switched off</span><div className="ln"><b>{TYPES[t]}</b></div><div className="sub">This type is switched off in Options, nothing is pre-filled</div></div>;
+    else if (!t) body = <div className="dmx-call gr"><span className="tg">No Next Designation</span><div className="ln"><b>✓ Nothing Pre-Filled</b></div></div>;
+    else if (!draft.options[t]) body = <div className="dmx-call am"><span className="tg">Switched Off</span><div className="ln"><b>{TYPES[t]}</b></div><div className="sub">This type is switched off in Options, nothing is pre-filled</div></div>;
     else if (t === "F") {
       const n = draft.designations.filter((d) => d.status === "Active").length;
-      body = <div className="dmx-call"><span className="tg">Free select</span><div className="ln"><b>Any active designation</b><span className="dmx-mut">{n} to pick from</span></div><div className="sub">Nothing pre-filled, the user chooses</div></div>;
+      body = <div className="dmx-call"><span className="tg">Free Select</span><div className="ln"><b>Any Active Designation</b><span className="dmx-mut">{n} to pick from</span></div><div className="sub">Nothing pre-filled, the user chooses</div></div>;
     } else if (t === "S") {
       const x = desById.get(cur.singleNextId);
       const ok = x && x.status === "Active";
       body = (
         <div className={"dmx-call" + (ok ? "" : " am")}>
-          <span className="tg">{ok ? "Pre-filled · next designation" : x ? "Next designation is inactive" : "Next designation not set"}</span>
+          <span className="tg">{ok ? "Pre-Filled · Next Designation" : x ? "Next Designation Is Inactive" : "Next Designation Not Set"}</span>
           <div className="ln"><b>{x ? x.name : ""}</b></div>
           <div className="sub">{ok ? "Single designation, the user can still change it" : "Nothing pre-filled"}</div>
         </div>
       );
-    } else if (t === "M") body = pick(cur.multipleNextIds, "Choose from the listed designations", "Multiple designations");
+    } else if (t === "M") body = pick(cur.multipleNextIds, "Choose from the Listed Designations", "Multiple Designations");
     else {
       const g = grpById.get(cur.groupId);
-      body = g ? pick(g.memberIds, "Choose in group", g.name) : <div className="dmx-call am"><span className="tg">Group not set</span></div>;
+      body = g ? pick(g.memberIds, "Choose in Group", g.name) : <div className="dmx-call am"><span className="tg">Group Not Set</span></div>;
     }
     return (
       <>
@@ -928,7 +1007,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       return (
         <>
           <div className="dmx-info">History of <b>{nm}</b> · every saved change</div>
-          <button type="button" className="emx-mini" style={{ marginTop: 6 }} onClick={() => setAuditAll(true)}>Show all changes</button>
+          <button type="button" className="emx-mini" style={{ marginTop: 6 }} onClick={() => setAuditAll(true)}>Show All Changes</button>
           <div style={{ marginTop: 8 }}>
             {list.length ? list.map(auditCard) : <div className="emx-note">No saved changes for this row yet</div>}
           </div>
@@ -937,7 +1016,7 @@ export function DesignationMasterPage({ readOnly = false }) {
     }
     return (
       <>
-        {selRow && <button type="button" className="emx-mini" onClick={() => setAuditAll(false)}>Show selected row only</button>}
+        {selRow && <button type="button" className="emx-mini" onClick={() => setAuditAll(false)}>Show Selected Row Only</button>}
         <div style={{ marginTop: 8 }}>
           {draft.audit.length ? draft.audit.slice(0, 60).map(auditCard) : <div className="emx-note">No saved changes yet</div>}
         </div>
@@ -959,7 +1038,7 @@ export function DesignationMasterPage({ readOnly = false }) {
         <label className="orow" key={t}>
           <input type="checkbox" checked={!!draft.options[t]} onChange={(e) => toggleOption(t, e.target.checked)} />
           <span><b>{TYPES[t]}</b><small>{TYPE_HELP[t]}</small></span>
-          <em>{draft.designations.filter((d) => d.nextType === t).length} in use</em>
+          <em>{draft.designations.filter((d) => d.nextType === t).length} In Use</em>
         </label>
       ))}
     </div>
@@ -999,11 +1078,12 @@ export function DesignationMasterPage({ readOnly = false }) {
                 type="button" className={"emx-mini dmx-big" + (filters.unm ? " tog" : "")}
                 onClick={() => setFilters((f) => ({ ...f, unm: !f.unm }))}
               >
-                Not mapped ({unmappedList.length})
+                Not Mapped ({unmappedList.length})
               </button>
             </>
           )}
           <div className="dmx-right">
+          <span className="dmx-stat" title={draft.cycle?.name || ""}>Location <b>{toTitleCase(draft.location || "All")}</b></span>
           <span className="dmx-stat">Designations <b>{draft.designations.length}</b></span>
           <span className="dmx-stat">Groups <b>{draft.groups.length}</b></span>
           <span className="dmx-stat">Inactive <b>{draft.designations.filter((d) => d.status !== "Active").length}</b></span>
@@ -1011,7 +1091,7 @@ export function DesignationMasterPage({ readOnly = false }) {
           <button type="button" className="emx-mini dmx-big" onClick={exportXls}>Export to Excel</button>
           {tab !== "band" && !readOnly && (
             <button type="button" className="emx-mini emx-dashed dmx-big" onClick={() => { setAdding((a) => !a); setAddErr(""); }}>
-              + Add {tab === "des" ? "designation" : "group"}
+              + Add {tab === "des" ? "Designation" : "Group"}
             </button>
           )}
           </div>
@@ -1020,20 +1100,20 @@ export function DesignationMasterPage({ readOnly = false }) {
 
       {adding && tab !== "opt" && tab !== "band" && (
         <div className="dmx-addbar">
-          <label>{tab === "des" ? "Designation name" : "Group name"}
+          <label>{tab === "des" ? "Designation Name" : "Group Name"}
             <input className="dmx-txt" style={{ width: 240 }} autoFocus value={addForm.name} onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && submitAdd()} />
           </label>
           {tab === "des" && (
             <>
-              <label>Band (optional)
+              <label>Band (Optional)
                 <select className="dmx-ctl" value={addForm.band} onChange={(e) => setAddForm((f) => ({ ...f, band: e.target.value }))}>
-                  <option value="">(none)</option>
+                  <option value="">(None)</option>
                   {draft.bands.map((b) => <option key={b}>{b}</option>)}
                 </select>
               </label>
-              <label>Next type
+              <label>Next Type
                 <select className="dmx-ctl" value={addForm.nt} onChange={(e) => setAddForm((f) => ({ ...f, nt: e.target.value }))}>
-                  <option value="">(none)</option>
+                  <option value="">(None)</option>
                   {Object.keys(TYPES).filter((t) => draft.options[t]).map((t) => <option key={t} value={t}>{TYPES[t]}</option>)}
                 </select>
               </label>
@@ -1081,7 +1161,7 @@ export function DesignationMasterPage({ readOnly = false }) {
               <span style={{ flex: 1 }} />
               <button type="button" className="emx-mini dmx-big" onClick={handleDiscard} disabled={saving}>Discard</button>
               <button type="button" className="dmx-main" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? "Saving…" : "Save Changes"}
               </button>
             </div>
           )}
@@ -1094,7 +1174,7 @@ export function DesignationMasterPage({ readOnly = false }) {
               <button type="button" onClick={() => updatePanel({ open: false })} aria-label="Fold the panel" title="Fold the panel">✕</button>
             </div>
             <div className="emx-ptabs">
-              {[["pv", "Preview"], ["view", "My view"], ["aud", "Audit"]].map(([k, l]) => (
+              {[["pv", "Preview"], ["view", "My View"], ["aud", "Audit"]].map(([k, l]) => (
                 <button key={k} type="button" className={ptab === k ? "on" : ""} onClick={() => updatePanel({ tab: k })}>{l}</button>
               ))}
             </div>
@@ -1167,8 +1247,8 @@ function MemberMenu({ model, rect, onCancel, onApply }) {
           <label key={d.id}>
             <input type="checkbox" checked={picked.has(d.id)} onChange={() => toggle(d.id)} />
             {d.name}
-            {d.status === "Active" ? "" : <span className="dmx-mut"> (inactive)</span>}
-            <span className="dmx-mut"> · {d.department || "not in Employee Master yet"}</span>
+            {d.status === "Active" ? "" : <span className="dmx-mut"> (Inactive)</span>}
+            <span className="dmx-mut"> · {d.department || "Not in Employee Master Yet"}</span>
           </label>
         ))}
       </div>

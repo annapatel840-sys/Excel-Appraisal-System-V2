@@ -1,4 +1,5 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "@/lib/catalyst-api";
+import { getSelectedLocation, isAllLocations } from "@/lib/location-store";
 
 const API_URL = catalystFunctionUrl("designationmasterapi");
 
@@ -27,11 +28,20 @@ async function request({ method = "GET", body, params } = {}) {
   return result.data;
 }
 
+/* Designations are kept per location. Every read asks for one location: the one
+   passed in, else the system location selected in the top bar ("All" sends none).
+   The server uses that location's own Active cycle. */
+const locationParams = (location) => {
+  const value = location === undefined ? getSelectedLocation() : location;
+  return isAllLocations(value) ? {} : { location: String(value).trim() };
+};
+
 /* Shared read. Designation Master and the Eligibility Criteria panel both load
    the same data; a request in flight, or a result under SHARED_READ_MS old, is
-   reused instead of calling designationmasterapi again. Any save (any non-GET
-   request) and the app's update events clear it, and { fresh: true } (the
-   screen's Refresh / Retry buttons) always reads from the server. */
+   reused instead of calling designationmasterapi again (only for the same
+   location). Any save (any non-GET request) and the app's update events clear
+   it, and { fresh: true } (the screen's Refresh / Retry buttons) always reads
+   from the server. */
 const SHARED_READ_MS = 15000;
 let sharedLoad = null; // { startedAt, promise }
 const copyOf = (data) => (data === undefined ? data : JSON.parse(JSON.stringify(data)));
@@ -50,12 +60,19 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidateDesignationMasterRead));
 }
 
-export function loadDesignationMaster({ fresh = false } = {}) {
-  if (!fresh && sharedLoad && Date.now() - sharedLoad.startedAt <= SHARED_READ_MS) {
+export function loadDesignationMaster({ fresh = false, location } = {}) {
+  const params = locationParams(location);
+  const locationKey = params.location || "";
+  if (
+    !fresh &&
+    sharedLoad &&
+    sharedLoad.locationKey === locationKey &&
+    Date.now() - sharedLoad.startedAt <= SHARED_READ_MS
+  ) {
     return sharedLoad.promise.then(copyOf);
   }
-  const entry = { startedAt: Date.now(), promise: null };
-  entry.promise = request().catch((error) => {
+  const entry = { startedAt: Date.now(), locationKey, promise: null };
+  entry.promise = request({ params }).catch((error) => {
     // A failed read is never shared; the next caller tries again.
     if (sharedLoad === entry) sharedLoad = null;
     throw error;
@@ -76,8 +93,8 @@ export function saveDesignationMaster(data) {
    loadDesignationRules() once per sheet load, then call newTitleChoices()
    when the user opens the dropdown for a row.
    ------------------------------------------------------------------ */
-export function loadDesignationRules() {
-  return request({ params: { view: "appraisal" } });
+export function loadDesignationRules(location) {
+  return request({ params: { view: "appraisal", ...locationParams(location) } });
 }
 
 /* -> { ok, options, prefill, message }
