@@ -700,7 +700,7 @@ const PAYROLL_DATA_CSS = `
 .pd-colfilter-apply-row button { flex: 1; padding: 6px; border-radius: 4px; font-size: 11px; cursor: pointer; border: 1px solid #cbd3df; background: white; }
 .pd-colfilter-apply-row button.apply { background: #17365d; color: white; border-color: #17365d; }
 .pd-colfilter-apply-row button.clear { color: #a5432f; border-color: #e7c9c3; }
-.pd-grid-wrap { margin: 14px 18px 0; background: white; border: 1px solid #d4dbe5; border-radius: 6px; overflow: auto; flex: 1 1 auto; min-height: 160px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.pd-grid-wrap { margin: 14px 18px 0; background: white; border: 1px solid #d4dbe5; border-radius: 6px; overflow: auto; flex: 0 1 auto; min-height: 0; max-height: calc(100vh - 300px); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .pd-grid-wrap table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
 .pd-grid-wrap th, .pd-grid-wrap td { border-right: 1px solid #e0e5ec; border-bottom: 1px solid #e0e5ec; padding: 5px 8px; white-space: normal; overflow-wrap: anywhere; word-break: normal; height: auto; min-height: 28px; vertical-align: top; font-size: 11.5px; }
 .pd-grid-wrap th { position: sticky; top: 0; z-index: 4; background: #e9eef5; color: #24364d; font-size: 10.5px; font-weight: 600; text-align: left; }

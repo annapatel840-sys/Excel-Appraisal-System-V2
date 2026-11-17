@@ -372,3 +372,22 @@
 .elx-tabs .elx-tabs-right button.em-btn-primary{background:#2F6FED;border-color:#2F6FED;color:#fff}
 .elx-tabs .elx-tabs-right button.em-btn-primary:disabled{background:#A9C1F2;border-color:#A9C1F2}
 .elx-foot{flex:none;margin-top:8px;padding:6px 2px;color:#6B7280}
+
+/* Location Master: grid lines on every cell and real buttons in the Actions column */
+.em-location-master-table-wrap .em-location-table { border-collapse: collapse; }
+.em-location-master-table-wrap .em-location-table th,
+.em-location-master-table-wrap .em-location-table td { border: 1px solid #d4dbe5; }
+.em-location-master-table-wrap .em-location-table th { background: #e6eef8; color: #102a43; }
+.em-location-master-table-wrap .em-location-table tbody tr:nth-child(even) td { background: #f7f9fc; }
+.em-location-master-table-wrap .em-location-table tbody tr:hover td { background: #eaf2ff; }
+.em-location-master-table-wrap .em-location-row-actions .em-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  margin: 2px 4px 2px 0; padding: 5px 12px; min-height: 28px;
+  border: 1px solid #b8c4d6; border-radius: 6px; background: #fff; color: #17365d;
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 1px rgba(16, 42, 67, .06);
+}
+.em-location-master-table-wrap .em-location-row-actions .em-btn:hover:not(:disabled) { background: #eaf2ff; border-color: #2f6fed; color: #1d4fa8; }
+.em-location-master-table-wrap .em-location-row-actions .em-btn:disabled { opacity: .55; cursor: not-allowed; }
+.em-location-master-table-wrap .em-location-row-actions .em-btn-primary { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+.em-location-master-table-wrap .em-location-row-actions .em-btn-primary:hover:not(:disabled) { background: #1d4fa8; border-color: #1d4fa8; color: #fff; }
