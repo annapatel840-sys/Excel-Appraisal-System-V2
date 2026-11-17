@@ -3014,6 +3014,9 @@ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);
 @media(max-width:1100px){.acx-work{flex-direction:column}.acx-panel{width:100%!important}.acx-twoc{flex-direction:column}}
 ${filterTableCss(".acx", ".acx-g")}
 .acx .acx-g th.ft-th{position:sticky;top:0;overflow:visible}
+/* grid lines */
+.acx .acx-g th,.acx .acx-g td{border-right:1px solid var(--hl);border-bottom:1px solid var(--hl)}
+.acx .acx-g th:last-child,.acx .acx-g td:last-child{border-right:0}
 /* active filter: dark box, white funnel (".acx button{color:inherit}" had turned the funnel dark too) */
 .acx .ft-head button[class*="bg-[#102a43]"]{color:#fff}
 .acx .ft-head button[class*="bg-[#102a43]"] svg{color:#fff;stroke:#fff;fill:#fff}
