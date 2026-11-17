@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import BulkOperations from "@/components/appraisal/BulkEditPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
+import { isAllLocations, matchesCycleLocation, cycleLocationOf, useSelectedLocation } from "@/lib/location-store";
 import "@/styles/bulk-edit-screen.css";
 
 const isActiveCycle = (cycle) =>
@@ -12,10 +13,20 @@ const isActiveCycle = (cycle) =>
 /* Remembered between visits to this tab, so coming back does not show "Loading appraisal cycles…"
    again. The list is still refreshed quietly in the background every time. */
 let cyclesCache = null;
-let selectedCache = "";
 
-const pickCycle = (list) =>
-  list.find(isActiveCycle) || list.find((cycle) => !cycle?.archived) || list[0];
+/* The cycle follows the location chosen in the header: that location's own Active cycle first, then an
+   "All locations" cycle (it covers every location). Never another location's cycle. */
+const pickCycle = (list, location) => {
+  const own = list.filter((cycle) => matchesCycleLocation(cycle, location));
+  const all = isAllLocations(location)
+    ? []
+    : list.filter((cycle) => isAllLocations(cycleLocationOf(cycle)));
+  for (const group of [own, all]) {
+    const hit = group.find(isActiveCycle) || group.find((cycle) => !cycle?.archived);
+    if (hit) return hit;
+  }
+  return null;
+};
 
 export default function BulkEditScreen() {
   // "View" on the Bulk Edit screen: preview only, nothing can be applied.
@@ -23,8 +34,7 @@ export default function BulkEditScreen() {
   const readOnly =
     !access.canAction("bulkEdit") || !access.canScreen("bulkEditScreen", "edit");
   const [cycles, setCycles] = useState(() => cyclesCache || []);
-  // The cycle is picked automatically (active one first); no manual selector.
-  const [selectedId, setSelectedId] = useState(() => selectedCache);
+  const [selectedLocation] = useSelectedLocation();
   const [loading, setLoading] = useState(() => !cyclesCache);
   const [error, setError] = useState("");
 
@@ -40,14 +50,6 @@ export default function BulkEditScreen() {
         setCycles((previous) =>
           JSON.stringify(previous) === JSON.stringify(list) ? previous : list,
         );
-        setSelectedId((current) => {
-          const next =
-            current && list.some((cycle) => String(cycle.id) === current)
-              ? current
-              : String(pickCycle(list)?.id || "");
-          selectedCache = next;
-          return next;
-        });
         setError("");
       })
       .catch((err) => {
@@ -59,9 +61,10 @@ export default function BulkEditScreen() {
     };
   }, []);
 
+  // Picked automatically from the header location (active one first); no manual selector.
   const selectedCycle = useMemo(
-    () => cycles.find((cycle) => String(cycle.id) === selectedId) || null,
-    [cycles, selectedId],
+    () => pickCycle(cycles, selectedLocation),
+    [cycles, selectedLocation],
   );
 
   return (
@@ -69,13 +72,14 @@ export default function BulkEditScreen() {
       {error && <div className="bulk-edit-screen-error" role="alert">{error}</div>}
       {loading && <div className="bulk-edit-screen-state">Loading appraisal cycles…</div>}
       {!loading && !error && !selectedCycle && (
-        <div className="bulk-edit-screen-state">Create an appraisal cycle before using Bulk Edit.</div>
+        <div className="bulk-edit-screen-state">No appraisal cycle for this location. Create one before using Bulk Edit.</div>
       )}
       {!loading && !error && selectedCycle && (
         <div className="bulk-edit-screen-work">
           <BulkOperations
             key={selectedCycle.id}
             apiUrl="/server/appraisalapi"
+            offlineApi
             cycle={{
               id: selectedCycle.id,
               name: selectedCycle.name || "Appraisal",

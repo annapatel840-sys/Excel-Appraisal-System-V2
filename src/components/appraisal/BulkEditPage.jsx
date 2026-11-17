@@ -16,6 +16,7 @@
  *
  * PROPS
  *   apiUrl     "/server/appraisalapi"  (empty = demo data)
+ *   offlineApi true = no server function exists: the engine's own server calls are skipped (data comes from the store)
  *   cycle      {id,name,location}      the active cycle; the parent re-mounts on change
  *   height     CSS height (default "100%")
  *   onApplied  optional, called after a successful Apply
@@ -181,7 +182,7 @@ function buildBatches(records, texts) {
 }
 
 const BulkOperations = forwardRef(function BulkOperations(
-  { apiUrl = "", cycle, height = "100%", onApplied, readOnly = false },
+  { apiUrl = "", offlineApi = false, cycle, height = "100%", onApplied, readOnly = false },
   ref,
 ) {
   const hostRef = useRef(null);
@@ -288,7 +289,7 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
   live.current = {
-    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate, access,
+    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, offlineApi, sheetRows, storeBulkUpdate, access,
     sheetAudit, storeFetchBulkHistory,
   };
   /* Bulk history read from the server (kept so a screen refresh does not re-download it). */
@@ -305,6 +306,7 @@ const BulkOperations = forwardRef(function BulkOperations(
     host.innerHTML = BULK_OPS_MARKUP;
     const cfg = {
       apiUrl: live.current.apiUrl,
+      offlineApi: live.current.offlineApi,
       logoUrl,
       cycle: live.current.cycle,
       get canApply() {

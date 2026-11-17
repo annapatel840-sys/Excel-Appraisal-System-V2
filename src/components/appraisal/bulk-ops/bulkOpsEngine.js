@@ -20,6 +20,9 @@ var APPRAISAL_API_URL = cfg.apiUrl || "";
 var ACTIVE_CYCLE = cfg.cycle || { id: "", name: "Appraisal", location: "" };
 function apiMode(){return !!APPRAISAL_API_URL}
 function apiCall(method,path,body){
+  /* cfg.offlineApi: there is no server function behind this screen (rows, budget and saving come from the
+     Appraisal Sheet store through cfg). Answer {} at once instead of requesting a URL that returns the website. */
+  if(cfg.offlineApi)return Promise.resolve({});
   return fetch(APPRAISAL_API_URL.replace(/\/+$/,"")+path,{method:method,credentials:"include",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined})
     .then(function(r){return r.json().catch(function(){return {}}).then(function(j){
       if(!r.ok||j.ok===false)throw new Error(j.error||("Server error "+r.status));return j})});

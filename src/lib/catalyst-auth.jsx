@@ -35,8 +35,10 @@ function isUnauthorizedError(error) {
 
 // onSignedIn: called once the Catalyst session is confirmed, before the
 // app's session details load (used to start slow reads early).
+// onSessionReady: called once the session is loaded and the user's saved/home
+// location is applied (used for reads that depend on the selected location).
 // onSignOut: called just before signing out.
-export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
+export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignOut }) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState("loading");
   const [message, setMessage] = useState("");
@@ -92,6 +94,11 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
         if (mounted) {
           // Open on the user's own Employee Master location (once per sign-in session).
           applyHomeLocationOnSignIn(session?.email || session?.id, session?.location);
+          try {
+            onSessionReady?.();
+          } catch (_) {
+            /* a prefetch problem must never block sign-in */
+          }
           setUser(session);
           setState("authenticated");
         }

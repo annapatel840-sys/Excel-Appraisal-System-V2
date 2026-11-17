@@ -58,10 +58,16 @@ const ROSTER_PATHS = [
   "/budget-distribution",
 ];
 
-function prefetchForCurrentScreen() {
+// The roster depends on the selected location, which is only known once the
+// session has loaded (saved / home location applied). Starting it earlier
+// fetched the full "All" roster and then the location roster again.
+function prefetchRosterForCurrentScreen() {
   if (ROSTER_PATHS.includes(window.location.pathname)) {
     prefetchAppraisalRoster({ viewAs: getViewAsSelected() });
   }
+}
+
+function prefetchForCurrentScreen() {
   if (window.location.pathname === "/detail-screen") {
     // Start independent right-panel requests at sign-in, in parallel with
     // the Appraisal Sheet roster request and before access/screen rendering.
@@ -293,6 +299,7 @@ export default function App() {
   return (
     <CatalystAuthGate
       onSignedIn={prefetchForCurrentScreen}
+      onSessionReady={prefetchRosterForCurrentScreen}
       onSignOut={clearSignedInUserData}
     >
       <AccessProvider>
