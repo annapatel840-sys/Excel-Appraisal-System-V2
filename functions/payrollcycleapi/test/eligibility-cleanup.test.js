@@ -106,7 +106,7 @@ async function setup() {
   const apply = (post, cycleId, criteria = {}) => post('eligibility', { action: 'apply-criteria', cycleId, ...criteria });
 
   await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
-    const { post, mk, elig } = await setup();
+    const { store, post, mk, elig } = await setup();
     await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '1', emp_id: 'E1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '2', emp_id: 'E2' }]);
     const c = await mk('Annual NEW');
     // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
