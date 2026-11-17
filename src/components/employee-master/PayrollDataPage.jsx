@@ -130,7 +130,7 @@ export function PayrollDataPage() {
   const [loadError, setLoadError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState("");
-  const [batchFilter, setBatchFilter] = useState("all");
+  const [cycleFilter, setCycleFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -248,16 +248,28 @@ export function PayrollDataPage() {
 
   const priorMap = useMemo(() => buildPriorMap(stored, cycleOrder), [stored, cycleOrder]);
 
-  const batches = useMemo(
-    () => Array.from(new Set(stored.map((r) => r.batch))),
-    [stored],
-  );
+  // Appraisal cycles that actually have payroll rows, newest first.
+  const cycleOptions = useMemo(() => {
+    const names = {};
+    cycles.forEach((c) => {
+      names[String(c.id)] = c.name || c.cycle_name || c.title || "";
+    });
+    const seen = new Map();
+    stored.forEach((r) => {
+      const id = String(r.cycleId ?? r.cycle ?? "");
+      if (!id || seen.has(id)) return;
+      seen.set(id, names[id] || r.cycle || r.appraisal_cycle_name || id);
+    });
+    return Array.from(seen, ([value, label]) => ({ value, label })).sort(
+      (a, b) => (cycleOrder[b.value] || 0) - (cycleOrder[a.value] || 0) || a.label.localeCompare(b.label),
+    );
+  }, [stored, cycles, cycleOrder]);
 
   const COLS = useMemo(() => buildColumnsFromSchema(schema), [schema]);
 
   const colByKey = (key) => COLS.find((c) => c.key === key);
 
-  // Location / search / batch first, in the default order. The column filters and
+  // Location / search / cycle first, in the default order. The column filters and
   // sorts (the Appraisal Sheet's header filter) then work on top of that.
   const baseRows = useMemo(() => {
     // Show all years and cycles, but only for employees whose current
@@ -268,14 +280,14 @@ export function PayrollDataPage() {
         !term ||
         String(r.empName || "").toLowerCase().includes(term) ||
         String(r.empId || "").toLowerCase().includes(term);
-      const matchesBatch = batchFilter === "all" || r.batch === batchFilter;
-      return matchesTerm && matchesBatch;
+      const matchesCycle = cycleFilter === "all" || String(r.cycleId ?? r.cycle ?? "") === cycleFilter;
+      return matchesTerm && matchesCycle;
     });
     return [...list].sort((a, b) => {
       if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
       return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
     });
-  }, [stored, selectedLocation, search, batchFilter, cycleOrder]);
+  }, [stored, selectedLocation, search, cycleFilter, cycleOrder]);
 
   const filterColumns = useMemo(
     () =>
@@ -301,7 +313,7 @@ export function PayrollDataPage() {
   // A new search / filter / sort starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [search, batchFilter, tf.filters, tf.sorts]);
+  }, [search, cycleFilter, tf.filters, tf.sorts]);
 
   useEffect(() => {
     if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
@@ -377,13 +389,14 @@ export function PayrollDataPage() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
-          value={batchFilter}
-          onChange={(e) => setBatchFilter(e.target.value)}
+          value={cycleFilter}
+          onChange={(e) => setCycleFilter(e.target.value)}
+          aria-label="Appraisal cycle"
         >
-          <option value="all">All batches</option>
-          {batches.map((b) => (
-            <option key={b} value={b}>
-              {b}
+          <option value="all">All cycles</option>
+          {cycleOptions.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>
