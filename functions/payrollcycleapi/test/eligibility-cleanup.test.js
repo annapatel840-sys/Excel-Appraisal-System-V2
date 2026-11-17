@@ -56,7 +56,15 @@ function load(store) {
     userManagement: () => ({ getCurrentUser: async () => ({ user_id: '1', first_name: 'HR', last_name: 'A', email_id: 'hr@x.com', role_details: { role_name: 'HR' } }) }),
   }) };
   class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-  const accessStub = { HttpError, check: async () => ({ dryRun: true, enforced: false }), isEnforced: () => false, guard: (a, fn) => fn(), requireScreen: () => {}, bumpVersion: async () => {} };
+  const accessStub = {
+    HttpError,
+    check: async () => ({ dryRun: true, enforced: false }),
+    isEnforced: () => false,
+    guard: (a, fn) => fn(),
+    requireScreen: () => {},
+    requireEditFields: () => {},
+    bumpVersion: async () => {},
+  };
   const orig = Module._load;
   Module._load = function (req, parent, ...rest) {
     if (req === 'zcatalyst-sdk-node') return catalystStub;
