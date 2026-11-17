@@ -192,8 +192,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        // Stored Appraisal Sheet previous rewards value must win over the
-        // different historical payroll reconstruction (2,500,000).
+        // The Appraisal Sheet display is enriched from matching archived
+        // payroll history, so its resolved value (2,500,000) must drive budget.
         { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 27000, current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
         { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: 800000, hike_amount: 50000, allocated_pb_amount: 40000, new_pb_to_be_offered: 10000, new_rb: 5000 },
         { emp_id: 'E3', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 500000, current_annual_base_pay: 450000 },
