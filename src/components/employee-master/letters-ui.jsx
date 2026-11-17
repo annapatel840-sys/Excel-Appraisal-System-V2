@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { isEmptyFilter } from "@/lib/appraisal-filters";
+
 /* Small helpers shared by the Letters screens. */
 
 /* ---------- localStorage (never throws) ---------- */
@@ -30,6 +32,7 @@ export function useLtGrid(defs, visStorageKey) {
   const [vis, setVis] = useState(() => readJson(visStorageKey, {}));
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState(null);
+  const [sorts, setSorts] = useState([]); // [{ key, dir }], up to 3 levels
   const [dens, setDens] = useState("comfortable");
 
   const cols = defs.map((d) => {
@@ -55,20 +58,29 @@ export function useLtGrid(defs, visStorageKey) {
   const setFilter = (key, value) =>
     setFilters((cur) => {
       const next = { ...cur };
-      if (!value || (!value.cond && !value.sel)) delete next[key];
+      if (!value || isEmptyFilter(value)) delete next[key];
       else next[key] = value;
       return next;
     });
+  const addSort = (key, dir) =>
+    setSorts((cur) => [...cur.filter((s) => s.key !== key), { key, dir }].slice(-3));
   const clearColumn = (key) => {
     setFilter(key, null);
     setSort((s) => (s && s.key === key ? null : s));
+    setSorts((cur) => cur.filter((s) => s.key !== key));
   };
   const clearAll = () => {
     setFilters({});
     setSort(null);
+    setSorts([]);
   };
 
-  return { cols, patchCol, filters, setFilter, clearColumn, clearAll, sort, setSort, dens, setDens, filterCount: Object.keys(filters).length };
+  // appraisal: true -> DataGrid draws the Employee Master header filter (same icon + popup).
+  return {
+    cols, patchCol, filters, setFilter, clearColumn, clearAll,
+    appraisal: true, sorts, addSort,
+    sort: sorts, setSort, dens, setDens, filterCount: Object.keys(filters).length,
+  };
 }
 
 /* ---------- 20-per-page paging for ClientPager ---------- */

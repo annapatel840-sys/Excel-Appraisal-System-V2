@@ -697,13 +697,6 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         />
         <ClientPager page={paged.page} pages={paged.pages} from={paged.from} to={paged.to} total={view.length} allTotal={secRows.length} onPage={paged.setPage} grid={grid} />
       </div>
-      <div className="lt-foot2 tot">
-        <span><b>{view.length}</b> Letters</span>
-        {sel.size > 0 && <span><b>{sel.size}</b> selected</span>}
-        {sums.map(([label, total]) => (
-          <span key={label}>{label}: <b>{inr(total)}</b></span>
-        ))}
-      </div>
     </>
   );
 

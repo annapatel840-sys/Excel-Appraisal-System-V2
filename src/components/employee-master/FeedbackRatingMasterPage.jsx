@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+import { isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+
 /*
  * Feedback & Rating Master — HR Operations › Master.
  *
@@ -90,6 +93,7 @@ const COLS = [
   { k: "batch", h: "Upload Batch", t: "text", w: 112 },
 ];
 const PER = 20;
+const MIN_COL_W = 100; // label + filter icon stay visible
 const VIEW_KEY = "fbo_view_v2";
 const NOTES_KEY = "feedbackRatingMaster.notes.v2";
 const NOTE_DRAFT_KEY = "feedbackRatingMaster.noteDraft";
@@ -307,9 +311,25 @@ export function FeedbackRatingMasterPage({
   const [risk, setRisk] = useState("");
   const [page, setPage] = useState(1);
   // Always open in Employee ID order (EMP001, EMP002 ...); click a header to re-sort.
-  const [sort, setSort] = useState("emp");
-  const [dir, setDir] = useState(1);
-  const [cf, setCf] = useState(saved.cf || {});
+  // Up to 3 sort levels, set from each header's filter menu.
+  const [sorts, setSorts] = useState(
+    Array.isArray(saved.sorts) && saved.sorts.length ? saved.sorts : [{ key: "emp", dir: "asc" }],
+  );
+  const addSort = (key, d) => {
+    setSorts((cur) => [...cur.filter((x) => x.key !== key), { key, dir: d }].slice(-3));
+    setPage(1);
+  };
+  // Column filters (same model as the Appraisal Sheet / Employee Master).
+  const [cf, setCf] = useState(saved.cf2 || {});
+  const setColFilter = (key, value) => {
+    setCf((cur) => {
+      const next = { ...cur };
+      if (!value || isEmptyFilter(value)) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setPage(1);
+  };
   const [wrap, setWrap] = useState(saved.wrap || {});
   const [width, setWidth] = useState(saved.width || {});
   const [hidden, setHidden] = useState(saved.hidden || {});
@@ -334,14 +354,13 @@ export function FeedbackRatingMasterPage({
   });
   const [pt, setPt] = useState("view");
   const [pp, setPp] = useState("cols");
-  const [colMenu, setColMenu] = useState(null); // { k, left, top }
   const [toast, setToast] = useState("");
   const dragRef = useRef(false);
 
   // Persist "My view".
   useEffect(() => {
-    lsSet(VIEW_KEY, JSON.stringify({ sort, dir, cf, wrap, width, hidden, dens }));
-  }, [sort, dir, cf, wrap, width, hidden, dens]);
+    lsSet(VIEW_KEY, JSON.stringify({ sorts, cf2: cf, wrap, width, hidden, dens }));
+  }, [sorts, cf, wrap, width, hidden, dens]);
   useEffect(() => {
     lsSet(NOTES_KEY, JSON.stringify(notes));
   }, [notes]);
@@ -423,7 +442,7 @@ export function FeedbackRatingMasterPage({
     return String(v);
   };
   const colOf = (k) => COLS.find((c) => c.k === k);
-  const colWidth = (c) => width[c.k] || c.w;
+  const colWidth = (c) => Math.max(MIN_COL_W, width[c.k] || c.w);
   const cols = COLS.filter((c) => c.fz || !hidden[c.k]);
 
   // Effective dates are compared as yyyy-mm-dd, whatever the backend sends.
@@ -454,59 +473,41 @@ export function FeedbackRatingMasterPage({
     if (s && [r.id, r.name, r.desig, r.client, r.cm, r.mf, r.cf].join(" ").toLowerCase().indexOf(s) < 0) return false;
     return true;
   };
-  const condPass = (r, c, cd) => {
-    const v = rawOf(r, c.k);
-    const x = cd.val;
-    if (x === "" || x == null) return true;
-    if (c.t === "num") {
-      const n = Number(String(x).replace(/,/g, ""));
-      if (isNaN(n)) return true;
-      switch (cd.op) {
-        case "=": return v === n;
-        case "≠": return v !== n;
-        case ">": return v > n;
-        case "≥": return v >= n;
-        case "<": return v < n;
-        case "≤": return v <= n;
-        default: return true;
-      }
-    }
-    const s = String(c.t === "date" ? dispOf(r, c) : v).toLowerCase();
-    const y = String(x).toLowerCase();
-    switch (cd.op) {
-      case "equals": return s === y;
-      case "starts with": return s.indexOf(y) === 0;
-      case "does not contain": return s.indexOf(y) < 0;
-      default: return s.indexOf(y) >= 0;
-    }
-  };
   const colPass = (r, except) => {
     for (const k in cf) {
       if (k === except) continue;
-      const f = cf[k];
       const c = colOf(k);
       if (!c) continue;
-      if (f.vals && !f.vals[dispOf(r, c)]) return false;
-      if (f.cond && !condPass(r, c, f.cond)) return false;
+      const v = c.t === "num" ? rawOf(r, k) : dispOf(r, c);
+      if (!matchesValue(v, cf[k])) return false;
     }
     return true;
+  };
+  // Value checklist for each column's filter popup (respects the other filters).
+  const optionsFor = (k) => {
+    const c = colOf(k);
+    const base = scope.filter((r) => tbPass(r) && colPass(r, k));
+    return Array.from(new Set(base.map((r) => String(dispOf(r, c)))));
   };
 
   const filtered = useMemo(() => {
     const f = scope.filter((r) => tbPass(r) && colPass(r, ""));
-    const c = colOf(sort) || COLS[0];
     f.sort((a, b) => {
-      const x = rawOf(a, sort);
-      const y = rawOf(b, sort);
-      let result;
-      if (c.t === "num") result = (x - y) * dir;
-      else result = String(x).localeCompare(String(y), undefined, { numeric: true }) * dir;
+      for (const { key, dir: d } of sorts) {
+        const c = colOf(key);
+        if (!c) continue;
+        const x = rawOf(a, key);
+        const y = rawOf(b, key);
+        const m = d === "asc" ? 1 : -1;
+        const diff =
+          c.t === "num" ? (x - y) * m : String(x).localeCompare(String(y), undefined, { numeric: true }) * m;
+        if (diff) return diff;
+      }
       // same value -> keep employees in ID order
-      return result || String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
     });
     return f;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, q, te, ccm, risk, cf, sort, dir, CYCLES]);
+  }, [scope, q, te, ccm, risk, cf, sorts, CYCLES]);
 
   const filterCount = Object.keys(cf).length + (te ? 1 : 0) + (ccm ? 1 : 0) + (risk ? 1 : 0) + (q ? 1 : 0);
   const avg = (a, k) => (a.length ? a.reduce((s, r) => s + r[k], 0) / a.length : 0);
@@ -534,21 +535,14 @@ export function FeedbackRatingMasterPage({
     setCcm("");
     setPage(1);
   };
-  const openColMenu = (e, k) => {
-    e.stopPropagation();
-    const rc = e.currentTarget.getBoundingClientRect();
-    setColMenu({
-      k,
-      left: Math.max(8, Math.min(window.innerWidth - 262, rc.left - 200)),
-      top: Math.min(rc.bottom + 4, Math.max(8, window.innerHeight - 420)),
-    });
-  };
   const startResize = (e, c) => {
     e.preventDefault();
     e.stopPropagation();
     const x0 = e.clientX;
-    const w0 = colWidth(c);
-    const mv = (ev) => setWidth((p) => ({ ...p, [c.k]: Math.max(60, w0 + ev.clientX - x0) }));
+    // Start from the width actually drawn (the last column stretches to fill the table).
+    const th = e.currentTarget.closest("th");
+    const w0 = th ? Math.round(th.getBoundingClientRect().width) : colWidth(c);
+    const mv = (ev) => setWidth((p) => ({ ...p, [c.k]: Math.max(MIN_COL_W, w0 + ev.clientX - x0) }));
     const up = () => {
       document.removeEventListener("mousemove", mv);
       document.removeEventListener("mouseup", up);
@@ -609,7 +603,6 @@ export function FeedbackRatingMasterPage({
   };
 
   /* ---------- render ---------- */
-  const cmCol = colMenu ? colOf(colMenu.k) : null;
   const effLabel = eff ? fmtDate(eff) : "all dates";
   const batchesForCycle = cid === "all"
     ? BATCHES
@@ -795,10 +788,10 @@ export function FeedbackRatingMasterPage({
           ) : (
             <>
               <div className="twx">
-                <table className={"fx" + (dens === "compact" ? " cmp" : "")} style={{ width: tableW }}>
+                <table className={"fx" + (dens === "compact" ? " cmp" : "")} style={{ tableLayout: "fixed", width: "100%", minWidth: tableW }}>
                   <colgroup>
-                    {cols.map((c) => (
-                      <col key={c.k} style={{ width: colWidth(c) }} />
+                    {cols.map((c, i) => (
+                      <col key={c.k} style={i === cols.length - 1 ? undefined : { width: colWidth(c) }} />
                     ))}
                   </colgroup>
                   <thead>
@@ -806,24 +799,27 @@ export function FeedbackRatingMasterPage({
                       {cols.map((c) => (
                         <th key={c.k} className={(c.fz ? "fz " : "") + (c.t === "num" ? "n" : "")}>
                           <div className="thc">
-                            <span
-                              className="tl"
-                              onClick={() => {
-                                if (sort === c.k) setDir(-dir);
-                                else {
-                                  setSort(c.k);
-                                  setDir(1);
-                                }
-                                setPage(1);
-                              }}
-                            >
+                            <span className="tl" title={c.h}>
                               {cf[c.k] ? <i className="fdot" /> : null}
                               {c.h}
-                              {sort === c.k ? (dir > 0 ? " ▲" : " ▼") : ""}
                             </span>
-                            <button className="cbtn" type="button" aria-label={"Filter " + c.h} onClick={(e) => openColMenu(e, c.k)}>
-                              ▾
-                            </button>
+                            <ColumnFilter
+                              boxed
+                              alwaysBelow
+                              scrollToHeader
+                              allowGroup={false}
+                              columnKey={`fb:${c.k}`}
+                              label={c.h}
+                              kind={c.t === "num" ? "number" : "text"}
+                              filter={cf[c.k]}
+                              options={optionsFor(c.k)}
+                              allValues={c.t === "num" ? scope.filter((r) => tbPass(r) && colPass(r, c.k)).map((r) => rawOf(r, c.k)) : []}
+                              onChange={(filter) => setColFilter(c.k, filter)}
+                              sortDirection={sorts.find((x) => x.key === c.k)?.dir || null}
+                              sortLevel={sorts.findIndex((x) => x.key === c.k) + 1}
+                              onSortAsc={() => addSort(c.k, "asc")}
+                              onSortDesc={() => addSort(c.k, "desc")}
+                            />
                           </div>
                           <i className="rz" onMouseDown={(e) => startResize(e, c)} />
                         </th>
@@ -1024,49 +1020,6 @@ export function FeedbackRatingMasterPage({
         </button>
       )}
 
-      {colMenu && cmCol && (
-        <ColumnMenu
-          key={colMenu.k}
-          col={cmCol}
-          baseRows={scope.filter((r) => tbPass(r) && colPass(r, colMenu.k))}
-          filter={cf[colMenu.k]}
-          wrapOn={!!wrap[colMenu.k]}
-          pos={colMenu}
-          rawOf={rawOf}
-          dispOf={dispOf}
-          onSort={(d) => {
-            setSort(colMenu.k);
-            setDir(d);
-            setPage(1);
-            setColMenu(null);
-          }}
-          onWrap={(on) =>
-            setWrap((p) => {
-              const n = { ...p };
-              if (on) n[colMenu.k] = 1;
-              else delete n[colMenu.k];
-              return n;
-            })
-          }
-          onApply={(vals, cond) => {
-            const k = colMenu.k;
-            setCf((p) => {
-              const n = { ...p };
-              const f = {};
-              if (vals) f.vals = vals;
-              if (cond) f.cond = cond;
-              if (f.vals || f.cond) n[k] = f;
-              else delete n[k];
-              return n;
-            });
-            setPage(1);
-            setColMenu(null);
-            if (vals && !Object.keys(vals).length) showToast("Nothing ticked — no rows will show");
-          }}
-          onClose={() => setColMenu(null)}
-        />
-      )}
-
       <div className={"toast" + (toast ? " on" : "")}>{toast}</div>
     </div>
   );
@@ -1135,6 +1088,7 @@ const FB_CSS = `
 .fb-root table.fx td.wr{white-space:normal}
 .fb-root table.fx.cmp td{padding:3px 10px}.fb-root table.fx.cmp th{padding-top:4px;padding-bottom:4px}
 .fb-root .thc{display:flex;align-items:flex-end;gap:4px}
+.fb-root .thc>*:not(.tl){flex-shrink:0}
 .fb-root .thc .tl{flex:1;min-width:0;white-space:normal;line-height:1.25;cursor:pointer}
 .fb-root .cbtn{flex:none;border:1px solid transparent;background:none;border-radius:4px;color:var(--navy);font-size:11px;line-height:1;padding:3px 4px;cursor:pointer}
 .fb-root .cbtn:hover{background:#fff;border-color:var(--th-line)}

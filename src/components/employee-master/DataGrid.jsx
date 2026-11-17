@@ -300,6 +300,9 @@ export function DataGrid({
     event.preventDefault();
     event.stopPropagation();
     const x0 = event.clientX;
+    // The last column stretches to fill the table, so start from the width actually drawn.
+    const th = event.currentTarget.closest("th");
+    if (th) w0 = Math.round(th.getBoundingClientRect().width);
     const move = (e) => grid.patchCol(key, { w: Math.max(min, w0 + e.clientX - x0) });
     const up = () => {
       document.removeEventListener("mousemove", move);
@@ -316,11 +319,11 @@ export function DataGrid({
       <div className="emx-wrap">
         <table
           className={"emx-table" + (grid.dens === "compact" ? " cmp" : "")}
-          style={fillWidth ? { width: "100%", minWidth: totalW } : { width: totalW }}
+          style={{ tableLayout: "fixed", width: "100%", minWidth: totalW }}
         >
           <colgroup>
             {visible.map(({ d, c }, i) => (
-              <col key={d.key} style={{ width: widthOf(c, i) }} />
+              <col key={d.key} style={i === visible.length - 1 ? undefined : { width: widthOf(c, i) }} />
             ))}
             {actionHeader && <col style={{ width: ACTION_W }} />}
           </colgroup>
