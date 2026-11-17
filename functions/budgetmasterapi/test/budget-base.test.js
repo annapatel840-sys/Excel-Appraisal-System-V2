@@ -156,10 +156,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 27000 + 905000, 'Org Budget Base must match the enriched previous CTC values shown for generated sheet employees');
+    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000, 'Org Budget Base must match the same archived payroll CTC resolved for generated sheet employees');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
-    assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 27000);
+    assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
     assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
     assert.strictEqual(existing.pb_to_be_paid, 72500, 'PB to be paid comes from the last closed Payroll_Data row');
     assert.strictEqual(existing.rb_to_be_paid, 31250, 'RB to be paid comes from the last closed Payroll_Data row');
@@ -167,7 +167,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(fresh.rb_to_be_paid, 8250, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
-    const orgBase = 27000 + 905000;
+    const orgBase = 2500000 + 905000;
     const orgOriginal = orgBase * 0.08;
     assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
     const techRow = r.json.techEd[0];
