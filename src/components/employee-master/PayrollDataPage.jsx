@@ -3,7 +3,6 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
-import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { FilterStatus, filterTableCss, useTableFilters } from "./FilterableTable";
 
@@ -117,7 +116,6 @@ function defaultPayrollColumnWidth(column) {
 const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
-  const [selectedLocation] = useSelectedLocation();
   const canAudit = useAccess().canAction("viewAudit");
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
@@ -260,7 +258,10 @@ export function PayrollDataPage() {
   // Location / search / batch first, in the default order. The column filters and
   // sorts (the Appraisal Sheet's header filter) then work on top of that.
   const baseRows = useMemo(() => {
-    const list = filterByLocation(stored, selectedLocation, (row) => row.location).filter((r) => {
+    // Payroll Master is a historical table view: show every Payroll_Data row
+    // across all years/cycles. Location can be used later as an explicit filter,
+    // but must not hide historical rows by default.
+    const list = stored.filter((r) => {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
@@ -273,7 +274,7 @@ export function PayrollDataPage() {
       if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
       return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
     });
-  }, [stored, selectedLocation, search, batchFilter, cycleOrder]);
+  }, [stored, search, batchFilter, cycleOrder]);
 
   const filterColumns = useMemo(
     () =>
@@ -299,7 +300,7 @@ export function PayrollDataPage() {
   // A new search / filter / sort starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [selectedLocation, search, batchFilter, tf.filters, tf.sorts]);
+  }, [search, batchFilter, tf.filters, tf.sorts]);
 
   useEffect(() => {
     if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
