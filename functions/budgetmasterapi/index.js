@@ -3587,7 +3587,7 @@ async function calculateBudgetBases(
       // The immutable baseline must use the raw generated Appraisal_Sheet
       // count. stats.count belongs to the enriched budget roster and can be
       // zero for newly added employees whose lookup aliases are not enriched.
-      const rosterCount = Number(stats.current) || 0;
+      const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline is immutable; later delegation/eligibility
@@ -3765,7 +3765,7 @@ async function calculateBudgetBases(
         : (originalBase * pct) / 100;
       const updatedBudget = (stats.base * pct) / 100;
       const savedOriginalCountValue = row.original_headcount;
-      const rosterCount = Number(stats.current) || 0;
+      const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline remains immutable after delegation.
@@ -3838,7 +3838,7 @@ async function calculateBudgetBases(
         applied_budget: updatedBudget,
         // Return live Current Count to the response only; do not persist it
         // over the legacy Original Count snapshot.
-        current_headcount: compRosterCounts.get(pairKey) || 0,
+        current_headcount: Number(stats.current) || 0,
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: compOriginalCountStored ? savedOriginalCount : "",
@@ -3948,13 +3948,13 @@ async function calculateBudgetBases(
       savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "" &&
       (n(savedOrgOriginalCountValue) > 0 ||
-        eligibleEmployees.length === 0);
+        currentAppraisalRows.length === 0);
     // Org Original Count is a snapshot too. Never rewrite it on GET based on
     // current eligibility or assignment data; those belong in Current Count.
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet
       ? n(savedOrgOriginalCountValue)
-      : eligibleEmployees.length;
+      : currentAppraisalRows.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
