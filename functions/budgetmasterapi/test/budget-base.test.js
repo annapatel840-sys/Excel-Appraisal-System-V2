@@ -78,11 +78,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 (async () => {
   await t('formatted amounts (commas, ₹, lakh) give the right org and Tech-ED base', async () => {
     const store = makeStore({
-      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
-      Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [], Eligibility_List: [
-        { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
-        { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
-        { appraisal_cycle_id: 'Apr-26', emp_id: 'E3', eligibility_status: 'Eligible' },
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [], Eligibility_List: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
         sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '12,00,000', '1,00,000', 1300000),
@@ -90,6 +89,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         sheet('E3', 'EMP0057 - Prabhu', 'Raj', '15 L', '1.5 L', 1650000),
       ],
     });
+    const activeCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = activeCycleId;
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const master = r.json.master[0];
