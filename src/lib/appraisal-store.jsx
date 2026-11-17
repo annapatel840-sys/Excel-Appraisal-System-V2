@@ -3602,6 +3602,9 @@ export function AppraisalProvider({ children }) {
     const requestId = ++loadSeqRef.current;
 
     try {
+      // Keep the synchronous ref aligned with the request lifecycle so an
+      // edit is blocked only while the fresh roster request is truly running.
+      loadingRef.current = true;
       setLoading(true);
       setError("");
 
@@ -3630,6 +3633,7 @@ export function AppraisalProvider({ children }) {
         `${rosterCacheScope}::${String(selectedLocation || "All").trim().toLowerCase()}`,
         viewAs,
       );
+      showingSavedRef.current = false;
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
@@ -3681,6 +3685,7 @@ export function AppraisalProvider({ children }) {
       setError(err?.message || "Failed to load employees from Catalyst.");
     } finally {
       if (requestId === loadSeqRef.current) {
+        loadingRef.current = false;
         setLoading(false);
       }
     }
@@ -3719,6 +3724,7 @@ export function AppraisalProvider({ children }) {
         active: Number(snapshot.counts?.active || 0),
         inactive: Number(snapshot.counts?.inactive || 0),
       });
+      showingSavedRef.current = true;
       setShowingSaved(true);
     });
     return () => {
