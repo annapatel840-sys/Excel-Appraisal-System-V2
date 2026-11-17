@@ -651,19 +651,6 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
 
   return (
     <div className="hrd">
-      <div className="hrd-ph">
-        <div>
-          <h2>HR Dashboard</h2>
-          <p>
-            {locLabel} · {cycleName || (noCycle ? "No cycle for this location" : "…")}
-            {activeCycle && ` · ${STEPS[step] || cycleStatusOf(activeCycle) || ""}`}
-          </p>
-        </div>
-        <div className="hrd-dl">
-          <div><small>OPEN ACTIONS</small><b>{loading && !total ? "…" : total}</b></div>
-        </div>
-      </div>
-
       {noCycle && (
         <div className="hrd-warn">
           {locLabel} has no appraisal cycle yet, so there is nothing to track. Create or activate one in Appraisal Cycle Master.
@@ -712,11 +699,6 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       <div className="hrd-cols">
         <div className="hrd-stack">
           <section className="hrd-card">
-            <div className="hrd-ch">
-              <h3>Needs attention</h3>
-              <span className="hrd-cnt">{total}</span>
-              <span className="hrd-nt">{locLabel} · found across Requests, Eligibility, Delegation, Budget and Letters</span>
-            </div>
             <div className="hrd-ag">
               <span className={`hrd-dot${failed.length ? " w" : ""}`} />
               <div className="hrd-agt">
