@@ -890,11 +890,35 @@ async function requireIdentity(req) {
   const userApp = catalyst.initialize(req);
   const user = await userApp.userManagement().getCurrentUser();
   if (!user || !user.user_id) return null;
+  const email = String(user.email_id || user.email || "").trim().toLowerCase();
+  let employeeLocation = "";
+  if (email) {
+    try {
+      const masterTable = userApp.datastore().table(TABLES.employeeMaster);
+      const masterRows = await getAllRows(masterTable);
+      const matches = masterRows.filter((row) =>
+        String(row.email_id || row.email || "").trim().toLowerCase() === email
+      );
+      const selected = matches.find((row) =>
+        String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
+      ) || matches[0];
+      const rawLocation = selected && (
+        selected.location || selected.work_location || selected.location_name ||
+        selected.office_location || selected.base_location
+      );
+      employeeLocation = rawLocation && typeof rawLocation === "object"
+        ? String(rawLocation.location_name || rawLocation.name || rawLocation.location_code || rawLocation.code || "")
+        : String(rawLocation || "");
+    } catch (error) {
+      console.warn("[payrollcycleapi] session Employee_Master location lookup failed:", error?.message || error);
+    }
+  }
   return {
     id: String(user.user_id),
     name: displayName(user),
     email: user.email_id || "",
     role: user.role_details?.role_name || user.role_name || "",
+    location: employeeLocation,
     user,
   };
 }
@@ -2376,8 +2400,15 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   }
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    if (masterId && (cycleKeys.has(rawCycle.toLowerCase()) || (reuseExistingCycleData && sourceCycleKeys.has(rawCycle.toLowerCase())))) {
+    if (masterId && (
+      cycleKeys.has(rawCycle.toLowerCase()) ||
+      (reuseExistingCycleData && sourceCycleKeys.has(rawCycle.toLowerCase()))
+    )) {
       payrollByMasterId.set(masterId, row);
+      const master = employeeMasterByRowId.get(masterId.toLowerCase()) ||
+        employeeMasterByBusinessId.get(masterId.toLowerCase());
+      const actualMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id);
+      if (actualMasterId) payrollByMasterId.set(actualMasterId, row);
     }
   });
   // Current Annual Base Pay comes from the matching shared source's NEW base
@@ -3867,7 +3898,10 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
   }
   if (resource === "session") {
-    return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
+    return sendJson(res, 200, { success: true, data: {
+      id: identity.id, name: identity.name, email: identity.email,
+      role: identity.role, location: identity.location || "",
+    } });
   }
   const techEdUser = !enforced && isTechEd(identity.user);
 
