@@ -3607,6 +3607,7 @@ export function AppraisalProvider({ children }) {
       loadingRef.current = true;
       setLoading(true);
       setError("");
+      setSaveError("");
 
       // The cycle list, the roster and Feedback are independent requests, so
       // they run together. No Active cycle means the working Appraisal Sheet
@@ -3687,6 +3688,7 @@ export function AppraisalProvider({ children }) {
       if (requestId === loadSeqRef.current) {
         loadingRef.current = false;
         setLoading(false);
+        setSaveError("");
       }
     }
   // }, [isHRUser, updateRows]);
