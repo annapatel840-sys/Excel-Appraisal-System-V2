@@ -4917,6 +4917,29 @@ async function updateEmployee(req, res) {
     requestedRowReferences.length === 0 ||
     requestedRowReferences.some((reference) => cycleAliases.has(reference))
   );
+
+  // When the grid supplies a ROWID, never silently fall back to another row
+  // for the same employee. A stale/mismatched ID must fail safely so an edit
+  // cannot be written to a different cycle's Appraisal_Sheet record.
+  if (requestedAppraisalRowId && !requestedRow) {
+    return sendJson(res, 404, {
+      success: false,
+      message: "Appraisal Sheet row " + requestedAppraisalRowId +
+        " for " + empId + " was not found. Reload the Appraisal Sheet and try again.",
+    });
+  }
+  if (
+    requestedAppraisalRowId &&
+    requestedRowReferences.length > 0 &&
+    !requestedRowMatchesCycle
+  ) {
+    return sendJson(res, 409, {
+      success: false,
+      message: "Appraisal Sheet row " + requestedAppraisalRowId +
+        " does not belong to the Active appraisal cycle. Reload the Appraisal Sheet and try again.",
+    });
+  }
+
   const exactCycleRows = employeeSheetRows.filter(function (row) {
     return rowCycleReferences(row).some(function (reference) {
       return cycleAliases.has(reference);
@@ -4938,7 +4961,9 @@ async function updateEmployee(req, res) {
     }).slice(-1)[0] || null;
   };
   // Prefer the exact row ID returned to the grid, while validating employee and cycle.
-  let appraisalRow = requestedRowMatchesCycle ? requestedRow : latestRow(exactCycleRows);
+  let appraisalRow = requestedAppraisalRowId
+    ? requestedRow
+    : latestRow(exactCycleRows);
 
   // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
   // employee has rows for several cycles, do not reject the current row just
