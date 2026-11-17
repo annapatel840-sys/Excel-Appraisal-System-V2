@@ -118,11 +118,18 @@ async function setup() {
     });
     const r = await post('cycles/status/' + c.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(elig.rows.length, 0, 'activation must not seed the list before criteria');
+    assert.strictEqual(
+      elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
+      0,
+      'activation must not seed the new cycle before criteria',
+    );
+    assert.strictEqual(elig.rows.length, 2, 'rows belonging to the old cycle must remain untouched');
     const ap = await apply(post, c.id);
     assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.appraisal_cycle_id === c.id));
+    const newCycleRows = elig.rows.filter((row) => row.appraisal_cycle_id === c.id);
+    assert.strictEqual(newCycleRows.length, 2);
+    assert.ok(newCycleRows.every((row) => row.appraisal_cycle_id === c.id));
+    assert.strictEqual(elig.rows.length, 4, 'Apply Criteria must not delete the old cycle rows');
   });
 
   await t('first Eligibility List load stays empty until Apply Criteria', async () => {
