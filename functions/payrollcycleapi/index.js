@@ -1016,7 +1016,10 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   // the unscoped source cycle or another location's rows, and never overwrite
   // an existing/manual Eligibility_List decision.
   let restoredFromSheet = 0;
-  if (tables.appraisalSheet && (!cycleRows.length || unqualifiedSeedRows.length)) {
+  // Appraisal Sheet rows are evidence of a generated roster, but they must
+  // never initialize Eligibility_List before HR explicitly applies criteria.
+  // Recovery is safe only after this cycle has a persisted Apply Criteria marker.
+  if (criteriaAlreadyApplied && tables.appraisalSheet && (!cycleRows.length || unqualifiedSeedRows.length)) {
     const sheetRows = await getAllRows(tables.appraisalSheet);
     const exactCycleRows = sheetRows.filter((sheet) => {
       const reference = String(
