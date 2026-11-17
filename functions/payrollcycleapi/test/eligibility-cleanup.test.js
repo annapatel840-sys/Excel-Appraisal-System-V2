@@ -109,6 +109,13 @@ async function setup() {
     const { post, mk, elig } = await setup();
     await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '1', emp_id: 'E1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '2', emp_id: 'E2' }]);
     const c = await mk('Annual NEW');
+    // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
+    // until HR explicitly applies criteria for this cycle.
+    await store.table('74008000000039094', null).insertRow({
+      emp_id: 'E1',
+      cycle_id: c.id,
+      eligible_status: 'Eligible',
+    });
     const r = await post('cycles/status/' + c.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.strictEqual(elig.rows.length, 0, 'activation must not seed the list before criteria');
