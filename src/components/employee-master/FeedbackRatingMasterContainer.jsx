@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { loadFeedbackRating } from "@/lib/feedback-rating-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
-import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
+import { filterByLocation, isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { FeedbackRatingMasterPage } from "./FeedbackRatingMasterPage";
 
 // Loads the data from feedbackratingapi and hands it to the (UI-only) page.
@@ -55,7 +55,11 @@ export function FeedbackRatingMasterContainer() {
     };
   }, [feedbackSnapshotKey]);
 
-  const locationCycles = filterByLocation(state.cycles, selectedLocation, (cycle) => cycle.location);
+  const locationCycles = state.cycles.filter((cycle) =>
+    isAllLocations(selectedLocation)
+      ? true
+      : isAllLocations(cycle.location) || filterByLocation([cycle], selectedLocation, (item) => item.location).length > 0
+  );
   // Show the full archived history as well as the active cycle. Older uploads
   // often have no location on their cycle row, so employee location (resolved
   // from Employee_Master by the API) is the authoritative row-level filter.
