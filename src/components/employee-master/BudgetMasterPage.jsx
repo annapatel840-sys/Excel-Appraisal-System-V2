@@ -3759,7 +3759,13 @@ function HRApplyBudget() {
       const displayName =
         String(item?.name || "").trim() ||
         ownerName(label || id || rowId, employeeRows);
-      ownerValues.set(key, displayName || label || id || rowId);
+      const displayLabel =
+        label.includes(" - ")
+          ? label
+          : id && displayName
+            ? id + " - " + displayName
+            : label || id || displayName || rowId;
+      ownerValues.set(key, displayLabel);
       [id, label, rowId, item?.name, displayName]
         .filter(Boolean)
         .forEach((alias) => {

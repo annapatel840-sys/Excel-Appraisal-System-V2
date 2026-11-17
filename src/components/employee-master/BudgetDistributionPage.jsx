@@ -7,6 +7,7 @@ import { useAppraisal, useAppraisalRefresh } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
+import { matchesCycleLocation } from "@/lib/location-store";
 import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
  
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
@@ -294,6 +295,9 @@ export function BudgetDistributionPage() {
     locationEmployeeRows = [],
     techEdOwners = [],
     budgetMasterRows = [],
+    budgetCompManagerRows = [],
+    selectedLocation = "All",
+    activeBudgetCycleId = "",
     totals,
     loading,
     error,
@@ -356,13 +360,22 @@ export function BudgetDistributionPage() {
       payrollCycleRequest("cycles").then((cycles) => {
         if (!mounted) return;
         const all = Array.isArray(cycles) ? cycles : [];
-        const active = all.find((cycle) => {
+        const activeCycles = all.filter((cycle) => {
           const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
           const archived = [true, 1, "true", "1", "yes"].includes(
             typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
           );
-          return status === "active" && !archived && !cycle.hidden;
+          const hidden = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+          );
+          return status === "active" && !archived && !hidden;
         });
+        const active =
+          activeCycles.find((cycle) =>
+            String(cycle.id || cycle.appraisal_cycle_id || cycle.cycle_id || cycle.ROWID || "") === String(activeBudgetCycleId || ""),
+          ) ||
+          activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation)) ||
+          null;
         const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
         setActiveCycleId(activeId);
         setCycleLabel(active
@@ -390,7 +403,7 @@ export function BudgetDistributionPage() {
   // Cycle refresh is event-driven; budget row changes must not clear the active
   // cycle label or trigger redundant cycle requests.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedLocation, activeBudgetCycleId]);
   // Resolving a Tech-ED id means searching every Tech-ED and every employee, and the
   // live counts below resolve one value per appraisal row (~3,000). Remember each
   // answer until the Tech-ED or employee lists change, so a value is looked up once.
@@ -761,6 +774,44 @@ export function BudgetDistributionPage() {
                                   <div className="detail-item"><div className="label">Remaining</div><b>{money(row.budget_remaining)}</b></div>
                                   <div className="detail-item"><div className="label">Last updated</div><b>{dateText(lastUpdatedFor(row))}</b></div>
                                 </div>
+                                {(() => {
+                                  const managerRows = (budgetCompManagerRows || []).filter((item) =>
+                                    String(item.budget_distribution_id || "") === String(row.id || "") &&
+                                    String(item.appraisal_cycle_id || activeCycleId) === String(activeCycleId)
+                                  );
+                                  const managerLabel = (raw) => {
+                                    const text = String(raw || "").trim();
+                                    const parts = text.split(/\s+-\s+/);
+                                    const id = parts.length > 1 ? parts[0] : text;
+                                    const linked = (employeeRows || []).find((employee) =>
+                                      [employee.emp_id, employee.employee_id, employee.row_id, employee.ROWID]
+                                        .filter(Boolean).some((value) => normalize(value) === normalize(id))
+                                    );
+                                    if (parts.length > 1) return text;
+                                    const name = String(linked?.name || linked?.emp_name || "").trim();
+                                    return name && id ? id + " - " + name : text;
+                                  };
+                                  return (
+                                    <div className="manager-allocation">
+                                      <div className="label" style={{ marginTop: 12, marginBottom: 6 }}>Comp Manager allocations ({managerRows.length})</div>
+                                      {managerRows.length ? (
+                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                          <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilised</th></tr></thead>
+                                          <tbody>{managerRows.map((manager) => (
+                                            <tr key={manager.id || manager.comp_manager}>
+                                              <td>{managerLabel(manager.comp_manager)}</td>
+                                              <td align="right">{pct(manager.percentage)}</td>
+                                              <td align="right">{money(manager.budget_base)}</td>
+                                              <td align="right">{money(manager.calculated_budget)}</td>
+                                              <td align="right">{money(manager.applied_budget)}</td>
+                                              <td align="right">{money(manager.total_utilization)}</td>
+                                            </tr>
+                                          ))}</tbody>
+                                        </table>
+                                      ) : <div className="muted-small">No Comp Manager allocations saved under this Tech-ED for this cycle.</div>}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>

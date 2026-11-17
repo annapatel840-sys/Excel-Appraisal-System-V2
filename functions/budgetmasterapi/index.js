@@ -966,25 +966,25 @@ async function readTechEdOwners(app, sourceRows) {
   const appraisalRows = sourceRows
     ? sourceRows.appraisalRows
     : await getAllRows(app, "Appraisal_Sheet");
-  const employeeByRowId = new Map(
-    employeeRows.map((employee) => [
-      idOf(employee),
-      {
-        row_id: idOf(employee),
-        employee_id: String(
-          readField(employee, ["emp_id", "employee_id"]) || "",
-        ).trim(),
-        name: String(
-          readField(employee, ["emp_name", "employee_name", "name"]) || "",
-        ).trim(),
-        email: String(
-          readField(employee, ["email_id", "email", "work_email"]) || "",
-        )
-          .trim()
-          .toLowerCase(),
-      },
-    ]),
-  );
+  const ownerDirectory = employeeRows.map((employee) => ({
+    row_id: idOf(employee),
+    employee_id: String(
+      readField(employee, ["emp_id", "employee_id"]) || "",
+    ).trim(),
+    name: String(
+      readField(employee, ["emp_name", "employee_name", "name"]) || "",
+    ).trim(),
+    email: String(
+      readField(employee, ["email_id", "email", "work_email"]) || "",
+    ).trim().toLowerCase(),
+  }));
+  const employeeByRowId = new Map(ownerDirectory.map((employee) => [employee.row_id, employee]));
+  const employeeById = new Map(ownerDirectory
+    .filter((employee) => employee.employee_id)
+    .map((employee) => [employee.employee_id.toLowerCase(), employee]));
+  const employeeByName = new Map(ownerDirectory
+    .filter((employee) => employee.name)
+    .map((employee) => [employee.name.toLowerCase(), employee]));
   const owners = new Map();
   // The rows are already complete and paged by getAllRows().
   appraisalRows.forEach((row) => {
@@ -1005,12 +1005,21 @@ async function readTechEdOwners(app, sourceRows) {
     ).trim();
     if (!rawAssignment) return;
 
-    const employee = employeeByRowId.get(rawAssignment);
+    const assignmentParts = rawAssignment.split(/\s+-\s+/);
+    const employee =
+      employeeByRowId.get(rawAssignment) ||
+      employeeById.get(assignmentParts[0].trim().toLowerCase()) ||
+      employeeByName.get(rawAssignment.toLowerCase()) ||
+      employeeByName.get((assignmentParts.length > 1
+        ? assignmentParts.slice(1).join(" - ")
+        : rawAssignment).toLowerCase());
     const assignment = employee
       ? employee.employee_id && employee.name
         ? employee.employee_id + " - " + employee.name
         : employee.employee_id || employee.name || rawAssignment
-      : rawAssignment;
+      : assignmentParts.length > 1
+        ? assignmentParts[0] + " - " + assignmentParts.slice(1).join(" - ")
+        : rawAssignment;
     const key = employee
       ? (employee.employee_id || employee.row_id).toLowerCase()
       : rawAssignment.toLowerCase();
@@ -1107,13 +1116,17 @@ async function readEmployeeRoster(app) {
   const formatTechEdAssignment = (raw) => {
     const assignment = String(raw || "").trim();
     if (!assignment) return "";
-    const linked = masterByRowId.get(assignment);
-    if (!linked) return assignment;
+    const parts = assignment.split(/\s+-\s+/);
+    const linked =
+      masterByRowId.get(assignment) ||
+      masterById.get(parts[0].trim().toLowerCase()) ||
+      masterByName.get(assignment.toLowerCase()) ||
+      masterByName.get((parts.length > 1 ? parts.slice(1).join(" - ") : assignment).toLowerCase());
     const linkedId = String(
-      readField(linked, ["emp_id", "employee_id"]) || "",
+      linked ? readField(linked, ["emp_id", "employee_id"]) || "" : parts.length > 1 ? parts[0] : "",
     ).trim();
     const linkedName = String(
-      readField(linked, ["emp_name", "employee_name", "name"]) || "",
+      linked ? readField(linked, ["emp_name", "employee_name", "name"]) || "" : parts.length > 1 ? parts.slice(1).join(" - ") : "",
     ).trim();
     return linkedId && linkedName
       ? linkedId + " - " + linkedName
@@ -2217,7 +2230,11 @@ async function calculateBudgetBases(
     }
     const currentRank = cycleRank(current);
     const earlier = cycleRows
-      .filter((cycle) => isHistoricalCycle(cycle))
+      .filter((cycle) =>
+        isHistoricalCycle(cycle) &&
+        /\bannual\b/i.test(cycleNameOf(cycle)) &&
+        !/new[\s_-]*joiners?/i.test(cycleNameOf(cycle))
+      )
       .filter((cycle) =>
         cycleRank(cycle) > 0 &&
         currentRank > 0 &&
@@ -2446,45 +2463,60 @@ async function calculateBudgetBases(
     const bonusPayrollRecord =
       previousPayrollRecord || currentCyclePayrollRecord;
     const currentCtcValue = currentCtc(row);
-    // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
-    // canonical base. Use historical Payroll_Data only when that sheet field
-    // is absent, then fall back to the current CTC for new joiners/legacy rows.
     const sheetPreviousRaw = firstValue(row, [
-      // Exact generated Appraisal_Sheet column shown to HR.
       "Previous_Appraisal_total_CTC_with_rewards",
       "previous_appraisal_total_ctc_with_rewards",
       "previous_year_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
     ]);
     const sheetPreviousCtc =
-      sheetPreviousRaw === "" ||
-      sheetPreviousRaw === null ||
-      sheetPreviousRaw === undefined
+      sheetPreviousRaw === "" || sheetPreviousRaw === null || sheetPreviousRaw === undefined
         ? null
         : n(sheetPreviousRaw);
-    const storedPreviousCtc = previousRecord
-      ? previousCtc(previousRecord)
-      : null;
-    // The generated Appraisal_Sheet Previous Total CTC with Rewards value
-    // is authoritative for this cycle's Org Budget Base. Payroll history is
-    // only a fallback for legacy rows where that exact sheet field is blank.
+    // Reconstruct the grid's previous total rewards from the same payroll
+    // history source. A stored sheet value is only a legacy fallback when no
+    // usable payroll source exists; it must not override current history.
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
+    // Match employeesapi's live Appraisal Sheet resolver: a matching shared
+    // source payroll wins; otherwise same-year New Joiner payroll, then the
+    // latest earlier Archived Annual payroll. previousCycleFor() may also
+    // return an older Annual cycle, so do not automatically put that record
+    // ahead of a same-year New Joiner record.
+    const previousPayrollCtc = previousPayrollRecord
+      ? previousCtc(previousPayrollRecord)
+      : null;
+    const previousCycleLocation = String(
+      firstValue(previousCycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    const currentCanonicalName = cycleNameOf(activeCycleRow).toLowerCase().startsWith(
+      (activeCycleLocation + " - ").toLowerCase(),
+    )
+      ? cycleNameOf(activeCycleRow).slice(activeCycleLocation.length + 3).toLowerCase()
+      : cycleNameOf(activeCycleRow).toLowerCase();
+    const previousCycleIsSharedSource =
+      activeCycleIsLocationScoped &&
+      (!previousCycleLocation || ["all", "all locations", "alllocations"].includes(previousCycleLocation.toLowerCase())) &&
+      cycleYearOf(previousCycle) === cycleYearOf(activeCycleRow) &&
+      cycleNameOf(previousCycle).toLowerCase() === currentCanonicalName &&
+      isReusableSharedSourceCycle(previousCycle);
     const payrollCtcFallback =
+      (previousCycleIsSharedSource && previousPayrollCtc > 0
+        ? previousPayrollCtc
+        : null) ??
       sameYearNewJoinerPayrollRecord?.value ??
+      previousPayrollCtc ??
       (previousRecord ? previousCtc(previousRecord) : null) ??
-      (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
       currentCyclePayrollCtc ??
+      (sheetPreviousCtc !== null && sheetPreviousCtc > 0 ? sheetPreviousCtc : null) ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
-      sheetPreviousCtc !== null && Number.isFinite(Number(sheetPreviousCtc))
-        ? Number(sheetPreviousCtc)
-        : Number.isFinite(Number(payrollCtcFallback)) &&
-            Number(payrollCtcFallback) > 0
-          ? Number(payrollCtcFallback)
-          : 0;
+      Number.isFinite(Number(payrollCtcFallback)) &&
+      Number(payrollCtcFallback) > 0
+        ? Number(payrollCtcFallback)
+        : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
@@ -2862,7 +2894,7 @@ async function calculateBudgetBases(
       String(m.appraisal_cycle_id || "").trim(),
     ).length,
     baseColumns:
-      "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards from current-cycle generated rows only; no payroll or Employee_Master fallback",
+      "Eligible current-cycle Appraisal_Sheet employees only; per-employee shared source, same-year New Joiner or latest earlier Archived Annual Payroll_Data CTC",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning =
