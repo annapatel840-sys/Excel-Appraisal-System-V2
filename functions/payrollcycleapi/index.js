@@ -2237,9 +2237,11 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     return { row, rawCycle, cycle: cycleByReference.get(rawCycle.toLowerCase()) || null };
   });
 
-  // Do not generate a partial appraisal sheet. The required source uploads
-  // must belong to this exact cycle; rows from another cycle cannot satisfy
-  // the prerequisite just because they exist in the same Data Store tables.
+  // Payroll prerequisite follows the same per-employee history order as the
+  // Appraisal Sheet: this cycle/shared source first, same-year New Joiner
+  // payroll where applicable, then the latest earlier Archived Annual payroll.
+  // A location cycle must not require a duplicate upload when its source history
+  // already exists under the original Annual cycle.
   const currentCyclePayrollRows = payrollRowsWithCycle.filter(
     ({ cycle: rowCycle }) => rowCycle && (
       String(rowCycle.id) === String(cycle.id) ||
@@ -2249,7 +2251,41 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   const sourceHasPayroll = Boolean(sourceCycle && payrollRowsWithCycle.some(
     ({ cycle: rowCycle }) => rowCycle && String(rowCycle.id) === String(sourceCycle.id),
   ));
-  if (!currentCyclePayrollRows.length) {
+  const eligibleMasterKeys = new Set();
+  eligibleRows.forEach((employee) => {
+    const masterKey = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+    const businessKey = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+    if (masterKey) eligibleMasterKeys.add(masterKey);
+    if (businessKey) eligibleMasterKeys.add(businessKey);
+  });
+  const eligibleMasterByAnyKey = new Map();
+  employeeMasterRows.forEach((master) => {
+    const keys = [
+      referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase(),
+      String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
+    ].filter(Boolean);
+    if (keys.some((key) => eligibleMasterKeys.has(key))) {
+      keys.forEach((key) => eligibleMasterByAnyKey.set(key, master));
+    }
+  });
+  const isCancelledPayrollCycle = (item) =>
+    ["cancelled", "canceled"].includes(String(item?.status || "").trim().toLowerCase());
+  const isUsableHistoryCycle = (item) => {
+    if (!item || String(item.id) === String(cycle.id) || isCancelledPayrollCycle(item)) return false;
+    if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
+    if (isNewJoinerCycle(item)) {
+      return cycleYear(item) === currentYear &&
+        (isArchivedCycle(item) || String(item.status || "").trim().toLowerCase() === "active");
+    }
+    return isAnnualCycle(item) && isArchivedCycle(item) && isBeforeCurrentCycle(item);
+  };
+  const hasPayrollForEligibleEmployee = payrollRowsWithCycle.some(({ row, cycle: rowCycle }) => {
+    if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return false;
+    const rawEmployee = referenceText(row.emp_id ?? row.employee_master_id).toLowerCase();
+    const master = eligibleMasterByAnyKey.get(rawEmployee);
+    return Boolean(master) && inCycleLocation(rowCycle, master, locationRows);
+  });
+  if (!hasPayrollForEligibleEmployee) {
     if (!reuseExistingCycleData && sourceHasPayroll) {
       throw new ApiError(
         `Payroll data already exists for ${sourceCycle.name}. Confirm to reuse those existing records for ${cycle.name}; no payroll rows will be copied or inserted.`,
@@ -2260,7 +2296,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     throw new ApiError(
       sourceCycle
         ? `No payroll data was found in the shared source cycle ${sourceCycle.name} for ${cycle.name}. Check the source cycle's Payroll Data.`
-        : `Payroll data has not been uploaded for ${cycle.name}. Upload payroll data for this cycle before generating the Appraisal Sheet.`,
+        : `No payroll history was found for the eligible employees of ${cycle.name}. The system checked this cycle, its shared Annual source, same-year New Joiner payroll and earlier Archived Annual payroll. Upload the missing previous-cycle payroll through Payroll Data / Historical Import before generating the Appraisal Sheet.`,
       409,
     );
   }
