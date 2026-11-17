@@ -2221,7 +2221,11 @@ async function calculateBudgetBases(
     }
     const currentRank = cycleRank(current);
     const earlier = cycleRows
-      .filter((cycle) => isHistoricalCycle(cycle))
+      .filter((cycle) =>
+        isHistoricalCycle(cycle) &&
+        /\\bannual\\b/i.test(cycleNameOf(cycle)) &&
+        !/new[\\s_-]*joiners?/i.test(cycleNameOf(cycle))
+      )
       .filter((cycle) =>
         cycleRank(cycle) > 0 &&
         currentRank > 0 &&
