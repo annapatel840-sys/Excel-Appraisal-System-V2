@@ -2238,7 +2238,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     String(item?.status || "").trim().toLowerCase() === "closed" &&
     !item?.archived;
   const isAvailableSourceCycle = (item) =>
-    isArchivedCycle(item) || isClosedSharedSourceCycle(item);
+    !["cancelled", "canceled"].includes(String(item?.status || "").trim().toLowerCase());
   const cycleOrder = (item) => {
     const date = String(item?.effective || item?.end || item?.start || "");
     const year = Number(cycleYear(item)) || 0;
@@ -2261,10 +2261,18 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
         cycleTypeOf(item.name) === cycleTypeOf(cycle.name)
       )
     : [];
-  const sourceCycle =
-    matchingSharedSourceCycles.find((item) => isArchivedCycle(item)) ||
-    matchingSharedSourceCycles.find((item) => isClosedSharedSourceCycle(item)) ||
-    null;
+  // Payroll uploads are table history, not lifecycle-owned data. A matching
+  // unscoped Annual cycle can supply the same-year upload while Upcoming,
+  // Active, Closed, or Archived; only cancelled cycles are excluded.
+  const sourceCycle = matchingSharedSourceCycles
+    .slice()
+    .sort((a, b) => {
+      const statusRank = (item) =>
+        isArchivedCycle(item) ? 3 :
+        isClosedSharedSourceCycle(item) ? 2 :
+        String(item.status || "").toLowerCase() === "active" ? 1 : 0;
+      return statusRank(b) - statusRank(a);
+    })[0] || null;
   // Matching location cycles share the legacy source data. Keep the
   // explicit option for older callers, but do not require a separate upload
   // or confirmation for the location cycle.
@@ -2328,11 +2336,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     if (!item || isCancelledPayrollCycle(item)) return false;
     if (String(item.id) === String(cycle.id)) return true;
     if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
-    if (isNewJoinerCycle(item)) {
-      return cycleYear(item) === currentYear &&
-        (isArchivedCycle(item) || String(item.status || "").trim().toLowerCase() === "active");
-    }
-    return isAnnualCycle(item) && isArchivedCycle(item) && isBeforeCurrentCycle(item);
+    // Payroll_Data is historical source data. Do not hide valid employee
+    // payroll because its source cycle is still Upcoming, Active, or Closed.
+    if (isNewJoinerCycle(item)) return cycleYear(item) === currentYear;
+    return isAnnualCycle(item) && isBeforeCurrentCycle(item);
   };
   const hasPayrollForEligibleEmployee = payrollRowsWithCycle.some(({ row, cycle: rowCycle }) => {
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return false;
@@ -2470,7 +2477,8 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       !candidateCycle.archived;
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
-      (!isArchivedCycle(candidateCycle) && !activeNewJoiner && !matchingSharedSource)
+      (!activeNewJoiner && !matchingSharedSource &&
+        !(priorAnnual && !isCancelledPayrollCycle(candidateCycle)))
     )
       return;
     if (!matchingSharedSource && !sameYearNewJoiner && !priorAnnual) return;
