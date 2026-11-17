@@ -999,6 +999,38 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.match(r.json.diagnostics.warning, /No Budget_Master row has an appraisal cycle/);
   });
 
+  await t('Org and owner budget bases include every generated sheet row regardless of status or eligibility', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'E1', emp_name: 'Active Eligible', emp_status: 'Active', eligibility: 'Eligible' },
+        { emp_id: 'E2', emp_name: 'Inactive Not Eligible', emp_status: 'Inactive', eligibility: 'Not Eligible' },
+      ],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2027', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { ...sheet('E1', 'T1', 'C1', '100000', '0', 100000), status: 'Active', eligible_status: 'Eligible' },
+        { ...sheet('E2', 'T1', 'C1', '200000', '0', 200000), status: 'Inactive', eligible_status: 'Not Eligible' },
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 300000);
+    const tech = response.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    assert.strictEqual(tech.budget_base, 300000);
+    const comp = response.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(comp.budget_base, 300000);
+    assert.strictEqual(response.json.diagnostics.budgetBaseGeneratedEmployees, 2);
+    assert.strictEqual(response.json.diagnostics.budgetBaseRowsWithCtc, 2);
+  });
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
