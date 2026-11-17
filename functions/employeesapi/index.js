@@ -4972,9 +4972,6 @@ async function updateEmployee(req, res) {
   // Prefer the exact row ID returned to the grid, while validating employee and cycle.
   let appraisalRow = requestedAppraisalRowId
     ? requestedRow
-    : latestRow(exactCycleRows);
-  let appraisalRow = requestedRowMatchesCycle
-    ? requestedRow
     : latestRow(preferEligible(exactCycleRows));
 
   // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
