@@ -3786,14 +3786,18 @@ function HRApplyBudget() {
     // Full current-cycle Appraisal Sheet roster for this location. A Tech-ED
     // with no employee here must not appear in Budget Master, even if a stale
     // Budget_Distribution row still exists from another location.
+    // dashboardRows are the active, location-filtered Appraisal Sheet rows.
+    // Do not require the supplementary budget roster's in_appraisal_sheet flag:
+    // older API responses omit it, which hid every Tech-Ed in HR's table.
     const locationTeamCounts = new Map();
-    (Array.isArray(locationEmployeeRows) ? locationEmployeeRows : []).forEach((employee) => {
-      const inSheet =
-        employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
-        String(employee.in_appraisal_sheet ?? "").trim() === "1";
-      if (!inSheet) return;
-      const key = resolveTechOwnerKey(employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || "");
+    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
+      const assignedTechEd =
+        employee.appraiserTechED ||
+        employee.appraiser_tech_ed_appraisal_sheet ||
+        employee.appraiser_tech_ed ||
+        employee.appraiser_tech_ed_id ||
+        "";
+      const key = resolveTechOwnerKey(assignedTechEd);
       if (key) locationTeamCounts.set(key, (locationTeamCounts.get(key) || 0) + 1);
     });
     // Same rule as DashboardOverview: Active + Eligible rows, grouped by
