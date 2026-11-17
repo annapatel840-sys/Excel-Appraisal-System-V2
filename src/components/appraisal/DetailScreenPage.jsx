@@ -635,6 +635,10 @@ function useFitScale(ready = true) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const [scale, setScale] = useState(1);
+  const [scrolls, setScrolls] = useState(false);
+  // Browser zoom at the time the screen opened. Zooming in later makes the window fewer CSS pixels
+  // tall; without this the fit-to-height shrink would cancel the zoom (Ctrl + looked dead).
+  const baseDprRef = useRef(null);
 
   useLayoutEffect(() => {
     // The table is only rendered once an employee is available. Re-run when
@@ -648,11 +652,17 @@ function useFitScale(ready = true) {
       const availH = box.clientHeight;
       const availW = box.clientWidth;
       if (!availH || !availW) return;
+      const dpr = window.devicePixelRatio || 1;
+      if (baseDprRef.current === null) baseDprRef.current = dpr;
+      const zoomIn = Math.max(1, dpr / baseDprRef.current);
       const s = Math.max(
         FIT_MIN,
-        Math.min(1, availH / needH, availW / FIT_BASE_WIDTH),
+        Math.min(1, (availH / needH) * zoomIn, availW / FIT_BASE_WIDTH),
       );
       setScale((prev) => (Math.abs(prev - s) > 0.004 ? s : prev));
+      // Zoomed in: the table is taller than the panel, so the panel scrolls.
+      const tooTall = needH * s > availH + 1;
+      setScrolls((prev) => (prev === tooTall ? prev : tooTall));
     };
 
     // Measure synchronously only on first mount. On employee changes, let the
@@ -669,7 +679,7 @@ function useFitScale(ready = true) {
     };
   }, [ready]);
 
-  return { boxRef, fitRef, scale };
+  return { boxRef, fitRef, scale, scrolls };
 }
 
 /* ------------------------------------------------------------------
@@ -1439,7 +1449,7 @@ export function DetailScreenPage({
 
 
   // Measure + scale the compensation table so it fits one screen.
-  const { boxRef, fitRef, scale } = useFitScale(Boolean(employee));
+  const { boxRef, fitRef, scale, scrolls } = useFitScale(Boolean(employee));
 
   // Remember each employee's values when first shown, so edits can be highlighted.
   if (employee && !baselineRef.current[employee.id]) {
@@ -1717,8 +1727,10 @@ export function DetailScreenPage({
         lastCycle.retentionBonus
       : 0;
     const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
-    return { lastCtc, pct };
-  }, [employee, derived, normalPrior, liveCtc]);
+    // Current column: the last cycle's CTC, or (no earlier cycle) the sheet's current base pay.
+    const currentCtc = lastCtc || Number(calcEmployee?.currentAnnualBasePay) || 0;
+    return { lastCtc, currentCtc, pct };
+  }, [employee, derived, normalPrior, liveCtc, calcEmployee]);
 
   const handleSearch = (value) => {
     setSearch(value);
@@ -2045,7 +2057,7 @@ export function DetailScreenPage({
                 className="ds-panel-scroll"
                 ref={boxRef}
                 style={{
-                  overflow: scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
+                  overflow: scrolls || scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
                 }}
               >
                 <div
@@ -2074,7 +2086,7 @@ export function DetailScreenPage({
                           {render(rec)}
                         </Fragment>
                       ));
-                    const dashPrev = (v) => (last ? fmt(v) : "—");
+                    const dashPrev = (v) => fmt(v); // no earlier-cycle value = 0, never a dash
                     const lastHikePct =
                       last && last.basePay
                         ? ((last.hikeAmount / last.basePay) * 100).toFixed(1)
@@ -2168,7 +2180,7 @@ export function DetailScreenPage({
                           prev={
                             <>
                               <div style={{ width: "100%" }}>
-                                <ReadOnlyInput value={dashPrev(last?.newBasePay)} />
+                                <ReadOnlyInput value={fmt(last ? last.newBasePay : calcEmployee?.currentAnnualBasePay)} />
                               </div>
                               {last && (
                                 <span style={subNote}>
@@ -2282,7 +2294,7 @@ export function DetailScreenPage({
                             <EditInput
                               key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
                               className="flex-1"
-                              defaultValue={fmtOrBlank(proposedPB)}
+                              defaultValue={fmt(proposedPB ?? 0)}
                               edited={isEdited("allocatedPBAmount")}
                               locked={!canEditF("allocatedPBAmount")}
                               invalid={pbLow}
@@ -2411,7 +2423,7 @@ export function DetailScreenPage({
                           <FieldRow
                           label="Total CTC with Rewards"
                           exc={excEach((rec) => <ReadOnlyInput value={rec.newCTC ? inr(rec.newCTC) : "—"} />)}
-                          prev={<ReadOnlyInput value={ctcCompare.lastCtc ? inr(ctcCompare.lastCtc) : "—"} />}
+                          prev={<ReadOnlyInput value={ctcCompare.currentCtc ? inr(ctcCompare.currentCtc) : "0"} />}
                           diff={
                             ctcCompare.lastCtc ? (
                               <DiffValue
@@ -2443,7 +2455,7 @@ export function DetailScreenPage({
                         >
                           <EditInput
                             key={`${employee.id}-targetPBNextYear`}
-                            defaultValue={fmtOrBlank(employee.targetPBNextYear)}
+                            defaultValue={fmt(employee.targetPBNextYear ?? 0)}
                             edited={isEdited("targetPBNextYear")}
                             locked={!canEditF("targetPBNextYear")}
                             onLive={(v) => setDraft({ tpbStr: v })}

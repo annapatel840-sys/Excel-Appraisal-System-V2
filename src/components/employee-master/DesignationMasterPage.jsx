@@ -48,6 +48,7 @@ const EMPTY = {
   cycle: null,
   designations: [],
   groups: [],
+  locations: [], // Location Master: { id, name, code }
   options: { S: true, M: true, G: true, F: true },
   bands: [],
   audit: [],
@@ -109,6 +110,7 @@ const META = {
   des: [
     { key: "n", label: "Designation", w: 260 },
     { key: "dept", label: "Department", w: 170 },
+    { key: "loc", label: "Location", w: 130 },
     { key: "band", label: "Band", w: 90 },
     { key: "nt", label: "Next Type", w: 170 },
     { key: "nx", label: "Next Designation(s)", w: 380 },
@@ -157,7 +159,7 @@ export function DesignationMasterPage({ readOnly = false }) {
   const [sel, setSel] = useState({ des: null, grp: null, band: null });
   const [pages, setPages] = useState({ des: 1, grp: 1, band: 1, opt: 1 });
   const [adding, setAdding] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", band: "", nt: "" });
+  const [addForm, setAddForm] = useState({ name: "", loc: "", band: "", nt: "" });
   const [addErr, setAddErr] = useState("");
   const [menu, setMenu] = useState(null); // members / next-list / band popup
   const [pv, setPv] = useState({ dp: "", cur: "" });
@@ -198,11 +200,14 @@ export function DesignationMasterPage({ readOnly = false }) {
         ...EMPTY,
         ...r,
         options: { ...EMPTY.options, ...(r.options || {}) },
+        locations: (r.locations || []).map((l) => ({ ...l, id: sid(l.id), name: toTitleCase(l.name) })),
         designations: (r.designations || []).map((d) => ({
           ...d,
           id: sid(d.id),
           name: toTitleCase(d.name),
           department: toTitleCase(d.department),
+          locationId: sid(d.locationId),
+          locationName: toTitleCase(d.locationName),
           nextType: d.nextType || "",
           singleNextId: sid(d.singleNextId),
           multipleNextIds: (d.multipleNextIds || []).map(sid),
@@ -387,6 +392,10 @@ export function DesignationMasterPage({ readOnly = false }) {
     [draft],
   );
 
+  // The Add Designation dropdown starts on the location that is on screen.
+  const defaultLocId =
+    draft.locations.find((l) => l.name.toLowerCase() === String(draft.location || "").toLowerCase())?.id || "";
+
   const dirty = changeCount > 0;
   useEffect(() => {
     const warn = (e) => {
@@ -441,8 +450,19 @@ export function DesignationMasterPage({ readOnly = false }) {
     const name = toTitleCase(addForm.name.trim());
     if (!name) return setAddErr("Name is required");
     if (tab === "des") {
-      if (draft.designations.some((d) => d.name.toLowerCase() === name.toLowerCase()))
-        return setAddErr("This designation already exists");
+      // The designation belongs to the location HR picks (Location Master).
+      const locId = addForm.loc || defaultLocId;
+      const loc = draft.locations.find((l) => l.id === locId);
+      if (!loc)
+        return setAddErr(
+          draft.locations.length ? "Choose a location" : "No locations found in Location Master",
+        );
+      if (
+        draft.designations.some(
+          (d) => d.name.toLowerCase() === name.toLowerCase() && d.locationId === loc.id,
+        )
+      )
+        return setAddErr("This designation already exists in this location");
       pushUndo();
       const id = `new-d${tempId.current++}`;
       setDraft((c) => ({
@@ -450,13 +470,18 @@ export function DesignationMasterPage({ readOnly = false }) {
         designations: [
           ...c.designations,
           {
-            id, name, department: "", inMaster: false, band: addForm.band,
+            id, name, department: "", locationId: loc.id, locationName: loc.name,
+            inMaster: false, band: addForm.band,
             nextType: addForm.nt, singleNextId: "", multipleNextIds: [],
-            groupId: "", status: "Inactive", isNew: true,
+            groupId: "", status: "Active", isNew: true,
           },
         ],
       }));
-      toast("Designation added");
+      toast(
+        draft.location && draft.location !== "All" && draft.location.toLowerCase() !== loc.name.toLowerCase()
+          ? `Designation added. After you save it appears under ${loc.name}`
+          : "Designation added",
+      );
     } else {
       if (draft.groups.some((g) => g.name.trim().toLowerCase() === name.toLowerCase()))
         return setAddErr("This group name already exists");
@@ -472,7 +497,7 @@ export function DesignationMasterPage({ readOnly = false }) {
     }
     setAdding(false);
     setAddErr("");
-    setAddForm({ name: "", band: "", nt: "" });
+    setAddForm({ name: "", loc: "", band: "", nt: "" });
   };
 
   /* ---------- history / audit ---------- */
@@ -551,6 +576,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       key: "dept", label: "Department",
       get: (d) => d.department || "(Not in Employee Master Yet)",
     },
+    { key: "loc", label: "Location", get: (d) => d.locationName || "—" },
     {
       key: "band", label: "Band", get: (d) => d.band || "(None)",
       render: (d) => (
@@ -781,7 +807,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       if (q) {
         const hay =
           tab === "des"
-            ? [row.name, row.department, row.band, TYPES[row.nextType], nxText(row), row.status]
+            ? [row.name, row.department, row.locationName, row.band, TYPES[row.nextType], nxText(row), row.status]
             : tab === "grp"
               ? [row.name, memText(row.memberIds)]
               : [row.code, memText(row.ids)];
@@ -1105,6 +1131,12 @@ export function DesignationMasterPage({ readOnly = false }) {
           </label>
           {tab === "des" && (
             <>
+              <label>Location
+                <select className="dmx-ctl" value={addForm.loc || defaultLocId} onChange={(e) => setAddForm((f) => ({ ...f, loc: e.target.value }))}>
+                  <option value="">(Select Location)</option>
+                  {draft.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </label>
               <label>Band (Optional)
                 <select className="dmx-ctl" value={addForm.band} onChange={(e) => setAddForm((f) => ({ ...f, band: e.target.value }))}>
                   <option value="">(None)</option>

@@ -888,7 +888,7 @@ export function EligibilityList({
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
 
-  const grid = useGridState(DEFS);
+  const grid = useGridState(DEFS, { appraisal: true });
   // Access → Fields → Eligibility List: Hidden columns are not shown, and the list cannot
   // be changed when Eligibility is Read only.
   const fieldAccess = useScreenFields("eligibility");

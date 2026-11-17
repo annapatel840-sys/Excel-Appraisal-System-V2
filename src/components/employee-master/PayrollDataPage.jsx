@@ -4,6 +4,8 @@ import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
+import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+import { FilterStatus, filterTableCss, useTableFilters } from "./FilterableTable";
 
 const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
@@ -55,26 +57,6 @@ function buildColumnsFromSchema(schema) {
   }).filter(Boolean);
 }
 
-const NUMBER_OPS = [
-  { v: "gt", l: "Greater than" },
-  { v: "gte", l: "Greater than or equal to" },
-  { v: "lt", l: "Less than" },
-  { v: "lte", l: "Less than or equal to" },
-  { v: "eq", l: "Equals" },
-  { v: "neq", l: "Not equal to" },
-  { v: "between", l: "Between" },
-];
-const TEXT_OPS = [
-  { v: "contains", l: "Contains" },
-  { v: "notcontains", l: "Does not contain" },
-  { v: "eq", l: "Equals" },
-  { v: "startswith", l: "Begins with" },
-  { v: "endswith", l: "Ends with" },
-  { v: "blank", l: "Is blank" },
-  { v: "notblank", l: "Is not blank" },
-];
-const opsForType = (type) => (type === "number" ? NUMBER_OPS : TEXT_OPS);
-
 // Precomputed record -> previous-cycle record for the same employee, ordered
 // by cycle start date. Records whose cycle is unknown (e.g. deleted) have no
 // start date, so they are left out of the ordering instead of being treated
@@ -114,219 +96,6 @@ function rawValueFor(r, col, priorMap) {
   if (col.isYoy) return yoyPctFor(r, col.baseKey, priorMap);
   return r[col.key];
 }
-function displayValueFor(r, col, priorMap) {
-  const val = rawValueFor(r, col, priorMap);
-  if (col.isYoy)
-    return val == null ? "new" : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
-  if (col.money) return fmtMoney(val);
-  if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
-  return val == null || val === "" ? "" : String(val);
-}
-
-function matchesCondition(raw, filter, type) {
-  if (type === "number") {
-    const n = Number(raw) || 0,
-      v1 = Number(filter.value),
-      v2 = Number(filter.value2);
-    switch (filter.op) {
-      case "gt":
-        return n > v1;
-      case "gte":
-        return n >= v1;
-      case "lt":
-        return n < v1;
-      case "lte":
-        return n <= v1;
-      case "eq":
-        return n === v1;
-      case "neq":
-        return n !== v1;
-      case "between":
-        return n >= Math.min(v1, v2) && n <= Math.max(v1, v2);
-      default:
-        return true;
-    }
-  }
-  const s = String(raw == null ? "" : raw).toLowerCase();
-  const v = String(filter.value == null ? "" : filter.value).toLowerCase();
-  switch (filter.op) {
-    case "contains":
-      return s.indexOf(v) !== -1;
-    case "notcontains":
-      return s.indexOf(v) === -1;
-    case "eq":
-      return s === v;
-    case "startswith":
-      return s.indexOf(v) === 0;
-    case "endswith":
-      return v.length === 0 || s.slice(-v.length) === v;
-    case "blank":
-      return s === "";
-    case "notblank":
-      return s !== "";
-    default:
-      return true;
-  }
-}
-
-/* ============================================================
-   COLUMN FILTER POPOVER
-   ============================================================ */
-
-function ColumnFilterPopover({
-  colDef,
-  stored,
-  active,
-  position,
-  priorMap,
-  onSort,
-  onApplyCondition,
-  onApplySelect,
-  onClear,
-  onClose,
-}) {
-  const values = useMemo(
-    () =>
-      Array.from(
-          new Set(stored.map((r) => displayValueFor(r, colDef, priorMap))),
-      ).sort(),
-      [stored, colDef, priorMap],
-  );
-  const activeIsCondition = active && !(active instanceof Set);
-  const ops = opsForType(colDef.type);
-  const [op, setOp] = useState(activeIsCondition ? active.op : ops[0].v);
-  const [val1, setVal1] = useState(
-    activeIsCondition && active.value != null ? active.value : "",
-  );
-  const [val2, setVal2] = useState(
-    activeIsCondition && active.value2 != null ? active.value2 : "",
-  );
-  const [search, setSearch] = useState("");
-  const [checkedSet, setCheckedSet] = useState(() => {
-    if (active instanceof Set) return new Set(active);
-    return new Set(values);
-  });
-
-  const needsVal1 = op !== "blank" && op !== "notblank";
-  const needsVal2 = op === "between";
-
-  const visibleValues = values.filter((v) =>
-    String(v ?? "").toLowerCase().includes(search.toLowerCase()),
-  );
-  const allChecked = values.every((v) => checkedSet.has(v));
-
-  const toggleValue = (v) => {
-    setCheckedSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(v)) next.delete(v);
-      else next.add(v);
-      return next;
-    });
-  };
-  const toggleAll = (checked) => {
-    setCheckedSet(checked ? new Set(values) : new Set());
-  };
-
-  return (
-    <div
-      className="pd-colfilter-panel show"
-      style={{ left: position.left, top: position.top }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="pd-colfilter-sort-row">
-        <button type="button" onClick={() => onSort("asc")}>
-          ↑ Sort
-        </button>
-        <button type="button" onClick={() => onSort("desc")}>
-          ↓ Sort
-        </button>
-      </div>
-
-      <div className="pd-colfilter-cond">
-        <select value={op} onChange={(e) => setOp(e.target.value)}>
-          {ops.map((o) => (
-            <option key={o.v} value={o.v}>
-              {o.l}
-            </option>
-          ))}
-        </select>
-        <div className="pd-colfilter-cond-inputs">
-          {needsVal1 && (
-            <input
-              type="text"
-              placeholder="Value"
-              value={val1}
-              onChange={(e) => setVal1(e.target.value)}
-            />
-          )}
-          {needsVal2 && <span className="and">and</span>}
-          {needsVal2 && (
-            <input
-              type="text"
-              placeholder="Value"
-              value={val2}
-              onChange={(e) => setVal2(e.target.value)}
-            />
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => onApplyCondition({ op, value: val1, value2: val2 })}
-        >
-          Apply filter
-        </button>
-      </div>
-
-      <div className="pd-colfilter-divider">or pick values</div>
-      <div className="pd-colfilter-search">
-        <input
-          type="text"
-          placeholder="Search values..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-      <div className="pd-colfilter-selall">
-        <label>
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={(e) => toggleAll(e.target.checked)}
-          />
-          <span>(Select all)</span>
-        </label>
-      </div>
-      <div className="pd-colfilter-options">
-        {visibleValues.map((v) => (
-          <label key={v}>
-            <input
-              type="checkbox"
-              checked={checkedSet.has(v)}
-              onChange={() => toggleValue(v)}
-            />
-            <span>{v === "" ? "(blank)" : v}</span>
-          </label>
-        ))}
-      </div>
-      <div className="pd-colfilter-apply-row">
-        <button type="button" className="clear" onClick={onClear}>
-          Clear
-        </button>
-        <button
-          type="button"
-          className="apply"
-          onClick={() => {
-            if (checkedSet.size === values.length) onApplySelect(null);
-            else onApplySelect(checkedSet);
-          }}
-        >
-          Apply
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function defaultPayrollColumnWidth(column) {
   if (column.key === "emp_id") return 125;
   if (column.key === "emp_name") return 180;
@@ -362,17 +131,12 @@ export function PayrollDataPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState("");
   const [batchFilter, setBatchFilter] = useState("all");
-  const [columnFilters, setColumnFilters] = useState({});
-  const [sortState, setSortState] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [page, setPage] = useState(1);
   const gridWrapRef = useRef(null);
-  const [openFilterCol, setOpenFilterCol] = useState(null);
-  const [filterPos, setFilterPos] = useState({ left: 0, top: 0 });
-  const btnRefs = useRef({});
   const [columnWidths, setColumnWidths] = useState({});
   const columnResizeRef = useRef(null);
 
@@ -493,8 +257,10 @@ export function PayrollDataPage() {
 
   const colByKey = (key) => COLS.find((c) => c.key === key);
 
-  const rows = useMemo(() => {
-    let list = filterByLocation(stored, selectedLocation, (row) => row.location).filter((r) => {
+  // Location / search / batch first, in the default order. The column filters and
+  // sorts (the Appraisal Sheet's header filter) then work on top of that.
+  const baseRows = useMemo(() => {
+    const list = filterByLocation(stored, selectedLocation, (row) => row.location).filter((r) => {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
@@ -503,41 +269,24 @@ export function PayrollDataPage() {
       const matchesBatch = batchFilter === "all" || r.batch === batchFilter;
       return matchesTerm && matchesBatch;
     });
+    return [...list].sort((a, b) => {
+      if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
+      return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
+    });
+  }, [stored, selectedLocation, search, batchFilter, cycleOrder]);
 
-    const filterKeys = Object.keys(columnFilters);
-    if (filterKeys.length) {
-      list = list.filter((r) =>
-        filterKeys.every((key) => {
-          const filter = columnFilters[key];
-          const colDef = colByKey(key);
-          const raw = rawValueFor(r, colDef, priorMap);
-          if (filter instanceof Set)
-            return filter.has(displayValueFor(r, colDef, priorMap));
-          return matchesCondition(raw, filter, colDef.type);
-        }),
-      );
-    }
-
-    if (sortState) {
-      const colDef = colByKey(sortState.col);
-      list = [...list].sort((a, b) => {
-        let av = rawValueFor(a, colDef, priorMap);
-        let bv = rawValueFor(b, colDef, priorMap);
-        if (av == null) av = colDef.type === "number" ? -Infinity : "";
-        if (bv == null) bv = colDef.type === "number" ? -Infinity : "";
-        if (av < bv) return sortState.dir === "asc" ? -1 : 1;
-        if (av > bv) return sortState.dir === "asc" ? 1 : -1;
-        return 0;
-      });
-    } else {
-      list = [...list].sort((a, b) => {
-        if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
-        return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
-      });
-    }
-
-    return list;
-  }, [stored, selectedLocation, search, batchFilter, columnFilters, sortState, cycleOrder, priorMap]);
+  const filterColumns = useMemo(
+    () =>
+      COLS.map((c) => ({
+        key: c.key,
+        label: c.label,
+        kind: c.type === "number" ? "number" : "text",
+        get: (r) => rawValueFor(r, c, priorMap),
+      })),
+    [COLS, priorMap],
+  );
+  const tf = useTableFilters(baseRows, filterColumns);
+  const rows = tf.rows;
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAYROLL_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -550,22 +299,11 @@ export function PayrollDataPage() {
   // A new search / filter / sort starts again from the first page.
   useEffect(() => {
     setPage(1);
-  }, [selectedLocation, search, batchFilter, columnFilters, sortState]);
+  }, [selectedLocation, search, batchFilter, tf.filters, tf.sorts]);
 
   useEffect(() => {
     if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
   }, [currentPage]);
-
-  const openColFilter = (colKey) => {
-    const btn = btnRefs.current[colKey];
-    if (!btn) return;
-    const r = btn.getBoundingClientRect();
-    setFilterPos({
-      left: Math.min(r.left, window.innerWidth - 240),
-      top: r.bottom + 4,
-    });
-    setOpenFilterCol(openFilterCol === colKey ? null : colKey);
-  };
 
   const handleExport = () => {
     const headers = COLS.map((c) => c.label);
@@ -600,11 +338,10 @@ export function PayrollDataPage() {
     <div
       className="pd-root"
       onClick={() => {
-        setOpenFilterCol(null);
         setMenuOpen(false);
       }}
     >
-      <style>{PAYROLL_DATA_CSS}</style>
+      <style>{PAYROLL_DATA_CSS + filterTableCss(".pd-root", ".pd-grid-wrap table")}</style>
       {loadError && (
         <div role="alert" className="pd-footer-note">
           {loadError}{" "}
@@ -689,6 +426,7 @@ export function PayrollDataPage() {
         </div>
       </div>
 
+      <FilterStatus tf={tf} noun="rows" />
       <div className="pd-grid-wrap" ref={gridWrapRef}>
         <table>
           <colgroup>
@@ -710,19 +448,28 @@ export function PayrollDataPage() {
                         </span>
                       )}
                     </span>
-                    <button
-                      type="button"
-                      ref={(el) => {
-                        btnRefs.current[c.key] = el;
-                      }}
-                      className={`pd-colfilter-btn ${columnFilters[c.key] ? "filtered" : ""}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openColFilter(c.key);
-                      }}
-                    >
-                      ▾
-                    </button>
+                    {(() => {
+                      const fc = filterColumns.find((x) => x.key === c.key) || { key: c.key, label: c.label, kind: "text", get: () => "" };
+                      const sortIndex = tf.sorts.findIndex((x) => x.key === c.key);
+                      return (
+                        <ColumnFilter
+                          boxed
+                          alwaysBelow
+                          allowGroup={false}
+                          columnKey={`pd:${c.key}`}
+                          label={c.label}
+                          kind={fc.kind}
+                          filter={tf.filters[c.key]}
+                          options={tf.optionsFor(fc)}
+                          allValues={fc.kind === "number" ? tf.valuesFor(fc) : []}
+                          onChange={(filter) => tf.setFilter(c.key, filter)}
+                          sortDirection={sortIndex >= 0 ? tf.sorts[sortIndex].dir : null}
+                          sortLevel={sortIndex + 1}
+                          onSortAsc={() => tf.addSort(c.key, "asc")}
+                          onSortDesc={() => tf.addSort(c.key, "desc")}
+                        />
+                      );
+                    })()}
                   </div>
                   <div
                     role="separator"
@@ -832,42 +579,6 @@ export function PayrollDataPage() {
         Every column header has a filter — sort, filter by condition, or pick
         specific values, same as Excel.
       </div>
-
-      {openFilterCol && (
-        <ColumnFilterPopover
-          colDef={colByKey(openFilterCol)}
-          stored={stored}
-          active={columnFilters[openFilterCol]}
-          position={filterPos}
-          priorMap={priorMap}
-          onSort={(dir) => {
-            setSortState({ col: openFilterCol, dir });
-            setOpenFilterCol(null);
-          }}
-          onApplyCondition={(cond) => {
-            setColumnFilters((prev) => ({ ...prev, [openFilterCol]: cond }));
-            setOpenFilterCol(null);
-          }}
-          onApplySelect={(setOrNull) => {
-            setColumnFilters((prev) => {
-              const next = { ...prev };
-              if (setOrNull === null) delete next[openFilterCol];
-              else next[openFilterCol] = setOrNull;
-              return next;
-            });
-            setOpenFilterCol(null);
-          }}
-          onClear={() => {
-            setColumnFilters((prev) => {
-              const next = { ...prev };
-              delete next[openFilterCol];
-              return next;
-            });
-            setOpenFilterCol(null);
-          }}
-          onClose={() => setOpenFilterCol(null)}
-        />
-      )}
 
       {auditOpen && (
         <div

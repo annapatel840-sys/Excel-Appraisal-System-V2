@@ -5,6 +5,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { invalidatePayrollCycleReads, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { fetchEligibilityEmployees, invalidateEligibilityEmployees } from "@/lib/employee-master-data";
 import { fetchDelegationRoster, invalidateDelegationRoster } from "@/lib/delegation-roster";
+import { loadDesignationMaster } from "@/lib/designation-master-api";
 import { filterByLocation, isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { isActionNeededStatus, isInactiveStatus, statusOf } from "@/lib/eligibility-rules";
 import { useBudget } from "@/lib/budget-store";
@@ -21,6 +22,7 @@ import { useLetters } from "@/lib/letters-store";
  *   Requests     -> accessapi  delegation/requests          (Delegation "Pending" approvals)
  *   Budget       -> BudgetProvider (already follows the selected location)
  *   Letters      -> letters store (the Letters screen's own state)
+ *   Designation  -> designationmasterapi                    (active designations with no next designation mapped)
  *   Cycle        -> payrollcycleapi ?resource=cycles
  */
 
@@ -33,8 +35,20 @@ const SCREENS = {
   del: { label: "Delegation", tab: "delegation", open: "Delegation" },
   bud: { label: "Budget not given", tab: "budget-distribution", open: "Budget Distribution" },
   let: { label: "Letters", tab: "letters", open: "Letters" },
+  des: { label: "Designation", tab: "designation-master", open: "Designation Master" },
 };
-const ORDER = ["req", "elig", "del", "bud", "let"];
+const ORDER = ["req", "elig", "del", "bud", "let", "des"];
+const DESIGNATION_TYPES = { S: "Single Designation", M: "Multiple Designations", G: "Group", F: "Free Select" };
+// Same rule as the Designation Master screen's "Not Mapped".
+const desUnmappedReason = (d, options) => {
+  const t = d?.nextType;
+  if (!t) return "Next designation is not set";
+  if (!options?.[t]) return `${DESIGNATION_TYPES[t] || t} is switched off in Options`;
+  if (t === "S" && !d.singleNextId) return "Single Designation: next designation is not set";
+  if (t === "M" && !(d.multipleNextIds || []).length) return "Multiple Designations: no next designation listed";
+  if (t === "G" && !d.groupId) return "Group: no group chosen";
+  return "";
+};
 const COLS = ["Screen", "Employee / From", "Type", "Detail", "Tech-ED", "Age", "Resolve in"];
 
 /* ---------------- helpers ---------------- */
@@ -213,6 +227,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   const [elig, setElig] = useState(null); // { data, masterEmployees }
   const [roster, setRoster] = useState(null); // raw delegation rows
   const [reqs, setReqs] = useState(null); // raw delegation requests
+  const [desMaster, setDesMaster] = useState(null); // Designation Master data
   const [status, setStatus] = useState({}); // key -> { s: "loading"|"ok"|"error", msg }
   const [checkedAt, setCheckedAt] = useState(null);
   const [sel, setSel] = useState("all");
@@ -242,8 +257,9 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         setElig(null);
         setRoster(null);
         setReqs(null);
+        setDesMaster(null);
       }
-      setStatus({ cycle: { s: "loading" }, elig: { s: "loading" }, del: { s: "loading" }, req: { s: "loading" } });
+      setStatus({ cycle: { s: "loading" }, elig: { s: "loading" }, del: { s: "loading" }, req: { s: "loading" }, des: { s: "loading" } });
 
       const run = (key, task, apply) =>
         task()
@@ -275,6 +291,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
           },
           (list) => setReqs(list),
         ),
+        run("des", () => loadDesignationMaster({ fresh, location }), (d) => setDesMaster(d || { designations: [], options: {} })),
       ]).then(() => {
         if (live()) setCheckedAt(new Date());
       });
@@ -301,7 +318,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
 
   /* ---- rows per screen ---- */
   const rowsBy = useMemo(() => {
-    const out = { req: [], elig: [], del: [], bud: [], let: [] };
+    const out = { req: [], elig: [], del: [], bud: [], let: [], des: [] };
 
     // Employees of this location (for scoping requests): from the delegation roster.
     const rosterIds = new Set((roster || []).map((r) => norm(r.emp_id || r.employee_id)));
@@ -388,8 +405,25 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
           out.let.push(row);
         });
     }
+
+    // Designation: active designations with no next designation mapped (Designation Master > Not Mapped).
+    (desMaster?.designations || []).forEach((d) => {
+      if (String(d?.status || "") !== "Active") return;
+      const why = desUnmappedReason(d, desMaster?.options);
+      if (!why) return;
+      out.des.push([
+        C("Designation"),
+        C(d.name || "—"),
+        pill("Not Mapped", "a"),
+        C(`${why}${d.department ? ` · ${d.department}` : ""}`),
+        C("—"),
+        C("—"),
+        C(SCREENS.des.open, null),
+      ]);
+    });
+
     return out;
-  }, [reqs, roster, elig, location, cycleId, lettersState, lettersVersion]);
+  }, [reqs, roster, elig, desMaster, location, cycleId, lettersState, lettersVersion]);
 
   /* ---- Tech-ED budget table (also feeds "Budget not given") ---- */
   const teRows = useMemo(() => {
@@ -458,13 +492,14 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     status.del?.s === "error" && "Delegation",
     status.req?.s === "error" && "Requests",
     status.cycle?.s === "error" && "Cycle",
+    status.des?.s === "error" && "Designation",
     budget.error && "Budget",
   ].filter(Boolean);
-  const errored = { elig: status.elig?.s === "error", del: status.del?.s === "error", req: status.req?.s === "error", bud: Boolean(budget.error), let: false };
-  const loading = ["cycle", "elig", "del", "req"].some((k) => status[k]?.s === "loading") || budget.loading;
+  const errored = { elig: status.elig?.s === "error", del: status.del?.s === "error", req: status.req?.s === "error", bud: Boolean(budget.error), let: false, des: status.des?.s === "error" };
+  const loading = ["cycle", "elig", "del", "req", "des"].some((k) => status[k]?.s === "loading") || budget.loading;
   const total = ORDER.reduce((a, k) => a + byScreen[k].length, 0);
 
-  const all = useMemo(() => ORDER.flatMap((k) => byScreen[k].map((r) => ({ k, r }))), [byScreen.req, byScreen.elig, byScreen.del, byScreen.bud, byScreen.let]); // eslint-disable-line react-hooks/exhaustive-deps
+  const all = useMemo(() => ORDER.flatMap((k) => byScreen[k].map((r) => ({ k, r }))), [byScreen.req, byScreen.elig, byScreen.del, byScreen.bud, byScreen.let, byScreen.des]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = all.filter((x) => sel === "all" || x.k === sel);
 
   const openCell = (k) => (
@@ -521,6 +556,10 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     if (is("letters", "letter")) {
       const l = byScr("let");
       out.push({ h: "Letters", v: `${l.length} need action: ${l.filter((x) => T(x.r[2]) === "Failed").length} failed, ${l.filter((x) => T(x.r[2]) === "Reviewed").length} ready to send` });
+    }
+    if (is("designation", "design")) {
+      const n = byScr("des");
+      out.push({ h: "Designation", v: n.length ? `${n.length} active designation${n.length === 1 ? "" : "s"} not mapped: ${n.slice(0, 3).map((x) => T(x.r[1])).join(", ")}${n.length > 3 ? "…" : ""}` : "Every active designation is mapped" });
     }
     if (is("requests", "request")) out.push({ h: "Requests", v: `${byScr("req").length} waiting in the Request screen` });
     return out;
@@ -633,6 +672,9 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     } else if (/letter/.test(q)) {
       const l = byScreen.let;
       out = `<b>${l.length}</b> letters need action: ${l.filter((r) => T(r[2]) === "Failed").length} failed, ${l.filter((r) => T(r[2]) === "Reviewed").length} reviewed and ready to send, ${l.filter((r) => T(r[2]) === "Alert").length} with the sheet changed after the letter was made.`;
+    } else if (/designation/.test(q)) {
+      const n = byScreen.des;
+      out = n.length ? `<b>${n.length}</b> active designation${n.length === 1 ? "" : "s"} not mapped in Designation Master: ${n.map((r) => esc(T(r[1]))).join(", ")}.` : "Every active designation is mapped.";
     } else if (/budget/.test(q)) {
       const b = byScreen.bud;
       out = b.length ? `<b>${b.length}</b> Tech-ED with no budget given: ${b.map((r) => esc(T(r[1]))).join(", ")}.` : "Every Tech-ED has a budget.";
@@ -651,19 +693,6 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
 
   return (
     <div className="hrd">
-      <div className="hrd-ph">
-        <div>
-          <h2>HR Dashboard</h2>
-          <p>
-            {locLabel} · {cycleName || (noCycle ? "No cycle for this location" : "…")}
-            {activeCycle && ` · ${STEPS[step] || cycleStatusOf(activeCycle) || ""}`}
-          </p>
-        </div>
-        <div className="hrd-dl">
-          <div><small>OPEN ACTIONS</small><b>{loading && !total ? "…" : total}</b></div>
-        </div>
-      </div>
-
       {noCycle && (
         <div className="hrd-warn">
           {locLabel} has no appraisal cycle yet, so there is nothing to track. Create or activate one in Appraisal Cycle Master.
@@ -677,6 +706,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
             status.del?.s === "error" && `Delegation: ${status.del.msg}`,
             status.req?.s === "error" && `Requests: ${status.req.msg}`,
             status.cycle?.s === "error" && `Cycle: ${status.cycle.msg}`,
+            status.des?.s === "error" && `Designation: ${status.des.msg}`,
             budget.error && `Budget: ${typeof budget.error === "string" ? budget.error : budget.error?.message || "failed"}`,
           ]
             .filter(Boolean)
@@ -712,11 +742,6 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       <div className="hrd-cols">
         <div className="hrd-stack">
           <section className="hrd-card">
-            <div className="hrd-ch">
-              <h3>Needs attention</h3>
-              <span className="hrd-cnt">{total}</span>
-              <span className="hrd-nt">{locLabel} · found across Requests, Eligibility, Delegation, Budget and Letters</span>
-            </div>
             <div className="hrd-ag">
               <span className={`hrd-dot${failed.length ? " w" : ""}`} />
               <div className="hrd-agt">
@@ -750,40 +775,42 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
             </div>
           </section>
 
-          <section className="hrd-card">
-            <div className="hrd-ch">
-              <h3>Tech-ED — team and budget</h3>
-              <span className="hrd-nt">Budget not given is flagged</span>
-            </div>
-            {budget.error ? (
-              <div className="hrd-muted">Budget could not be loaded. Use “Check again”.</div>
-            ) : budget.loading && !teRows.length ? (
-              <div className="hrd-muted">Loading…</div>
-            ) : !teRows.length ? (
-              <div className="hrd-muted">No Tech-ED budget data for {locLabel}.</div>
-            ) : (
-              <Grid
-                key={location}
-                cols={["Tech-ED", "Team size", "Budget", "Used"]}
-                numCols={[1, 2]}
-                rows={teRows.map((t) => [
-                  C(t.name),
-                  C(t.team),
-                  t.budget == null ? pill("Not given", "a") : C(inr(t.budget)),
-                  t.used == null
-                    ? C("—")
-                    : C(
-                        `${pct(t.used)}%`,
-                        <>
-                          <span className="hrd-sb"><i className={t.used > 90 ? "w" : ""} style={{ width: `${Math.min(t.used, 100)}%` }} /></span>
-                          {pct(t.used)}%
-                        </>,
-                      ),
-                ])}
-                foot={["Total", String(teTotal), "", ""]}
-              />
-            )}
-          </section>
+          {(sel === "all" || sel === "bud") && (
+            <section className="hrd-card">
+              <div className="hrd-ch">
+                <h3>Tech-ED — team and budget</h3>
+                <span className="hrd-nt">Budget not given is flagged</span>
+              </div>
+              {budget.error ? (
+                <div className="hrd-muted">Budget could not be loaded. Use “Check again”.</div>
+              ) : budget.loading && !teRows.length ? (
+                <div className="hrd-muted">Loading…</div>
+              ) : !teRows.length ? (
+                <div className="hrd-muted">No Tech-ED budget data for {locLabel}.</div>
+              ) : (
+                <Grid
+                  key={location}
+                  cols={["Tech-ED", "Team size", "Budget", "Used"]}
+                  numCols={[1, 2]}
+                  rows={teRows.map((t) => [
+                    C(t.name),
+                    C(t.team),
+                    t.budget == null ? pill("Not given", "a") : C(inr(t.budget)),
+                    t.used == null
+                      ? C("—")
+                      : C(
+                          `${pct(t.used)}%`,
+                          <>
+                            <span className="hrd-sb"><i className={t.used > 90 ? "w" : ""} style={{ width: `${Math.min(t.used, 100)}%` }} /></span>
+                            {pct(t.used)}%
+                          </>,
+                        ),
+                  ])}
+                  foot={["Total", String(teTotal), "", ""]}
+                />
+              )}
+            </section>
+          )}
         </div>
 
         <div className="hrd-stack">

@@ -4960,10 +4960,22 @@ async function updateEmployee(req, res) {
       return leftId.localeCompare(rightId);
     }).slice(-1)[0] || null;
   };
+  // An employee can have two rows in one cycle: the generated Eligible row the
+  // sheet shows, and an older blank row moved into the cycle by a data repair.
+  // Always write to the Eligible row(s) when there are any.
+  const preferEligible = function (rows) {
+    const eligible = rows.filter(function (row) {
+      return String(row.eligible_status ?? row.eligibleStatus ?? "").trim().toLowerCase() === "eligible";
+    });
+    return eligible.length ? eligible : rows;
+  };
   // Prefer the exact row ID returned to the grid, while validating employee and cycle.
   let appraisalRow = requestedAppraisalRowId
     ? requestedRow
     : latestRow(exactCycleRows);
+  let appraisalRow = requestedRowMatchesCycle
+    ? requestedRow
+    : latestRow(preferEligible(exactCycleRows));
 
   // Older generated Appraisal_Sheet rows may have an empty cycle_id. When an
   // employee has rows for several cycles, do not reject the current row just
@@ -5000,17 +5012,21 @@ async function updateEmployee(req, res) {
   // location's cycle (after a header switch, or with "All Locations"), so an
   // employee in the Canada cycle was "not found" in the India one. Use the
   // employee's row in an Active cycle: the row the grid sent if it is in one,
-  // otherwise the only Active-cycle row this employee has.
+  // otherwise their Eligible row, when all their Active-cycle rows are in
+  // one cycle (never guess between two locations).
   if (!appraisalRow && employeeSheetRows.length) {
     const activeIds = await activeCycleRowIds(adminApp.datastore());
-    const inActiveCycle = function (row) {
-      return activeIds.has(String(row.cycle_id ?? row.appraisal_cycle_id ?? "").trim());
+    const cycleOf = function (row) {
+      return String(row.cycle_id ?? row.appraisal_cycle_id ?? "").trim();
     };
-    if (requestedRow && inActiveCycle(requestedRow)) {
+    if (requestedRow && activeIds.has(cycleOf(requestedRow))) {
       appraisalRow = requestedRow;
     } else {
-      const inActive = employeeSheetRows.filter(inActiveCycle);
-      if (inActive.length === 1) appraisalRow = inActive[0];
+      const inActive = employeeSheetRows.filter(function (row) {
+        return activeIds.has(cycleOf(row));
+      });
+      const cycles = new Set(inActive.map(cycleOf));
+      if (cycles.size === 1) appraisalRow = latestRow(preferEligible(inActive));
     }
   }
   const masterRow = (masterRows || []).find(function (row) {

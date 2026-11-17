@@ -212,7 +212,7 @@ export function EmployeeRosterTable({
   canEdit = true,
   auditEntries, // optional: [{ title, meta, detail }]
 }) {
-  const grid = useGridState(DEFS);
+  const grid = useGridState(DEFS, { appraisal: true });
   // Access → Fields → Employee Master: Hidden columns are not shown; Read only fields cannot
   // be changed from this screen.
   const fieldAccess = useScreenFields("employeeMaster");

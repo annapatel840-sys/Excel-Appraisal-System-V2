@@ -606,6 +606,15 @@ import { Check, ChevronDown, Plus, Settings2, X } from "lucide-react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { registerLocations } from "@/lib/location-store";
 import { useScreenFields } from "@/lib/access-store";
+import {
+  FilterStatus,
+  FilterTh,
+  ResizableCols,
+  filterTableCss,
+  resizableTableStyle,
+  useColumnResize,
+  useTableFilters,
+} from "./FilterableTable";
 import "./employee-master-ui.css";
 
 const blank = {
@@ -622,6 +631,16 @@ const normalize = (x) => ({
       ? "Inactive"
       : "Active",
 });
+
+// Location Master table: header filter (same as the Appraisal Sheet) + drag-to-resize columns.
+const LOC_COLS = [
+  { key: "location_name", label: "Location", kind: "text", get: (l) => l.location_name || "" },
+  { key: "location_code", label: "Code", kind: "text", get: (l) => l.location_code || "" },
+  { key: "address", label: "Address", kind: "text", get: (l) => l.address || "" },
+  { key: "currency_code", label: "Currency", kind: "text", get: (l) => l.currency_code || "" },
+  { key: "status", label: "Status", kind: "text", get: (l) => l.status || "" },
+];
+const LOC_WIDTHS = { location_name: 190, location_code: 110, address: 280, currency_code: 110, status: 110, actions: 200 };
 
 export function LocationMasterControl({
   value = "All",
@@ -651,6 +670,8 @@ export function LocationMasterControl({
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
+  const tf = useTableFilters(locations, LOC_COLS);
+  const rz = useColumnResize(LOC_WIDTHS);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -907,20 +928,24 @@ export function LocationMasterControl({
             </button>
           </div>
 
+          <style>{filterTableCss(".em-location-master-page", ".em-location-table")}</style>
+          <FilterStatus tf={tf} noun="locations" />
           <div className="em-location-table-wrap em-location-master-table-wrap">
-            <table className="em-location-table">
+            <table
+              className="em-location-table"
+              style={resizableTableStyle(rz, [...LOC_COLS.map((c) => c.key), ...(readOnly ? [] : ["actions"])])}
+            >
+              <ResizableCols rz={rz} keys={[...LOC_COLS.map((c) => c.key), ...(readOnly ? [] : ["actions"])]} />
               <thead>
                 <tr>
-                  <th>Location</th>
-                  <th>Code</th>
-                  <th>Address</th>
-                  <th>Currency</th>
-                  <th>Status</th>
-                  {!readOnly && <th>Actions</th>}
+                  {LOC_COLS.map((c) => (
+                    <FilterTh key={c.key} tf={tf} rz={rz} col={c} />
+                  ))}
+                  {!readOnly && <FilterTh tf={tf} rz={rz} noFilter col={{ key: "actions", label: "Actions" }} />}
                 </tr>
               </thead>
               <tbody>
-                {locations.map((loc) => {
+                {tf.rows.map((loc) => {
                   const edit = editing === loc.id;
                   const row = edit ? draft : loc;
                   return (
@@ -1025,6 +1050,11 @@ export function LocationMasterControl({
                 {!loading && !locations.length && (
                   <tr>
                     <td colSpan={readOnly ? 5 : 6}>No locations found.</td>
+                  </tr>
+                )}
+                {!loading && locations.length > 0 && !tf.rows.length && (
+                  <tr className="ft-empty">
+                    <td colSpan={readOnly ? 5 : 6}>No locations match the filters.</td>
                   </tr>
                 )}
               </tbody>

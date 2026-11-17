@@ -4270,6 +4270,12 @@ export function AppraisalProvider({ children }) {
               appraisal_year: APPRAISAL_YEAR,
               cycle_id: APPRAISAL_CYCLE_ID,
               location: APPRAISAL_LOCATION,
+              // Same cycle as single-cell saves. Without it the server used
+              // the first Active cycle (UK) for every location.
+              appraisal_year: APPRAISAL_YEAR,
+              cycle_id: APPRAISAL_CYCLE_ID,
+              location: APPRAISAL_LOCATION,
+              appraisal_row_id: String(targetRow.id || ""),
               ...catalystPayload,
               expected,
             }),
