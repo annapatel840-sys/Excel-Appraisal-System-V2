@@ -3045,6 +3045,10 @@ const saveEmployeeChangeToCatalyst = async ({ empId, appraisalRowId, key, newVal
     },
     body: JSON.stringify({
       emp_id: String(empId),
+      // Pass the exact Appraisal_Sheet ROWID shown in the grid. The API still
+      // validates employee + active cycle before writing, but this avoids
+      // ambiguous employee-only lookup when the employee has multiple rows.
+      appraisal_row_id: String(appraisalRowId || ""),
       appraisal_year: APPRAISAL_YEAR,
       cycle_id: APPRAISAL_CYCLE_ID,
       location: APPRAISAL_LOCATION,
