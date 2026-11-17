@@ -2283,7 +2283,18 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return false;
     const rawEmployee = referenceText(row.emp_id ?? row.employee_master_id).toLowerCase();
     const master = eligibleMasterByAnyKey.get(rawEmployee);
-    return Boolean(master) && inCycleLocation(rowCycle, master, locationRows);
+    if (!master) return false;
+    const employeeHasLocation = Boolean(employeeLocationKey(master));
+    const sameAsCurrentLocation =
+      cycleLocationKey(rowCycle) === cycleLocationKey(cycle);
+    // Employee_Master location is authoritative when populated. For legacy
+    // rows without a location value, only allow the shared unscoped source or
+    // an archived cycle explicitly matching the selected cycle's location.
+    const locationMatches =
+      inCycleLocation(rowCycle, master, locationRows) ||
+      (!employeeHasLocation &&
+        (!cycleLocationKey(rowCycle) || sameAsCurrentLocation));
+    return locationMatches;
   });
   if (!hasPayrollForEligibleEmployee) {
     if (!reuseExistingCycleData && sourceHasPayroll) {
