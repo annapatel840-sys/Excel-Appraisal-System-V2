@@ -182,7 +182,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' },
         { emp_id: 'E2', emp_name: 'New Employee', emp_status: 'Active', eligibility: 'Eligible' },
         // Employee_Master can lag the generated cycle roster. The sheet's
-        // current-cycle Active + Eligible values must take precedence.
+        // current-cycle Active + Eligible values must take precedence, so E3
+        // remains in the budget base despite the stale master status.
         { emp_id: 'E3', emp_name: 'Cycle Active Employee', emp_status: 'Inactive', eligibility: 'Not Eligible' },
       ],
       Eligibility_List: [],
@@ -235,7 +236,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000, 'Org Budget Base must match the payroll-enriched Previous Total CTC with Rewards displayed in the Appraisal Sheet; exclude the employee whose cycle roster row is not in the generated employee set');
+    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000 + 500000, 'E3 is included because its generated Appraisal Sheet row is Active + Eligible; that current-cycle roster status takes precedence over stale Employee_Master Inactive + Not Eligible values');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
