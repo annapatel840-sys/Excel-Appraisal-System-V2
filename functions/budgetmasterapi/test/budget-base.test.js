@@ -113,8 +113,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
-        { cycle_name: 'Apr-25', start_date: '2025-04-01', status: 'Archived', archived: true },
-        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Archived', archived: true },
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
         { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 27000, current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
@@ -160,7 +160,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
-    assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
+    assert.strictEqual(existing.last_appraisal_date, 'Annual 2025');
     assert.strictEqual(existing.pb_to_be_paid, 72500, 'PB to be paid comes from the last closed Payroll_Data row');
     assert.strictEqual(existing.rb_to_be_paid, 31250, 'RB to be paid comes from the last closed Payroll_Data row');
     assert.strictEqual(fresh.pb_to_be_paid, 14500, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
