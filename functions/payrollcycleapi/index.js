@@ -2451,12 +2451,21 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       ));
     }
     const sourceMasterId = referenceText(selected.row.emp_id ?? selected.row.employee_master_id);
-    if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
+    if (sourceMasterId) {
+      payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
+      // If this employee has no row in the active/shared cycle, use the
+      // selected archived Annual or same-year New Joiner row as the payroll
+      // source for generation too (not merely as a prerequisite check).
+      if (!payrollByMasterId.has(sourceMasterId)) payrollByMasterId.set(sourceMasterId, selected.row);
+    }
     // Also index by actual Employee_Master ROWID when payroll emp_id stores
     // the business employee ID instead of a lookup reference.
     const master = employeeMasterByBusinessId.get(empId);
     const actualMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id);
-    if (actualMasterId) payrollBaseSourceByMasterId.set(actualMasterId, selected.row);
+    if (actualMasterId) {
+      payrollBaseSourceByMasterId.set(actualMasterId, selected.row);
+      if (!payrollByMasterId.has(actualMasterId)) payrollByMasterId.set(actualMasterId, selected.row);
+    }
   });
 
   // Feedback_And_Rating stores emp_ID and appraisal_cycle_name as Employee_Master
