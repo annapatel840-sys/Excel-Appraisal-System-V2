@@ -260,6 +260,8 @@ function ColumnMenu({ def, grid, allRows, rect, onClose }) {
 }
 
 /* ---------- the grid ---------- */
+const MIN_COL = 110; // label + filter icon stay visible
+const MIN_COL_SELECT = 140; // first column also holds the row checkbox
 export function DataGrid({
   defs, grid, allRows, rows, rowKey,
   selectable = false, selected, onToggleRow, onToggleAll,
@@ -288,14 +290,17 @@ export function DataGrid({
     .filter((x) => x.c && x.c.vis);
 
   const ACTION_W = actionWidth;
-  const totalW = visible.reduce((s, x) => s + x.c.w, 0) + (actionHeader ? ACTION_W : 0);
+  // Never let a column get so narrow that its filter icon is clipped.
+  const minOf = (index) => (selectable && index === 0 ? MIN_COL_SELECT : MIN_COL);
+  const widthOf = (c, index) => Math.max(minOf(index), c.w);
+  const totalW = visible.reduce((s, x, i) => s + widthOf(x.c, i), 0) + (actionHeader ? ACTION_W : 0);
   const colSpan = visible.length + (actionHeader ? 1 : 0);
 
-  const startResize = (event, key, w0) => {
+  const startResize = (event, key, w0, min) => {
     event.preventDefault();
     event.stopPropagation();
     const x0 = event.clientX;
-    const move = (e) => grid.patchCol(key, { w: Math.max(70, w0 + e.clientX - x0) });
+    const move = (e) => grid.patchCol(key, { w: Math.max(min, w0 + e.clientX - x0) });
     const up = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
@@ -314,8 +319,8 @@ export function DataGrid({
           style={fillWidth ? { width: "100%", minWidth: totalW } : { width: totalW }}
         >
           <colgroup>
-            {visible.map(({ d, c }) => (
-              <col key={d.key} style={{ width: c.w }} />
+            {visible.map(({ d, c }, i) => (
+              <col key={d.key} style={{ width: widthOf(c, i) }} />
             ))}
             {actionHeader && <col style={{ width: ACTION_W }} />}
           </colgroup>
@@ -373,7 +378,7 @@ export function DataGrid({
                         </button>
                       )}
                     </div>
-                    <span className="emx-rs" onMouseDown={(e) => startResize(e, d.key, c.w)} />
+                    <span className="emx-rs" onMouseDown={(e) => startResize(e, d.key, widthOf(c, index), minOf(index))} />
                   </th>
                 );
               })}

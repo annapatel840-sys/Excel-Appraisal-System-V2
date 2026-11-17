@@ -113,38 +113,26 @@ export function useTableFilters(rows, columns) {
 /* Column resizing (drag the right edge of a header, like the Appraisal Sheet).
    `defaults` is a module-level { columnKey: widthPx } map; keys in column order.
 
-   Each column owns its own pixel width: dragging one edge changes ONLY that
-   column. On the first drag every column is frozen at the width it is
-   currently rendered at, and the table switches from "fill the container" to
-   "exactly the sum of its columns" (otherwise a fixed-layout table that is
-   narrower than its container spreads the extra space over all columns and
-   the neighbours appear to move). */
-const MIN_COL = 56;
+   Every column except the last owns a fixed pixel width, so dragging one edge
+   changes ONLY that column. The last column has no fixed width: it takes
+   whatever room is left, so the table always fills its container (no white
+   gap on the right) and, when the columns need more room than is available,
+   the table scrolls sideways instead. */
+const MIN_COL = 90; // narrow enough to stay readable, wide enough to keep the filter icon visible
 
 export function useColumnResize(defaults) {
   const [widths, setWidths] = useState(defaults);
-  const [frozen, setFrozen] = useState(false);
-  const widthOf = (key) => widths[key] ?? defaults[key] ?? 100;
+  const widthOf = (key) => Math.max(MIN_COL, widths[key] ?? defaults[key] ?? 100);
 
   const startResize = (key) => (event) => {
     event.preventDefault();
     event.stopPropagation();
-    // Freeze every column at its currently rendered width.
-    const table = event.currentTarget.closest("table");
-    const cols = table ? table.querySelectorAll(":scope > colgroup > col[data-key]") : [];
-    const cells = table && table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells : [];
-    const measured = {};
-    if (cols.length && cells.length >= cols.length) {
-      cols.forEach((col, i) => {
-        measured[col.dataset.key] = Math.max(MIN_COL, Math.round(cells[i].getBoundingClientRect().width));
-      });
-    }
+    const th = event.currentTarget.closest("th");
     const startX = event.clientX;
-    const startW = measured[key] ?? widthOf(key);
-    setFrozen(true);
-    setWidths((cur) => ({ ...cur, ...measured }));
+    // The last column is auto-width, so start from what is actually drawn.
+    const startW = th ? Math.round(th.getBoundingClientRect().width) : widthOf(key);
     const move = (e) =>
-      setWidths((cur) => ({ ...cur, ...measured, [key]: Math.max(MIN_COL, Math.round(startW + e.clientX - startX)) }));
+      setWidths((cur) => ({ ...cur, [key]: Math.max(MIN_COL, Math.round(startW + e.clientX - startX)) }));
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -157,22 +145,26 @@ export function useColumnResize(defaults) {
     document.body.style.userSelect = "none";
   };
 
-  return { widthOf, startResize, frozen };
+  return { widthOf, startResize };
 }
 
-// Fixed layout so every column keeps exactly the width it was dragged to.
+// Fixed layout: fills the container, never narrower than the columns need.
 export const resizableTableStyle = (rz, keys) => ({
   tableLayout: "fixed",
-  width: keys.reduce((sum, key) => sum + rz.widthOf(key), 0),
-  minWidth: rz.frozen ? 0 : "100%",
+  width: "100%",
+  minWidth: keys.reduce((sum, key) => sum + rz.widthOf(key), 0),
   maxWidth: "none",
 });
 
 export function ResizableCols({ rz, keys }) {
   return (
     <colgroup>
-      {keys.map((key) => (
-        <col key={key} data-key={key} style={{ width: rz.widthOf(key) }} />
+      {keys.map((key, i) => (
+        <col
+          key={key}
+          data-key={key}
+          style={i === keys.length - 1 ? undefined : { width: rz.widthOf(key) }}
+        />
       ))}
     </colgroup>
   );

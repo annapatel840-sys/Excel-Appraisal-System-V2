@@ -11,7 +11,8 @@
 .emx-table th{position:sticky;top:0;z-index:2;background:#E6EEF8;color:#102A43;font-size:10.5px;font-weight:700;text-align:left;padding:0;border-bottom:1px solid #CBD5E1;border-right:1px solid #CBD5E1;vertical-align:middle}
 .emx-table th:first-child{left:0;z-index:5;background:#DFE8F3;border-right:1px solid #C9D8EC}
 .emx-thi{display:flex;align-items:center;gap:3px;padding:6px 4px 6px 8px;min-height:38px}
-.emx-tl{flex:1;white-space:normal;line-height:1.25;overflow-wrap:break-word}
+.emx-thi>*:not(.emx-tl){flex-shrink:0}
+.emx-tl{min-width:0;flex:1;white-space:normal;line-height:1.25;overflow-wrap:break-word}
 .emx-tb{border:none;background:none;cursor:pointer;color:#102A43;padding:2px 4px;border-radius:4px;font-size:11px}
 .emx-tb:hover{background:#D3E0F2}
 .emx-dot{width:7px;height:7px;border-radius:50%;background:#FFE066;border:1px solid #C9A400;flex:none}

@@ -7,6 +7,27 @@ import {
   subtreeOf,
   TYPE_LABEL,
 } from "@/lib/budget-engine";
+import {
+  FilterStatus,
+  FilterTh,
+  ResizableCols,
+  filterTableCss,
+  resizableTableStyle,
+  useColumnResize,
+  useTableFilters,
+} from "./FilterableTable";
+
+const TC_W = { date: 130, name: 200, empId: 120, change: 150, from: 190, to: 190, source: 200 };
+const TC_COLS = [
+  { key: "date", label: "Date", kind: "text", get: (c) => dateText(c.date), sort: (c) => c.date },
+  { key: "name", label: "Employee", kind: "text", get: (c) => c.name },
+  { key: "empId", label: "Emp ID", kind: "text", get: (c) => c.empId },
+  { key: "change", label: "Change", kind: "text", get: (c) => TYPE_LABEL[c.type] || c.type },
+  { key: "from", label: "From", kind: "text", get: (c) => c.from },
+  { key: "to", label: "To", kind: "text", get: (c) => c.to },
+  { key: "source", label: "Source", kind: "text", get: (c) => c.source },
+];
+const TC_KEYS = TC_COLS.map((c) => c.key);
 
 const PILL_CLASS = {
   left: "bg-[#fff1f0] text-[#a8071a]",
@@ -64,8 +85,12 @@ export function TeamChangesPage() {
     counts[t] = scoped.filter((c) => c.type === t).length;
   });
 
+  const tf = useTableFilters(list, TC_COLS);
+  const rz = useColumnResize(TC_W);
+
   return (
-    <div className="em-tab-content">
+    <div className="em-tab-content tc-root">
+      <style>{filterTableCss(".tc-root", "table")}</style>
       <div className="overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
         <div
           className="px-4 py-2.5 text-[13px] font-semibold text-white"
@@ -134,30 +159,28 @@ export function TeamChangesPage() {
           </span>
         </div>
 
+        <FilterStatus tf={tf} noun="changes" />
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse text-[12.5px]">
+          <table
+            className="border-collapse text-[12.5px]"
+            style={resizableTableStyle(rz, TC_KEYS)}
+          >
+            <ResizableCols rz={rz} keys={TC_KEYS} />
             <thead>
               <tr>
-                {[
-                  "Date",
-                  "Employee",
-                  "Emp ID",
-                  "Change",
-                  "From",
-                  "To",
-                  "Source",
-                ].map((h) => (
-                  <th
-                    key={h}
+                {TC_COLS.map((col) => (
+                  <FilterTh
+                    key={col.key}
+                    tf={tf}
+                    rz={rz}
+                    col={col}
                     className="border-b border-[#d7dce3] bg-[#eef2f7] px-2.5 py-2 text-left text-[12px] font-bold text-[#1e3a5f]"
-                  >
-                    {h}
-                  </th>
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {list.length === 0 && (
+              {tf.rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-4 text-slate-500">
                     {safeEligibilityEvents.length === 0 &&
@@ -167,7 +190,7 @@ export function TeamChangesPage() {
                   </td>
                 </tr>
               )}
-              {list.map((c, i) => (
+              {tf.rows.map((c, i) => (
                 <tr key={i}>
                   <td className="border-b border-[#edf0f4] px-2.5 py-2">
                     {dateText(c.date)}
