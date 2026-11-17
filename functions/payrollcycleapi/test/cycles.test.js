@@ -53,6 +53,7 @@ function load(store) {
     isEnforced: () => false,
     guard: (a, fn) => fn(),
     requireScreen: () => {},
+    requireEditFields: () => {},
     bumpVersion: async () => {},
   };
   const orig = Module._load;
