@@ -50,7 +50,10 @@ const cycleLocationKey = (cycle) => {
     : value.toLowerCase();
 };
 const employeeLocationKey = (master) =>
-  String((master && (master.location || master.work_location)) || "").trim().toLowerCase();
+  String((master && (
+    master.location || master.work_location || master.location_name ||
+    master.office_location || master.base_location
+  )) || "").trim().toLowerCase();
 const locationAliases = (value, locations = []) => {
   const key = normalizedLocationValue(value);
   const match = locations.find((location) =>
@@ -2312,59 +2315,47 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     );
   }
 
-  const currentCycleFeedbackRows = feedbackRows.filter((row) => {
-    const feedbackCycle = referenceText(
-      fieldValue(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"),
-    ).toLowerCase();
-    const acceptedCycleKeys = [cycle.id, cycle.sourceRowId, cycle.name]
-      .map((value) => referenceText(value).toLowerCase()).filter(Boolean);
-    if (reuseExistingCycleData) acceptedCycleKeys.push(...sourceCycleKeys);
-    return acceptedCycleKeys.includes(feedbackCycle);
+  // Archived payroll/feedback uploads are shared history. Match feedback to
+  // eligible employees through Employee_Master and accept only the selected
+  // cycle, its shared source, same-year New Joiner data, or an earlier
+  // archived Annual cycle. Employee_Master location is authoritative because
+  // older upload tables/cycles may not contain location columns.
+  const eligibleFeedbackRows = feedbackRows.filter((row) => {
+    const rawEmployee = referenceText(fieldValue(
+      row, "emp_ID", "emp_id", "employee_master_id", "employee_master_row_id", "employee_id", "emp_code",
+    )).toLowerCase();
+    const master = eligibleMasterByAnyKey.get(rawEmployee);
+    if (!master) return false;
+    const rawCycle = referenceText(fieldValue(
+      row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year",
+    )).toLowerCase();
+    const feedbackCycle = cycleByReference.get(rawCycle);
+    return Boolean(
+      feedbackCycle &&
+      isUsableHistoryCycle(feedbackCycle) &&
+      inCycleLocation(feedbackCycle, master, locationRows)
+    );
   });
-  const hasFeedback = currentCycleFeedbackRows.some((row) =>
+  const hasFeedback = eligibleFeedbackRows.some((row) =>
     ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
       const value = fieldValue(row, field);
       return value !== undefined && value !== null && String(value).trim() !== "";
     }),
   );
-  const hasRating = currentCycleFeedbackRows.some((row) =>
+  const hasRating = eligibleFeedbackRows.some((row) =>
     ["manager_rating", "client_rating"].some((field) => {
       const value = fieldValue(row, field);
       return value !== undefined && value !== null && String(value).trim() !== "";
     }),
   );
-  if (!currentCycleFeedbackRows.length || !hasFeedback || !hasRating) {
-    const sourceFeedbackRows = sourceCycle ? feedbackRows.filter((row) =>
-      sourceCycleKeys.has(referenceText(fieldValue(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year")).toLowerCase())
-    ) : [];
-    const sourceHasFeedback = sourceFeedbackRows.some((row) =>
-      ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
-        const value = fieldValue(row, field);
-        return value !== undefined && value !== null && String(value).trim() !== "";
-      })
-    );
-    const sourceHasRating = sourceFeedbackRows.some((row) =>
-      ["manager_rating", "client_rating"].some((field) => {
-        const value = fieldValue(row, field);
-        return value !== undefined && value !== null && String(value).trim() !== "";
-      })
-    );
-    if (!reuseExistingCycleData && sourceCycle && sourceHasPayroll && sourceFeedbackRows.length && sourceHasFeedback && sourceHasRating) {
-      throw new ApiError(
-        `Existing payroll, feedback and rating data were found for ${sourceCycle.name}. Confirm to reuse them for ${cycle.name}; no duplicate rows will be created.`,
-        409,
-        "EXISTING_CYCLE_DATA_AVAILABLE",
-      );
-    }
+  if (!eligibleFeedbackRows.length || !hasFeedback || !hasRating) {
     const missing = [
-      !currentCycleFeedbackRows.length ? "Feedback and Rating upload" : "",
+      !eligibleFeedbackRows.length ? "Feedback and Rating upload" : "",
       !hasFeedback ? "feedback values" : "",
       !hasRating ? "rating values" : "",
     ].filter(Boolean).join(" and ");
     throw new ApiError(
-      sourceCycle
-        ? `${missing} is missing from the shared source cycle ${sourceCycle.name}. Check its Feedback and Rating data before generating ${cycle.name}'s Appraisal Sheet.`
-        : `${missing} is required for ${cycle.name}. Upload the cycle's Feedback and Rating data before generating the Appraisal Sheet.`,
+      `${missing} is required for the eligible employees of ${cycle.name}. The system checked this cycle and matching archived/shared history for employees in the selected location.`,
       409,
     );
   }
@@ -2485,15 +2476,12 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       row,
     ]).filter(([id]) => id),
   );
-  const feedbackCycleKeys = new Set(
-    [cycle.id, cycle.sourceRowId, cycle.name, ...(reuseExistingCycleData ? [...sourceCycleKeys] : [])]
-      .map((value) => referenceText(value).toLowerCase())
-      .filter(Boolean),
-  );
+  const eligibleFeedbackRowSet = new Set(eligibleFeedbackRows);
   const feedbackRowTime = (row) => String(
     fieldValue(row, "MODIFIEDTIME", "CREATEDTIME", "ROWID") || "",
   );
   feedbackRows.forEach((row) => {
+    if (!eligibleFeedbackRowSet.has(row)) return;
     const rawEmployee = referenceText(fieldValue(
       row, "emp_ID", "emp_id", "employee_master_id", "employee_master_row_id", "employee_id", "emp_code",
     ));
@@ -2512,12 +2500,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const empId = master
       ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
       : rawEmployee.toLowerCase();
-    const employeeNewJoinerCycleKeys = newJoinerCycleKeysByEmployee.get(empId);
-    if (
-      !feedbackCycleKeys.has(feedbackCycle) &&
-      !employeeNewJoinerCycleKeys?.has(feedbackCycle)
-    ) return;
-
     const previousMaster = feedbackByMasterId.get(masterId);
     if (!previousMaster ||
         feedbackRowTime(row).localeCompare(feedbackRowTime(previousMaster), undefined, { numeric: true }) >= 0) {
