@@ -97,17 +97,39 @@ export function revealTableHeader(trigger, instant = false) {
       box = box.parentElement;
     }
     const ownBox = box && box !== document.body && box.clientHeight < table.offsetHeight ? box : null;
-    const target = ownBox || table;
     const head = th.getBoundingClientRect();
     const view = window.innerHeight;
     // Header already comfortably in the upper part of the screen: leave the page alone.
     if (head.top >= 70 && head.bottom <= view * 0.5) return;
-    const prev = target.style.scrollMarginTop;
-    target.style.scrollMarginTop = "72px"; // clear the app's top bar
-    target.scrollIntoView({ block: "start", inline: "nearest", behavior: instant ? "auto" : "smooth" });
-    setTimeout(() => {
-      target.style.scrollMarginTop = prev;
-    }, 700);
+    const behavior = instant ? "auto" : "smooth";
+
+    if (ownBox) {
+      // Rows scroll inside their own box: bring that box up, keep the rows where they are.
+      const prev = ownBox.style.scrollMarginTop;
+      ownBox.style.scrollMarginTop = "72px"; // clear the app's top bar
+      ownBox.scrollIntoView({ block: "start", inline: "nearest", behavior });
+      setTimeout(() => {
+        ownBox.style.scrollMarginTop = prev;
+      }, 700);
+      return;
+    }
+
+    // The page (or a pane) scrolls. A table near the end of the page cannot reach the top because there is
+    // nothing left to scroll, so the pane gets extra room at its bottom, just enough for this table.
+    const pane = box && box !== document.body ? box : document.scrollingElement || document.documentElement;
+    const paneTop = pane === document.scrollingElement || pane === document.documentElement ? 0 : pane.getBoundingClientRect().top;
+    const delta = table.getBoundingClientRect().top - Math.max(paneTop, 0) - 72;
+    const room = pane.scrollHeight - pane.clientHeight - pane.scrollTop;
+    if (delta > room) {
+      const spacer = Math.ceil(delta - room);
+      const base = parseFloat(getComputedStyle(pane).paddingBottom) || 0;
+      if (pane === document.scrollingElement || pane === document.documentElement) {
+        document.body.style.paddingBottom = `${(parseFloat(getComputedStyle(document.body).paddingBottom) || 0) + spacer}px`;
+      } else {
+        pane.style.paddingBottom = `${base + spacer}px`;
+      }
+    }
+    pane.scrollBy({ top: delta, behavior });
   } catch (_) {
     /* scrolling is a convenience only */
   }
