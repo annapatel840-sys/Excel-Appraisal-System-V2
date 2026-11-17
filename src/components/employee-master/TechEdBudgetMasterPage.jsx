@@ -311,7 +311,19 @@ export function TechEdBudgetMasterPage() {
     ...Array.from(userIdentities),
   ].map(normalizeIdentity).filter(Boolean).flatMap((value) => ownerParts(value))), [directoryOwner, userIdentities]);
 
-  const isCurrentCycleRow = (row) => budgetCycleIds.has(String(row.appraisal_cycle_id || ""));
+  const isCurrentCycleRow = (row) => {
+    const rowCycle = String(row?.appraisal_cycle_id || "").trim();
+    if (budgetCycleIds.has(rowCycle)) return true;
+    // Budget_Distribution_Comp is a child of Budget_Distribution. The parent
+    // link is authoritative when legacy child cycle values use a cycle name
+    // or an older reference instead of the active cycle ROWID.
+    const parentId = String(row?.budget_distribution_id || "").trim();
+    if (!parentId) return false;
+    const parent = budgetDistributionRows.find(
+      (item) => String(item.id || "").trim() === parentId,
+    );
+    return Boolean(parent && budgetCycleIds.has(String(parent.appraisal_cycle_id || "").trim()));
+  };
   const dashboardTeamCount = dashboardRows.filter((employee) => {
     if (
       String(employee.status || "").trim().toLowerCase() !== "active" ||
