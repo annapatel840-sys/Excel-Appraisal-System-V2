@@ -120,14 +120,14 @@ const META = {
   ],
   grp: [
     { key: "n", label: "Group", w: 250 },
-    { key: "cnt", label: "Designations", w: 110 },
+    { key: "cnt", label: "Designations", w: 110, kind: "number" },
     { key: "mem", label: "Members", w: 520 },
     { key: "hist", label: "History", w: 130 },
     { key: "lmod", label: "Last Modified", w: 150 },
   ],
   band: [
     { key: "n", label: "Band", w: 140 },
-    { key: "cnt", label: "Designations", w: 110 },
+    { key: "cnt", label: "Designations", w: 110, kind: "number" },
     { key: "mem", label: "Mapped Designations", w: 520 },
     { key: "hist", label: "History", w: 130 },
     { key: "lmod", label: "Last Modified", w: 150 },
@@ -165,9 +165,9 @@ export function DesignationMasterPage({ readOnly = false }) {
   const [pv, setPv] = useState({ dp: "", cur: "" });
   const [auditAll, setAuditAll] = useState(false);
 
-  const gridDes = useGridState(META.des);
-  const gridGrp = useGridState(META.grp);
-  const gridBand = useGridState(META.band);
+  const gridDes = useGridState(META.des, { appraisal: true });
+  const gridGrp = useGridState(META.grp, { appraisal: true });
+  const gridBand = useGridState(META.band, { appraisal: true });
   const grids = { des: gridDes, grp: gridGrp, band: gridBand };
   // The Options tab has no grid; fall back so the hooks below never see undefined.
   const grid = grids[tab] || gridDes;
@@ -743,7 +743,7 @@ export function DesignationMasterPage({ readOnly = false }) {
         />
       ),
     },
-    { key: "cnt", label: "Designations", get: (g) => activeMembers(g).length },
+    { key: "cnt", label: "Designations", kind: "number", get: (g) => activeMembers(g).length },
     {
       key: "mem", label: "Members", get: (g) => memText(g.memberIds),
       render: (g) => (
@@ -767,7 +767,7 @@ export function DesignationMasterPage({ readOnly = false }) {
 
   const defsBand = () => [
     { key: "n", label: "Band", get: (b) => b.code },
-    { key: "cnt", label: "Designations", get: (b) => b.ids.length },
+    { key: "cnt", label: "Designations", kind: "number", get: (b) => b.ids.length },
     {
       key: "mem", label: "Mapped Designations", get: (b) => memText(b.ids),
       render: (b) => (

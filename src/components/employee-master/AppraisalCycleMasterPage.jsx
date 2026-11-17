@@ -8,6 +8,15 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { matchesLocation } from "@/lib/location-store";
 import {
+  FilterStatus,
+  FilterTh,
+  ResizableCols,
+  filterTableCss,
+  resizableTableStyle,
+  useColumnResize,
+  useTableFilters,
+} from "./FilterableTable";
+import {
   cycleNameLocation,
   cycleNameWithoutLocation,
   withCycleLocation,
@@ -86,6 +95,20 @@ const typeOf = (name) =>
       .toLowerCase()
       .startsWith(t.toLowerCase()),
   ) || "Annual";
+/* Cycle grid columns: header filter (same as Employee Master) + drag-to-resize. */
+const CYCLE_COLS = [
+  { key: "id", label: "ID", kind: "text", get: (c) => String(c.id ?? "") },
+  { key: "name", label: "Cycle", kind: "text", get: (c) => cycleNameWithoutLocation(c.name) },
+  { key: "process", label: "Process", kind: "text", get: (c) => procLabel(c.process) },
+  { key: "effective", label: "Effective Date", kind: "text", get: (c) => formatDate(c.effective), sort: (c) => String(c.effective || "") },
+  { key: "start", label: "Start Date", kind: "text", get: (c) => formatDate(c.start), sort: (c) => String(c.start || "") },
+  { key: "end", label: "Close Date", kind: "text", get: (c) => formatDate(c.end), sort: (c) => String(c.end || "") },
+  { key: "status", label: "Status", kind: "text", get: (c) => String(statusOf(c) ?? "") },
+  { key: "next", label: "Next", kind: "text", get: (c) => nextBtn(c)?.name || (c.archived ? "Done" : "—") },
+];
+const CYCLE_COL_KEYS = ["id", "name", "process", "effective", "start", "end", "status", "next", "actions"];
+const CYCLE_COL_W = { id: 70, name: 150, process: 110, effective: 110, start: 110, end: 110, status: 100, next: 110, actions: 110 };
+
 const procLabel = (p) => (p === "None" ? "No process" : p);
 
 const SDESC = {
@@ -512,7 +535,7 @@ export function AppraisalCycleMasterPage({
     ) || null;
   };
 
-  const gridRows = useMemo(() => {
+  const baseRows = useMemo(() => {
     const s = q.toLowerCase();
     return locationCycles
       .filter((c) => c.type === type)
@@ -530,6 +553,9 @@ export function AppraisalCycleMasterPage({
           String(b.start || "").localeCompare(String(a.start || "")),
       );
   }, [locationCycles, type, showHidden, q]);
+  const tf = useTableFilters(baseRows, CYCLE_COLS);
+  const rz = useColumnResize(CYCLE_COL_W);
+  const gridRows = tf.rows;
 
   // Keep the selected cycle inside the currently visible location scope.
   // Changing the System Location (including back to All Locations) always
@@ -1504,24 +1530,16 @@ export function AppraisalCycleMasterPage({
 
   const renderGrid = () => (
     <>
+      <FilterStatus tf={tf} noun="cycles" />
       <div className="acx-gwrap">
-        <table className="acx-g">
-          <colgroup>
-            {[70, 150, 110, 100, 120, 120, 120, 100, 110].map((w, i) => (
-              <col key={i} style={{ width: w }} />
-            ))}
-          </colgroup>
+        <table className="acx-g" style={resizableTableStyle(rz, CYCLE_COL_KEYS)}>
+          <ResizableCols rz={rz} keys={CYCLE_COL_KEYS} />
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Cycle</th>
-              <th>Process</th>
-              <th>Effective Date</th>
-              <th>Start Date</th>
-              <th>Close Date</th>
-              <th>Status</th>
-              <th>Next</th>
-              <th>Actions</th>
+              {CYCLE_COLS.map((col) => (
+                <FilterTh key={col.key} tf={tf} col={col} rz={rz} />
+              ))}
+              <FilterTh tf={tf} col={{ key: "actions", label: "Actions" }} rz={rz} noFilter />
             </tr>
           </thead>
           <tbody>
@@ -2885,6 +2903,7 @@ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);
 .acx-g{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px;table-layout:fixed}
 .acx-g th{background:var(--hb);color:var(--navy);font-size:11px;font-weight:700;text-align:left;padding:8px;border-bottom:1px solid var(--hl);white-space:nowrap;position:sticky;top:0;z-index:2;overflow:hidden;text-overflow:ellipsis}
 .acx-g td{padding:8px;border-bottom:1px solid var(--row-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acx-g th.ft-th{overflow:visible}
 .acx-g tbody tr{cursor:pointer}
 .acx-g tbody tr:nth-child(odd) td{background:var(--odd)}.acx-g tbody tr:nth-child(even) td{background:var(--even)}
 .acx-g tbody tr:hover td{background:var(--hover)}
@@ -2993,4 +3012,6 @@ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);
 .acx-pl{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #F0F1F3}
 .acx-pl b.n{color:#B7791F}.acx-pl .m1{color:#6B7280;font-size:11px}
 @media(max-width:1100px){.acx-work{flex-direction:column}.acx-panel{width:100%!important}.acx-twoc{flex-direction:column}}
+${filterTableCss(".acx", ".acx-g")}
+.acx .acx-g th.ft-th{position:sticky;top:0;overflow:visible}
 `;
