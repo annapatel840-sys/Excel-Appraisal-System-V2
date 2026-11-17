@@ -235,7 +235,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 27000 + 905000 + 500000, 'Org Budget Base must sum the stored Appraisal Sheet previous rewards value, using payroll only when the sheet value is blank');
+    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000, 'Org Budget Base must match the payroll-enriched Previous Total CTC with Rewards displayed in the Appraisal Sheet; exclude the employee whose cycle roster row is not in the generated employee set');
     const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
@@ -759,7 +759,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     });
     const response = await get(load(store));
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.master[0].org_budget_base, 1875000, 'Org Budget Base matches the archived payroll value shown in the generated Appraisal Sheet roster');
+    assert.strictEqual(response.json.master[0].org_budget_base, 1875000, 'Org Budget Base must match the payroll-enriched value shown in the Appraisal Sheet, even when the generated snapshot is stale');
     const employee = response.json.employeeRoster.find((row) => row.emp_id === 'E1');
     assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 1875000);
     assert.strictEqual(response.json.diagnostics.warning, undefined);
@@ -836,6 +836,44 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         .previous_appraisal_total_ctc_with_rewards,
       777000,
     );
+  });
+
+  await t('India, Australia and United States each use the displayed archived-payroll CTC for Org Budget Base', async () => {
+    for (const location of ['India', 'Australia', 'United States']) {
+      const store = makeStore({
+        Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+        Budget_Distribution: [], Budget_Distribution_Comp: [],
+        Employee_Master: [
+          { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible', location },
+        ],
+        Eligibility_List: [],
+        Payroll_Data: [],
+        Appraisal_Cycle_Master: [
+          { cycle_name: 'Annual 2027', start_date: '2026-04-01', status: 'Archived', archived: true, location: 'All' },
+          { cycle_name: location + ' - Annual 2027', start_date: '2026-04-01', status: 'Active', location },
+        ],
+        Appraisal_Sheet: [
+          { emp_id: 'E1', cycle_id: '', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '10,00,000' },
+        ],
+      });
+      const [sourceCycle, locationCycle] = store.tables.Appraisal_Cycle_Master;
+      store.tables.Budget_Master[0].appraisal_cycle_id = locationCycle.ROWID;
+      store.tables.Appraisal_Sheet[0].cycle_id = locationCycle.ROWID;
+      store.tables.Payroll_Data.push({
+        ROWID: '99401',
+        emp_id: 'E1',
+        appraisal_cycle_name: sourceCycle.ROWID,
+        total_ctc_with_rewards: '18,75,000',
+      });
+
+      const response = await get(load(store), location);
+      assert.strictEqual(response.status, 200, location + ': ' + JSON.stringify(response.json));
+      assert.strictEqual(response.json.active_appraisal_cycle_id, locationCycle.ROWID, location + ' must select its own Active cycle');
+      assert.strictEqual(response.json.master.find((row) => row.appraisal_cycle_id === locationCycle.ROWID).org_budget_base, 1875000, location + ' Org Budget Base must use the displayed archived-payroll CTC, not the stale stored sheet value');
+      const employee = response.json.employeeRoster.find((row) => row.emp_id === 'E1');
+      assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 1875000, location + ' employee roster display value');
+      assert.strictEqual(employee.budget_base, 1875000, location + ' employee roster budget base');
+    }
   });
 
   await t('location-cycle does not reuse a closed non-archived shared Annual cycle', async () => {
