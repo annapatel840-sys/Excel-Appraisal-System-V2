@@ -13,6 +13,7 @@ import {
   getDelegation,
   getVersion,
 } from "@/lib/access-admin-api";
+import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import "./access-page.css";
 
 /* ---------- constants & helpers ---------- */
@@ -1170,6 +1171,9 @@ export default function AccessPage() {
   const [enforced, setEnforced] = useState(null);
   const [pending, setPending] = useState({});
   const [tab, setTab] = useState("screens");
+  // System Location of the Screens tab. Starts empty: the dropdown has no "All Locations"
+  // and picks the first active Location Master location by itself.
+  const [systemLocation, setSystemLocation] = useState("");
   const [sel, setSel] = useState(null);
   const [filt, setFiltState] = useState({ fieldScreen: "", fieldSearch: "", fieldKind: "", fieldShowRole: "", fieldShowLim: "", peopleRole: "", peopleSearch: "", logFrom: "", logTo: "" });
   const [qc, setQc] = useState({ q: "who", t: "", l: "", p: "" });
@@ -1383,6 +1387,17 @@ export default function AccessPage() {
                 </button>
               );
             })}
+            {tab === "screens" && (
+              <span className="acx-syslocation">
+                <span className="lbl">System Location</span>
+                <LocationMasterControl
+                  value={systemLocation}
+                  onChange={setSystemLocation}
+                  showAllLocations={false}
+                  ariaLabel="System Location"
+                />
+              </span>
+            )}
           </div>
           {msg && <div className={"msg " + (msg.ok ? "ok" : "err")}>{msg.text}</div>}
           <div className="body">{body}</div>
