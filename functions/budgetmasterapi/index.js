@@ -2499,13 +2499,11 @@ async function calculateBudgetBases(
         : sheetPreviousCtc !== null && sheetPreviousCtc > 0
           ? sheetPreviousCtc
           : 0;
-    // Org/Tech-Ed/Comp Manager allocation must sum the value stored on each
-    // generated Appraisal_Sheet row. Only reconstruct from payroll when that
-    // row's Previous_Appraisal_total_CTC_with_rewards is blank.
-    const budgetBaseValue =
-      sheetPreviousCtc !== null && sheetPreviousCtc > 0
-        ? sheetPreviousCtc
-        : previousAppraisalCtc;
+    // Budget Master must use the same resolved Previous Total CTC with
+    // Rewards value that the Appraisal Sheet displays. For location-specific
+    // cycles, this can be newer than a stale value stored on the generated
+    // sheet row (for example, the shared archived Annual payroll source).
+    const budgetBaseValue = previousAppraisalCtc;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
@@ -3155,7 +3153,7 @@ async function calculateBudgetBases(
       eligibility: employee.eligible_status,
       eligible_status: employee.eligible_status,
       in_appraisal_sheet: Boolean(employee.in_appraisal_sheet),
-      budget_base: employee.budget_base_value ?? employee.base,
+      budget_base: employee.previous_appraisal_total_ctc_with_rewards ?? employee.base,
       previous_appraisal_total_ctc_with_rewards:
         employee.previous_appraisal_total_ctc_with_rewards,
       Previous_Appraisal_total_CTC_with_rewards:
@@ -3367,8 +3365,16 @@ async function calculateBudgetBases(
     // All three levels use the same Previous Total Rewards CTC value shown
     // by the generated Appraisal Sheet. This keeps Org, Tech-Ed and Comp
     // Manager bases reconcilable for every selected cycle.
+    // Use the exact resolved value displayed in the Appraisal Sheet.
+    // Do not prefer budget_base_value from the stored snapshot: it can be
+    // stale for location cycles whose displayed value is enriched from the
+    // matching shared/archived payroll history.
     const sheetBaseValue = (employee) =>
-      n(employee?.budget_base_value ?? employee?.base);
+      n(
+        employee?.previous_appraisal_total_ctc_with_rewards ??
+          employee?.Previous_Appraisal_total_CTC_with_rewards ??
+          employee?.base,
+      );
 
     // The Appraisal Sheet API enriches each generated row with the employee's
     // previous_appraisal_total_ctc_with_rewards value from the matching
