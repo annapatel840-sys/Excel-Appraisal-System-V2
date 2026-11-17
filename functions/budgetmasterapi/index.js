@@ -1107,7 +1107,7 @@ async function readEmployeeRoster(app) {
   const formatTechEdAssignment = (raw) => {
     const assignment = String(raw || "").trim();
     if (!assignment) return "";
-    const parts = assignment.split(/\\s+-\\s+/);
+    const parts = assignment.split(/\s+-\s+/);
     const linked =
       masterByRowId.get(assignment) ||
       masterById.get(parts[0].trim().toLowerCase()) ||
@@ -2223,8 +2223,8 @@ async function calculateBudgetBases(
     const earlier = cycleRows
       .filter((cycle) =>
         isHistoricalCycle(cycle) &&
-        /\\bannual\\b/i.test(cycleNameOf(cycle)) &&
-        !/new[\\s_-]*joiners?/i.test(cycleNameOf(cycle))
+        /\bannual\b/i.test(cycleNameOf(cycle)) &&
+        !/new[\s_-]*joiners?/i.test(cycleNameOf(cycle))
       )
       .filter((cycle) =>
         cycleRank(cycle) > 0 &&
