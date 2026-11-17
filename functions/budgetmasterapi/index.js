@@ -966,25 +966,25 @@ async function readTechEdOwners(app, sourceRows) {
   const appraisalRows = sourceRows
     ? sourceRows.appraisalRows
     : await getAllRows(app, "Appraisal_Sheet");
-  const employeeByRowId = new Map(
-    employeeRows.map((employee) => [
-      idOf(employee),
-      {
-        row_id: idOf(employee),
-        employee_id: String(
-          readField(employee, ["emp_id", "employee_id"]) || "",
-        ).trim(),
-        name: String(
-          readField(employee, ["emp_name", "employee_name", "name"]) || "",
-        ).trim(),
-        email: String(
-          readField(employee, ["email_id", "email", "work_email"]) || "",
-        )
-          .trim()
-          .toLowerCase(),
-      },
-    ]),
-  );
+  const ownerDirectory = employeeRows.map((employee) => ({
+    row_id: idOf(employee),
+    employee_id: String(
+      readField(employee, ["emp_id", "employee_id"]) || "",
+    ).trim(),
+    name: String(
+      readField(employee, ["emp_name", "employee_name", "name"]) || "",
+    ).trim(),
+    email: String(
+      readField(employee, ["email_id", "email", "work_email"]) || "",
+    ).trim().toLowerCase(),
+  }));
+  const employeeByRowId = new Map(ownerDirectory.map((employee) => [employee.row_id, employee]));
+  const employeeById = new Map(ownerDirectory
+    .filter((employee) => employee.employee_id)
+    .map((employee) => [employee.employee_id.toLowerCase(), employee]));
+  const employeeByName = new Map(ownerDirectory
+    .filter((employee) => employee.name)
+    .map((employee) => [employee.name.toLowerCase(), employee]));
   const owners = new Map();
   // The rows are already complete and paged by getAllRows().
   appraisalRows.forEach((row) => {
@@ -1005,12 +1005,21 @@ async function readTechEdOwners(app, sourceRows) {
     ).trim();
     if (!rawAssignment) return;
 
-    const employee = employeeByRowId.get(rawAssignment);
+    const assignmentParts = rawAssignment.split(/\s+-\s+/);
+    const employee =
+      employeeByRowId.get(rawAssignment) ||
+      employeeById.get(assignmentParts[0].trim().toLowerCase()) ||
+      employeeByName.get(rawAssignment.toLowerCase()) ||
+      employeeByName.get((assignmentParts.length > 1
+        ? assignmentParts.slice(1).join(" - ")
+        : rawAssignment).toLowerCase());
     const assignment = employee
       ? employee.employee_id && employee.name
         ? employee.employee_id + " - " + employee.name
         : employee.employee_id || employee.name || rawAssignment
-      : rawAssignment;
+      : assignmentParts.length > 1
+        ? rawAssignmentParts[0] + " - " + rawAssignmentParts.slice(1).join(" - ")
+        : rawAssignment;
     const key = employee
       ? (employee.employee_id || employee.row_id).toLowerCase()
       : rawAssignment.toLowerCase();
