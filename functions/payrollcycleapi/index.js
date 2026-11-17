@@ -2825,7 +2825,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       compManagerEmployeeId(appraiserReference) ||
       compManagerEmployeeId(delegatedAppraiser) ||
       compManagerEmployeeId(String(employee.appraiser_tech_ed ?? "").trim());
-    const finalCompManager = delegatedId || storedId || defaultId || "";
+    // Preserve an existing free-text/ambiguous assignment. Replacing it with
+    // a different default person would silently change an HR decision.
+    const finalCompManager = delegatedId || storedId ||
+      (storedCompManager ? storedCompManager : defaultId) || "";
     if (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager")) {
       // Write when it differs (this also blanks an old free-text value).
       if (finalCompManager !== storedCompManager && (finalCompManager || storedCompManager)) {
