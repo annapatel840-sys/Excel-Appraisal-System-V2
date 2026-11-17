@@ -2453,25 +2453,9 @@ async function calculateBudgetBases(
     // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
     // canonical base. Use historical Payroll_Data only when that sheet field
     // is absent, then fall back to the current CTC for new joiners/legacy rows.
-    const sheetPreviousRaw = firstValue(row, [
-      // Exact generated Appraisal_Sheet column shown to HR.
-      "Previous_Appraisal_total_CTC_with_rewards",
-      "previous_appraisal_total_ctc_with_rewards",
-      "previous_year_CTC_with_rewards",
-      "previousAppraisalTotalCtcWithRewards",
-    ]);
-    const sheetPreviousCtc =
-      sheetPreviousRaw === "" ||
-      sheetPreviousRaw === null ||
-      sheetPreviousRaw === undefined
-        ? null
-        : n(sheetPreviousRaw);
-    const storedPreviousCtc = previousRecord
-      ? previousCtc(previousRecord)
-      : null;
-    // The generated Appraisal_Sheet Previous Total CTC with Rewards value
-    // is authoritative for this cycle's Org Budget Base. Payroll history is
-    // only a fallback for legacy rows where that exact sheet field is blank.
+    // Reconstruct the grid's previous total rewards from the same payroll
+    // history source; raw sheet values can be stale after eligibility or
+    // delegation regeneration and must not override the resolved source.
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
@@ -2889,7 +2873,7 @@ async function calculateBudgetBases(
       String(m.appraisal_cycle_id || "").trim(),
     ).length,
     baseColumns:
-      "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards from current-cycle generated rows only; no payroll or Employee_Master fallback",
+      "Eligible current-cycle Appraisal_Sheet employees only; per-employee shared source, same-year New Joiner or latest earlier Archived Annual Payroll_Data CTC",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning =
