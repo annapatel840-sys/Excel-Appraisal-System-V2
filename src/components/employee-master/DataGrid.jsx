@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+import { isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+
 const OPS = [
   ["contains", "contains"],
   ["not", "does not contain"],
@@ -20,12 +23,19 @@ function condOk(op, value, term) {
 }
 
 /* ---------- state hook: widths, visibility, wrap, filters, sort, density ---------- */
-export function useGridState(defs) {
+/* Pass { appraisal: true } to get the Appraisal Sheet's header filter (same icon,
+   same Excel-style menu with sort, text / number filters and a value checklist).
+   Without it the grid keeps its original ▾ menu, so other screens are unchanged. */
+const MAX_SORT_LEVELS = 3;
+
+export function useGridState(defs, options = {}) {
+  const appraisal = Boolean(options.appraisal);
   const [cols, setCols] = useState(() =>
     defs.map((d) => ({ key: d.key, w: d.w || 140, vis: d.vis !== false, wrap: d.wrap !== false })),
   );
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState(null);
+  const [sorts, setSorts] = useState([]); // appraisal mode: [{ key, dir }], up to 3 levels
   const [dens, setDens] = useState("comfortable");
 
   const patchCol = (key, patch) =>
@@ -34,30 +44,79 @@ export function useGridState(defs) {
   const setFilter = (key, value) =>
     setFilters((current) => {
       const next = { ...current };
-      if (!value || (!value.cond && !value.sel)) delete next[key];
+      if (appraisal) {
+        if (!value || isEmptyFilter(value)) delete next[key];
+        else next[key] = value;
+      } else if (!value || (!value.cond && !value.sel)) delete next[key];
       else next[key] = value;
       return next;
     });
 
+  const addSort = (key, dir) =>
+    setSorts((current) => [...current.filter((s) => s.key !== key), { key, dir }].slice(-MAX_SORT_LEVELS));
+
   const clearColumn = (key) => {
     setFilter(key, null);
     setSort((s) => (s && s.key === key ? null : s));
+    setSorts((current) => current.filter((s) => s.key !== key));
   };
 
   const clearAll = () => {
     setFilters({});
     setSort(null);
+    setSorts([]);
   };
 
   return {
     cols, patchCol, filters, setFilter, clearColumn, clearAll,
-    sort, setSort, dens, setDens, filterCount: Object.keys(filters).length,
+    appraisal, sorts, addSort,
+    sort: appraisal ? sorts : sort, setSort, dens, setDens, filterCount: Object.keys(filters).length,
   };
 }
 
 /* ---------- filtered + sorted rows ---------- */
+const asNumber = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
 export function useGridView(rows, defs, grid, pre) {
   return useMemo(() => {
+    if (grid.appraisal) {
+      const active = defs.filter((d) => grid.filters[d.key]);
+      let list = rows.filter((row) => {
+        if (pre && !pre(row)) return false;
+        return active.every((d) => {
+          const raw = d.get(row);
+          return matchesValue(d.kind === "number" ? raw : String(raw ?? ""), grid.filters[d.key]);
+        });
+      });
+      const live = grid.sorts.filter((x) => defs.some((d) => d.key === x.key));
+      if (!live.length) return list;
+      return [...list].sort((a, b) => {
+        for (const { key, dir } of live) {
+          const d = defs.find((x) => x.key === key);
+          const sv = d.sv || d.get;
+          const x = sv(a);
+          const y = sv(b);
+          let diff;
+          if (d.kind === "number") {
+            const nx = asNumber(x);
+            const ny = asNumber(y);
+            if (nx === null && ny === null) diff = 0;
+            else if (nx === null) return 1; // blanks always last
+            else if (ny === null) return -1;
+            else diff = nx - ny;
+          } else {
+            diff = String(x ?? "").localeCompare(String(y ?? ""), undefined, { numeric: true, sensitivity: "base" });
+          }
+          if (diff !== 0) return dir === "asc" ? diff : -diff;
+        }
+        return 0;
+      });
+    }
+
     let out = rows.filter((row) => {
       if (pre && !pre(row)) return false;
       return defs.every((d) => {
@@ -213,6 +272,17 @@ export function DataGrid({
 }) {
   const [menu, setMenu] = useState(null);
 
+  // Appraisal-style header filter: the value checklist lists every value of the column.
+  const optionsByKey = useMemo(
+    () =>
+      grid.appraisal
+        ? Object.fromEntries(
+            defs.map((d) => [d.key, Array.from(new Set(allRows.map((r) => String(d.get(r) ?? ""))))]),
+          )
+        : null,
+    [grid.appraisal, defs, allRows],
+  );
+
   const visible = defs
     .map((d) => ({ d, c: grid.cols.find((x) => x.key === d.key) }))
     .filter((x) => x.c && x.c.vis);
@@ -253,7 +323,7 @@ export function DataGrid({
           <thead>
             <tr>
               {visible.map(({ d, c }, index) => {
-                const arrow = grid.sort && grid.sort.key === d.key ? (grid.sort.dir === "asc" ? " ↑" : " ↓") : "";
+                const arrow = !grid.appraisal && grid.sort && grid.sort.key === d.key ? (grid.sort.dir === "asc" ? " ↑" : " ↓") : "";
                 return (
                   <th key={d.key}>
                     <div className="emx-thi">
@@ -269,19 +339,38 @@ export function DataGrid({
                         />
                       )}
                       <span className="emx-tl" title={d.label}>{d.label}{arrow}</span>
-                      {grid.filters[d.key] && <span className="emx-dot" />}
+                      {!grid.appraisal && grid.filters[d.key] && <span className="emx-dot" />}
                       {d.info && <span className="emx-info" title={d.info}>ⓘ</span>}
-                      <button
-                        type="button"
-                        className="emx-tb"
-                        aria-label={`Filter ${d.label}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenu({ key: d.key, rect: e.currentTarget.getBoundingClientRect() });
-                        }}
-                      >
-                        ▾
-                      </button>
+                      {grid.appraisal ? (
+                        <ColumnFilter
+                          boxed
+                          alwaysBelow
+                          allowGroup={false}
+                          columnKey={`emx:${d.key}`}
+                          label={d.label}
+                          kind={d.kind === "number" ? "number" : "text"}
+                          filter={grid.filters[d.key]}
+                          options={optionsByKey[d.key]}
+                          allValues={d.kind === "number" ? allRows.map((r) => d.get(r)) : []}
+                          onChange={(filter) => grid.setFilter(d.key, filter)}
+                          sortDirection={grid.sorts.find((x) => x.key === d.key)?.dir || null}
+                          sortLevel={grid.sorts.findIndex((x) => x.key === d.key) + 1}
+                          onSortAsc={() => grid.addSort(d.key, "asc")}
+                          onSortDesc={() => grid.addSort(d.key, "desc")}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="emx-tb"
+                          aria-label={`Filter ${d.label}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenu({ key: d.key, rect: e.currentTarget.getBoundingClientRect() });
+                          }}
+                        >
+                          ▾
+                        </button>
+                      )}
                     </div>
                     <span className="emx-rs" onMouseDown={(e) => startResize(e, d.key, c.w)} />
                   </th>
