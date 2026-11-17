@@ -4,11 +4,14 @@
    designationmasterapi - Designation Master (HR Operations > Masters)
 
    Every GET takes an optional ?location=<name or code> (the system location
-   selected in the top bar). Designations are shown per location: the location's
-   own Active cycle is used (a cycle named "Dubai - Annual 2027" belongs to Dubai;
-   a cycle with no location is org-wide), and only designations that employees of
-   that location hold (or that HR added by hand) are synced and shown. A location
-   with no Active cycle of its own falls back to the org-wide Active cycle.
+   selected in the top bar). Designations are shown per location: each Designation
+   row has a `location` (Location Master) and only the rows of the selected
+   location are shown. The location's own Active cycle is used (a cycle named
+   "Dubai - Annual 2027" belongs to Dubai; a cycle with no location is org-wide;
+   a location with no cycle of its own falls back to the org-wide one). The sync
+   from Employee_Master creates a row per (location, designation) and fills the
+   location of older rows that have none. HR picks the location (a Location Master
+   dropdown) when adding a designation.
    POST uses the cycleId the screen was loaded with, so a save always lands in the
    cycle (location) that was on screen.
 
@@ -27,9 +30,10 @@
    POST /                  -> { success, data }  saves the whole screen (HR only)
 
    Catalyst tables (looked up by NAME, so no table IDs to paste):
-     Designation               cycle_id, name, department, band, next_type,
+     Designation               cycle_id, name, department, location, band, next_type,
                                single_next_designation, group_id, status
-                               (group_id = foreign key to Designation_Groups)
+                               (group_id = foreign key to Designation_Groups,
+                                location = foreign key to Location_Master)
      Designation_Next          designation_id, next_id    (the "Multiple" list)
      Designation_Groups        cycle_id, group_name
      Designation_Group_Members group_id, des_id
@@ -255,6 +259,21 @@ function locationAliases(value, locations) {
   );
 }
 
+/* The Location Master row for a name, code or ROWID (null when unknown). */
+function findLocation(value, locations) {
+  const key = lower(value);
+  if (!key) return null;
+  return (
+    (locations || []).find(
+      (l) =>
+        lower(l.location_name ?? l.name) === key ||
+        lower(l.location_code ?? l.code) === key ||
+        rowId(l) === text(value),
+    ) || null
+  );
+}
+const locationNameOf = (l) => text(l && (l.location_name ?? l.name));
+
 /* A cycle's own location ("" = org-wide). The Appraisal_Cycle_Master `location`
    column is optional, so a "<Location> - <Type> <Year>" cycle name also counts. */
 const CYCLE_TYPE_START = /^(annual|mid-year|exceptional|new joiner)\b/i;
@@ -339,18 +358,24 @@ async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
   const active = rows.filter(
     (r) => lower(r.status) === "active" && !isOn(r.archived) && !isOn(r.hidden),
   );
-  const shape = (r) => ({ id: rowId(r), name: text(r.cycle_name), location: cycleLocationOf(r) });
+  const locations = await readLocations(app);
+  // location = the location on screen (the requested one, else the cycle's own),
+  // written as its Location Master name when that is known.
+  const shape = (r, requested = "") => {
+    const loc = !isAllLocation(requested) ? text(requested) : cycleLocationOf(r);
+    const hit = findLocation(loc, locations);
+    return { id: rowId(r), name: text(r.cycle_name), location: hit ? locationNameOf(hit) : loc };
+  };
 
   if (text(cycleId)) {
     const row = active.find((r) => rowId(r) === text(cycleId));
     if (!row) {
       throw fail(409, "The appraisal cycle changed. Refresh Designation Master before saving.");
     }
-    return shape(row);
+    return shape(row, location);
   }
 
   if (!isAllLocation(location)) {
-    const locations = await readLocations(app);
     const wanted = locationAliases(location, locations);
     // The cycle may store the code while the screen sends the name (or the reverse),
     // so the two are compared by every spelling Location Master knows.
@@ -360,7 +385,7 @@ async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
     });
     const row = own || active.find((r) => !cycleLocationOf(r));
     if (!row) throw fail(409, `No active appraisal cycle was found for ${text(location)}.`);
-    return shape(row);
+    return shape(row, location);
   }
 
   const row = active.find((r) => !cycleLocationOf(r)) || active[0];
@@ -368,59 +393,106 @@ async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
   return shape(row);
 }
 
-/* Is this Designation row shown for the cycle's location? (see loadData) */
-const inCycleLocation = (cycle, row, masterNames) =>
-  !cycle.location || masterNames.has(lower(row.name)) || !text(row.department);
+/* Which Designation rows are shown for the location on screen.
+   A row belongs to its own `location` (Location Master). A row saved before that
+   column existed has none: it is shown for the location when employees of that
+   location hold the designation, or HR added it by hand (no department yet).
+   idOf() is the location a shown row counts as. No location on screen = all rows. */
+function locationScope(cycle, locations, masterNames) {
+  const viewIds = new Set();
+  if (cycle.location) {
+    const hit = findLocation(cycle.location, locations);
+    if (hit) viewIds.add(rowId(hit));
+  }
+  const defaultId = [...viewIds][0] || "";
+  const visible = (r) => {
+    if (!cycle.location) return true;
+    const own = refId(r.location);
+    if (own && viewIds.size) return viewIds.has(own);
+    return masterNames.has(lower(r.name)) || !text(r.department);
+  };
+  const idOf = (r) => refId(r.location) || (cycle.location ? defaultId : "");
+  return { visible, idOf };
+}
 
 /* The employees' designations that belong to a cycle: every employee for an
    org-wide cycle, otherwise only the cycle location's employees. */
-async function pairsForCycle(app, cycle) {
+async function pairsForCycle(app, cycle, locations) {
   const all = await readMasterPairs(app);
   if (!cycle.location) return all;
-  const aliases = locationAliases(cycle.location, await readLocations(app));
+  const aliases = locationAliases(cycle.location, locations || (await readLocations(app)));
   return all.filter((r) => aliases.has(lower(r.location)));
 }
 
 /* ---------- load ---------- */
-async function syncFromEmployeeMaster(app, cycle) {
+async function syncFromEmployeeMaster(app, cycle, locations) {
   const [desRows, empRows] = await Promise.all([
     readCycle(app, TBL.designations, cycle.id),
-    pairsForCycle(app, cycle),
+    pairsForCycle(app, cycle, locations),
   ]);
-  const known = new Set(desRows.map((r) => lower(r.name)));
+  const keyOf = (locId, name) => `${locId}|${lower(name)}`;
+  // One designation per (location, name), as held by the location's employees.
   const pairs = new Map();
+  const deptByName = new Map();
   empRows.forEach((r) => {
     const name = text(r.designation);
-    if (name && !pairs.has(name.toLowerCase())) {
-      pairs.set(name.toLowerCase(), { name, department: text(r.department) });
+    if (!name) return;
+    const hit = findLocation(r.location, locations);
+    const locId = hit ? rowId(hit) : "";
+    if (!pairs.has(keyOf(locId, name))) {
+      pairs.set(keyOf(locId, name), { name, department: text(r.department), locId });
     }
+    if (!deptByName.has(lower(name))) deptByName.set(lower(name), text(r.department));
+  });
+  const known = new Set();
+  const legacy = new Map(); // rows saved before the location column existed
+  desRows.forEach((r) => {
+    const own = refId(r.location);
+    if (own) known.add(keyOf(own, r.name));
+    else if (!legacy.has(lower(r.name))) legacy.set(lower(r.name), r);
   });
   const toAdd = [];
+  const backfill = [];
   pairs.forEach((p, key) => {
     if (known.has(key)) return;
+    // An older row for this designation without a location takes this location.
+    const old = legacy.get(lower(p.name));
+    if (old && p.locId) {
+      legacy.delete(lower(p.name));
+      known.add(key);
+      backfill.push({ ROWID: rowId(old), location: p.locId });
+      return;
+    }
     // Spec: new designations arrive with no next type and Status Inactive.
-    toAdd.push({
+    const row = {
       cycle_id: cycle.id,
       name: clip(p.name),
       department: clip(p.department),
       band: "",
       next_type: "",
       status: false,
-    });
+    };
+    if (p.locId) row.location = p.locId;
+    toAdd.push(row);
   });
   const table = app.datastore().table(TBL.designations);
   if (toAdd.length) {
     for (const part of chunks(toAdd)) await table.insertRows(part);
   }
+  for (const part of chunks(backfill)) await table.updateRows(part);
   // A row created earlier without a department (e.g. added by hand) gets it
   // from Employee_Master the first time the designation is found there.
   const fill = desRows
-    .filter((r) => !text(r.department) && pairs.get(lower(r.name))?.department)
-    .map((r) => ({ ROWID: rowId(r), department: clip(pairs.get(lower(r.name)).department) }));
+    .filter((r) => !text(r.department) && deptByName.get(lower(r.name)))
+    .map((r) => ({ ROWID: rowId(r), department: clip(deptByName.get(lower(r.name))) }));
   for (const part of chunks(fill)) await table.updateRows(part);
   // desRows/changed let loadData reuse this request's read of the cycle's
   // designations when the sync wrote nothing, instead of reading it again.
-  return { names: new Set(pairs.keys()), desRows, changed: toAdd.length > 0 || fill.length > 0 };
+  return {
+    names: new Set(deptByName.keys()),
+    desRows,
+    changed: toAdd.length > 0 || fill.length > 0 || backfill.length > 0,
+  };
 }
 
 /* Checks every table this function needs and reports the REAL Catalyst error
@@ -447,7 +519,7 @@ async function checkSchema(app) {
   if (Date.now() < schemaOkUntil) return;
   await resolveDesignationsTable(app);
   const probes = [
-    [TBL.designations, "ROWID, cycle_id, name, department, band, next_type, single_next_designation, group_id, status"],
+    [TBL.designations, "ROWID, cycle_id, name, department, location, band, next_type, single_next_designation, group_id, status"],
     [TBL.next, "ROWID, designation_id, next_id"],
     [TBL.groups, "ROWID, cycle_id, group_name"],
     [TBL.members, "ROWID, group_id, des_id"],
@@ -477,14 +549,15 @@ async function checkSchema(app) {
 async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   await checkSchema(app);
 
-  const synced = sync ? await syncFromEmployeeMaster(app, cycle) : null;
+  const locations = await readLocations(app);
+  const synced = sync ? await syncFromEmployeeMaster(app, cycle, locations) : null;
   // Designations that employees of the cycle's location hold. Without a sync
   // (the reload after a save) they are read again, but only for a location
   // cycle: an org-wide cycle shows every designation and needs no filter.
   const masterNames = synced
     ? synced.names
     : cycle.location
-      ? new Set((await pairsForCycle(app, cycle)).map((r) => lower(r.designation)).filter(Boolean))
+      ? new Set((await pairsForCycle(app, cycle, locations)).map((r) => lower(r.designation)).filter(Boolean))
       : new Set();
 
 
@@ -504,14 +577,20 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   // into this cycle for other locations stay in the table but are not shown.
   // The location filter runs BEFORE the one-row-per-name guard (double sync), so
   // a hidden row can never hide a visible one of the same name.
+  const scope = locationScope(cycle, locations, masterNames);
   const seenDes = new Set();
   const desRows = allDes.filter((r) => {
-    const k = lower(r.name);
-    if (!k || seenDes.has(k)) return false;
-    if (!inCycleLocation(cycle, r, masterNames)) return false;
+    if (!lower(r.name) || !scope.visible(r)) return false;
+    const k = `${scope.idOf(r)}|${lower(r.name)}`;
+    if (seenDes.has(k)) return false;
     seenDes.add(k);
     return true;
   });
+  const locationList = locations
+    .map((l) => ({ id: rowId(l), name: locationNameOf(l), code: text(l.location_code ?? l.code) }))
+    .filter((l) => l.id && l.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const locNameById = new Map(locationList.map((l) => [l.id, l.name]));
 
   const desIds = new Set(desRows.map(rowId));
 
@@ -545,6 +624,8 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
       id,
       name: text(r.name),
       department: text(r.department),
+      locationId: scope.idOf(r),
+      locationName: locNameById.get(scope.idOf(r)) || "",
       inMaster: masterNames.has(lower(r.name)) || !!text(r.department),
       band: text(r.band),
       nextType: text(r.next_type).toUpperCase(),
@@ -600,7 +681,16 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
       text: d.txt || `${text(r.field_name)}: ${text(r.old_value)} → ${text(r.new_value)}`,
     }));
 
-  return { cycle, location: cycle.location || "All", designations, groups, options, bands: BANDS, audit };
+  return {
+    cycle,
+    location: cycle.location || "All",
+    locations: locationList,
+    designations,
+    groups,
+    options,
+    bands: BANDS,
+    audit,
+  };
 }
 
 /* ---------- rules (spec: VALIDATIONS) ---------- */
@@ -627,15 +717,25 @@ function validate(payload, db) {
   const groupIds = new Set(groups.map((g) => String(g.id)));
 
   // designations
+  // A designation belongs to one location; the same name may exist in several.
+  const dbById = new Map(db.designations.map((x) => [x.id, x]));
+  const byId = new Map(designations.map((x) => [String(x.id), x]));
+  const locOf = (x) =>
+    !x ? "" : String(x.id).startsWith("new-") ? text(x.locationId) : (dbById.get(String(x.id)) || {}).locationId || "";
+  const sameLocation = (a, b) => !locOf(a) || !locOf(b) || locOf(a) === locOf(b);
   const seenNames = new Set();
   designations.forEach((d) => {
     const id = String(d.id);
     const name = text(d.name);
     if (!name) return errors.push("Designation name is required.");
-    if (seenNames.has(name.toLowerCase())) {
-      errors.push(`${name}: this designation already exists in the cycle.`);
+    if (id.startsWith("new-") && !(db.locations || []).some((l) => l.id === text(d.locationId))) {
+      errors.push(`${name}: choose a location from Location Master.`);
     }
-    seenNames.add(name.toLowerCase());
+    const nameKey = `${locOf(d)}|${name.toLowerCase()}`;
+    if (seenNames.has(nameKey)) {
+      errors.push(`${name}: this designation already exists in this location.`);
+    }
+    seenNames.add(nameKey);
     if (!id.startsWith("new-") && !dbIds.has(id)) {
       errors.push(`${name}: not found in the current cycle. Refresh and try again.`);
     }
@@ -651,11 +751,17 @@ function validate(payload, db) {
     if (type === "S" && text(d.singleNextId)) {
       if (String(d.singleNextId) === id) errors.push(`${name}: a designation cannot be its own next designation.`);
       else if (!ids.has(String(d.singleNextId))) errors.push(`${name}: the next designation is not valid.`);
+      else if (!sameLocation(d, byId.get(String(d.singleNextId)))) {
+        errors.push(`${name}: the next designation must be in the same location.`);
+      }
     }
     const list = type === "M" ? (d.multipleNextIds || []).map(String) : [];
     if (new Set(list).size !== list.length) errors.push(`${name}: the same designation is listed twice.`);
     if (list.includes(id)) errors.push(`${name}: the list cannot contain the designation itself.`);
     if (list.some((x) => !ids.has(x))) errors.push(`${name}: the list has a designation that is not valid.`);
+    else if (list.some((x) => !sameLocation(d, byId.get(x)))) {
+      errors.push(`${name}: the list can only have designations from the same location.`);
+    }
     if (type === "G" && text(d.groupId) && !groupIds.has(String(d.groupId))) {
       errors.push(`${name}: the chosen group does not exist in this cycle.`);
     }
@@ -775,6 +881,7 @@ async function saveData(app, cycle, actor, payload) {
         cycle_id: cycle.id,
         name: clip(text(d.name)),
         department: "",
+        location: text(d.locationId),
         band: "",
         next_type: "",
         status: false,
@@ -783,12 +890,14 @@ async function saveData(app, cycle, actor, payload) {
     (Array.isArray(inserted) ? inserted : []).forEach((row, i) => {
       desMap.set(String(part[i].id), rowId(row));
       dbDes.set(rowId(row), {
-        id: rowId(row), name: text(part[i].name), department: "", band: "", nextType: "",
+        id: rowId(row), name: text(part[i].name), department: "", locationId: text(part[i].locationId),
+        band: "", nextType: "",
         singleNextId: "", multipleNextIds: [], groupId: "", status: "Inactive",
       });
+      const where = ((db.locations || []).find((l) => l.id === text(part[i].locationId)) || {}).name;
       log(`DES:${rowId(row)}`, text(part[i].name), "Designation added", "", "Inactive until mapped", {
         tab: "des", rid: rowId(row), field: "added", ov: "", nv: "",
-        txt: "Designation added (Inactive until mapped)",
+        txt: `Designation added${where ? ` in ${where}` : ""} (Inactive until mapped)`,
       });
     });
   }
@@ -986,13 +1095,14 @@ async function saveData(app, cycle, actor, payload) {
    the sheet treats that as not mapped too. */
 async function loadRules(app, cycle) {
   await resolveDesignationsTable(app);
+  const locations = await readLocations(app);
   const [allDes, memberRows, nextRows, cfgRows, locationPairs] = await Promise.all([
     readCycle(app, TBL.designations, cycle.id),
     readAll(app, TBL.members),
     readAll(app, TBL.next),
     readAll(app, TBL.config),
     // only a location cycle needs the employees' designations (to filter by location)
-    cycle.location ? pairsForCycle(app, cycle) : Promise.resolve([]),
+    cycle.location ? pairsForCycle(app, cycle, locations) : Promise.resolve([]),
   ]);
   const masterNames = new Set(locationPairs.map((r) => lower(r.designation)).filter(Boolean));
 
@@ -1003,11 +1113,12 @@ async function loadRules(app, cycle) {
   });
   if (!cfgRows.length) TYPES.forEach((t) => (options[t] = true));
 
+  const scope = locationScope(cycle, locations, masterNames);
   const seen = new Set();
   const rows = allDes.filter((r) => {
     const k = lower(r.name);
     if (!k || seen.has(k)) return false;
-    if (!inCycleLocation(cycle, r, masterNames)) return false; // another location's designation
+    if (!scope.visible(r)) return false; // another location's designation
     seen.add(k);
     return true;
   });
