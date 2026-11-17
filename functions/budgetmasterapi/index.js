@@ -2454,12 +2454,19 @@ async function calculateBudgetBases(
     const bonusPayrollRecord =
       previousPayrollRecord || currentCyclePayrollRecord;
     const currentCtcValue = currentCtc(row);
-    // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
-    // canonical base. Use historical Payroll_Data only when that sheet field
-    // is absent, then fall back to the current CTC for new joiners/legacy rows.
+    const sheetPreviousRaw = firstValue(row, [
+      "Previous_Appraisal_total_CTC_with_rewards",
+      "previous_appraisal_total_ctc_with_rewards",
+      "previous_year_CTC_with_rewards",
+      "previousAppraisalTotalCtcWithRewards",
+    ]);
+    const sheetPreviousCtc =
+      sheetPreviousRaw === "" || sheetPreviousRaw === null || sheetPreviousRaw === undefined
+        ? null
+        : n(sheetPreviousRaw);
     // Reconstruct the grid's previous total rewards from the same payroll
-    // history source; raw sheet values can be stale after eligibility or
-    // delegation regeneration and must not override the resolved source.
+    // history source. A stored sheet value is only a legacy fallback when no
+    // usable payroll source exists; it must not override current history.
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
@@ -2493,6 +2500,7 @@ async function calculateBudgetBases(
       previousPayrollCtc ??
       (previousRecord ? previousCtc(previousRecord) : null) ??
       currentCyclePayrollCtc ??
+      (sheetPreviousCtc !== null && sheetPreviousCtc > 0 ? sheetPreviousCtc : null) ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
