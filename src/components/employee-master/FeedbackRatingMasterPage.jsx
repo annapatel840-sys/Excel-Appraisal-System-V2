@@ -432,7 +432,8 @@ export function FeedbackRatingMasterPage({
 
   // Effective dates are compared as yyyy-mm-dd, whatever the backend sends.
   const dayOf = (v) => String(v == null ? "" : v).slice(0, 10);
-  const sameCycle = (r) => Boolean(activeCycle) && String(r.cid) === String(cid);
+  const selectedCycle = CYCLES.find((cycle) => String(cycle.id) === String(cid)) || null;
+  const sameCycle = (r) => Boolean(selectedCycle) && String(r.cid) === String(cid);
   const scope = useMemo(
     () => ROWS.filter((r) => sameCycle(r) && (!eff || dayOf(r.eff) === eff)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -615,7 +616,7 @@ export function FeedbackRatingMasterPage({
   const cmCol = colMenu ? colOf(colMenu.k) : null;
   const effLabel = eff ? fmtDate(eff) : "all dates";
   const batchesForCycle = BATCHES.filter((b) =>
-    Boolean(activeCycle) && String(b.cid) === String(cid)
+    Boolean(selectedCycle) && String(b.cid) === String(cid)
   );
 
   return (
