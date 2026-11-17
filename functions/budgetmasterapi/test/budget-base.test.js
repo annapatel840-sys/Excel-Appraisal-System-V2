@@ -603,8 +603,15 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       }],
       Budget_Distribution_Comp: [], Employee_Master: [],
       Eligibility_List: [{ appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' }],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
       Appraisal_Sheet: [sheet('E1', 'T1', 'C1', 1000000, 0)],
     });
+    const activeCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = activeCycleId;
+    store.tables.Budget_Distribution[0].appraisal_cycle_id = activeCycleId;
+    store.tables.Eligibility_List[0].appraisal_cycle_id = activeCycleId;
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const team = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
@@ -828,8 +835,14 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
         { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
       ],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
       Appraisal_Sheet: [sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '', ''), sheet('E2', 'EMP0051 - Ashok Kumar', 'Anita', null, null)],
     });
+    const activeCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = activeCycleId;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = activeCycleId; });
     const r = await get(load(store));
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.master[0].org_budget_base, 0);
@@ -844,8 +857,14 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
         { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
       ],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
       Appraisal_Sheet: [sheet('E1', 'T1', 'C1', '1000000', '0'), sheet('E2', 'T1', 'C1', '', '')],
     });
+    const activeCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = activeCycleId;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = activeCycleId; });
     const r = await get(load(store));
     assert.match(r.json.diagnostics.warning, /1 of 2 Appraisal Sheet employees have no usable/);
     assert.strictEqual(r.json.master[0].org_budget_base, 1000000);
