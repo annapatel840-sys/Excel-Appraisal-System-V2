@@ -3,14 +3,12 @@ import { useEffect, useState } from "react";
 import { loadFeedbackRating } from "@/lib/feedback-rating-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
-import { filterByLocation, isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { FeedbackRatingMasterPage } from "./FeedbackRatingMasterPage";
 
 // Loads the data from feedbackratingapi and hands it to the (UI-only) page.
 export function FeedbackRatingMasterContainer() {
   const [state, setState] = useState({ cycles: [], rows: [], batches: [], loading: true, error: "" });
   const signedInUser = useCatalystUser();
-  const [selectedLocation] = useSelectedLocation();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
   const feedbackSnapshotKey = masterSnapshotKey(snapshotScope, "feedback");
 
@@ -55,22 +53,17 @@ export function FeedbackRatingMasterContainer() {
     };
   }, [feedbackSnapshotKey]);
 
-  const locationCycles = state.cycles.filter((cycle) =>
-    isAllLocations(selectedLocation)
-      ? true
-      : isAllLocations(cycle.location) || filterByLocation([cycle], selectedLocation, (item) => item.location).length > 0
-  );
-  // Show the full archived history as well as the active cycle. Older uploads
-  // often have no location on their cycle row, so employee location (resolved
-  // from Employee_Master by the API) is the authoritative row-level filter.
-  const locationRows = filterByLocation(state.rows, selectedLocation, (row) => row.location);
-  const locationCycleIds = new Set(locationCycles.map((cycle) => String(cycle.id)));
-  const locationBatches = state.batches.filter((batch) => locationCycleIds.has(String(batch.cid)));
+  // This master is a full historical table view. Return every cycle and row
+  // from Feedback_And_Rating; do not infer or apply a location filter because
+  // older table records may not carry a location.
+  const allCycles = state.cycles;
+  const allRows = state.rows;
+  const allBatches = state.batches;
   return (
     <FeedbackRatingMasterPage
-      cycles={locationCycles}
-      rows={locationRows}
-      batches={locationBatches}
+      cycles={allCycles}
+      rows={allRows}
+      batches={allBatches}
       loading={state.loading}
       error={state.error}
     />
