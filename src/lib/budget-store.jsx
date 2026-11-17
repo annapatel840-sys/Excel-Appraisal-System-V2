@@ -491,19 +491,9 @@ export function BudgetProvider({ children }) {
       // employee enrichment below must not hold up Budget Allocated.
       setLoading(false);
 
-      // budgetmasterapi already scopes this roster to the selected location's
-      // cycle but sends no location field. Tag each row with that location so
-      // the location filter (locationEmployeeRows) keeps them.
-      const rosterLocation = isAllLocations(requestLocation)
-        ? ""
-        : requestLocation;
       const rosterEmployees =
         activeCycleId && Array.isArray(budgetJson && budgetJson.employeeRoster)
-          ? budgetJson.employeeRoster.map((employee) =>
-              rosterLocation && !locationOfRow(employee)
-                ? { ...employee, location: rosterLocation }
-                : employee,
-            )
+          ? budgetJson.employeeRoster
           : [];
 
       // Budget Master already returns its authoritative cycle-scoped roster.
@@ -749,10 +739,17 @@ export function BudgetProvider({ children }) {
   // Manager and their hierarchy). locationEmployeeRows is the same roster
   // narrowed to the selected location, for team counts and team lists.
 
-  const locationEmployeeRows = useMemo(
-    () => filterByLocation(employeeRows, selectedLocation),
-    [employeeRows, selectedLocation],
-  );
+  // budgetmasterapi rows (fresh or from the per-location browser snapshot)
+  // carry no location field, but they are already scoped to the selected
+  // location's cycle. Keep them; filter only rows that name a location.
+  const locationEmployeeRows = useMemo(() => {
+    if (isAllLocations(selectedLocation)) return employeeRows;
+    const withLocation = employeeRows.filter((row) => locationOfRow(row));
+    const matched = new Set(filterByLocation(withLocation, selectedLocation));
+    return employeeRows.filter(
+      (row) => !locationOfRow(row) || matched.has(row),
+    );
+  }, [employeeRows, selectedLocation]);
 
   const rows = useMemo(
     () =>
