@@ -696,7 +696,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '' },
+        // A stale generated sheet value must not override the payroll CTC
+        // that employeesapi returns in the visible Appraisal Sheet.
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '10,00,000' },
       ],
     });
     const priorCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
