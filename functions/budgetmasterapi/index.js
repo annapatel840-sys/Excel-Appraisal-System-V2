@@ -146,17 +146,9 @@ function mapMaster(row) {
     current_budget_base: n(
       value(row, "current_budget_base") || value(row, "current_base"),
     ),
-    // Legacy Budget_Master schemas have no dedicated snapshot column.
-    // Use current_headcount as the one-time shared Original Count in that case.
-    original_headcount:
-      originalHeadcountValue(row) !== ""
-        ? originalHeadcountValue(row)
-        : firstValue(row, ["current_headcount"]),
-    original_headcount_is_persisted:
-      originalHeadcountValue(row) !== "" ||
-      (firstValue(row, ["current_headcount"]) !== "" &&
-        firstValue(row, ["current_headcount"]) !== null &&
-        firstValue(row, ["current_headcount"]) !== undefined),
+    // Original Count is read only from its dedicated immutable snapshot column.
+    original_headcount: originalHeadcountValue(row),
+    original_headcount_is_persisted: originalHeadcountValue(row) !== "",
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     budget_utilized: utilized,
@@ -179,14 +171,7 @@ function mapDistribution(row) {
   const calculated = n(
     firstNonZeroValue(row, ["calculated_budget", "claculated_budget"]),
   );
-  // In the current Catalyst schema there is no dedicated Original Count
-  // column. HR's shared baseline is stored in the existing current_headcount
-  // field; do not confuse it with the live count calculated from Appraisal_Sheet.
   const dedicatedOriginalCount = originalHeadcountValue(row);
-  const sharedOriginalCount =
-    dedicatedOriginalCount !== ""
-      ? dedicatedOriginalCount
-      : firstValue(row, ["current_headcount"]);
   const applied = n(value(row, "applied_budget"));
   const utilized = n(
     firstNonZeroValue(row, [
@@ -220,11 +205,8 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: sharedOriginalCount,
-    original_headcount_is_persisted:
-      sharedOriginalCount !== "" &&
-      sharedOriginalCount !== null &&
-      sharedOriginalCount !== undefined,
+    original_headcount: dedicatedOriginalCount,
+    original_headcount_is_persisted: dedicatedOriginalCount !== "",
     current_headcount: firstValue(row, ["current_headcount"]),
     headcount: firstValue(row, ["headcount"]),
     calculated_budget: calculated,
@@ -278,18 +260,8 @@ function mapComp(row) {
     current_budget_base: n(
       value(row, "current_budget_base") || value(row, "current_base"),
     ),
-    // Budget_Distribution_Comp has no dedicated Original Count column in
-    // some deployments. In that schema current_headcount is the shared,
-    // one-time baseline; the live count is calculated from the roster below.
-    original_headcount:
-      originalHeadcountValue(row) !== ""
-        ? originalHeadcountValue(row)
-        : firstValue(row, ["current_headcount"]),
-    original_headcount_is_persisted:
-      originalHeadcountValue(row) !== "" ||
-      (firstValue(row, ["current_headcount"]) !== "" &&
-        firstValue(row, ["current_headcount"]) !== null &&
-        firstValue(row, ["current_headcount"]) !== undefined),
+    original_headcount: originalHeadcountValue(row),
+    original_headcount_is_persisted: originalHeadcountValue(row) !== "",
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
@@ -3547,7 +3519,12 @@ async function calculateBudgetBases(
       if (!row) {
         const created = await distributionTable.insertRow({
           appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: String(techKey).slice(0, 20),
+          // Keep the business ID's original casing in Data Store. ownerKey is
+          // intentionally lower-case for comparisons, but UI/test lookups and
+          // existing allocation rows use the canonical Employee ID casing.
+          appraiser_tech_ed_id: String(
+            String(ownerName || techKey).split(/\\s+-\\s+/)[0].trim() || techKey,
+          ).slice(0, 20),
           percentage: null,
           budget_base: 0,
           [distCalcField]: 0,
@@ -3610,8 +3587,7 @@ async function calculateBudgetBases(
       // The immutable baseline must use the raw generated Appraisal_Sheet
       // count. stats.count belongs to the enriched budget roster and can be
       // zero for newly added employees whose lookup aliases are not enriched.
-      const rosterCount =
-        Number(techRosterCounts.get(canonicalTechKey(techKey))) || 0;
+      const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline is immutable; later delegation/eligibility
@@ -3671,14 +3647,7 @@ async function calculateBudgetBases(
         );
         // Keep current_headcount as the shared immutable Original Count
         // snapshot when this schema has no dedicated original_headcount field.
-        const savedLegacy = await persistOptional(
-          distributionTable,
-          row.id,
-          distributionColumns,
-          ["current_headcount"],
-          savedOriginalCount,
-        );
-        originalCountStored = Boolean(savedDedicated || savedLegacy);
+        originalCountStored = Boolean(savedDedicated);
         if (!originalCountStored) {
           bundle.diagnostics = {
             ...(bundle.diagnostics || {}),
@@ -3687,10 +3656,15 @@ async function calculateBudgetBases(
           };
         }
       }
-      // Return the live count to the UI without persisting over the shared
-      // Original Count snapshot stored in this legacy field.
-      const currentSheetHeadcount =
-        techRosterCounts.get(canonicalTechKey(techKey)) || 0;
+      // Current Count is a separate live value and is refreshed on every GET.
+      const currentSheetHeadcount = Number(stats.current) || 0;
+      await persistOptional(
+        distributionTable,
+        row.id,
+        distributionColumns,
+        ["current_headcount"],
+        currentSheetHeadcount,
+      );
       await persistOptional(
         distributionTable,
         row.id,
@@ -3791,7 +3765,7 @@ async function calculateBudgetBases(
         : (originalBase * pct) / 100;
       const updatedBudget = (stats.base * pct) / 100;
       const savedOriginalCountValue = row.original_headcount;
-      const rosterCount = compRosterCounts.get(pairKey) || 0;
+      const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline remains immutable after delegation.
@@ -3835,14 +3809,7 @@ async function calculateBudgetBases(
         );
         // Preserve current_headcount as the shared Original Count in
         // legacy schemas without original_headcount/allocation_headcount.
-        const savedLegacy = await persistOptional(
-          compTable,
-          row.id,
-          compColumns,
-          ["current_headcount"],
-          savedOriginalCount,
-        );
-        compOriginalCountStored = Boolean(savedDedicated || savedLegacy);
+        compOriginalCountStored = Boolean(savedDedicated);
         if (!compOriginalCountStored) {
           bundle.diagnostics = {
             ...(bundle.diagnostics || {}),
@@ -3851,6 +3818,13 @@ async function calculateBudgetBases(
           };
         }
       }
+      await persistOptional(
+        compTable,
+        row.id,
+        compColumns,
+        ["current_headcount"],
+        Number(stats.current) || 0,
+      );
       await persistOptional(
         compTable,
         row.id,
@@ -3864,7 +3838,7 @@ async function calculateBudgetBases(
         applied_budget: updatedBudget,
         // Return live Current Count to the response only; do not persist it
         // over the legacy Original Count snapshot.
-        current_headcount: compRosterCounts.get(pairKey) || 0,
+        current_headcount: Number(stats.current) || 0,
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: compOriginalCountStored ? savedOriginalCount : "",
@@ -3974,13 +3948,13 @@ async function calculateBudgetBases(
       savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "" &&
       (n(savedOrgOriginalCountValue) > 0 ||
-        appraisalSheetEmployees.length === 0);
+        currentAppraisalRows.length === 0);
     // Org Original Count is a snapshot too. Never rewrite it on GET based on
     // current eligibility or assignment data; those belong in Current Count.
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet
       ? n(savedOrgOriginalCountValue)
-      : appraisalSheetEmployees.length;
+      : currentAppraisalRows.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
@@ -4003,36 +3977,25 @@ async function calculateBudgetBases(
       }
     }
     await masterTable.updateRow(orgFields);
-    // In legacy schemas current_headcount is also the shared Original Count
-    // snapshot. Persist the live count only when a dedicated snapshot column
-    // exists; otherwise preserve the saved baseline and return live count below.
+    // Original Count and Current Count have separate Data Store columns.
+    // Save the original baseline only once; refresh the live count every GET.
     let orgOriginalCountStored = hasSavedOrgOriginalCount;
-    if (hasSavedOrgOriginalCount) {
-      const dedicatedOrgSnapshotField = masterColumns
-        ? ["original_headcount", "allocation_headcount"].some((name) =>
-            Array.from(masterColumns).some(
-              (column) => column.toLowerCase() === name,
-            ),
-          )
-        : false;
-      if (dedicatedOrgSnapshotField) {
-        await persistOptional(
-          masterTable,
-          master.id,
-          masterColumns,
-          ["current_headcount"],
-          eligibleEmployees.length,
-        );
-      }
-    } else {
+    if (!hasSavedOrgOriginalCount) {
       orgOriginalCountStored = await persistOptional(
         masterTable,
         master.id,
         masterColumns,
-        ["current_headcount"],
+        ["original_headcount"],
         savedOrgOriginalCount,
       );
     }
+    await persistOptional(
+      masterTable,
+      master.id,
+      masterColumns,
+      ["current_headcount"],
+      cycleFilteredEmployees.length,
+    );
     await persistOptional(
       masterTable,
       master.id,
@@ -4047,7 +4010,7 @@ async function calculateBudgetBases(
       applied_budget: orgUpdated,
       budget_utilized: orgUtilized,
       current_budget_base: orgBase,
-      current_headcount: eligibleEmployees.length,
+      current_headcount: cycleFilteredEmployees.length,
       original_headcount: orgOriginalCountStored ? savedOrgOriginalCount : "",
     });
   }

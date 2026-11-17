@@ -3045,6 +3045,10 @@ const saveEmployeeChangeToCatalyst = async ({ empId, appraisalRowId, key, newVal
     },
     body: JSON.stringify({
       emp_id: String(empId),
+      // Pass the exact Appraisal_Sheet ROWID shown in the grid. The API still
+      // validates employee + active cycle before writing, but this avoids
+      // ambiguous employee-only lookup when the employee has multiple rows.
+      appraisal_row_id: String(appraisalRowId || ""),
       appraisal_year: APPRAISAL_YEAR,
       cycle_id: APPRAISAL_CYCLE_ID,
       location: APPRAISAL_LOCATION,
@@ -3087,7 +3091,6 @@ const savePreviousAppraisalChangeToCatalyst = async ({
     },
     body: JSON.stringify({
       emp_id: String(empId),
-      appraisal_row_id: String(appraisalRowId || ""),
       appraisal_year: APPRAISAL_YEAR,
       [historyField]: historyValue,
     }),
@@ -4261,6 +4264,12 @@ export function AppraisalProvider({ children }) {
             },
             body: JSON.stringify({
               emp_id: String(empId),
+              // Hike % and Hike Amount are saved together through this path;
+              // include the same exact Appraisal_Sheet ROWID as single-cell edits.
+              appraisal_row_id: String(targetRow.id || ""),
+              appraisal_year: APPRAISAL_YEAR,
+              cycle_id: APPRAISAL_CYCLE_ID,
+              location: APPRAISAL_LOCATION,
               // Same cycle as single-cell saves. Without it the server used
               // the first Active cycle (UK) for every location.
               appraisal_year: APPRAISAL_YEAR,

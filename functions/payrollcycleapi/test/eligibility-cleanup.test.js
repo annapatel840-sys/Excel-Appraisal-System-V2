@@ -56,7 +56,15 @@ function load(store) {
     userManagement: () => ({ getCurrentUser: async () => ({ user_id: '1', first_name: 'HR', last_name: 'A', email_id: 'hr@x.com', role_details: { role_name: 'HR' } }) }),
   }) };
   class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-  const accessStub = { HttpError, check: async () => ({ dryRun: true, enforced: false }), isEnforced: () => false, guard: (a, fn) => fn(), requireScreen: () => {}, bumpVersion: async () => {} };
+  const accessStub = {
+    HttpError,
+    check: async () => ({ dryRun: true, enforced: false }),
+    isEnforced: () => false,
+    guard: (a, fn) => fn(),
+    requireScreen: () => {},
+    requireEditFields: () => {},
+    bumpVersion: async () => {},
+  };
   const orig = Module._load;
   Module._load = function (req, parent, ...rest) {
     if (req === 'zcatalyst-sdk-node') return catalystStub;
@@ -97,29 +105,43 @@ async function setup() {
 (async () => {
   const apply = (post, cycleId, criteria = {}) => post('eligibility', { action: 'apply-criteria', cycleId, ...criteria });
 
-  await t('leftover rows from an old cycle no longer block a new cycle', async () => {
-    const { post, mk, elig } = await setup();
-    await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '1', emp_id: 'E1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '2', emp_id: 'E2' }]);
+  await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
+    const { store, post, mk, elig } = await setup();
+    // Historical employees are not part of the new cycle's Employee_Master
+    // roster. Keep their business IDs distinct because emp_id is globally unique.
+    await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '9001', emp_id: 'HIST1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '9002', emp_id: 'HIST2' }]);
     const c = await mk('Annual NEW');
+    // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
+    // until HR explicitly applies criteria for this cycle.
+    await store.table('74008000000039094', null).insertRow({
+      emp_id: 'E1',
+      cycle_id: c.id,
+      eligible_status: 'Eligible',
+    });
     const r = await post('cycles/status/' + c.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
+    assert.strictEqual(
+      elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
+      0,
+      'activation must not seed the new cycle before criteria',
+    );
+    assert.strictEqual(elig.rows.length, 2, 'rows belonging to the old cycle must remain untouched');
     const ap = await apply(post, c.id);
     assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.appraisal_cycle_id === c.id));
+    const newCycleRows = elig.rows.filter((row) => row.appraisal_cycle_id === c.id);
+    assert.strictEqual(newCycleRows.length, 2);
+    assert.ok(newCycleRows.every((row) => row.appraisal_cycle_id === c.id));
+    assert.strictEqual(elig.rows.length, 4, 'Apply Criteria must not delete the old cycle rows');
   });
 
-  await t('first Eligibility List load seeds Active employees as Eligible', async () => {
+  await t('first Eligibility List load stays empty until Apply Criteria', async () => {
     const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
     const r = await post('cycles/status/' + a.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const listed = await call(api, 'GET', 'eligibility');
     assert.strictEqual(listed.status, 200, JSON.stringify(listed.json));
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
+    assert.strictEqual(elig.rows.length, 0);
   });
 
   await t('closing a cycle empties its eligibility rows; next cycle activates cleanly', async () => {
@@ -134,21 +156,19 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 0);
     const b = await mk('Annual B');
     assert.strictEqual((await post('cycles/status/' + b.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
+    assert.strictEqual(elig.rows.length, 0, 'new cycle must not seed rows before criteria');
     assert.strictEqual((await apply(post, b.id)).status, 200);
     assert.strictEqual(elig.rows.length, 2);
   });
 
-  await t('reopening a closed cycle resets the list to initial Eligible rows', async () => {
+  await t('reopening a closed cycle keeps the list empty until Apply Criteria', async () => {
     const { post, mk, elig } = await setup();
     const a = await mk('Annual A');
     await post('cycles/status/' + a.id, { status: 'Active' });
     await apply(post, a.id);
     await post('cycles/status/' + a.id, { status: 'Closed' });
     assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
+    assert.strictEqual(elig.rows.length, 0);
   });
 
   await t('cancelling an Active cycle empties its eligibility rows', async () => {
@@ -161,15 +181,14 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 0);
   });
 
-  await t('GET eligibility for the Active cycle initializes active employees as Eligible before criteria', async () => {
+  await t('GET eligibility does not seed employees before criteria are applied', async () => {
     const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
     await post('cycles/status/' + a.id, { status: 'Active' });
     const r = await call(api, 'GET', 'eligibility');
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.data.records.length, 2);
-    assert.strictEqual(elig.rows.length, 2);
-    assert.ok(r.json.data.records.every((x) => x.eligibility_status === 'Eligible'));
+    assert.strictEqual(r.json.data.records.length, 0);
+    assert.strictEqual(elig.rows.length, 0);
     await apply(post, a.id);
     const r2 = await call(api, 'GET', 'eligibility');
     assert.strictEqual(r2.json.data.records.length, 2);
@@ -222,32 +241,21 @@ async function setup() {
     const r = await apply(post, c.id, { departments: ['Sales'], designations: [], excludedEmployees: ['E2'], cutoffDate: '2025-01-01' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     // Rows stay visible: passing employees are Eligible and excluded employees are Not Eligible.
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']);
-    const status = Object.fromEntries(elig.rows.map((row) => [row.emp_id, row.eligibility_status]));
-    assert.strictEqual(status.E1, 'Eligible');
-    assert.strictEqual(status.E2, 'Not Eligible');
-    assert.strictEqual(status.E3, 'Not Eligible');
-    assert.strictEqual(status.E4, 'Not Eligible');
-    assert.strictEqual(r.json.data.added, 0);
-    assert.strictEqual(r.json.data.updated, 4);
+    assert.deepStrictEqual(ids(elig), ['E1']);
+    assert.strictEqual(elig.rows[0].eligibility_status, 'Eligible');
+    assert.strictEqual(r.json.data.added, 1);
   });
 
   await t('cutoff with a missing joining date marks the employee Not Eligible', async () => {
     const { post, c, elig } = await richSetup();
     await apply(post, c.id, { cutoffDate: '2025-12-31' });
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']); // missing DOJ is Not Eligible; other active rows remain visible
-    const status = Object.fromEntries(elig.rows.map((row) => [row.emp_id, row.eligibility_status]));
-    assert.strictEqual(status.E1, 'Not Eligible');
-    assert.strictEqual(status.E2, 'Not Eligible');
-    assert.strictEqual(status.E3, 'Eligible');
-    assert.strictEqual(status.E4, 'Eligible');
+    assert.deepStrictEqual(ids(elig), ['E3', 'E4']); // only active employees who pass criteria are listed
   });
 
   await t('Add An Employee: a left-out employee is added by hand and survives re-applying criteria', async () => {
     const { post, c, elig } = await richSetup();
     await apply(post, c.id, { departments: ['Sales'] });
-    assert.ok(ids(elig).includes('E3'));
-    assert.strictEqual(elig.rows.find((r) => r.emp_id === 'E3').eligibility_status, 'Not Eligible');
+    assert.ok(!ids(elig).includes('E3'), 'employees excluded by criteria must not be in the generated eligibility roster');
     const add = await post('eligibility', { cycleId: c.id, empId: 'E3', eligible_status: 'Eligible', reason: 'ML', source: 'Manual' });
     assert.strictEqual(add.status, 200, JSON.stringify(add.json));
     assert.ok(ids(elig).includes('E3'));
@@ -263,8 +271,8 @@ async function setup() {
     await post('eligibility', { cycleId: c.id, empId: 'E4', eligible_status: 'Not Eligible', reason: 'x' });
     const r = await apply(post, c.id, { departments: ['Sales', 'Engineering'] });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']);
-    assert.strictEqual(r.json.data.removed, 0);
+    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E4']);
+    assert.strictEqual(r.json.data.removed, 1);
     assert.strictEqual(elig.rows.find((row) => row.emp_id === 'E4').eligibility_status, 'Not Eligible');
   });
 
@@ -303,14 +311,14 @@ async function setup() {
 
     const response = await call(api, 'GET', 'eligibility');
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.deepStrictEqual(response.json.data.records.map((row) => row.emp_id).sort(), ['E1', 'E2']);
+    assert.deepStrictEqual(response.json.data.records.map((row) => row.emp_id).sort(), []);
     assert.strictEqual(reads.elig, 1);
     assert.strictEqual(reads.master, 1);
 
     // A change found by the sync still returns the updated list.
     await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active' });
     const after = await call(api, 'GET', 'eligibility');
-    assert.deepStrictEqual(after.json.data.records.map((row) => row.emp_id).sort(), ['E1', 'E2', 'E3']);
+    assert.deepStrictEqual(after.json.data.records.map((row) => row.emp_id).sort(), []);
   });
 
   await t('eligibility count reports criteria status without writing', async () => {
