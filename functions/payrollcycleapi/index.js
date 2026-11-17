@@ -49,11 +49,26 @@ const cycleLocationKey = (cycle) => {
     ? ""
     : value.toLowerCase();
 };
-const employeeLocationKey = (master) =>
-  String((master && (
+const rawEmployeeLocation = (master) => {
+  const value = master && (
     master.location || master.work_location || master.location_name ||
     master.office_location || master.base_location
-  )) || "").trim().toLowerCase();
+  );
+  if (value && typeof value === "object") {
+    return String(value.location_name || value.name || value.location_code || value.code || value.ROWID || value.rowid || value.id || "").trim();
+  }
+  return String(value || "").trim();
+};
+const employeeLocationKey = (master) => rawEmployeeLocation(master).toLowerCase();
+const employeeLocationName = (master, locations = []) => {
+  const raw = rawEmployeeLocation(master);
+  if (!raw) return "";
+  const key = raw.toLowerCase();
+  const match = locations.find((item) => [
+    item.location_name, item.name, item.location_code, item.code, item.ROWID, item.rowid,
+  ].some((value) => String(value || "").trim().toLowerCase() === key));
+  return String(match?.location_name || match?.name || raw).trim();
+};
 const locationAliases = (value, locations = []) => {
   const key = normalizedLocationValue(value);
   const match = locations.find((location) =>
@@ -2902,7 +2917,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
 }
 
-function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
+function mapPayroll(row, cycleByName, cycleById, employeeById = new Map(), locations = []) {
   const rawCycleValue = row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? "";
   const cycleKey = rawCycleValue && typeof rawCycleValue === "object"
     ? String(rawCycleValue.ROWID ?? rawCycleValue.rowid ?? rawCycleValue.id ?? rawCycleValue.cycle_name ?? rawCycleValue.value ?? "").trim()
@@ -2923,7 +2938,7 @@ function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
   );
   return {
     ...row, id: rowId(row),
-    location: locationColumn ? String(employee[locationColumn] || "") : "",
+    location: employeeLocationName(employee, locations),
     // Payroll stores the Employee Master ROWID as the foreign key. Expose
     // the human/business Employee ID to the UI instead of the internal ROWID.
     emp_id: businessEmpId || text("emp_id"),
@@ -3677,7 +3692,7 @@ function shapeFeedbackCycle(cycle) {
   };
 }
 
-function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
+function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById, locations = []) {
   const empKey = fbText(fbCol(row, "emp_ID"));
   const master = masterByRowId.get(empKey) || masterByEmpId.get(empKey.toLowerCase()) || {};
   const rawCycleId = fbText(fbCol(row, "appraisal_cycle_name"));
@@ -3692,7 +3707,7 @@ function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
   return {
     rowId: rowId(row),
     cid: cycleId,
-    location: fbText(fbCol(master, "location", "work_location", "location_name", "office_location", "base_location")),
+    location: employeeLocationName(master, locations),
     id: fbText(master.emp_id) || empKey,
     name: fbText(master.emp_name || master.name),
     desig: fbText(fbCol(row, "designation")) || fbText(master.designation),
@@ -3816,9 +3831,10 @@ async function getScopedFeedbackData(tables, query, scope) {
 }
 
 async function readScopedFeedback(tables, query, rowIds, empIds) {
-  const [cycleRows, mastersByRowId] = await Promise.all([
+  const [cycleRows, mastersByRowId, locationRows] = await Promise.all([
     readTableFast(tables, "cycles"),
     readRowsWhereIn(tables, "Employee_Master", "ROWID", rowIds, true),
+    getAllRows(tables.locations),
   ]);
   // Team members the scope names only by employee code (no ROWID): look those up too.
   const foundCodes = new Set(mastersByRowId.map((row) => fbText(row.emp_id).toLowerCase()));
@@ -3843,7 +3859,7 @@ async function readScopedFeedback(tables, query, rowIds, empIds) {
   const onlyCycle = fbText(query.cycleId || query.cycle_id);
   const rows = feedbackRows
     .sort((x, y) => (BigInt(String(x.ROWID || 0)) < BigInt(String(y.ROWID || 0)) ? -1 : 1))
-    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
+    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById, locationRows))
     .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
   return { cycles, rows, batches: [] };
 }
@@ -3853,10 +3869,11 @@ async function getFeedbackData(tables, query, includeBatches = true) {
   // limits) through the unchanged-table cache instead of one after another.
   // Upload batches only need the feedback_upload audit rows, so those are
   // filtered inside ZCQL rather than downloading the whole audit table.
-  const [feedbackRows, cycleRows, masterRows, auditRows] = await Promise.all([
+  const [feedbackRows, cycleRows, masterRows, locationRows, auditRows] = await Promise.all([
     readTableFast(tables, "feedback"),
     readTableFast(tables, "cycles"),
     readTableFast(tables, "employeeMaster"),
+    getAllRows(tables.locations),
     includeBatches ? readAuditBySource(tables, "feedback_upload") : Promise.resolve([]),
   ]);
 
@@ -3875,7 +3892,7 @@ async function getFeedbackData(tables, query, includeBatches = true) {
   });
   const onlyCycle = fbText(query.cycleId || query.cycle_id);
   const rows = feedbackRows
-    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
+    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById, locationRows))
     .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
 
   // Upload-batch history is only returned to HR/global-scope users.
@@ -4245,10 +4262,11 @@ async function routeRequest(req, res, identity, resource, a) {
   }
 
   if (resource === "payroll" && req.method === "GET") {
-    const [rows, cycles, masterRows] = await Promise.all([
+    const [rows, cycles, masterRows, locationRows] = await Promise.all([
       readTableFast(tables, "payroll"),
       readTableFast(tables, "cycles"),
       readTableFast(tables, "employeeMaster"),
+      getAllRows(tables.locations),
     ]);
 
     const normalizedCycles = cycles.map((row) => normalizeCycle(row));
@@ -4286,7 +4304,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
     return sendJson(res, 200, {
       success: true,
-      data: visibleRows.map((row) => mapPayroll(row, cycleByName, cycleById, employeeById)),
+      data: visibleRows.map((row) => mapPayroll(row, cycleByName, cycleById, employeeById, locationRows)),
     }, req);
   }
 
