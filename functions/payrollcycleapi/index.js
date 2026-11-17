@@ -2405,10 +2405,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       (reuseExistingCycleData && sourceCycleKeys.has(rawCycle.toLowerCase()))
     )) {
       payrollByMasterId.set(masterId, row);
-      const master = employeeMasterByRowId.get(masterId.toLowerCase()) ||
-        employeeMasterByBusinessId.get(masterId.toLowerCase());
-      const actualMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id);
-      if (actualMasterId) payrollByMasterId.set(actualMasterId, row);
     }
   });
   // Current Annual Base Pay comes from the matching shared source's NEW base
