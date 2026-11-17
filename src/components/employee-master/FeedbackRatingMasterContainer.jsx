@@ -56,20 +56,17 @@ export function FeedbackRatingMasterContainer() {
   }, [feedbackSnapshotKey]);
 
   const locationCycles = filterByLocation(state.cycles, selectedLocation, (cycle) => cycle.location);
-  const activeCycle = locationCycles.find((cycle) =>
-    String(cycle?.status || "").trim().toLowerCase() === "active" &&
-    ![true, 1, "true", "1", "yes"].includes(
-      typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
-    )
-  );
-  const cycleRows = activeCycle ? state.rows.filter((row) => String(row.cid) === String(activeCycle.id)) : [];
-  const cycleBatches = activeCycle ? state.batches.filter((batch) => String(batch.cid) === String(activeCycle.id)) : [];
+  // Show the full archived history as well as the active cycle. Older uploads
+  // often have no location on their cycle row, so employee location (resolved
+  // from Employee_Master by the API) is the authoritative row-level filter.
+  const locationRows = filterByLocation(state.rows, selectedLocation, (row) => row.location);
+  const locationCycleIds = new Set(locationCycles.map((cycle) => String(cycle.id)));
+  const locationBatches = state.batches.filter((batch) => locationCycleIds.has(String(batch.cid)));
   return (
     <FeedbackRatingMasterPage
-      key={activeCycle?.id || "no-active-cycle"}
       cycles={locationCycles}
-      rows={cycleRows}
-      batches={cycleBatches}
+      rows={locationRows}
+      batches={locationBatches}
       loading={state.loading}
       error={state.error}
     />
