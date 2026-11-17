@@ -83,7 +83,7 @@ const numberOf = (value) => {
 };
 
 /* Opening a column filter scrolls the page so the header of the table it belongs to is on screen. */
-function revealTableHeader(trigger) {
+export function revealTableHeader(trigger, instant = false) {
   try {
     const th = trigger?.closest("th");
     const table = trigger?.closest("table");
@@ -102,7 +102,7 @@ function revealTableHeader(trigger) {
     if (head.top >= 70 && head.bottom <= view * 0.5) return;
     const prev = target.style.scrollMarginTop;
     target.style.scrollMarginTop = "72px"; // clear the app's top bar
-    target.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" });
+    target.scrollIntoView({ block: "start", inline: "nearest", behavior: instant ? "auto" : "smooth" });
     setTimeout(() => {
       target.style.scrollMarginTop = prev;
     }, 700);

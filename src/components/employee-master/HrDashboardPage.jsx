@@ -10,6 +10,7 @@ import { filterByLocation, isAllLocations, useSelectedLocation } from "@/lib/loc
 import { isActionNeededStatus, isInactiveStatus, statusOf } from "@/lib/eligibility-rules";
 import { useBudget } from "@/lib/budget-store";
 import { useLetters } from "@/lib/letters-store";
+import { revealTableHeader } from "@/components/appraisal/ColumnFilter";
 
 /*
  * HR Operations -> HR Dashboard.
@@ -150,6 +151,8 @@ function Grid({ cols, rows, numCols = [], foot }) {
                     aria-label={`Filter ${c}`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // bring this table's header into view first (instant, so the popup lines up with the icon)
+                      if (fp?.col !== i) revealTableHeader(e.currentTarget, true);
                       const r = e.currentTarget.getBoundingClientRect();
                       setFp(fp?.col === i ? null : { col: i, x: Math.max(8, Math.min(r.left, window.innerWidth - 232)), y: r.bottom + 4 });
                     }}
