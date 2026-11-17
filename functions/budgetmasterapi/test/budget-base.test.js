@@ -846,7 +846,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const r = await get(load(store));
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.master[0].org_budget_base, 0);
-    assert.match(r.json.diagnostics.warning, /None of the 2 Appraisal Sheet employees .* budget base is 0/);
+    assert.match(r.json.diagnostics.warning, /None of the 2 generated Appraisal Sheet employees .* Org Budget Base is 0/);
   });
 
   await t('some employees without pay: partial warning', async () => {
@@ -866,7 +866,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Budget_Master[0].appraisal_cycle_id = activeCycleId;
     store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = activeCycleId; });
     const r = await get(load(store));
-    assert.match(r.json.diagnostics.warning, /1 of 2 Appraisal Sheet employees have no usable/);
+    assert.match(r.json.diagnostics.warning, /1 of 2 generated Appraisal Sheet employees have no usable/);
     assert.strictEqual(r.json.master[0].org_budget_base, 1000000);
   });
 
