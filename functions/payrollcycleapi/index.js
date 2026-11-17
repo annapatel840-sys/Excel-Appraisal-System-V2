@@ -2852,7 +2852,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
 }
 
 function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
-  const cycleKey = String(row.appraisal_cycle_name || "").trim();
+  const rawCycleValue = row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? "";
+  const cycleKey = rawCycleValue && typeof rawCycleValue === "object"
+    ? String(rawCycleValue.ROWID ?? rawCycleValue.rowid ?? rawCycleValue.id ?? rawCycleValue.cycle_name ?? rawCycleValue.value ?? "").trim()
+    : String(rawCycleValue || "").trim();
   // Legacy payroll rows may store either the cycle name or Appraisal_Cycle_Master ROWID.
   // Resolve by name first, then by ROWID, and normalize the displayed value back to the cycle name.
   const cycle = cycleByName.get(cycleKey.toLowerCase()) || cycleById.get(cycleKey);
@@ -3584,7 +3587,13 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
 }
 
 /* ---------- Feedback & Rating screen ---------- */
-const fbText = (v) => (v === undefined || v === null ? "" : String(v).trim());
+const fbText = (v) => {
+  if (v === undefined || v === null) return "";
+  if (typeof v === "object") {
+    return String(v.ROWID ?? v.rowid ?? v.id ?? v.value ?? v.emp_id ?? v.cycle_name ?? "").trim();
+  }
+  return String(v).trim();
+};
 const fbNum = (v) => {
   if (v === undefined || v === null || v === "") return 0;
   const n = Number(String(v).replace(/,/g, "").replace(/[%₹$]/g, "").trim());
@@ -3620,8 +3629,9 @@ function shapeFeedbackCycle(cycle) {
 function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
   const empKey = fbText(fbCol(row, "emp_ID"));
   const master = masterByRowId.get(empKey) || masterByEmpId.get(empKey.toLowerCase()) || {};
-  const cycleId = fbText(fbCol(row, "appraisal_cycle_name"));
-  const cycle = cycleById.get(cycleId);
+  const rawCycleId = fbText(fbCol(row, "appraisal_cycle_name"));
+  const cycle = cycleById.get(rawCycleId.toLowerCase());
+  const cycleId = cycle?.id || rawCycleId;
   const yesNo = fbText(fbCol(row, "at_risk")).toLowerCase();
 
   const basePay = fbNum(fbCol(master, "current_annual_base_pay", "base_pay", "current_salary"));
@@ -3807,7 +3817,11 @@ async function getFeedbackData(tables, query, includeBatches = true) {
     if (business) masterByEmpId.set(business, row);
   });
   const cycles = cycleRows.map(normalizeCycle).filter((c) => c.status !== "Cancelled").map(shapeFeedbackCycle);
-  const cycleById = new Map(cycles.map((c) => [c.id, c]));
+  const cycleById = new Map();
+  cycles.forEach((cycle) => {
+    if (cycle.id) cycleById.set(String(cycle.id).toLowerCase(), cycle);
+    if (cycle.name) cycleById.set(String(cycle.name).toLowerCase(), cycle);
+  });
   const onlyCycle = fbText(query.cycleId || query.cycle_id);
   const rows = feedbackRows
     .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
