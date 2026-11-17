@@ -59,9 +59,10 @@ function load(store, accessResult) {
   try { return require('../index.js'); } finally { Module._load = orig; }
 }
 
-function get(api) {
+function get(api, location = '') {
   return new Promise((resolve, reject) => {
-    const req = { method: 'GET', url: '/', headers: {}, on() {} };
+    const query = location ? '?location=' + encodeURIComponent(location) : '';
+    const req = { method: 'GET', url: '/' + query, headers: {}, on() {} };
     const res = { statusCode: 0, writeHead(s) { this.statusCode = s; }, setHeader() {}, end(t) { resolve({ status: this.statusCode, json: JSON.parse(t) }); } };
     api(req, res).catch(reject);
   });
@@ -101,6 +102,49 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const r = await get(load(store, restrictedHr));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.ok(r.json.techEd.some((row) => row.appraiser_tech_ed_id === 'T1'), 'HR must see the Tech-Ed allocation row');
+  });
+
+  await t('multiple Active location cycles calculate only the requested location budget', async () => {
+    const store = makeStore({
+      Budget_Master: [
+        { appraisal_cycle_id: '', budget_percentage: 8, calculated_budget: 0 },
+        { appraisal_cycle_id: '', budget_percentage: 10, calculated_budget: 12345 },
+      ],
+      Budget_Distribution: [],
+      Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'US1', emp_name: 'US Employee', emp_status: 'Active', eligibility: 'Eligible', location: 'United States' },
+        { emp_id: 'AU1', emp_name: 'AU Employee', emp_status: 'Active', eligibility: 'Eligible', location: 'Australia' },
+      ],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'United States - Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'United States' },
+        { cycle_name: 'Australia - Annual 2027', start_date: '2026-04-01', status: 'Active', location: 'Australia' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'US1', cycle_id: '', appraiser_tech_ed: 'TUS', comp_manager: 'CUS', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 100000 },
+        { emp_id: 'AU1', cycle_id: '', appraiser_tech_ed: 'TAU', comp_manager: 'CAU', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 200000 },
+      ],
+    });
+    const [usCycle, auCycle] = store.tables.Appraisal_Cycle_Master;
+    store.tables.Budget_Master[0].appraisal_cycle_id = usCycle.ROWID;
+    store.tables.Budget_Master[1].appraisal_cycle_id = auCycle.ROWID;
+    store.tables.Appraisal_Sheet[0].cycle_id = usCycle.ROWID;
+    store.tables.Appraisal_Sheet[1].cycle_id = auCycle.ROWID;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99701', appraisal_cycle_id: usCycle.ROWID, emp_id: 'US1', eligibility_status: 'Eligible' },
+      { ROWID: '99702', appraisal_cycle_id: auCycle.ROWID, emp_id: 'AU1', eligibility_status: 'Eligible' },
+    );
+
+    const response = await get(load(store), 'United States');
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.active_appraisal_cycle_id, usCycle.ROWID);
+    assert.strictEqual(response.json.master.find((row) => row.appraisal_cycle_id === usCycle.ROWID).org_budget_base, 100000);
+    assert.strictEqual(response.json.master.find((row) => row.appraisal_cycle_id === auCycle.ROWID).calculated_budget, 12345,
+      'the other Active location cycle must not be recalculated by this request');
+    assert.ok(response.json.techEd.some((row) => row.appraisal_cycle_id === usCycle.ROWID && row.appraiser_tech_ed_id === 'TUS'));
+    assert.ok(!response.json.techEd.some((row) => row.appraisal_cycle_id === auCycle.ROWID && row.appraiser_tech_ed_id === 'TAU'));
   });
 
   await t('formatted amounts (commas, ₹, lakh) give the right org and Tech-ED base', async () => {
