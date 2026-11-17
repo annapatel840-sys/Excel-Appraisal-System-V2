@@ -16,7 +16,12 @@ import {
   appraisalRosterSettled,
   fetchAppraisalRoster,
 } from "@/lib/employee-roster";
-import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
+import {
+  filterByLocation,
+  isAllLocations,
+  locationOfRow,
+  useSelectedLocation,
+} from "@/lib/location-store";
 import {
   auditOwnerKey,
   auditUserKey,
@@ -486,9 +491,19 @@ export function BudgetProvider({ children }) {
       // employee enrichment below must not hold up Budget Allocated.
       setLoading(false);
 
+      // budgetmasterapi already scopes this roster to the selected location's
+      // cycle but sends no location field. Tag each row with that location so
+      // the location filter (locationEmployeeRows) keeps them.
+      const rosterLocation = isAllLocations(requestLocation)
+        ? ""
+        : requestLocation;
       const rosterEmployees =
         activeCycleId && Array.isArray(budgetJson && budgetJson.employeeRoster)
-          ? budgetJson.employeeRoster
+          ? budgetJson.employeeRoster.map((employee) =>
+              rosterLocation && !locationOfRow(employee)
+                ? { ...employee, location: rosterLocation }
+                : employee,
+            )
           : [];
 
       // Budget Master already returns its authoritative cycle-scoped roster.

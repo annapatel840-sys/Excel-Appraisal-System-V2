@@ -986,27 +986,7 @@
 //           techOwnerByAlias.set(normalizeOwnerKey(alias), key);
 //         });
 //     });
-//     // Also register owners directly from the active Appraisal Sheet rows.
-    // This keeps HR's allocation table populated even if the supplementary
-    // Employee_Master Tech-ED directory is incomplete for a cycle.
-    (Array.isArray(dashboardRows) ? dashboardRows : []).forEach((employee) => {
-      const assignment = String(
-        employee.appraiserTechED ||
-          employee.appraiser_tech_ed_appraisal_sheet ||
-          employee.appraiser_tech_ed ||
-          employee.appraiser_tech_ed_id ||
-          "",
-      ).trim();
-      if (!assignment) return;
-      const key = canonicalOwnerKey(assignment, employeeRows);
-      if (!key) return;
-      const label = ownerName(assignment, employeeRows) || assignment;
-      if (!ownerValues.has(key)) ownerValues.set(key, label);
-      [assignment, key, label].forEach((alias) => {
-        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
-      });
-    });
-    const resolveTechOwnerKey = (raw) => {
+//     const resolveTechOwnerKey = (raw) => {
 //       const text = String(raw || "").trim();
 //       if (!text) return "";
 //       const pair = text.match(/^([a-z]*\\d+)\\s*-\\s*(.+)$/i);
