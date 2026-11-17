@@ -2276,7 +2276,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   };
   const hasPayrollForEligibleEmployee = payrollRowsWithCycle.some(({ row, cycle: rowCycle }) => {
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return false;
-    const rawEmployee = referenceText(row.emp_id ?? row.employee_master_id).toLowerCase();
+    const rawEmployee = referenceText(
+      row.emp_id || row.employee_master_id || row.employee_id || row.emp_code,
+    ).toLowerCase();
     const master = eligibleMasterByAnyKey.get(rawEmployee);
     if (!master) return false;
     const employeeHasLocation = Boolean(employeeLocationKey(master));
