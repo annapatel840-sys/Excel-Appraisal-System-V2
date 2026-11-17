@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { isEmptyFilter } from "@/lib/appraisal-filters";
-
 /* Small helpers shared by the Letters screens. */
 
 /* ---------- localStorage (never throws) ---------- */
@@ -32,7 +30,6 @@ export function useLtGrid(defs, visStorageKey) {
   const [vis, setVis] = useState(() => readJson(visStorageKey, {}));
   const [filters, setFilters] = useState({});
   const [sort, setSort] = useState(null);
-  const [sorts, setSorts] = useState([]); // [{ key, dir }], up to 3 levels (Appraisal-sheet header filter)
   const [dens, setDens] = useState("comfortable");
 
   const cols = defs.map((d) => {
@@ -58,28 +55,20 @@ export function useLtGrid(defs, visStorageKey) {
   const setFilter = (key, value) =>
     setFilters((cur) => {
       const next = { ...cur };
-      if (!value || isEmptyFilter(value)) delete next[key];
+      if (!value || (!value.cond && !value.sel)) delete next[key];
       else next[key] = value;
       return next;
     });
-  const addSort = (key, dir) =>
-    setSorts((cur) => [...cur.filter((s) => s.key !== key), { key, dir }].slice(-3));
   const clearColumn = (key) => {
     setFilter(key, null);
     setSort((s) => (s && s.key === key ? null : s));
-    setSorts((cur) => cur.filter((s) => s.key !== key));
   };
   const clearAll = () => {
     setFilters({});
     setSort(null);
-    setSorts([]);
   };
 
-  return {
-    cols, patchCol, filters, setFilter, clearColumn, clearAll,
-    appraisal: true, sorts, addSort,
-    sort: sorts, setSort, dens, setDens, filterCount: Object.keys(filters).length,
-  };
+  return { cols, patchCol, filters, setFilter, clearColumn, clearAll, sort, setSort, dens, setDens, filterCount: Object.keys(filters).length };
 }
 
 /* ---------- 20-per-page paging for ClientPager ---------- */
@@ -199,3 +188,47 @@ export async function exportRows(defs, rows, fileName, sheetName = "Letters") {
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `${fileName}.xlsx`);
 }
+
+/* ---------- letter / template preview: fill the chips with real values ----------
+   `html` is the editor HTML (tags are .lt-merge-field chips), `values` the tag
+   values of one employee, `sg` the template's signatory block. Returns the HTML
+   to show and the tags that had no value (they are highlighted, and block a send). */
+export function mergeLetterHtml(html, values, sg) {
+  const root = document.createElement("div");
+  root.innerHTML = String(html || "");
+  const miss = [];
+  root.querySelectorAll(".lt-merge-field").forEach((chip) => {
+    const key = chip.getAttribute("data-letter-tag") || chip.textContent || "";
+    const value = values[key];
+    let node;
+    if (key === "Signature" && sg && sg.sigFile) {
+      if (sg.sigData) {
+        node = document.createElement("img");
+        node.className = "lt-preview-signature";
+        node.src = sg.sigData;
+        node.alt = "Signature";
+      } else {
+        node = document.createElement("span");
+        node.className = "lt-preview-field";
+        node.textContent = "[Signature]";
+      }
+    } else if (value == null || value === "") {
+      node = document.createElement("mark");
+      node.className = "lt-miss";
+      node.textContent = "{{" + key + "}}";
+      if (!miss.includes(key)) miss.push(key);
+    } else {
+      node = document.createElement("span");
+      node.style.whiteSpace = "pre-line";
+      node.textContent = String(value);
+    }
+    chip.replaceWith(node);
+  });
+  return { html: root.innerHTML, miss };
+}
+
+export const letterFontStyle = (t) => ({
+  fontFamily: `${t.font || "Calibri"}, Arial, sans-serif`,
+  fontSize: `${t.fsize || 11}pt`,
+  lineHeight: t.lh || 1.15,
+});

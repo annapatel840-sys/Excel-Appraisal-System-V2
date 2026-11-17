@@ -1,0 +1,14 @@
+{
+	"deployment": {
+		"name": "lettersapi",
+		"stack": "node24",
+		"type": "advancedio",
+		"env_variables": {
+			"ACCESS_ENFORCE": "true",
+			"LETTERS_BUCKET_PREFIX": "letter-templates"
+		}
+	},
+	"execution": {
+		"main": "index.js"
+	}
+}

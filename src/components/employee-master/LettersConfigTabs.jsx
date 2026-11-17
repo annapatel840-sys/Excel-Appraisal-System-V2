@@ -1,18 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { ClientPager, DataGrid, useGridView } from "./DataGrid";
-import { LtErrs, useLtGrid, usePaged } from "./letters-ui";
+import { LtErrs, letterFontStyle, mergeLetterHtml, useLtGrid, usePaged } from "./letters-ui";
 import {
   CAT,
+  STATUS_CLASS,
   allTags,
+  locationLabel,
+  templateGroup,
+  bodyToEditorHtml,
   catOf,
+  chipifyEditorHtml,
   fieldMessages,
   lettersLocked,
   pick,
   ruleMessages,
+  sourceOf,
   tagsIn,
   templateMessages,
   tplOf,
+  valuesFor,
 } from "@/lib/letters-core";
+import { MAX_DOCX_BYTES } from "@/lib/letters-api";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import * as store from "@/lib/letters-store";
 import { importDocxDocument, readImageDataUrl } from "@/lib/letters-docx";
 
@@ -158,8 +167,8 @@ export function RulesTab({ S, actor, ui, toast }) {
         ed ? (
           <select className="lt-cell-in" value={r.tpl} onChange={(e) => setRule(r.id, { tpl: e.target.value })}>
             <option value="">Choose Template</option>
-            {S.tpls.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+            {templateChoices(S, r.tpl).map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
         ) : r.tpl && tplOf(S, r.tpl) ? (
@@ -274,22 +283,28 @@ export function FieldsTab({ S, actor, ui, toast }) {
     { key: "label", label: "Name", w: 190, get: (f) => f.label, render: (f) => (ed ? <input type="text" className="lt-cell-in" value={f.label} placeholder="Field Name" onChange={(e) => setField(f.id, { label: e.target.value })} /> : f.label) },
     {
       key: "col",
-      label: "Appraisal Sheet column",
+      label: "Source column",
       w: 260,
       get: (f) => {
         const c = catOf(f.col);
-        return c ? `${c[1]} (${c[0]})` : "";
+        return c ? `${c[1]} - ${sourceOf(c)}` : "";
       },
       render: (f) =>
         ed ? (
           <select className="lt-cell-in" value={f.col} onChange={(e) => chooseColumn(f, e.target.value)}>
             <option value="">Choose A Column</option>
-            {CAT.map((x) => (
-              <option key={x[0]} value={x[0]}>{`${x[1]} (${x[0]})`}</option>
+            {["Appraisal Sheet", "Employee Master"].map((g) => (
+              <optgroup key={g} label={g}>
+                {CAT.filter((x) => sourceOf(x) === g).map((x) => (
+                  <option key={x[0]} value={x[0]}>{x[1]}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
+        ) : catOf(f.col) ? (
+          `${catOf(f.col)[1]} - ${sourceOf(catOf(f.col))}`
         ) : (
-          `${(catOf(f.col) || ["", ""])[1]} (${f.col})`
+          ""
         ),
     },
     { key: "rules", label: "Use In Rules", w: 100, get: (f) => (f.rules ? "Yes" : "No"), render: (f) => check(f, "rules") },
@@ -303,7 +318,7 @@ export function FieldsTab({ S, actor, ui, toast }) {
 
   return (
     <>
-      <Toolbar title="Letter Fields" hint="Each Field Is One Appraisal Sheet Column.">
+      <Toolbar title="Letter Fields" hint="Each field is one Appraisal Sheet or Employee Master column.">
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add}>+ Add Field</button>
@@ -329,7 +344,7 @@ export function FieldsTab({ S, actor, ui, toast }) {
 
 /* ====================== Templates ====================== */
 
-const LETTER_FONTS = ["Inter", "Calibri", "Arial", "Times New Roman", "Cambria", "Georgia", "Verdana", "Tahoma", "Trebuchet MS", "Courier New"];
+const LETTER_FONTS = ["Calibri", "Arial", "Times New Roman", "Cambria", "Georgia", "Verdana", "Tahoma", "Trebuchet MS", "Courier New", "Inter"];
 const LETTER_SIZES = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
 const LETTER_SPACING = ["1", "1.15", "1.5", "2"];
 const FAMILY_FIELD_GROUPS = [
@@ -338,32 +353,13 @@ const FAMILY_FIELD_GROUPS = [
   ["Performance Bonus", ["PB Amount", "PB Amount In Words", "PB Schedule", "PB Pay Month"]],
   ["Retention Bonus", ["RB Amount", "RB Amount In Words", "RB Pay Month", "Acceptance Link"]],
   ["Target PB", ["Target PB", "Target PB In Words", "Financial Year", "Target PB Pay Month"]],
-  ["Company And Signature", ["Company Name", "Signatory Name", "Signatory Designation", "Signature"]],
+  ["Company and signature", ["Company Name", "Signatory Name", "Signatory Designation", "Signature"]],
 ];
 const FAMILY_FIELD_MAP = {
-  revision: ["Employee", "Revision", "Company And Signature"],
-  bonus: ["Employee", "Performance Bonus", "Retention Bonus", "Company And Signature"],
-  "target pb": ["Employee", "Target PB", "Company And Signature"],
+  revision: ["Employee", "Revision", "Company and signature"],
+  bonus: ["Employee", "Performance Bonus", "Retention Bonus", "Company and signature"],
+  "target pb": ["Employee", "Target PB", "Company and signature"],
 };
-
-function escapeHtml(value) {
-  return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
-}
-
-function bodyToEditorHtml(body) {
-  return String(body || "").split("\n").map((line) => {
-    const safe = escapeHtml(line).replace(/\{\{([^{}]+)\}\}/g, (_m, tag) =>
-      `<span class="lt-merge-field" data-letter-tag="${escapeHtml(tag.trim())}" contenteditable="false">${escapeHtml(tag.trim())}</span>`
-    );
-    return `<p>${safe || "<br>"}</p>`;
-  }).join("");
-}
-
-function chipifyEditorHtml(html) {
-  return String(html || "").replace(/\{\{([^{}<>]+)\}\}/g, (_m, tag) =>
-    `<span class="lt-merge-field" data-letter-tag="${escapeHtml(tag.trim())}" contenteditable="false">${escapeHtml(tag.trim())}</span>`
-  );
-}
 
 function editorHtmlToText(html) {
   const root = document.createElement("div");
@@ -382,16 +378,20 @@ function editorHtmlToText(html) {
 
 function makeTemplateDraft(template, S) {
   const sg = { ...(S.sign || {}), ...(template && template.sg ? template.sg : {}) };
+  if (!template) sg.name = "<<insert name>>";
   ["company", "name", "title", "sigFile", "logoFile", "letterDate", "from", "cc", "subject", "body"].forEach((key) => {
     if (sg[key] == null) sg[key] = "";
   });
   return {
     name: template ? template.name || "" : "New Template",
     family: template ? template.family || "Revision" : "Revision",
+    location: template ? template.location || "" : "",
+    locked: !!(template && template.ver && template.fromServer),
     file: template ? template.file || "" : "",
+    docx: null,
     body: template ? template.body || "" : "",
-    html: template ? (template.html || bodyToEditorHtml(template.body)) : bodyToEditorHtml("{{Letter Date}}\n\nTo,\n{{Name}}\n{{Designation}}\n{{Emp ID}}\n\nDear {{Name}},\n\nWrite The Letter Here.\n\nSincerely,\nFor {{Company Name}},\n{{Signature}}\n{{Signatory Name}}, {{Signatory Designation}}"),
-    font: template ? template.font || "Inter" : "Inter",
+    html: template ? (template.html || bodyToEditorHtml(template.body)) : bodyToEditorHtml("{{Letter Date}}\n\nTo,\n{{Name}}\n{{Designation}}\n{{Emp ID}}\n\nDear {{Name}},\n\nWrite the letter here.\n\nSincerely,\nFor {{Company Name}},\n{{Signature}}\n{{Signatory Name}}, {{Signatory Designation}}"),
+    font: template ? template.font || "Calibri" : "Calibri",
     fsize: template ? Number(template.fsize || 11) : 11,
     lh: template ? String(template.lh || 1.15) : "1.15",
     sg,
@@ -411,8 +411,8 @@ function FieldMenu({ S, family, onInsert, onClose }) {
   if (extras.length) groups.push(["Other Fields", extras]);
   return (
     <div className="lt-field-menu" role="dialog" aria-label="Insert Field">
-      <input autoFocus className="lt-field-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Fields" />
-      <label className="lt-field-all"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show All Fields, Not Only For This Family</label>
+      <input autoFocus className="lt-field-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search fields" />
+      <label className="lt-field-all"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show all fields, not only for this family</label>
       <div className="lt-field-options">
         {groups.map(([label, names]) => (
           <div key={label}>
@@ -493,16 +493,16 @@ function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, 
       {button("redo", "Redo", "↷")}
       <span className="lt-format-divider" />
       <div className="lt-field-picker-wrap">
-        <button type="button" className="lt-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert Field ▾</button>
+        <button type="button" className="lt-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert field ▾</button>
         {fieldOpen && <FieldMenu S={S} family={family} onInsert={onInsertField} onClose={() => setFieldOpen(false)} />}
       </div>
       <span className="lt-sp" />
-      <button type="button" className="lt-btn lt-import-button" onMouseDown={(e) => e.preventDefault()} onClick={onImport}>Import From Word</button>
+      <button type="button" className="lt-btn lt-import-button" onMouseDown={(e) => e.preventDefault()} onClick={onImport}>Import from Word</button>
     </div>
   );
 }
 
-function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDirty, errs, isNew }) {
+function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDirty, errs, saving, locations }) {
   const editorRef = useRef(null);
   const rangeRef = useRef(null);
   const wordRef = useRef(null);
@@ -511,7 +511,7 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
   const [fieldOpen, setFieldOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [font, setFont] = useState(draft.font || "Inter");
+  const [font, setFont] = useState(draft.font || "Calibri");
   const [size, setSize] = useState(Number(draft.fsize || 11));
   const [lineSpacing, setLineSpacing] = useState(String(draft.lh || "1.15"));
 
@@ -561,12 +561,18 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
   };
   const importWord = async (file) => {
     if (!file) return;
+    if (file.size > MAX_DOCX_BYTES) {
+      setUploadError("The Word file is larger than 5 MB.");
+      if (wordRef.current) wordRef.current.value = "";
+      return;
+    }
     setImporting(true);
     setUploadError("");
     try {
       const imported = await importDocxDocument(file);
       const html = chipifyEditorHtml(imported.html);
-      update({ file: file.name, html, body: imported.text });
+      // `docx` is the original file; it is uploaded to the server when the template is saved.
+      update({ file: file.name, docx: file, html, body: imported.text });
       if (editorRef.current) editorRef.current.innerHTML = html;
       if (imported.logo) updateSign("logoData", imported.logo.data), updateSign("logoFile", imported.logo.name);
       if (imported.signature) updateSign("sigData", imported.signature.data), updateSign("sigFile", imported.signature.name);
@@ -629,9 +635,9 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
         <input className="lt-editor-name" value={draft.name} onChange={(e) => update({ name: e.target.value })} aria-label="Template Name" placeholder="Template Name" />
         <span className="lt-sp" />
         <button type="button" className="lt-btn" onClick={() => onPreview(syncEditor())}>Preview</button>
-        <button type="button" className="lt-btn main" onClick={handleSave}>{isNew ? "Save" : "Save New Version"}</button>
+        <button type="button" className="lt-btn main" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : "Save"}</button>
       </div>
-      <div className="lt-note lt-editor-notice">Letters Have Been Sent. Changes Here Need A Reason, Are Audited, And Apply Only To Letters Made From Now On.</div>
+      <LockNote S={S} />
       <LtErrs errs={errs} />
       {uploadError && <div className="lt-note warn lt-editor-upload-error">{uploadError}</div>}
       <div className="lt-editor-layout">
@@ -682,6 +688,13 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
               <input list="lt-template-families" value={draft.family} onChange={(e) => update({ family: e.target.value })} />
               <datalist id="lt-template-families">{fams.map((family) => <option key={family} value={family} />)}</datalist>
             </label>
+            <label className="lt-editor-label">Location
+              <select value={draft.location || ""} disabled={!!draft.locked} onChange={(e) => update({ location: e.target.value })}>
+                <option value="">Choose a location</option>
+                {locations.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            <div className="lt-rp-note">{draft.locked ? "A saved template stays with its location. Clone it to make the letter for another location." : "Each location has its own template and its own storage bucket. The same name can be used once per location."}</div>
             <div className="lt-editor-grid2">
               <label className="lt-editor-label">Letter Font<select value={font} onChange={(e) => { setFont(e.target.value); update({ font: e.target.value }); }}>{LETTER_FONTS.map((item) => <option key={item}>{item}</option>)}</select></label>
               <label className="lt-editor-label">Size (Pt)<select value={size} onChange={(e) => { setSize(Number(e.target.value)); update({ fsize: Number(e.target.value) }); }}>{LETTER_SIZES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
@@ -689,8 +702,8 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
             <label className="lt-editor-label">Line Spacing<select value={lineSpacing} onChange={(e) => { setLineSpacing(e.target.value); update({ lh: e.target.value }); }}>{LETTER_SPACING.map((item) => <option key={item}>{item}</option>)}</select></label>
           </section>
           <section className="lt-editor-card">
-            <h4>Letterhead And Signature</h4>
-            {labelInput("company", "Company Name")}
+            <h4>Letterhead and signature</h4>
+            {labelInput("company", "Company name")}
             {imageUpload("logo", "Company Logo (Top Right Of The Letter)", logoRef)}
             {labelInput("name", "Signatory Name")}
             {labelInput("title", "Signatory Designation")}
@@ -705,138 +718,275 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
             <label className="lt-editor-label">Body<textarea rows={4} value={sg.body || ""} onChange={(e) => updateSign("body", e.target.value)} /></label>
             <div className="lt-email-tags"><span>Insert:</span>{["Name", "Cycle Name", "Company Name"].map((tag) => <button type="button" key={tag} onClick={() => updateSign("body", `${sg.body || ""}{{${tag}}}`)}>{tag}</button>)}</div>
           </section>
-          {draft.file && <div className="lt-editor-file-info"><b>Word File</b><span>{draft.file}</span></div>}
+          {draft.file && (
+            <div className="lt-editor-file-info">
+              <b>Word file</b>
+              <span>{draft.file}</span>
+              <span className="lt-mut">{draft.docx ? "Will be uploaded to the server when you save." : "Stored on the server."}</span>
+            </div>
+          )}
         </aside>
       </div>
     </div>
   );
 }
 
-function TemplatePreview({ draft, onClose }) {
-  const html = chipifyEditorHtml(draft.html || bodyToEditorHtml(draft.body)).replace(/<span class="lt-merge-field" data-letter-tag="([^"]+)" contenteditable="false">([^<]*)<\/span>/g, (_m, tag, label) => {
-    if (tag === "Signature" && draft.sg.sigData) return `<img class="lt-preview-signature" src="${draft.sg.sigData}" alt="Signature" />`;
-    return `<span class="lt-preview-field">${escapeHtml(label || tag)}</span>`;
+/* Rules name a template; templates with the same name are the same letter for
+   different locations, so the rule list shows each name once. */
+function templateChoices(S, current) {
+  const seen = {};
+  const out = [];
+  const cur = tplOf(S, current);
+  S.tpls.forEach((t) => {
+    const key = String(t.name).trim().toLowerCase();
+    const group = templateGroup(S, t.id);
+    const live = group.some((x) => x.active !== false);
+    if (seen[key] || (!live && !(cur && String(cur.name).trim().toLowerCase() === key))) return;
+    seen[key] = true;
+    const pickId = cur && String(cur.name).trim().toLowerCase() === key ? cur.id : t.id;
+    out.push({ id: pickId, label: t.name + (group.length > 1 ? ` (${group.length} locations)` : "") });
   });
+  return out;
+}
+const rulesUsing = (S, t) => S.rules.filter((r) => templateGroup(S, r.tpl).some((x) => x.id === t.id));
+
+// Active Location Master names (same source as the Appraisal Cycle screen), plus any
+// location already on the Appraisal Sheet so the list is never empty.
+function useLocationNames(S) {
+  const [names, setNames] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    payrollCycleRequest("locations")
+      .then((rows) => {
+        if (!alive) return;
+        setNames(
+          (Array.isArray(rows) ? rows : [])
+            .filter((row) => String(row.status || "Active").toLowerCase() !== "inactive")
+            .map((row) => String(row.location_name || "").trim())
+            .filter(Boolean),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const out = [...names];
+  S.sheet.forEach((r) => {
+    const l = String((r.v && r.v.emLocation) || "").trim();
+    if (l && !out.some((x) => x.toLowerCase() === l.toLowerCase())) out.push(l);
+  });
+  S.tpls.forEach((t) => {
+    if (t.location && !out.some((x) => x.toLowerCase() === t.location.toLowerCase())) out.push(t.location);
+  });
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+/* Preview of a template (saved or a draft) filled with one employee's data. */
+function TemplatePreview({ S, src, version, onClose, onTest }) {
+  const inLoc = (r) => !src.location || String(r.v.emLocation || "").toLowerCase() === String(src.location).toLowerCase();
+  const emps = S.sheet.filter((r) => r.status === "Active" && inLoc(r));
+  const [empId, setEmpId] = useState(emps[0] ? emps[0].id : "");
+  const row = emps.find((r) => r.id === empId) || emps[0];
+  const values = row ? valuesFor(S, row, src.sg, row.cycle, "TEST") : {};
+  const html = src.html || bodyToEditorHtml(src.body);
+  const mg = mergeLetterHtml(chipifyEditorHtml(html), values, src.sg);
   return (
     <div className="lt-preview-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="lt-preview-modal" role="dialog" aria-modal="true" aria-label="Template Preview">
-        <div className="lt-preview-head"><b>Template Preview</b><button type="button" className="lt-btn" onClick={onClose}>Close</button></div>
-        <div className="lt-preview-page" style={{ fontFamily: draft.font || "Inter", fontSize: `${draft.fsize || 11}pt`, lineHeight: draft.lh || 1.15 }}>
-          {draft.sg.logoData && <img className="lt-preview-logo" src={draft.sg.logoData} alt="Company Logo" />}
-          <div dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="lt-preview-modal" role="dialog" aria-modal="true" aria-label="Template preview">
+        <div className="lt-preview-head">
+          <div>
+            <b>{src.name}</b>
+            <div className="ds">{version} &middot; {locationLabel(src.location)} &middot; shown with the data of</div>
+          </div>
+          <select className="lt-txt" style={{ marginLeft: 10 }} aria-label="Employee" value={row ? row.id : ""} onChange={(e) => setEmpId(e.target.value)}>
+            {emps.map((r) => (
+              <option key={r.id} value={r.id}>{r.id} - {r.name}</option>
+            ))}
+          </select>
+          <span className="lt-sp" />
+          <button type="button" className="lt-btn" onClick={() => onTest(row, version)}>Send test to HR mailbox</button>
+          <button type="button" className="lt-rp-ic" style={{ marginLeft: 8 }} aria-label="Close" onClick={onClose}>&#10005;</button>
+        </div>
+        <div className="lt-preview-page" style={letterFontStyle(src)}>
+          {src.sg.logoData ? <img className="lt-preview-logo" src={src.sg.logoData} alt="Company logo" /> : <div className="lt-logo-ph">{src.sg.logoFile || "Company logo"}</div>}
+          <div dangerouslySetInnerHTML={{ __html: mg.html }} />
+        </div>
+        <div className="lt-preview-foot">
+          {mg.miss.length ? <span className="err">Empty for this employee: {mg.miss.join(", ")}</span> : <span className="lt-mut">Every field has a value for this employee.</span>}
         </div>
       </div>
     </div>
   );
 }
 
-export function TemplatesTab({ S, actor, ui, toast }) {
-  const [selectedId, setSelectedId] = useState(S.tpls[0] ? S.tpls[0].id : "");
+const chipOf = (label) => <span className={"lt-chip " + (STATUS_CLASS[label] || "sg")}>{label}</span>;
+
+export function TemplatesTab({ S, actor, ui, toast, selectedId, setSelectedId }) {
   const [mode, setMode] = useState("library");
   const [draft, setDraft] = useState(null);
-  const [isNew, setIsNew] = useState(false);
+  const [editId, setEditId] = useState(null); // null = a new template (new or cloned)
   const [errs, setErrs] = useState([]);
-  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
-  const [previewDraft, setPreviewDraft] = useState(null);
+  const [preview, setPreview] = useState(null); // { src, version }
+  const locations = useLocationNames(S);
 
-  const used = (template) => S.rules.filter((rule) => rule.tpl === template.id).map((rule) => rule.name).join(", ");
+  const used = (t) => rulesUsing(S, t).map((r) => r.name).join(", ");
+  const toggleActive = async (t, on) => {
+    try {
+      await store.setTemplateActive(t.id, on, actor);
+      toast(t.name + (on ? " is Active" : " is Inactive. It makes no new letters."));
+    } catch (error) {
+      toast(error?.message || "The change could not be saved.");
+    }
+  };
   const defs = [
-    { key: "name", label: "Template", w: 250, fixed: true, get: (item) => item.name, render: (item) => <button type="button" className="nm" onClick={() => startEdit(item)}>{item.name}</button> },
-    { key: "family", label: "Family", w: 120, get: (item) => item.family },
-    { key: "ver", label: "Version", w: 85, get: (item) => String(item.ver), sv: (item) => item.ver },
-    { key: "file", label: "Word File", w: 260, get: (item) => item.file },
-    { key: "tags", label: "Tags Used", w: 90, get: (item) => String(tagsIn(item.body || "").length), sv: (item) => tagsIn(item.body || "").length },
-    { key: "used", label: "Used By Rules", w: 230, get: used },
+    {
+      key: "name",
+      label: "Template",
+      w: 230,
+      fixed: true,
+      get: (t) => t.name,
+      render: (t) => (
+        <>
+          <button type="button" className="nm" onClick={() => setSelectedId(t.id)}>{t.name}</button>
+          <div className="ds">{t.file ? "Imported from " + t.file : ""}</div>
+        </>
+      ),
+    },
+    { key: "family", label: "Family", w: 110, get: (t) => t.family },
+    { key: "location", label: "Location", w: 130, get: (t) => locationLabel(t.location) },
+    { key: "status", label: "Status", w: 100, get: (t) => (t.active === false ? "Inactive" : "Active"), render: (t) => chipOf(t.active === false ? "Inactive" : "Active") },
+    {
+      key: "active",
+      label: "Active",
+      w: 90,
+      get: (t) => (t.active === false ? "No" : "Yes"),
+      render: (t) => (
+        <label className="lt-swt" title="Inactive templates are not offered in rules">
+          <input type="checkbox" checked={t.active !== false} onChange={(e) => toggleActive(t, e.target.checked)} />
+          <i />
+        </label>
+      ),
+    },
+    { key: "used", label: "Used by rules", w: 210, get: used },
+    { key: "tags", label: "Fields used", w: 110, get: (t) => String(tagsIn(t.body || "").length), sv: (t) => tagsIn(t.body || "").length },
+    { key: "by", label: "Last edited by", w: 130, get: (t) => t.by || "" },
+    { key: "on", label: "Last edited", w: 130, get: (t) => t.on || "" },
+    {
+      key: "act",
+      label: "Actions",
+      w: 200,
+      get: () => "Edit",
+      render: (t) => (
+        <span style={{ whiteSpace: "nowrap" }}>
+          <button type="button" className="lt-lnk" onClick={() => startEdit(t)}>Edit</button>
+          <span className="lt-sep">|</span>
+          <button type="button" className="lt-lnk" onClick={() => { setSelectedId(t.id); setPreview({ src: t, version: "Published v" + t.ver }); }}>Preview</button>
+          <span className="lt-sep">|</span>
+          <button type="button" className="lt-lnk" onClick={() => clone(t)}>Clone</button>
+        </span>
+      ),
+    },
   ];
   const grid = useLtGrid(defs, null);
-  const filtered = S.tpls.filter((item) => !query || `${item.name} ${item.family} ${item.file}`.toLowerCase().includes(query.toLowerCase()));
+  const filtered = S.tpls.filter((t) => !query || `${t.name} ${t.family}`.toLowerCase().includes(query.toLowerCase()));
   const view = useGridView(filtered, defs, grid);
 
-  function beginEdit(template, fresh = false) {
-    const go = (why) => {
-      setReason(why || "");
-      setDraft(makeTemplateDraft(template, S));
-      setIsNew(fresh);
-      setSelectedId(template?.id || "");
-      setErrs([]);
-      setMode("edit");
-    };
-    if (lettersLocked(S)) ui.askReason(fresh ? "Why Are You Creating This Template?" : "Why Are You Changing This Template?", go);
-    else go("");
+  function open(t, d) {
+    setSelectedId(t ? t.id : "");
+    setEditId(t ? t.id : null);
+    setDraft(d);
+    setErrs([]);
+    setMode("edit");
   }
-  function startEdit(template) {
-    beginEdit(template, false);
-  }
-  const createNew = () => beginEdit(null, true);
-  const cancel = () => {
+  const startEdit = (t) => open(t, makeTemplateDraft(t, S));
+  const createNew = () => open(null, makeTemplateDraft(null, S));
+  const clone = (t) => {
+    const d = makeTemplateDraft(t, S);
+    // Same name: a clone is normally the same letter for another location.
+    d.location = "";
+    d.locked = false;
+    d.file = "";
+    open(null, d);
+  };
+  const back = () => {
     setMode("library");
     setDraft(null);
-    setPreviewDraft(null);
     setErrs([]);
   };
-  const save = (nextDraft) => {
-    const finalDraft = { ...nextDraft, body: nextDraft.body || editorHtmlToText(nextDraft.html), sg: { ...nextDraft.sg } };
-    const messages = templateMessages(S, finalDraft, finalDraft.body);
+  const save = async (nextDraft) => {
+    const body = nextDraft.body || editorHtmlToText(nextDraft.html);
+    const finalDraft = { ...nextDraft, body, sg: { ...nextDraft.sg } };
+    const messages = templateMessages(S, finalDraft, editId || "", body);
     if (messages.length) {
       setErrs(messages.slice(0, 10));
       return;
     }
+    setSaving(true);
     try {
-      if (isNew) {
-        store.createTemplate(finalDraft, reason, actor);
-        const created = S.tpls[S.tpls.length - 1];
-        setSelectedId(created.id);
-        toast(`Template Saved As Version ${created.ver}`);
-      } else {
-        const version = store.saveTemplate(selectedId, finalDraft, reason, actor);
-        toast(`Saved As Version ${version}; Unsent Letters Are Now Out Of Date`);
-      }
-      setMode("library");
-      setDraft(null);
-      setPreviewDraft(null);
-      setErrs([]);
+      const t = await store.publishTemplate(editId, finalDraft, "", actor);
+      setSelectedId(t.id);
+      toast("Saved. Unsent letters made with it are now Out of date.");
+      back();
     } catch (error) {
-      setErrs([error?.message || "The Template Could Not Be Saved."]);
+      setErrs([error?.message || "The template could not be saved."]);
+    } finally {
+      setSaving(false);
     }
+  };
+  const sendTest = (row, version) => {
+    const t = (preview && preview.src) || {};
+    const from = (t.sg && t.sg.from) || "";
+    if (!/^\S+@\S+\.\S+$/.test(from)) {
+      toast("Set a valid HR mailbox in the template first");
+      return;
+    }
+    if (t.id && tplOf(S, t.id)) store.sendTestTemplate(t.id, row.name, version, actor);
+    toast("Test sent to " + from + " only");
   };
 
   if (mode === "edit" && draft) {
     return (
       <>
+        {ui.el}
         <TemplateEditor
           S={S}
           draft={draft}
           setDraft={setDraft}
           onSave={save}
-          onCancel={cancel}
-          onPreview={setPreviewDraft}
+          onCancel={back}
+          onPreview={(d) => setPreview({ src: { ...d, html: d.html, id: editId }, version: editId && tplOf(S, editId) ? "Draft of v" + (tplOf(S, editId).ver + 1) : "Draft" })}
           onDirty={() => setErrs([])}
           errs={errs}
-          isNew={isNew}
+          saving={saving}
+          locations={locations}
         />
-        {previewDraft && <TemplatePreview draft={previewDraft} onClose={() => setPreviewDraft(null)} />}
+        {preview && <TemplatePreview S={S} src={preview.src} version={preview.version} onClose={() => setPreview(null)} onTest={sendTest} />}
       </>
     );
   }
 
   return (
     <>
-      <Toolbar title="Templates" hint="Each Template Carries Its Own Signatory, Signature And Cover Email. A New Version Marks Unsent Letters Out Of Date.">
-        <input className="lt-txt search" placeholder="Search Template, Family" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button type="button" className="lt-btn pri" onClick={createNew}>New Template</button>
-      </Toolbar>
+      <div className="lt-toolbar">
+        <input className="lt-txt search" placeholder="Search template, family" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search templates" />
+        <span className="lt-sp" />
+        <button type="button" className="lt-btn main" onClick={createNew}>New template</button>
+      </div>
+      {ui.el}
       <div className="lt-content grid">
         <LockNote S={S} />
         <div className="lt-cfg tpl">
-          <DataGrid defs={defs} grid={grid} allRows={filtered} rows={view} rowKey={(item) => item.id} rowClass={(item) => item.id === selectedId ? "lt-act" : ""} emptyText="No Templates Yet. Click New Template." />
+          <DataGrid defs={defs} grid={grid} allRows={filtered} rows={view} rowKey={(t) => t.id} rowClass={(t) => (t.id === selectedId ? "lt-act" : "")} emptyText="No templates yet. Click New template." />
         </div>
         <div className="lt-template-library-footer">
-          <span>{view.length} Templates</span>
-          <span>Choose A Template Name To Edit Its Content And Letterhead.</span>
+          <span>{view.length} templates</span>
+          <span>Imported Word files are stored on the server with every version.</span>
         </div>
       </div>
-      {previewDraft && <TemplatePreview draft={previewDraft} onClose={() => setPreviewDraft(null)} />}
+      {preview && <TemplatePreview S={S} src={preview.src} version={preview.version} onClose={() => setPreview(null)} onTest={sendTest} />}
     </>
   );
 }

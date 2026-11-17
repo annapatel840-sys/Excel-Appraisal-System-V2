@@ -11,7 +11,8 @@
       "feedbackratingapi",
       "historicalimportapi",
       "demo_seed",
-      "designationmasterapi"
+      "designationmasterapi",
+      "lettersapi"
     ],
     "ignore": [],
     "source": "functions"

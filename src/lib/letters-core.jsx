@@ -10,6 +10,11 @@
  *
  * The same rules will run on the server when the Letters Catalyst function is
  * built, so keep this file free of browser APIs.
+ *
+ * Templates are the one part that is already stored on the server (lettersapi:
+ * Stratus bucket for the Word file and content, Data Store for the index).
+ * applyServerTemplates() loads them into this state; publishTemplate() records
+ * a publish after the server accepted it.
  */
 
 /* ---------------- constants ---------------- */
@@ -31,7 +36,14 @@ export const CAT = [
   ["band", "Band", "text"],
   ["rating", "Manager Rating", "text"],
   ["compRemarks", "Comp Manager Remarks", "text"],
+  // Employee Master columns (4th item = where the column lives)
+  ["emLocation", "Location", "text", "Employee Master"],
+  ["emDoj", "Date of Joining", "text", "Employee Master"],
+  ["emGrade", "Grade", "text", "Employee Master"],
+  ["emManager", "Reporting Manager", "text", "Employee Master"],
+  ["emDept", "Department", "text", "Employee Master"],
 ];
+export const sourceOf = (c) => (c && c[3]) || "Appraisal Sheet";
 
 // Tags that are always available in a template (not tied to a Letter Field).
 export const FIXED_TAGS = [
@@ -58,19 +70,22 @@ export const STATUSES = [
   "Sent",
   "Delivered",
   "Failed",
-  "Withdrawn",
+  "Voided",
   "Replaced",
   "Dropped",
 ];
 // Status -> chip colour class (see letters-page.css)
 export const STATUS_CLASS = {
+  Active: "so",
+  Inactive: "sg",
+  Draft: "si",
   Ready: "si",
   "Out of date": "sw",
   Reviewed: "si",
   Sent: "so",
   Delivered: "so",
   Failed: "sw",
-  Withdrawn: "sg",
+  Voided: "sg",
   Replaced: "sg",
   Dropped: "sg",
 };
@@ -211,6 +226,24 @@ function condOK(S, rule, row) {
   return ok;
 }
 
+/* ---- templates are per location ----
+   Templates with the same name form one letter. Each can be for one Location
+   Master location (t.location = its name) or for all locations (""). A rule
+   names one of them; the letter actually made uses the variant that fits the
+   employee's location, else the "all locations" one, else none. */
+export const ALL_LOCATIONS = "";
+const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+export const templateGroup = (S, tplId) => {
+  const base = tplOf(S, tplId);
+  return base ? S.tpls.filter((t) => same(t.name, base.name)) : [];
+};
+export const locationLabel = (loc) => loc || "All locations";
+export function resolveTemplate(S, tplId, row) {
+  const act = templateGroup(S, tplId).filter((t) => t.active !== false);
+  const loc = row && row.v ? row.v.emLocation : "";
+  return act.filter((t) => t.location && same(t.location, loc))[0] || act.filter((t) => !t.location)[0] || null;
+}
+
 // One rule per family wins: the matching rule with the lowest priority number.
 export function pick(S, row) {
   const cy = cyOf(S, row.cycle);
@@ -252,6 +285,7 @@ export function mkLetter(S, row, rule, tpl) {
     replaces: "",
     flag: "",
     alert: "",
+    tag: "",
   };
   l.fp = fpOf(row, rule, tpl);
   S.fields.forEach((f) => {
@@ -262,52 +296,52 @@ export function mkLetter(S, row, rule, tpl) {
 
 /* Compare every unsent / sent letter with the Appraisal Sheet, rules and
    templates as they are now. Unsent letters become Out of date or Dropped;
-   sent letters are never touched, only flagged "Changed after sending". */
+   sent letters are never touched, only flagged "Changed after sending".
+   `tag` is the short chip the Alert column shows; `alert` is the full reason
+   (shown as its tooltip and in the Preview). */
 export function refreshStale(S) {
   S.letters.forEach((l) => {
     const open = OPEN_STATUSES.indexOf(l.status) >= 0;
     const sent = SENT_STATUSES.indexOf(l.status) >= 0;
     if (!open && !sent) {
-      if (l.status !== "Dropped") l.alert = "";
+      if (l.status !== "Dropped") {
+        l.alert = "";
+        l.tag = "";
+      }
       return;
     }
     const r = empOf(S, l);
     const rule = S.rules.filter((x) => x.id === l.rule)[0];
     const t = tplOf(S, l.tpl);
+    const want = rule ? resolveTemplate(S, rule.tpl, r) : null;
     const m = r.status === "Active" ? pick(S, r).filter((x) => x.family === l.family)[0] : null;
     let why = "";
-    let nx = "";
-    const changed = !rule || fpOf(r, rule, t) !== l.fp || t.ver !== l.ver;
-    if (r.status !== "Active") {
-      why = "Employee is " + r.status;
-      nx = "Dropped";
-    } else if (!m) {
-      why = "No longer entitled to a " + l.family + " letter";
-      nx = "Withdraw";
-    } else if (m.id !== l.rule) {
-      why = 'Now matches "' + m.type + '"';
-      nx = "Replace";
-    } else if (changed) {
-      why = "Appraisal Sheet or template changed";
-      nx = "Replace";
-    }
+    const changed = !rule || !t || fpOf(r, rule, t) !== l.fp || t.ver !== l.ver;
+    if (r.status !== "Active") why = "Employee is " + r.status;
+    else if (!m) why = "No longer entitled to a " + l.family + " letter";
+    else if (m.id !== l.rule) why = 'Now matches "' + m.type + '"';
+    else if (rule && !want) why = "No active template for " + (r.v.emLocation || "this location");
+    else if (want && want.id !== l.tpl) why = "The template for " + (r.v.emLocation || "this location") + " changed";
+    else if (changed) why = "Appraisal Sheet or template changed";
     if (open) {
       if (why && (r.status !== "Active" || !m)) {
         l.status = "Dropped";
         l.alert = why;
+        l.tag = "Dropped";
         audit(S, "Letter", l.id, "Dropped", "", why, "v" + l.ver);
       } else if (why) {
         l.status = "Out of date";
         l.alert = why;
+        l.tag = "Appraisal sheet changed";
       } else {
         if (l.status === "Out of date") l.status = "Ready";
         l.alert = "";
+        l.tag = "";
       }
     } else {
       l.flag = why ? "Changed after sending" : "";
-      l.alert = why
-        ? why + ". " + (r.status !== "Active" ? "Letter stays; withdraw if needed" : nx === "Withdraw" ? "Withdraw it" : "Replace it if a corrected letter is needed")
-        : "";
+      l.tag = !why ? "" : r.status !== "Active" ? "Employee inactive" : "Appraisal sheet changed";
+      l.alert = why;
     }
   });
 }
@@ -332,7 +366,7 @@ export function needLetters(S, scope) {
 /* Make the letters for one cycle from its Appraisal Sheet rows.
      - an entitled employee with no letter in a family gets a new Ready letter
      - an unsent letter that is Out of date is replaced by a fresh one
-     - everything else (Reviewed, Sent, Withdrawn ...) is left alone
+     - everything else (Reviewed, Sent, Voided ...) is left alone
    Safe to run again at any time. */
 export function generateLetters(S, cycleId) {
   const cy = cyOf(S, cycleId);
@@ -344,8 +378,8 @@ export function generateLetters(S, cycleId) {
   S.sheet.forEach((r) => {
     if (r.cycle !== cycleId || r.status !== "Active") return;
     pick(S, r).forEach((rule) => {
-      const t = tplOf(S, rule.tpl);
-      if (!t) return;
+      const t = resolveTemplate(S, rule.tpl, r); // the variant for this employee's location
+      if (!t) return; // no active template for this location: no new letter
       const cur = S.letters.filter((l) => l.emp === r.id && l.family === rule.family && GONE_STATUSES.indexOf(l.status) < 0)[0];
       if (!cur) {
         const n = mkLetter(S, r, rule, t);
@@ -414,8 +448,13 @@ export function tagsIn(body) {
 }
 
 export function tagValues(S, l) {
-  const G0 = sgOf(S, l);
-  const r = empOf(S, l);
+  return valuesFor(S, empOf(S, l), sgOf(S, l), l.cycle, l.id);
+}
+
+// Tag values for one Appraisal Sheet row, with a given signatory block. Used
+// for letters, and for previewing a template (even an unsaved draft) with the
+// data of any employee.
+export function valuesFor(S, r, G0, cycleId, letterId) {
   const v = r.v;
   const m = {
     Name: r.name,
@@ -426,12 +465,12 @@ export function tagValues(S, l) {
     "Signatory Name": G0.name,
     "Signatory Designation": G0.title,
     Signature: G0.sigFile ? "[Signature]" : "",
-    "Financial Year": (cyOf(S, l.cycle) || {}).fy || "",
+    "Financial Year": (cyOf(S, cycleId) || {}).fy || "",
     "PB Schedule": (v.pbMonths || []).map((p) => p[0] + " - " + inr(p[1])).join("\n"),
     "PB Pay Month": v.pbMonths && v.pbMonths[0] ? v.pbMonths[0][0] : "",
     "RB Pay Month": v.rbMonth || "",
     "Target PB Pay Month": v.tpbMonth || "",
-    "Acceptance Link": hasVal(r, "newRB") ? "https://comp.example/rb/" + l.id : "",
+    "Acceptance Link": hasVal(r, "newRB") ? "https://comp.example/rb/" + letterId : "",
   };
   S.fields.forEach((f) => {
     if (!f.tag || !f.tagName) return;
@@ -513,25 +552,39 @@ export function markReviewed(S, ids) {
   return n;
 }
 
-/* Resend / Withdraw / Replace, always with a reason. */
+/* Resend / Void / Replace, always with a reason.
+   (Resend of a Failed letter sends it again; Resend of a Sent letter is counted.) */
 export function moreAction(S, action, ids, reason) {
+  if (action === "withdraw") action = "void"; // old name
   ids.forEach((id) => {
     const l = lOf(S, id);
     if (!l) return;
     if (action === "resend") {
+      if (l.status === "Failed") {
+        const rk = sendProblem(S, l);
+        if (rk) {
+          audit(S, "Letter", l.id, "Resend blocked", reason, rk, "v" + l.ver);
+          return;
+        }
+        doSend(S, l);
+        audit(S, "Letter", l.id, "Resend after failure", reason, "", "v" + l.ver);
+        return;
+      }
       l.resends++;
       l.lastResent = nowStamp();
       audit(S, "Letter", l.id, "Resent", reason, "To " + empOf(S, l).email, "v" + l.ver);
-    } else if (action === "withdraw") {
+    } else if (action === "void") {
       const was = l.status;
-      l.status = "Withdrawn";
+      l.status = "Voided";
       l.flag = "";
       l.alert = "";
-      audit(S, "Letter", l.id, "Withdrawn", reason, (SENT_STATUSES.indexOf(was) >= 0 ? "Was already sent; " : "") + (l.family === "Bonus" && hasVal(empOf(S, l), "newRB") ? "the acceptance link stops working" : ""), "v" + l.ver);
+      l.tag = "";
+      audit(S, "Letter", l.id, "Voided", reason, (SENT_STATUSES.indexOf(was) >= 0 ? "Was already sent; " : "") + (l.family === "Bonus" && hasVal(empOf(S, l), "newRB") ? "the acceptance link stops working" : ""), "v" + l.ver);
     } else if (action === "replace") {
       l.status = "Replaced";
       l.flag = "";
       l.alert = "";
+      l.tag = "";
       const n = JSON.parse(JSON.stringify(l));
       n.id = "L" + (S.letters.length + 1);
       n.status = "Ready";
@@ -544,6 +597,7 @@ export function moreAction(S, action, ids, reason) {
       n.remarks = "";
       n.flag = "";
       n.alert = "";
+      n.tag = "";
       const rule = S.rules.filter((x) => x.id === l.rule)[0];
       if (rule) {
         n.fp = fpOf(empOf(S, l), rule, tplOf(S, l.tpl));
@@ -557,6 +611,15 @@ export function moreAction(S, action, ids, reason) {
     }
   });
   refreshStale(S);
+}
+
+/* Opening a Ready letter in Preview counts as reviewing it. */
+export function reviewOnPreview(S, id) {
+  const l = lOf(S, id);
+  if (!l || l.status !== "Ready") return false;
+  l.status = "Reviewed";
+  audit(S, "Letter", l.id, "Reviewed", "", "Opened in Preview", "v" + l.ver);
+  return true;
 }
 
 export function testSend(S, l) {
@@ -582,6 +645,7 @@ export function signatoryMessages(d, S) {
   if (!d.name.trim() || /<<insert/i.test(d.name)) e.push("Signatory name is required: replace <<insert name>> with the name.");
   if (!d.title.trim()) e.push("Signatory designation is required.");
   if (!d.sigFile) e.push("Signature image is required.");
+  if (!d.logoFile) e.push("Logo image is required.");
   if (!EMAIL_RE.test(d.from)) e.push("The HR mailbox must be a valid email.");
   d.cc.split(",").forEach((x) => {
     if (x.trim() && !EMAIL_RE.test(x.trim())) e.push('"' + x.trim() + '" is not a valid cc email.');
@@ -593,15 +657,23 @@ export function signatoryMessages(d, S) {
   return e;
 }
 
-export function templateMessages(S, t, body) {
-  const e = signatoryMessages(t.sg, S);
-  if (!String(t.name || "").trim()) e.push("The template needs a name.");
-  if (!t.file) e.push("Upload the Word file.");
+// Messages that stop a template being published. `d` is the editor draft
+// ({ name, family, sg }), `selfId` the template being edited ("" for a new
+// one) and `body` the letter as plain text with {{tags}} (made by the screen,
+// because turning the editor HTML into text needs the browser).
+export function templateMessages(S, d, selfId, body) {
+  const e = [];
+  const nm = String(d.name || "").trim();
+  if (!nm) e.push("The template needs a name.");
+  else if (S.tpls.some((t) => t.id !== selfId && same(t.name, nm) && same(t.location, d.location))) e.push("A template with this name already exists for " + locationLabel(d.location) + ". Choose another location, or rename it.");
+  if (!String(d.location || "").trim()) e.push("Choose the location this template is for.");
+  if (!String(d.family || "").trim()) e.push("The template needs a family (for example Revision, Bonus, Target PB).");
+  if (!String(body || "").trim()) e.push("The letter is empty. Write it in the editor.");
   const at = allTags(S);
-  tagsIn(body).forEach((k) => {
-    if (at.indexOf(k) < 0) e.push("Unknown tag {{" + k + "}}.");
+  tagsIn(body || "").forEach((k) => {
+    if (at.indexOf(k) < 0) e.push('The field "' + k + '" is not in the field list. Delete it from the letter.');
   });
-  return e;
+  return e.concat(signatoryMessages(d.sg, S));
 }
 
 // { ruleId: [messages] } for a draft list of rules
@@ -613,6 +685,7 @@ export function ruleMessages(S, d) {
     if (!String(r.family || "").trim()) add(r.id, "needs a family");
     if (!String(r.type || "").trim()) add(r.id, "needs a letter type");
     if (!r.tpl || !tplOf(S, r.tpl)) add(r.id, "needs a template");
+    else if (!templateGroup(S, r.tpl).some((t) => t.active !== false)) add(r.id, "uses a template that is Inactive");
     if (!S.fields.some((f) => f.rules && r.cond && r.cond[f.id] && r.cond[f.id] !== "Any")) add(r.id, "needs at least one condition");
     d.forEach((o) => {
       if (o.id > r.id && o.family && o.family === r.family) {
@@ -695,48 +768,113 @@ export function saveFields(S, draft, reason) {
   return ch.length;
 }
 
-// Saving a template always makes a new version; unsent letters go Out of date.
-export function saveTemplate(S, id, draft, reason) {
-  const t = tplOf(S, id);
-  if (!t) throw new Error("Template not found.");
+/* ---------------- templates ---------------- */
+
+const escHtml = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+const chipHtml = (tag) => `<span class="lt-merge-field" data-letter-tag="${escHtml(tag)}" contenteditable="false">${escHtml(tag)}</span>`;
+
+// plain text with {{tags}} -> editor HTML (one <p> per line, tags as chips)
+export function bodyToEditorHtml(body) {
+  return String(body || "")
+    .split("\n")
+    .map((line) => {
+      const safe = escHtml(line).replace(/\{\{([^{}]+)\}\}/g, (_m, tag) => chipHtml(tag.trim()));
+      return "<p>" + (safe || "<br>") + "</p>";
+    })
+    .join("");
+}
+
+// {{tags}} left inside HTML -> chips
+export function chipifyEditorHtml(html) {
+  return String(html || "").replace(/\{\{([^{}<>]+)\}\}/g, (_m, tag) => chipHtml(tag.trim()));
+}
+
+export const newTemplateId = () => "T" + Date.now().toString(36).toUpperCase();
+
+/* Record a publish. A template always gets a new version; unsent letters made
+   from an older version go Out of date. `meta` is what the server answered
+   (ver, by, on, file, hist, hasDocx, active); without it (offline demo) the
+   version just goes up by one. Creates the template if `id` is new. */
+export function publishTemplate(S, id, draft, reason, meta) {
+  let t = tplOf(S, id);
+  if (!t) {
+    t = { id, ver: 0, hist: [], active: true, file: "", html: "", body: "" };
+    S.tpls.push(t);
+  }
+  const m = meta || {};
   t.name = draft.name;
   t.family = draft.family || t.family || "Revision";
-  t.file = draft.file;
-  t.body = draft.body;
-  t.html = draft.html || t.html || "";
-  t.font = draft.font || t.font || "Inter";
+  t.location = draft.location != null ? draft.location : t.location || ALL_LOCATIONS;
+  t.file = m.file != null ? m.file : draft.file != null ? draft.file : t.file || "";
+  t.html = draft.html || bodyToEditorHtml(draft.body) || t.html || "";
+  t.body = draft.body != null ? draft.body : t.body || "";
+  t.font = draft.font || t.font || "Calibri";
   t.fsize = Number(draft.fsize || t.fsize || 11);
-  t.lh = Number(draft.lh || t.lh || 1.15);
+  t.lh = String(draft.lh || t.lh || "1.15");
   t.sg = draft.sg;
-  t.ver++;
+  if (!t.ver) t.active = true; // Active from its first publish
+  if (m.active != null) t.active = !!m.active;
+  t.ver = m.ver || (t.ver || 0) + 1;
   t.status = "Published";
-  if (t.active == null) t.active = true;
-  audit(S, "Templates", t.id, "New version saved", reason, t.name + " v" + t.ver, "v" + t.ver);
+  t.by = m.by || (S.actor || "HR") + " (HR)";
+  t.on = m.on || nowStamp();
+  if (m.hasDocx != null) t.hasDocx = !!m.hasDocx;
+  if (m.fromServer) t.fromServer = true;
+  t.hist = m.hist || [{ ver: t.ver, by: t.by, on: t.on, note: reason || "", file: t.file }].concat(t.hist || []);
+  audit(S, "Templates", t.id, t.ver === 1 ? "Published" : "New version published", reason || "", t.name + " v" + t.ver, "v" + t.ver);
   refreshStale(S);
   return t.ver;
 }
 
+// Old names, kept for callers that pass a plain draft.
+export function saveTemplate(S, id, draft, reason) {
+  if (!tplOf(S, id)) throw new Error("Template not found.");
+  return publishTemplate(S, id, draft, reason);
+}
 export function createTemplate(S, draft, reason) {
-  const id = "T" + Date.now().toString(36).toUpperCase();
-  S.tpls.push({
-    id,
-    name: draft.name,
-    family: draft.family || "Revision",
-    ver: 0,
-    file: draft.file || "",
-    body: "",
-    html: "",
-    status: "Draft",
-    active: true,
-    by: "",
-    on: "",
-    hist: [],
-    sg: draft.sg,
-    font: draft.font || "Inter",
-    fsize: Number(draft.fsize || 11),
-    lh: Number(draft.lh || 1.15),
+  const id = newTemplateId();
+  publishTemplate(S, id, draft, reason);
+  return id;
+}
+
+export function setTemplateActive(S, id, active) {
+  const t = tplOf(S, id);
+  if (!t) return;
+  t.active = !!active;
+  audit(S, "Templates", t.id, active ? "Made Active" : "Made Inactive", "", t.name, "v" + t.ver);
+}
+
+/* Put what the server holds into the state: a server template replaces the
+   built-in sample with the same id, and new ones are added. Letters made from
+   an older version go Out of date through refreshStale. */
+export function applyServerTemplates(S, list) {
+  (list || []).forEach((x) => {
+    const o = {
+      id: x.id,
+      name: x.name,
+      family: x.family,
+      location: x.location || ALL_LOCATIONS,
+      ver: x.ver,
+      active: !!x.active,
+      file: x.file || "",
+      hasDocx: !!x.hasDocx,
+      html: x.html || bodyToEditorHtml(x.body),
+      body: x.body || "",
+      font: x.font || "Calibri",
+      fsize: Number(x.fsize || 11),
+      lh: String(x.lh || "1.15"),
+      sg: { ...(S.sign || {}), ...(x.sg || {}) },
+      by: x.by || "",
+      on: x.on || "",
+      status: "Published",
+      hist: x.hist || [],
+      fromServer: true,
+    };
+    const ex = tplOf(S, x.id);
+    if (ex) Object.assign(ex, o);
+    else S.tpls.push(o);
   });
-  return saveTemplate(S, id, draft, reason);
+  refreshStale(S);
 }
 
 /* ---------------- sample data ---------------- */
@@ -744,9 +882,13 @@ export function createTemplate(S, draft, reason) {
 const SAMPLE_ANNUAL = "C1";
 const SAMPLE_EXCEPTIONAL = "C2";
 
+const EM_LOC = ["India", "Dubai", "Singapore", "Canada"]; // Location Master names
+const EM_DEPT = ["Consulting", "Delivery", "Finance", "HR"];
+
 function addSampleSheet(S) {
   function mk(id, name, desig, tech, cyc, st, cur, nw, promo, nt, pb, rb, tpb, email) {
     const an = cyc === SAMPLE_ANNUAL;
+    const n = parseInt(String(id).replace(/\D/g, ""), 10) || 0;
     let pm = [];
     if (pb > 0) pm = an ? [["May-26", pb / 4], ["Aug-26", pb / 4], ["Nov-26", pb / 4], ["Feb-27", pb / 4]] : [["Dec-26", pb]];
     S.sheet.push({
@@ -776,6 +918,11 @@ function addSampleSheet(S) {
         pbMonths: pm,
         rbMonth: rb > 0 ? "May-26" : "",
         tpbMonth: tpb > 0 ? "May 2027" : "",
+        emLocation: EM_LOC[n % 4],
+        emDoj: (1 + (n % 27)) + "-" + MON[n % 12] + "-" + (2014 + (n % 9)),
+        emGrade: "G" + (2 + (n % 5)),
+        emManager: tech,
+        emDept: EM_DEPT[n % 4],
       },
     });
   }
@@ -839,18 +986,36 @@ function addDefaultConfig(S) {
   ];
   S.sign = {
     company: "Wissen Technology Pvt. Ltd",
-    name: "<<insert name>>",
+    name: "Authorised Signatory",
     title: "Managing Director",
     sigFile: "signature.png",
+    sigData: "",
+    logoFile: "logo.png",
+    logoData: "",
     letterDate: todayLabel(),
     from: "hr@wissentech.example",
     cc: "compensation@wissentech.example",
     subject: "Your appraisal letter - {{Cycle Name}}",
     body: "Dear {{Name}},\n\nPlease find your letter attached.\n\nRegards,\nHR",
   };
+  // One sample that is Inactive, so the Active switch has something to show.
+  S.tpls.push({ id: "T8", name: "Revision - Promotion only", family: "Revision", ver: 1, file: "", body: H + "Subsequent to your performance review you have been promoted with effect from {{Effective Date}}. Your new designation will be {{New Designation}}." + F });
   S.tpls.forEach((t) => {
     t.sg = JSON.parse(JSON.stringify(S.sign));
+    t.html = bodyToEditorHtml(t.body);
+    t.active = t.id !== "T8";
+    t.location = ALL_LOCATIONS;
+    t.status = "Published";
+    t.font = "Calibri";
+    t.fsize = 11;
+    t.lh = "1.15";
+    t.by = "HR (HR)";
+    t.on = "03-Nov-2026 10:15";
+    t.hist = [{ ver: t.ver, by: t.by, on: t.on, note: t.file ? "Imported from " + t.file : "", file: t.file }];
   });
+  S.t = "03-Nov-2026 10:15";
+  S.tpls.forEach((t) => audit(S, "Templates", t.id, "Published", "", (t.file ? "Imported from " + t.file + "; " : "") + t.name + " v" + t.ver, "v" + t.ver));
+  S.t = null;
 }
 
 /* A new state: config + a sample Appraisal Sheet, and NO letters. Letters
@@ -874,7 +1039,7 @@ export function createState() {
   return S;
 }
 
-/* Sample history so every status can be seen (Sent, Delivered, Withdrawn,
+/* Sample history so every status can be seen (Sent, Delivered, Voided,
    Out of date, Dropped...). Demo only. Makes the Annual letters for whatever
    cycle the sample Annual rows are bound to, plus the Exceptional ones. */
 export function loadSampleLetters(S) {
@@ -910,8 +1075,8 @@ export function loadSampleLetters(S) {
   }
   const fk = L("E1011", "Revision");
   if (fk) {
-    fk.status = "Withdrawn";
-    audit(S, "Letter", fk.id, "Withdrawn", "Hike under review", "", "v1");
+    fk.status = "Voided";
+    audit(S, "Letter", fk.id, "Voided", "Hike under review", "", "v1");
   }
   S.t = null;
   // Appraisal Sheet edits after the letters were made -> Out of date / Changed after sending

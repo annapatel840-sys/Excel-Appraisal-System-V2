@@ -5,6 +5,7 @@ import {
   createState, pick, generateLetters, lettersStats, bindAnnualCycle, loadSampleLetters,
   merge, sendProblem, sendLetters, markReviewed, moreAction, refreshStale, needLetters,
   inr, words, fyOf, ruleMessages, fieldMessages, saveTemplate, lOf, rowOf, tplOf,
+  reviewOnPreview, resolveTemplate, publishTemplate, applyServerTemplates, templateMessages,
 } from "./letters-core.js";
 
 const CYCLE = { id: "74008000000099999", name: "Annual 2026", effective: "2026-04-01" };
@@ -101,6 +102,7 @@ test("a new entitlement shows in needLetters and Generate makes the letter", () 
 
 test("send is blocked while the signatory is the <<insert name>> placeholder", () => {
   const S = fresh();
+  S.tpls.forEach((t) => (t.sg.name = "<<insert name>>"));
   generateLetters(S, CYCLE.id);
   const l = letterOf(S, "E1002", "Revision");
   markReviewed(S, [l.id]);
@@ -167,6 +169,57 @@ test("saving a template makes a new version and marks unsent letters Out of date
   assert.equal(letterOf(S, "E1002", "Revision").status, "Out of date");
 });
 
+test("an Inactive template makes no new letters; rules cannot use it", () => {
+  const S = fresh();
+  tplOf(S, "T2").active = false;
+  generateLetters(S, CYCLE.id);
+  assert.equal(letterOf(S, "E1002", "Revision"), undefined);
+  const rules = JSON.parse(JSON.stringify(S.rules));
+  assert.ok(ruleMessages(S, rules).R2.some((m) => /Inactive/.test(m)));
+});
+
+test("void, resend after failure, and the Alert tag", () => {
+  const S = fresh();
+  generateLetters(S, CYCLE.id);
+  const l = letterOf(S, "E1002", "Revision");
+  rowOf(S, "E1002").v.newBase = 2400000;
+  refreshStale(S);
+  assert.equal(l.tag, "Appraisal sheet changed");
+  moreAction(S, "void", [l.id], "Hike under review");
+  assert.equal(l.status, "Voided");
+  assert.equal(l.tag, "");
+  assert.equal(reviewOnPreview(S, letterOf(S, "E1001", "Revision").id), true);
+  assert.equal(letterOf(S, "E1001", "Revision").status, "Reviewed");
+  assert.equal(S.audit[0].action, "Reviewed");
+});
+
+test("publishTemplate uses the server answer and applyServerTemplates replaces a sample", () => {
+  const S = fresh();
+  const t = tplOf(S, "T2");
+  const v = publishTemplate(S, "T2", { name: t.name, family: "Revision", html: t.html, body: t.body, sg: t.sg, file: "Hike Letter.docx" }, "n", { ver: 7, by: "hr@x.com", on: "17-Nov-2026 10:00", file: "Hike Letter.docx", hasDocx: true, fromServer: true });
+  assert.equal(v, 7);
+  assert.equal(tplOf(S, "T2").by, "hr@x.com");
+  applyServerTemplates(S, [{ id: "TNEW", name: "N", family: "Bonus", ver: 1, active: true, html: "<p>x</p>", body: "x", sg: {}, hist: [] }]);
+  assert.equal(tplOf(S, "TNEW").sg.company, S.sign.company);
+  assert.equal(templateMessages(S, { name: "Bonus - PB", family: "Bonus", sg: t.sg }, "", "Dear {{Name}} {{Nope}}").some((m) => /Nope/.test(m)), true);
+  assert.ok(templateMessages(S, { name: "Bonus - PB", family: "Bonus", sg: t.sg }, "", "x").some((m) => /already exists for All locations/.test(m)));
+});
+
+test("templates are per location: the variant for the employee's location wins, else All locations", () => {
+  const S = fresh();
+  const base = tplOf(S, "T2");
+  S.tpls.push({ ...JSON.parse(JSON.stringify(base)), id: "T2P", location: rowOf(S, "E1002").v.emLocation, ver: 4 });
+  assert.equal(resolveTemplate(S, "T2", rowOf(S, "E1002")).id, "T2P");
+  const other = S.sheet.find((r) => r.v.emLocation !== rowOf(S, "E1002").v.emLocation);
+  assert.equal(resolveTemplate(S, "T2", other).id, "T2");
+  base.active = false;
+  assert.equal(resolveTemplate(S, "T2", other), null);
+  assert.equal(resolveTemplate(S, "T2", rowOf(S, "E1002")).id, "T2P");
+  assert.equal(templateMessages(S, { name: base.name, family: "Revision", location: "Nowhere", sg: base.sg }, "", "x").some((m) => /already exists/.test(m)), false);
+  generateLetters(S, CYCLE.id);
+  assert.equal(letterOf(S, "E1002", "Revision").tpl, "T2P");
+});
+
 test("config validation", () => {
   const S = createState();
   const rules = JSON.parse(JSON.stringify(S.rules));
@@ -181,7 +234,7 @@ test("loadSampleLetters shows every status and keeps Generate idempotent", () =>
   const S = fresh();
   loadSampleLetters(S);
   const seen = new Set(S.letters.map((l) => l.status));
-  for (const s of ["Ready", "Out of date", "Sent", "Withdrawn"]) assert.ok(seen.has(s) || [...seen].some((x) => x === "Delivered" && s === "Sent"), "missing " + s);
+  for (const s of ["Ready", "Out of date", "Sent", "Voided"]) assert.ok(seen.has(s) || [...seen].some((x) => x === "Delivered" && s === "Sent"), "missing " + s);
   assert.equal(lettersStats(S, CYCLE.id).gen, true);
   assert.ok(S.letters.some((l) => l.flag === "Changed after sending"));
   const n = S.letters.length;

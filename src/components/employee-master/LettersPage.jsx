@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ClientPager, DataGrid, useGridView } from "./DataGrid";
 import { AUDIT_DEFS, AuditTab, FieldsTab, RulesTab, TemplatesTab } from "./LettersConfigTabs";
-import { LtPreview, exportRows, useLtBar, useLtGrid, usePaged, useToast } from "./letters-ui";
+import { exportRows, letterFontStyle, mergeLetterHtml, useLtBar, useLtGrid, usePaged, useToast } from "./letters-ui";
 import {
   OPEN_STATUSES,
   SENT_STATUSES,
+  STATUSES,
   STATUS_CLASS,
   catOf,
   cyOf,
   empOf,
   fmtVal,
   inr,
-  lOf,
   lettersStats,
-  merge,
   needLetters,
   num,
-  pct,
   pick,
   sendProblem,
+  tagValues,
+  templateGroup,
   tplOf,
 } from "@/lib/letters-core";
 import * as store from "@/lib/letters-store";
@@ -32,7 +32,7 @@ import "./letters-page.css";
  * Ported from the "Letters v2" prototype. This screen does not make letters:
  * Annual letters are generated from the Letters step of the Appraisal Cycle
  * Master, Exceptional letters from the Exceptional grid. Here HR reviews,
- * sends, resends, withdraws and replaces them, and (HR only) maintains the
+ * sends, resends, voids and replaces them, and (HR only) maintains the
  * Letter Rules, Letter Fields and Templates.
  *
  * Props
@@ -101,20 +101,12 @@ function RemarkInput({ letter, actor }) {
   );
 }
 
-const fmtSnap = (col, v) => {
-  const c = catOf(col);
-  if (v == null) return "";
-  if (c && c[2] === "amount") return inr(v);
-  if (c && c[2] === "pct") return pct(v);
-  return String(v);
-};
-
 /* ============================================================ */
 
 export function LettersPage({ canEdit = true, onNavigate }) {
   const user = useCatalystUser();
   const actor = user?.name || "HR";
-  const { S, version } = store.useLetters();
+  const { S, version, sync } = store.useLetters();
   const ui = useLtBar();
   const { toast, el: toastEl } = useToast();
 
@@ -122,11 +114,12 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   const [sec, setSec] = useState("Annual");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(() => new Set());
-  const [active, setActive] = useState(null);
-  const [ptab, setPtab] = useState("letter");
+  const [pv, setPv] = useState(null); // id of the letter open in Preview
+  const [pvErr, setPvErr] = useState("");
+  const [tplSel, setTplSel] = useState("");
+  const [ptab, setPtab] = useState("stats");
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelW, setPanelW] = useState(() => Math.max(320, Math.min(760, parseInt(readText(RPW_KEY), 10) || 360)));
-  const [confirmN, setConfirmN] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -140,12 +133,18 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   useDismiss(menuOpen, () => setMenuOpen(false), menuRef);
   useDismiss(notesOpen, () => setNotesOpen(false), notesRef);
 
-  // "Send" asks for a second click; the confirmation lapses after 6 seconds.
+  // Templates live on the server: load them when the screen opens.
   useEffect(() => {
-    if (confirmN == null) return undefined;
-    const t = window.setTimeout(() => setConfirmN(null), 6000);
-    return () => window.clearTimeout(t);
-  }, [confirmN]);
+    store.syncTemplates();
+  }, []);
+
+  // Escape closes the letter preview.
+  useEffect(() => {
+    if (!pv) return undefined;
+    const key = (e) => e.key === "Escape" && setPv(null);
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [pv]);
 
   // A user without Edit access never sees the HR-only tabs.
   const visibleTab = !canEdit && tab !== "letters" ? "letters" : tab;
@@ -163,10 +162,41 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     [S, version, sel],
   );
 
-  const openLetter = (id) => {
-    setActive(id);
-    setPtab("letter");
-    setPanelOpen(true);
+  /* Preview opens the letter as it will be sent. For HR, opening a Ready
+     letter counts as reviewing it. */
+  const openPreview = (id) => {
+    const l = S.letters.find((x) => x.id === id);
+    if (canEdit && l && l.status === "Ready") store.previewLetter(id, actor);
+    setPvErr("");
+    setPv(id);
+  };
+  const rowSend = (id) => {
+    const l = S.letters.find((x) => x.id === id);
+    const why = l ? sendProblem(S, l) : "status is unknown";
+    if (why) {
+      toast("Cannot send: " + why);
+      return;
+    }
+    const res = store.sendLetters([id], actor);
+    const after = S.letters.find((x) => x.id === id);
+    if (res.sent && after) toast(after.status === "Failed" ? "Send failed; use Send again" : "Sent to " + after.sentTo);
+  };
+  const sendFromPreview = () => {
+    const l = S.letters.find((x) => x.id === pv);
+    const why = l ? sendProblem(S, l) : "status is unknown";
+    if (why) {
+      setPvErr("Cannot send: " + why + ".");
+      return;
+    }
+    store.sendLetters([pv], actor);
+    const after = S.letters.find((x) => x.id === pv);
+    setSel((cur) => {
+      const n = new Set(cur);
+      n.delete(pv);
+      return n;
+    });
+    setPv(null);
+    toast(after && after.status === "Failed" ? "Send failed; retry from Preview or Send" : "Sent to " + (after ? after.sentTo : ""));
   };
 
   /* ---------------- grid columns ---------------- */
@@ -175,24 +205,35 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     {
       key: "emp",
       label: "Employee",
-      w: 210,
+      w: 190,
       fixed: true,
       get: (l) => `${empOf(S, l).id} - ${empOf(S, l).name}`,
       render: (l) => (
         <>
-          <button type="button" className="nm" onClick={() => openLetter(l.id)}>
+          <div className="nm">
             {empOf(S, l).id} - {empOf(S, l).name}
-          </button>
+          </div>
           <div className="ds">{empOf(S, l).v.designation}</div>
         </>
       ),
     },
-    { key: "tech", label: "Tech ED", w: 120, get: (l) => empOf(S, l).tech },
-    { key: "cycle", label: "Appraisal Cycle", w: 150, get: (l) => (cyOf(S, l.cycle) || {}).name || "" },
-    { key: "ctype", label: "Cycle Type", w: 100, get: (l) => (cyOf(S, l.cycle) || {}).type || "" },
-    { key: "promo", label: "Promotion", w: 112, get: (l) => empOf(S, l).v.promo },
-    { key: "type", label: "Letter Type", w: 170, get: (l) => `${l.family} - ${l.type}` },
-    { key: "tpl", label: "Template", w: 190, get: (l) => `${tplOf(S, l.tpl).name} v${l.ver}` },
+    {
+      key: "pv",
+      label: "Actions",
+      w: 150,
+      get: () => "Preview",
+      render: (l) => (
+        <span style={{ whiteSpace: "nowrap" }}>
+          <button type="button" className="lt-lnk" onClick={() => openPreview(l.id)}>Preview</button>
+          {canEdit && (l.status === "Reviewed" || l.status === "Failed") && (
+            <>
+              <span className="lt-sep">|</span>
+              <button type="button" className="lt-lnk" onClick={() => rowSend(l.id)}>Send</button>
+            </>
+          )}
+        </span>
+      ),
+    },
     {
       key: "status",
       label: "Status",
@@ -203,16 +244,16 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     {
       key: "alert",
       label: "Alert",
-      w: 230,
-      get: (l) => l.alert || "",
-      render: (l) =>
-        l.alert ? (
-          <>
-            <span className="lt-chip sw">{l.flag ? "Changed after sending" : l.status === "Dropped" ? "Dropped" : "Out of date"}</span>
-            <div className="ds">{l.alert}</div>
-          </>
-        ) : null,
+      w: 170,
+      get: (l) => l.tag || "",
+      render: (l) => (l.tag ? <span className="lt-chip sw" title={l.alert}>{l.tag}</span> : null),
     },
+    { key: "tech", label: "Tech ED", w: 100, get: (l) => empOf(S, l).tech },
+    { key: "cycle", label: "Appraisal Cycle", w: 150, vis: false, get: (l) => (cyOf(S, l.cycle) || {}).name || "" },
+    { key: "ctype", label: "Cycle Type", w: 100, vis: false, get: (l) => (cyOf(S, l.cycle) || {}).type || "" },
+    { key: "promo", label: "Promotion", w: 100, get: (l) => empOf(S, l).v.promo },
+    { key: "type", label: "Letter Type", w: 170, get: (l) => `${l.family} - ${l.type}` },
+    { key: "tpl", label: "Template", w: 190, get: (l) => `${tplOf(S, l.tpl).name} v${l.ver}` },
     ...S.fields
       .filter((f) => f.col !== "promo")
       .map((f) => {
@@ -231,11 +272,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           render: numeric ? (l) => <span className="lt-num">{fmtVal(empOf(S, l), f.col)}</span> : undefined,
         };
       }),
-    { key: "sentOn", label: "Sent On", w: 130, get: (l) => l.sentOn },
-    { key: "sentBy", label: "Sent By", w: 100, get: (l) => l.sentBy },
-    { key: "sentTo", label: "Sent To", w: 200, get: (l) => l.sentTo },
-    { key: "resends", label: "Resend Count", w: 100, get: (l) => String(l.resends), sv: (l) => l.resends, render: (l) => <span className="lt-num">{l.resends}</span> },
-    { key: "lastResent", label: "Last Resent On", w: 130, get: (l) => l.lastResent },
+    { key: "sentOn", label: "Sent On", w: 100, get: (l) => l.sentOn },
+    { key: "sentBy", label: "Sent By", w: 100, vis: false, get: (l) => l.sentBy },
+    { key: "sentTo", label: "Sent To", w: 150, get: (l) => l.sentTo },
+    { key: "resends", label: "Resend Count", w: 100, vis: false, get: (l) => String(l.resends), sv: (l) => l.resends, render: (l) => <span className="lt-num">{l.resends}</span> },
+    { key: "lastResent", label: "Last Resent On", w: 130, vis: false, get: (l) => l.lastResent },
     {
       key: "remarks",
       label: "Remarks",
@@ -253,13 +294,13 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   const paged = usePaged(view);
 
   const visKeys = new Set(grid.cols.filter((c) => c.vis).map((c) => c.key));
+  const sums = defs.filter((d) => d.sum && visKeys.has(d.key)).map((d) => [d.label, view.reduce((a, l) => a + d.raw(l), 0)]);
 
   /* ---------------- selection ---------------- */
 
   const allSelected = view.length > 0 && view.every((l) => sel.has(l.id));
   const someSelected = view.some((l) => sel.has(l.id));
   const toggleRow = (id) => {
-    setConfirmN(null);
     setSel((cur) => {
       const n = new Set(cur);
       if (n.has(id)) n.delete(id);
@@ -268,7 +309,6 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     });
   };
   const toggleAll = () => {
-    setConfirmN(null);
     setSel((cur) => {
       const n = new Set(cur);
       if (allSelected) view.forEach((l) => n.delete(l.id));
@@ -280,59 +320,21 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   /* ---------------- actions ---------------- */
 
   const hasAll = (list) => selected.length > 0 && selected.every((l) => list.includes(l.status));
-  const canReview = selected.some((l) => l.status === "Ready");
-  const canSend = selected.some((l) => ["Reviewed", "Failed"].includes(l.status));
   const enabled = {
     test: selected.length > 0,
-    resend: hasAll(SENT_STATUSES),
-    withdraw: hasAll([...OPEN_STATUSES, ...SENT_STATUSES]),
+    resend: hasAll([...SENT_STATUSES, "Failed"]),
+    void: hasAll([...OPEN_STATUSES, ...SENT_STATUSES]),
     replace: selected.length === 1 && hasAll(SENT_STATUSES),
   };
 
-  const changeSection = (s) => {
-    setSec(s);
+  const changeSection = (s2) => {
+    setSec(s2);
     setSel(new Set());
-    setActive(null);
-    setConfirmN(null);
   };
   const changeTab = (t) => {
     setTab(t);
     ui.close();
-    setConfirmN(null);
     setMenuOpen(false);
-  };
-
-  const preview = () => {
-    const id = selected[0] ? selected[0].id : active;
-    if (id) openLetter(id);
-  };
-
-  const review = () => {
-    const n = store.reviewLetters(
-      selected.map((l) => l.id),
-      actor,
-    );
-    ui.close();
-    toast(`${n} letter(s) marked Reviewed`);
-  };
-
-  const send = () => {
-    const ready = selected.filter((l) => ["Reviewed", "Failed"].includes(l.status));
-    if (confirmN == null) {
-      setConfirmN(ready.length);
-      return;
-    }
-    const blockedIds = new Set(ready.filter((l) => sendProblem(S, l)).map((l) => l.id));
-    const res = store.sendLetters(
-      ready.map((l) => l.id),
-      actor,
-    );
-    setConfirmN(null);
-    setSel(blockedIds); // sent ones leave the selection; blocked ones stay so HR can fix them
-    ui.say(
-      `${res.sent} sent${res.failed ? ` (${res.failed} failed, retry with Send)` : ""}${res.blocked.length ? `. Not sent: ${res.blocked.join("; ")}` : "."}`,
-      res.blocked.length > 0 || res.failed > 0,
-    );
   };
 
   const more = (a) => {
@@ -343,7 +345,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       toast(`Test sent to ${from} only; nothing is stamped on the letter`);
       return;
     }
-    const title = { resend: "Why are you resending?", withdraw: "Why are you withdrawing?", replace: "Why is the letter being replaced?" }[a];
+    const title = { resend: "Why are you resending?", void: "Why is the letter being voided?", replace: "Why is the letter being replaced?" }[a];
     ui.askReason(title, (reason) => {
       store.moreOnLetters(a, ids, reason, actor);
       setSel(new Set());
@@ -391,90 +393,6 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     const w = panelW < 500 ? 640 : 360;
     setPanelW(w);
     writeText(RPW_KEY, String(w));
-  };
-
-  const activeLetter = active ? lOf(S, active) : null;
-
-  const renderLetterTab = () => {
-    const l = activeLetter;
-    if (!l) return <div className="lt-rp-info">Click a row to see the letter and the Appraisal Sheet Values it was made from.</div>;
-    const r = empOf(S, l);
-    const mg = merge(S, l);
-    const hist = S.audit.filter((a) => a.scope === "Letter" && a.ref === l.id);
-    const call = (tag, head, sub) => (
-      <div className="lt-call am">
-        <span className="tg">{tag}</span>
-        <div className="ln"><b>{head}</b></div>
-        <div className="sub">{sub}</div>
-      </div>
-    );
-    return (
-      <>
-        {l.status === "Out of date" && call("Out of date", l.alert, "It cannot be sent. Regenerate it from the Letters step of the Appraisal Cycle Master.")}
-        {l.status === "Dropped" && call("Dropped", l.alert, "Never sent; kept for history.")}
-        {l.flag && call("Changed after sending", l.alert, "The sent letter is unchanged. Use More: Replace or Withdraw, with a reason.")}
-        {!r.email && call("No email", "No email on the Employee Master", "This letter cannot be sent until it is added.")}
-        {mg.miss.length > 0 && call("Empty tag", mg.miss.map((k) => `{{${k}}}`).join(", "), "The letter is blocked from sending.")}
-        <div className="lt-rp-card">
-          <h4>Letter</h4>
-          {[
-            ["Type", `${l.family} - ${l.type}`],
-            ["Rule", l.ruleName],
-            ["Template", `${tplOf(S, l.tpl).name} v${l.ver}`],
-            ["Status", l.status],
-            ["Sent On", l.sentOn || "-"],
-            ["Sent By", l.sentBy || "-"],
-            ["Sent To", l.sentTo || "-"],
-            ["Resends", String(l.resends)],
-          ].map((x) => (
-            <div className="lt-rp-row" key={x[0]}>
-              <span>{x[0]}</span>
-              <b>{x[1]}</b>
-            </div>
-          ))}
-        </div>
-        <div className="lt-rp-card">
-          <h4>Appraisal Sheet Values</h4>
-          {S.fields.map((f) => {
-            const now = fmtVal(r, f.col);
-            const was = fmtSnap(f.col, l.snap[f.col]);
-            const ch = was !== now;
-            return (
-              <div className="lt-rp-row" key={f.id}>
-                <span>{f.label}</span>
-                <b className={ch ? "chg" : ""}>
-                  {now}
-                  {ch && <em>was {was}</em>}
-                </b>
-              </div>
-            );
-          })}
-        </div>
-        <div className="lt-rp-card">
-          <h4>Preview</h4>
-          <LtPreview text={mg.text} />
-        </div>
-        <div className="lt-rp-card">
-          <h4>History</h4>
-          {hist.length ? (
-            hist.map((a) => (
-              <div className="lt-tl" key={a.id + a.when + a.action}>
-                <i />
-                <div>
-                  <b>{a.action}</b> &middot; {a.when}
-                  <div className="lt-mut">
-                    {a.by}
-                    {a.reason ? ` · ${a.reason}` : ""}
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="lt-mut">No History.</div>
-          )}
-        </div>
-      </>
-    );
   };
 
   const renderStatsTab = () => {
@@ -588,23 +506,76 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         );
       })}
       <div className="lt-rp-note">
-        Saved In This Browser. HR sets the default list in Letter Fields (Show in grid). Any Appraisal Sheet column can be added there.
+        Saved in this browser. HR sets the default list in Letter Fields (Show in grid). Any Appraisal Sheet column can be added there.
       </div>
     </div>
   );
 
+  /* Templates tab: what the selected template is used by */
+  const renderTplPanel = () => {
+    const t = tplSel ? tplOf(S, tplSel) : null;
+    if (!t) return <div className="lt-rp-info">Select a template.</div>;
+    const rl = S.rules.filter((r) => templateGroup(S, r.tpl).some((x) => x.id === t.id));
+    const ls = S.letters.filter((l) => l.tpl === t.id);
+    const cnt = {};
+    ls.forEach((l) => {
+      cnt[l.status] = (cnt[l.status] || 0) + 1;
+    });
+    const unsent = ls.filter((l) => ["Ready", "Reviewed", "Failed"].includes(l.status)).length;
+    return (
+      <>
+        <div className="lt-rp-card">
+          <h4>Rules using this template</h4>
+          {rl.length ? (
+            rl.map((r) => (
+              <div className="lt-rp-row" key={r.id}>
+                <span>{r.name}</span>
+                <b>{r.active ? "Active" : "Inactive"}</b>
+              </div>
+            ))
+          ) : (
+            <div className="lt-mut">None.</div>
+          )}
+        </div>
+        <div className="lt-rp-card">
+          <h4>Letters made with it</h4>
+          {ls.length ? (
+            STATUSES.filter((x) => cnt[x]).map((x) => (
+              <div className="lt-rp-row" key={x}>
+                <span>{x}</span>
+                <b>{cnt[x]}</b>
+              </div>
+            ))
+          ) : (
+            <div className="lt-mut">None yet.</div>
+          )}
+        </div>
+        {unsent > 0 && (
+          <div className="lt-call am">
+            <span className="tg">On save</span>
+            <div className="ln"><b>{unsent} unsent letter{unsent > 1 ? "s" : ""}</b></div>
+            <div className="sub">are marked Out of date and must be generated again.</div>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const tplPanel = visibleTab === "tpl";
+  const selTpl = tplSel ? tplOf(S, tplSel) : null;
   const renderPanel = () => (
     <aside className="lt-rp" ref={asideRef} style={{ width: panelW }} aria-label="Letters Panel">
       <div className="lt-rp-grip" title="Drag to resize" onMouseDown={startResize} />
       <div className="lt-rp-head">
         <div className="lt-rp-who">
-          {activeLetter ? (
+          {tplPanel ? (
             <>
-              <b>{empOf(S, activeLetter).name}</b> &middot; {empOf(S, activeLetter).id} &middot; {empOf(S, activeLetter).v.designation} &middot; {empOf(S, activeLetter).tech}
+              <b>Templates</b>
+              {selTpl ? <> &middot; {selTpl.name}</> : null}
             </>
           ) : (
             <>
-              <b>Letters</b> &middot; {sec} &middot; select a row
+              <b>Letters</b> &middot; {sec}
             </>
           )}
         </div>
@@ -612,26 +583,60 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         <button type="button" className="lt-rp-ic" title="Close" aria-label="Close panel" onClick={() => setPanelOpen(false)}>&#10005;</button>
       </div>
       <div className="lt-rp-tabs" role="tablist">
-        {[
-          ["letter", "Letter"],
-          ["stats", "Stats"],
-          ["view", "My view"],
-        ].map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={ptab === k} onClick={() => setPtab(k)}>
+        {(tplPanel ? [["use", "Used by"]] : [["stats", "Stats"], ["view", "My view"]]).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tplPanel ? true : ptab === k} onClick={() => !tplPanel && setPtab(k)}>
             {label}
           </button>
         ))}
       </div>
-      <div className="lt-rp-body">{ptab === "letter" ? renderLetterTab() : ptab === "stats" ? renderStatsTab() : renderViewTab()}</div>
+      <div className="lt-rp-body">{tplPanel ? renderTplPanel() : ptab === "stats" ? renderStatsTab() : renderViewTab()}</div>
     </aside>
   );
+
+  /* ---------------- letter preview ---------------- */
+
+  const renderPreview = () => {
+    const l = pv ? S.letters.find((x) => x.id === pv) : null;
+    if (!l) return null;
+    const r = empOf(S, l);
+    const t = tplOf(S, l.tpl);
+    const mg = mergeLetterHtml(t.html, tagValues(S, l), t.sg);
+    const sendable = canEdit && (l.status === "Reviewed" || l.status === "Failed");
+    const why = sendable ? sendProblem(S, l) : "";
+    const note = pvErr || (why ? `Cannot send: ${why}.` : l.alert || "");
+    return (
+      <div className="lt-preview-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPv(null)}>
+        <div className="lt-preview-modal" role="dialog" aria-modal="true" aria-label="Letter preview">
+          <div className="lt-preview-head">
+            <div>
+              <b>{r.id} - {r.name}</b>
+              <div className="ds">{l.family} - {l.type} &middot; {t.name} v{l.ver} &middot; To {r.email || "no email"}</div>
+            </div>
+            <span className="lt-sp" />
+            <span className={"lt-chip " + STATUS_CLASS[l.status]} style={{ marginRight: 10 }}>{l.status}</span>
+            <button type="button" className="lt-rp-ic" aria-label="Close" onClick={() => setPv(null)}>&#10005;</button>
+          </div>
+          <div className="lt-preview-page" style={letterFontStyle(t)}>
+            {t.sg.logoData ? <img className="lt-preview-logo" src={t.sg.logoData} alt="Company logo" /> : <div className="lt-logo-ph">{t.sg.logoFile || "Company logo"}</div>}
+            <div dangerouslySetInnerHTML={{ __html: mg.html }} />
+          </div>
+          <div className="lt-preview-foot">
+            <span className="err">{note}</span>
+            <span className="lt-sp" />
+            {sendable && <button type="button" className="lt-btn main" disabled={!!why} onClick={sendFromPreview}>Send</button>}
+            <button type="button" className="lt-btn" onClick={() => setPv(null)}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   /* ---------------- main pane ---------------- */
 
   const lettersPane = (
     <>
       <div className="lt-toolbar">
-        <input className="lt-txt search" placeholder="Search Name, ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search letters" />
+        <input className="lt-txt search" placeholder="Search name, ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search letters" />
         <span className="lt-seg">
           {SECTIONS.map((s) => (
             <button key={s} type="button" className={sec === s ? "on" : ""} onClick={() => changeSection(s)}>
@@ -640,36 +645,24 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           ))}
         </span>
         <span className="lt-sp" />
-        {onNavigate && (
-          <button type="button" className="lt-btn" onClick={openCycleMaster} title="Annual letters are generated on the Letters step of the Appraisal Cycle Master">
-            Appraisal Cycle ›
-          </button>
-        )}
-        <button type="button" className="lt-btn" disabled={!(active || selected.length)} onClick={preview}>Preview</button>
         {canEdit && (
-          <>
-            <button type="button" className="lt-btn" disabled={!canReview} onClick={review}>Mark Reviewed</button>
-            <button type="button" className="lt-btn main" disabled={!canSend} onClick={send}>
-              {confirmN != null ? `Confirm · ${confirmN} letters` : "Send"}
-            </button>
-            <span className="lt-pw" ref={moreRef}>
-              <button type="button" className="lt-btn" onClick={() => setMoreOpen((o) => !o)}>More ▾</button>
-              {moreOpen && (
-                <div className="lt-pop" role="menu">
-                  {[
-                    ["test", "Send Test To Me"],
-                    ["resend", "Resend"],
-                    ["withdraw", "Withdraw"],
-                    ["replace", "Replace (correction)"],
-                  ].map(([k, label]) => (
-                    <button key={k} type="button" role="menuitem" className="item" disabled={!enabled[k]} style={enabled[k] ? undefined : { opacity: 0.4, cursor: "not-allowed" }} onClick={() => enabled[k] && more(k)}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </span>
-          </>
+          <span className="lt-pw" ref={moreRef}>
+            <button type="button" className="lt-btn" onClick={() => setMoreOpen((o) => !o)}>More ▾</button>
+            {moreOpen && (
+              <div className="lt-pop" role="menu">
+                {[
+                  ["test", "Send test to me"],
+                  ["resend", "Resend"],
+                  ["void", "Void"],
+                  ["replace", "Replace (correction)"],
+                ].map(([k, label]) => (
+                  <button key={k} type="button" role="menuitem" className="item" disabled={!enabled[k]} style={enabled[k] ? undefined : { opacity: 0.4, cursor: "not-allowed" }} onClick={() => enabled[k] && more(k)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
         )}
       </div>
       {ui.el}
@@ -686,16 +679,22 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           onToggleAll={toggleAll}
           allSelected={allSelected}
           someSelected={someSelected}
-          rowClass={(l) => (l.id === active ? "lt-act" : "")}
           emptyText={
             secRows.length
               ? "No Letters Match The Current Filters."
               : sec === "Annual"
-                ? "No Letters Yet. Annual Letters Are Generated From The Letters Step Of The Appraisal Cycle Master."
-                : "No Letters Yet. Exceptional Letters Are Generated From The Exceptional Grid."
+                ? "No letters yet. Annual letters are generated from the Appraisal Cycle screen."
+                : "No letters yet. Exceptional letters are generated from the Exceptional grid."
           }
         />
         <ClientPager page={paged.page} pages={paged.pages} from={paged.from} to={paged.to} total={view.length} allTotal={secRows.length} onPage={paged.setPage} grid={grid} />
+      </div>
+      <div className="lt-foot2">
+        <span><b>{view.length}</b> Letters</span>
+        {sel.size > 0 && <span><b>{sel.size}</b> selected</span>}
+        {sums.map(([label, total]) => (
+          <span key={label}>{label}: <b>{inr(total)}</b></span>
+        ))}
       </div>
     </>
   );
@@ -709,7 +708,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             <button type="button" className="lt-btn sm" disabled={S.letters.length > 0} onClick={() => { store.loadSampleLetters(actor); toast("Sample letters loaded"); }}>
               Load Sample History
             </button>
-            <button type="button" className="lt-btn sm" onClick={() => { store.resetSampleData(); setSel(new Set()); setActive(null); toast("Sample data reset"); }}>
+            <button type="button" className="lt-btn sm" onClick={() => { store.resetSampleData(); setSel(new Set()); toast("Sample data reset"); }}>
               Reset Sample Data
             </button>
           </span>
@@ -726,19 +725,19 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           ))}
         <div className="lt-tr-right">
           <span className="lt-pw" ref={notesRef}>
-            <button type="button" className="lt-btn" onClick={() => setNotesOpen((o) => !o)}>My Notes</button>
+            <button type="button" className="lt-btn" onClick={() => setNotesOpen((o) => !o)}>My notes</button>
             {notesOpen && (
               <div className="lt-pop notes">
-                <h4>My Notes</h4>
+                <h4>My notes</h4>
                 <textarea
-                  placeholder="Write Your Notes Here"
+                  placeholder="Write your notes here"
                   value={notes}
                   onChange={(e) => {
                     setNotes(e.target.value);
                     writeText(NOTES_KEY, e.target.value);
                   }}
                 />
-                <small>Saved In This Browser</small>
+                <small>Saved in this browser</small>
               </div>
             )}
           </span>
@@ -768,6 +767,14 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         </div>
       </div>
 
+      {sync.status === "error" && visibleTab === "tpl" && (
+        <div className="lt-note warn">
+          <span>Templates could not be loaded from the server: {sync.message} The built-in samples are shown.</span>
+          <span className="sp">
+            <button type="button" className="lt-btn sm" onClick={() => store.syncTemplates({ force: true })}>Retry</button>
+          </span>
+        </div>
+      )}
       <div className="lt-body">
         <div className="lt-pane">
           {visibleTab === "letters" && lettersPane}
@@ -776,10 +783,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           )}
           {visibleTab === "rules" && canEdit && <RulesTab S={S} actor={actor} ui={ui} toast={toast} />}
           {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} />}
-          {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} />}
+          {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} sync={sync} selectedId={tplSel} setSelectedId={setTplSel} />}
         </div>
         {panelOpen && renderPanel()}
       </div>
+      {renderPreview()}
       {toastEl}
     </div>
   );
