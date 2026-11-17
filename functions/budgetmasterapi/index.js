@@ -1018,7 +1018,7 @@ async function readTechEdOwners(app, sourceRows) {
         ? employee.employee_id + " - " + employee.name
         : employee.employee_id || employee.name || rawAssignment
       : assignmentParts.length > 1
-        ? rawAssignmentParts[0] + " - " + rawAssignmentParts.slice(1).join(" - ")
+        ? assignmentParts[0] + " - " + assignmentParts.slice(1).join(" - ")
         : rawAssignment;
     const key = employee
       ? (employee.employee_id || employee.row_id).toLowerCase()
