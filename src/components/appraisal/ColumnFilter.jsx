@@ -88,14 +88,16 @@ export function revealTableHeader(trigger, instant = false) {
     const th = trigger?.closest("th");
     const table = trigger?.closest("table");
     if (!th || !table) return;
-    // The scrolling box around the table (if any); otherwise the table itself.
+    // The table's own scrolling box (rows scroll inside it), if it has one. A scrolling ancestor that is
+    // taller than the table is the page itself, so the table is what must be brought into view then.
     let box = table.parentElement;
     while (box && box !== document.body) {
       const o = getComputedStyle(box).overflowY;
       if ((o === "auto" || o === "scroll") && box.scrollHeight > box.clientHeight + 1) break;
       box = box.parentElement;
     }
-    const target = box && box !== document.body ? box : table;
+    const ownBox = box && box !== document.body && box.clientHeight < table.offsetHeight ? box : null;
+    const target = ownBox || table;
     const head = th.getBoundingClientRect();
     const view = window.innerHeight;
     // Header already comfortably in the upper part of the screen: leave the page alone.
