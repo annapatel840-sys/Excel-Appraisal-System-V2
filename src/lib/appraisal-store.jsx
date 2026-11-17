@@ -4264,6 +4264,12 @@ export function AppraisalProvider({ children }) {
             },
             body: JSON.stringify({
               emp_id: String(empId),
+              // Hike % and Hike Amount are saved together through this path;
+              // include the same exact Appraisal_Sheet ROWID as single-cell edits.
+              appraisal_row_id: String(targetRow.id || ""),
+              appraisal_year: APPRAISAL_YEAR,
+              cycle_id: APPRAISAL_CYCLE_ID,
+              location: APPRAISAL_LOCATION,
               ...catalystPayload,
               expected,
             }),
