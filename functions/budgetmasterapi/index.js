@@ -2475,20 +2475,22 @@ async function calculateBudgetBases(
     const currentCyclePayrollCtc = currentCyclePayrollRecord
       ? previousCtc(currentCyclePayrollRecord)
       : null;
+    // Match employeesapi's live Appraisal Sheet resolver: a matching shared
+    // source payroll wins; otherwise same-year New Joiner payroll, then the
+    // employee's latest earlier archived Annual payroll. Do not trust a stale
+    // physical Appraisal_Sheet cache ahead of the payroll source.
     const payrollCtcFallback =
+      (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
       sameYearNewJoinerPayrollRecord?.value ??
       (previousRecord ? previousCtc(previousRecord) : null) ??
-      (previousPayrollRecord ? previousCtc(previousPayrollRecord) : null) ??
       currentCyclePayrollCtc ??
       (currentCtcValue > 0 ? currentCtcValue : null) ??
       (currentCtc(masterRow) > 0 ? currentCtc(masterRow) : null);
     const previousAppraisalCtc =
-      sheetPreviousCtc !== null && Number.isFinite(Number(sheetPreviousCtc))
-        ? Number(sheetPreviousCtc)
-        : Number.isFinite(Number(payrollCtcFallback)) &&
-            Number(payrollCtcFallback) > 0
-          ? Number(payrollCtcFallback)
-          : 0;
+      Number.isFinite(Number(payrollCtcFallback)) &&
+      Number(payrollCtcFallback) > 0
+        ? Number(payrollCtcFallback)
+        : 0;
     const lastAppraisalLabel = sameYearNewJoinerPayrollRecord
       ? cycleNameOf(sameYearNewJoinerPayrollRecord.cycle)
       : previousRecord
