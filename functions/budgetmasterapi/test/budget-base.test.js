@@ -37,13 +37,13 @@ function makeStore(data) {
   return store;
 }
 
-function load(store) {
+function load(store, accessResult) {
   const dir = path.resolve(__dirname, '..');
   Object.keys(require.cache).forEach((k) => { if (k.startsWith(dir) && !k.includes('node_modules')) delete require.cache[k]; });
   class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
   const accessStub = {
     HttpError,
-    check: async () => ({ dryRun: true, enforced: false, scope: { all: true } }),
+    check: async () => accessResult || ({ dryRun: true, enforced: false, scope: { all: true } }),
     isEnforced: () => false,
     guard: (a, fn) => fn(),
     requireScreen: () => {},
@@ -76,6 +76,33 @@ let pass = 0, fail = 0;
 async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name); } catch (e) { fail++; console.log('FAIL', name, '\n   ', e.message); } }
 
 (async () => {
+  await t('HR with a restricted employee scope still receives all Tech-Ed allocation rows', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 10 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'T1', emp_name: 'Tech Ed One', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
+      Eligibility_List: [], Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 100000 },
+      ],
+    });
+    store.tables.Budget_Master[0].appraisal_cycle_id = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    const restrictedHr = {
+      enforced: true,
+      role: 'hr',
+      user: { role: 'HR', role_details: { role_name: 'HR' } },
+      scope: { all: false, empIds: [] },
+    };
+    const r = await get(load(store, restrictedHr));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.ok(r.json.techEd.some((row) => row.appraiser_tech_ed_id === 'T1'), 'HR must see the Tech-Ed allocation row');
+  });
+
   await t('formatted amounts (commas, ₹, lakh) give the right org and Tech-ED base', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
