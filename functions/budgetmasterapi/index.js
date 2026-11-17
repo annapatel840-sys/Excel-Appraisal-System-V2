@@ -1107,13 +1107,17 @@ async function readEmployeeRoster(app) {
   const formatTechEdAssignment = (raw) => {
     const assignment = String(raw || "").trim();
     if (!assignment) return "";
-    const linked = masterByRowId.get(assignment);
-    if (!linked) return assignment;
+    const parts = assignment.split(/\\s+-\\s+/);
+    const linked =
+      masterByRowId.get(assignment) ||
+      masterById.get(parts[0].trim().toLowerCase()) ||
+      masterByName.get(assignment.toLowerCase()) ||
+      masterByName.get((parts.length > 1 ? parts.slice(1).join(" - ") : assignment).toLowerCase());
     const linkedId = String(
-      readField(linked, ["emp_id", "employee_id"]) || "",
+      linked ? readField(linked, ["emp_id", "employee_id"]) || "" : parts.length > 1 ? parts[0] : "",
     ).trim();
     const linkedName = String(
-      readField(linked, ["emp_name", "employee_name", "name"]) || "",
+      linked ? readField(linked, ["emp_name", "employee_name", "name"]) || "" : parts.length > 1 ? parts.slice(1).join(" - ") : "",
     ).trim();
     return linkedId && linkedName
       ? linkedId + " - " + linkedName
