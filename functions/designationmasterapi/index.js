@@ -449,6 +449,27 @@ async function syncFromEmployeeMaster(app, cycle, locations) {
     readCycle(app, TBL.designations, cycle.id),
     pairsForCycle(app, cycle, locations),
   ]);
+  // ONE-TIME MIGRATION: Activate existing inactive designations.
+const activateRows = desRows
+  .filter((r) => !isOn(r.status))
+  .map((r) => ({
+    ROWID: rowId(r),
+    status: true,
+  }));
+
+if (activateRows.length) {
+  const table = app.datastore().table(TBL.designations);
+
+  for (const part of chunks(activateRows)) {
+    await table.updateRows(part);
+  }
+
+  console.log(
+    `Designation Master: Activated ${activateRows.length} existing designations`
+  );
+}
+
+
   const keyOf = (locId, name) => `${locId}|${lower(name)}`;
   // One designation per (location, name), as held by the location's employees.
   const pairs = new Map();
@@ -911,10 +932,10 @@ async function saveData(app, cycle, actor, payload) {
       dbDes.set(rowId(row), {
         id: rowId(row), name: text(part[i].name), department: "", locationId: text(part[i].locationId),
         band: "", nextType: "",
-        singleNextId: "", multipleNextIds: [], groupId: "", status: "Inactive",
+        singleNextId: "", multipleNextIds: [], groupId: "", status: "Active",
       });
       const where = ((db.locations || []).find((l) => l.id === text(part[i].locationId)) || {}).name;
-      log(`DES:${rowId(row)}`, text(part[i].name), "Designation added", "", "Inactive until mapped", {
+      log(`DES:${rowId(row)}`, text(part[i].name), "Designation added", "", "Active", {
         tab: "des", rid: rowId(row), field: "added", ov: "", nv: "",
         txt: `Designation added${where ? ` in ${where}` : ""} (Inactive until mapped)`,
       });
