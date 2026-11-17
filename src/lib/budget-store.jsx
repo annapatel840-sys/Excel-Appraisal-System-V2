@@ -329,11 +329,12 @@ export function BudgetProvider({ children }) {
       .filter((row) => {
         if (!cycleId) return false;
         const childCycle = String(row.appraisal_cycle_id || "").trim();
-        if (childCycle) return childCycle === cycleId;
         const parent = techEd.find(
           (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
         );
-        return String(parent?.appraisal_cycle_id || "").trim() === cycleId;
+        // Resolve legacy child-cycle values through the linked Tech-Ed parent.
+        return childCycle === cycleId ||
+          String(parent?.appraisal_cycle_id || "").trim() === cycleId;
       });
     setActiveBudgetCycleId(cycleId);
     setBudgetRows(techEd);
