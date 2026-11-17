@@ -2566,8 +2566,8 @@ async function calculateBudgetBases(
       .trim()
       .toLowerCase();
     const rawStatus = String(
-      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
-        firstValue(row, ["emp_status", "status", "employee_status"]) ||
+      firstValue(row, ["emp_status", "status", "employee_status"]) ||
+        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
         "",
     )
       .trim()
@@ -3073,7 +3073,9 @@ async function calculateBudgetBases(
       // approved additions/removals there must immediately change the budget roster.
       // Fall back to the Appraisal_Sheet eligibility field only for legacy rows
       // that have no matching cycle-specific Eligibility_List record.
-      const employeeStatus = String(employee.master_status || employee.status)
+      // The generated Appraisal_Sheet row is authoritative for this cycle.
+      // Employee_Master may be stale after eligibility/cycle generation.
+      const employeeStatus = String(employee.status || employee.master_status || "")
         .trim()
         .toLowerCase();
       const active = !employeeStatus || employeeStatus === "active";
