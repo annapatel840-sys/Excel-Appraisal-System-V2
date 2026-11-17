@@ -299,7 +299,7 @@ export function FeedbackRatingMasterPage({
     }
   }, []);
 
-  const [cid, setCid] = useState(() => (activeCycle ? activeCycle.id : null));
+  const [cid, setCid] = useState("all");
   const [eff, setEff] = useState("");
   const [q, setQ] = useState("");
   const [te, setTe] = useState("");
@@ -358,14 +358,9 @@ export function FeedbackRatingMasterPage({
     setNoteText("");
   };
   useEffect(() => {
-    // Prefer the Active cycle when it has uploaded data. If its upload was
-    // stored under an archived/shared source cycle, open the newest cycle that
-    // actually has feedback rows so the master never appears blank.
-    const activeHasRows = activeCycle && ROWS.some((row) => String(row.cid) === String(activeCycle.id));
-    const latestCycleWithRows = [...CYCLES]
-      .filter((cycle) => ROWS.some((row) => String(row.cid) === String(cycle.id)))
-      .sort((a, b) => String(b.start || b.effective || "").localeCompare(String(a.start || a.effective || "")))[0];
-    setCid((activeHasRows ? activeCycle : latestCycleWithRows || activeCycle)?.id || null);
+    // Open the complete Feedback_And_Rating history by default. Users can
+    // select an individual cycle when they need to narrow the table.
+    setCid("all");
   }, [CYCLES, ROWS]);
 
   // Close pop-ups on outside click / Escape.
@@ -416,6 +411,7 @@ export function FeedbackRatingMasterPage({
 
   /* ---------- derived ---------- */
   const cycName = (id) => {
+    if (id === "all") return "All Cycles";
     const c = CYCLES.find((x) => x.id === id);
     return c ? c.name : "";
   };
@@ -432,8 +428,8 @@ export function FeedbackRatingMasterPage({
 
   // Effective dates are compared as yyyy-mm-dd, whatever the backend sends.
   const dayOf = (v) => String(v == null ? "" : v).slice(0, 10);
-  const selectedCycle = CYCLES.find((cycle) => String(cycle.id) === String(cid)) || null;
-  const sameCycle = (r) => Boolean(selectedCycle) && String(r.cid) === String(cid);
+  const selectedCycle = cid === "all" ? null : CYCLES.find((cycle) => String(cycle.id) === String(cid)) || null;
+  const sameCycle = (r) => cid === "all" || (Boolean(selectedCycle) && String(r.cid) === String(cid));
   const scope = useMemo(
     () => ROWS.filter((r) => sameCycle(r) && (!eff || dayOf(r.eff) === eff)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -615,9 +611,9 @@ export function FeedbackRatingMasterPage({
   /* ---------- render ---------- */
   const cmCol = colMenu ? colOf(colMenu.k) : null;
   const effLabel = eff ? fmtDate(eff) : "all dates";
-  const batchesForCycle = BATCHES.filter((b) =>
-    Boolean(selectedCycle) && String(b.cid) === String(cid)
-  );
+  const batchesForCycle = cid === "all"
+    ? BATCHES
+    : BATCHES.filter((b) => Boolean(selectedCycle) && String(b.cid) === String(cid));
 
   return (
     <div className="fb-root" onContextMenu={(e) => e.preventDefault()}>
@@ -630,6 +626,7 @@ export function FeedbackRatingMasterPage({
           <span className="flt">
             <span className="lbl">Cycle</span>
             <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} disabled={!CYCLES.length} onChange={(e) => onCycle(e.target.value)}>
+              <option value="all">All Cycles · All historical data</option>
               {!CYCLES.length && <option value="">No cycle data</option>}
               {CYCLES.map((c) => (
                 <option key={c.id} value={c.id}>
