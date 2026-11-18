@@ -10,7 +10,7 @@ import { matchesCycleLocation, useSelectedLocation } from "@/lib/location-store"
 const STALE_MS = 60_000;
 const listeners = new Set();
 const cycleNames = new Map();
-// The picked Active cycle itself (name, status, start / end dates) per location.
+// The picked Active cycle, or latest non-archived Closed cycle when none is Active, per location.
 const cycleInfos = new Map();
 const fetchedAt = new Map();
 const inflight = new Map();
@@ -40,9 +40,19 @@ function load(selectedLocation) {
   const promise = payrollCycleRequest("cycles")
     .then((data) => {
       const list = Array.isArray(data) ? data : [];
-      const picked = list.find(
-        (cycle) => isActiveCycle(cycle) && matchesSelectedLocation(cycle, selectedLocation),
-      );
+      const matchesAvailableCycle = (cycle) => {
+        const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
+        return ["active", "closed"].includes(status) &&
+          !isTruthyFlag(cycle?.archived) &&
+          !isTruthyFlag(cycle?.hidden) &&
+          matchesSelectedLocation(cycle, selectedLocation);
+      };
+      const picked =
+        list.find((cycle) => isActiveCycle(cycle) && matchesSelectedLocation(cycle, selectedLocation)) ||
+        list.filter(matchesAvailableCycle)
+          .sort((a, b) => String(b?.end ?? b?.end_date ?? b?.effective_date ?? b?.start_date ?? "")
+            .localeCompare(String(a?.end ?? a?.end_date ?? a?.effective_date ?? a?.start_date ?? "")))[0] ||
+        null;
       cycleNames.set(
         key,
         String(picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "").trim(),
