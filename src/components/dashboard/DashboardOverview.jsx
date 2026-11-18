@@ -504,7 +504,16 @@ export function DashboardOverview() {
     return { key, k: g.key, rows: g.rows, n: g.rows.length, pt, al, hasAl: al > 0, u: al > 0 ? (pt.total / al) * 100 : null, rem: al > 0 ? al - pt.total : null, d, kids, lvl };
   };
   const budRows = useMemo(() => {
-    if (!L0) return [];
+    if (!L0) {
+      // A Comp Manager sees one row: their own team.
+      const name = rows.find((r) => r.compManager)?.compManager || "My Team";
+      return [{
+        key: "cm:me", k: name, rows, n: rows.length, pt: parts, al: allocated, hasAl: allocated > 0,
+        u: allocated > 0 ? (parts.total / allocated) * 100 : null,
+        rem: allocated > 0 ? allocated - parts.total : null,
+        d: 0, kids: false, lvl: { k: "cm", n: "Comp Manager" },
+      }];
+    }
     const out = [];
     groupRows(rows, L0.of).forEach((g) => {
       const key = `${L0.k}:${g.key}`;
@@ -515,7 +524,8 @@ export function DashboardOverview() {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, L0, L1, open, budgetCtx]);
+  }, [rows, L0, L1, open, budgetCtx, parts, allocated]);
+  const CMM = !L0; // Comp Manager login: one row, no total line
   const overCount = budRows.filter((r) => r.d === 0 && r.hasAl && r.pt.total > r.al).length;
 
   /* ---- ratings ---- */
@@ -696,16 +706,32 @@ export function DashboardOverview() {
       </span>
     </div>
   );
+  const cell = (v, al) => (
+    <td className="n">
+      <span style={{ fontWeight: 800, color: "var(--navy)" }}>{fmAmt(v)}</span>
+      <div className="sub2">{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "–"}</div>
+    </td>
+  );
+  const totCell = (pt, al) => {
+    const u = al > 0 ? (pt.total / al) * 100 : null;
+    return (
+      <td className="n">
+        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{fmAmt(pt.total)}</span>
+        <div className="sub2" style={u > 100 ? { color: "var(--err)" } : undefined}>{u === null ? "–" : `${u.toFixed(1)}%`}</div>
+      </td>
+    );
+  };
   let budgetBody = null;
-  if (L0) {
+  if (budRows.length) {
     if (budgetView === "t") {
       budgetBody = (
         <div className="tw">
           <table>
             <thead>
               <tr>
-                <th>{L0.n} / Team</th><th className="n">Team Size</th><th className="n">Budget Allocated</th><th className="n">Budget Utilised</th>
-                <th className="n">Utilised %</th><th className="n">Remaining Budget</th><th />
+                <th>{CMM ? "Comp Manager" : `${L0.n} / Team`}</th><th className="n">Team Size</th><th className="n">Budget Allocated</th>
+                <th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th>
+                <th className="n">Total Utilised</th><th className="n">Remaining Budget</th><th />
               </tr>
             </thead>
             <tbody>
@@ -714,16 +740,18 @@ export function DashboardOverview() {
                   <td className="rl">{rowName(r)}</td>
                   <td className="n">{inr(r.n)}</td>
                   <td className="n" data-tip={r.hasAl ? money(r.al) : "No allocation found in Budget Master"}>{fmAmt(r.al)}</td>
-                  <td className="n" data-tip={money(r.pt.total)}>{fmAmt(r.pt.total)}</td>
-                  <td className="n">{utilText(r.u)}</td>
+                  {cell(r.pt.hike, r.al)}{cell(r.pt.pb, r.al)}{cell(r.pt.rb, r.al)}{totCell(r.pt, r.al)}
                   <td className="n">{remText(r)}</td>
                   <td className="n">{peopleLink(r)}</td>
                 </tr>
               ))}
-              <tr className="tot">
-                <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{fmAmt(allRow.al)}</td>
-                <td className="n">{fmAmt(allRow.pt.total)}</td><td className="n">{utilText(allRow.u)}</td><td className="n">{remText(allRow)}</td><td />
-              </tr>
+              {CMM ? null : (
+                <tr className="tot">
+                  <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{fmAmt(allRow.al)}</td>
+                  {cell(parts.hike, allocated)}{cell(parts.pb, allocated)}{cell(parts.rb, allocated)}{totCell(parts, allocated)}
+                  <td className="n">{remText(allRow)}</td><td />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -782,22 +810,6 @@ export function DashboardOverview() {
       );
     }
   }
-
-  const cell = (v, al) => (
-    <td className="n">
-      <span style={{ fontWeight: 800, color: "var(--navy)" }}>{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "0.0%"}</span>
-      <div className="sub2">{fmAmt(v)}</div>
-    </td>
-  );
-  const totCell = (pt, al) => {
-    const u = al > 0 ? (pt.total / al) * 100 : null;
-    return (
-      <td className="n">
-        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u === null ? "0.0%" : `${u.toFixed(1)}%`}</span>
-        <div className="sub2">{fmAmt(pt.total)}</div>
-      </td>
-    );
-  };
 
   /* ---- recent activity ---- */
   const recent = (Array.isArray(audit) ? audit : [])
@@ -884,48 +896,19 @@ export function DashboardOverview() {
             </div>
           </div>
 
-          {L0 ? (
-            <>
-              <div className="tile" style={{ marginTop: 12 }}>
-                <div className="cmsel">
-                  <span style={{ fontWeight: 700, color: "var(--navy)" }}>Budget by {L0.n}</span>
-                  {L1 ? <span className="mut" style={{ fontSize: 11.5 }}>Click a row to open its {L1.n}s</span> : null}
-                  <span style={{ marginLeft: "auto" }}>
-                    <Toggle value={budgetView} onChange={setBudgetView} options={[["b", "Bars"], ["c", "Columns"], ["t", "Table"]]} />
-                  </span>
-                </div>
-                {budgetBody}
-              </div>
-            </>
-          ) : null}
+          <div className="tile" style={{ marginTop: 12 }}>
+            <div className="cmsel">
+              <span style={{ fontWeight: 700, color: "var(--navy)" }}>{CMM ? "Budget" : `Budget by ${L0.n}`}</span>
+              {L1 ? <span className="mut" style={{ fontSize: 11.5 }}>Click a row to open its {L1.n}s</span> : null}
+              <span style={{ marginLeft: "auto" }}>
+                <Toggle value={budgetView} onChange={setBudgetView} options={[["b", "Bars"], ["c", "Columns"], ["t", "Table"]]} />
+              </span>
+            </div>
+            {budgetBody}
+          </div>
 
           {list ? <PeopleList list={list} onClose={() => setList(null)} canOpenSheet={canOpenSheet} /> : null}
 
-          {L0 ? (
-            <div className="tile" style={{ marginTop: 12 }}>
-              <small>Utilisation breakdown · % of budget allocated</small>
-              <div className="tw" style={{ marginTop: 12 }}>
-                <table>
-                  <thead>
-                    <tr><th>{L0.n} / Team</th><th className="n">Budget Allocated</th><th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th><th className="n">Total Utilised</th></tr>
-                  </thead>
-                  <tbody>
-                    {budRows.map((r) => (
-                      <tr className="data" key={r.key}>
-                        <td className="rl"><span style={{ paddingLeft: r.d * 22 }}>{r.k}</span></td>
-                        <td className="n">{fmAmt(r.al)}</td>
-                        {cell(r.pt.hike, r.al)}{cell(r.pt.pb, r.al)}{cell(r.pt.rb, r.al)}{totCell(r.pt, r.al)}
-                      </tr>
-                    ))}
-                    <tr className="tot">
-                      <td className="rl">Total</td><td className="n">{fmAmt(allRow.al)}</td>
-                      {cell(parts.hike, allocated)}{cell(parts.pb, allocated)}{cell(parts.rb, allocated)}{totCell(parts, allocated)}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
         </>
       ) : (
         <div className="tw">
