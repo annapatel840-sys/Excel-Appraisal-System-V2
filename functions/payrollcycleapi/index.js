@@ -4012,14 +4012,20 @@ async function routeRequest(req, res, identity, resource, a) {
     const allLocationsSelected =
       !requestedLocation || ["all", "all locations"].includes(requestedLocation);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
-    const isAvailableActiveCycle = (item) =>
-      String(item.status || "").trim().toLowerCase() === "active" &&
+    const isAvailableCycle = (item) =>
+      ["active", "closed"].includes(String(item.status || "").trim().toLowerCase()) &&
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.archived === "string" ? item.archived.trim().toLowerCase() : item.archived,
       ) &&
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.hidden === "string" ? item.hidden.trim().toLowerCase() : item.hidden,
       );
+    const isAvailableActiveCycle = (item) =>
+      String(item.status || "").trim().toLowerCase() === "active" && isAvailableCycle(item);
+    const latestClosed = (items) => items
+      .filter((item) => String(item.status || "").trim().toLowerCase() === "closed" && isAvailableCycle(item))
+      .sort((a, b) => String(b.end || b.end_date || b.effective_date || b.start_date || "")
+        .localeCompare(String(a.end || a.end_date || a.effective_date || a.start_date || "")))[0] || null;
     const matchesRequestedLocation = (item) => {
       const raw = String(item.location || "").trim().toLowerCase();
       const cycleLocation = !raw || ["all", "all locations"].includes(raw) ? "all" : raw;
@@ -4031,10 +4037,12 @@ async function routeRequest(req, res, identity, resource, a) {
     // Active global cycle; it is not a roll-up of the location-specific cycles.
     let targetCycles = [];
     if (queryCycleId) {
-      const exact = cycles.find((item) => item.id === queryCycleId && isAvailableActiveCycle(item));
+      const exact = cycles.find((item) => item.id === queryCycleId && isAvailableCycle(item));
       if (exact) targetCycles = [exact];
     } else {
-      const exact = cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item));
+      const active = cycles.find((item) => isAvailableActiveCycle(item) && matchesRequestedLocation(item));
+      const closed = latestClosed(cycles.filter(matchesRequestedLocation));
+      const exact = active || closed;
       if (exact) targetCycles = [exact];
     }
     const cycle = targetCycles[0] || null;
@@ -4068,7 +4076,7 @@ async function routeRequest(req, res, identity, resource, a) {
         meta: {
           cycleId: "",
           cycleName: "",
-          message: "No Active appraisal cycle is available for the selected location.",
+          message: "No available appraisal cycle is available for the selected location.",
         },
       });
     }
