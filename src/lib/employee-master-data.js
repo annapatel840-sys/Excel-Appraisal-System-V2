@@ -553,30 +553,23 @@ if (typeof window !== "undefined") {
   );
 }
 
-function loadEligibilityPayload(cycleId = "", location = "") {
+function loadEligibilityPayload(cycleId = "", location = "", { fresh = false } = {}) {
   const cycleKey = String(cycleId || "");
   const locationKey = String(location || "").trim();
-  const key = `${cycleKey}::${locationKey.toLowerCase()}`;
-  if (
-    eligibilityRead &&
-    eligibilityRead.key === key &&
-    Date.now() - eligibilityRead.startedAt <= ELIGIBILITY_SHARE_MS
-  ) {
+  const key = cycleKey + "::" + locationKey.toLowerCase();
+  if (!fresh && eligibilityRead && eligibilityRead.key === key && Date.now() - eligibilityRead.startedAt <= ELIGIBILITY_SHARE_MS) {
     return eligibilityRead.promise;
   }
-  const entry = {
-    key,
-    startedAt: Date.now(),
-    promise: null,
-  };
+  const entry = { key, startedAt: Date.now(), promise: null };
   entry.promise = payrollCycleRequest("eligibility", {
     method: "GET",
     query: { cycleId: cycleKey, location: locationKey, gz: 1 },
+    fresh,
   }).then((result) => result && !Array.isArray(result) ? result : {}).catch((error) => {
     if (eligibilityRead === entry) eligibilityRead = null;
     throw error;
   });
-  eligibilityRead = entry;
+  if (!fresh) eligibilityRead = entry;
   return entry.promise;
 }
 
@@ -590,8 +583,9 @@ export async function fetchEligibilityEmployees({
   search = "",
   cycleId = "",
   location = "",
+  fresh = false,
 } = {}) {
-  const payload = await loadEligibilityPayload(cycleId, location);
+  const payload = await loadEligibilityPayload(cycleId, location, { fresh });
   const records = Array.isArray(payload.records) ? payload.records : [];
   const term = String(search || "").trim().toLowerCase();
   const employees = records
