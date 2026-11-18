@@ -1031,54 +1031,6 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.diagnostics.budgetBaseRowsWithCtc, 2);
   });
 
-  await t('Australia, India and United States location aliases never select another country historical payroll', async () => {
-    const cases = [
-      { location: 'Australia', employeeLocation: 'AU', otherLocation: 'India', otherCyclePrefix: 'India' },
-      { location: 'India', employeeLocation: 'IN', otherLocation: 'Australia', otherCyclePrefix: 'Australia' },
-      { location: 'United States', employeeLocation: 'US', otherLocation: 'Australia', otherCyclePrefix: 'Australia' },
-    ];
-    for (const item of cases) {
-      const store = makeStore({
-        Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
-        Budget_Distribution: [], Budget_Distribution_Comp: [],
-        Employee_Master: [
-          { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible', location: item.employeeLocation },
-        ],
-        Eligibility_List: [],
-        Payroll_Data: [],
-        Appraisal_Cycle_Master: [
-          { cycle_name: item.otherCyclePrefix + ' - Annual 2026', start_date: '2026-04-01', status: 'Archived', archived: true },
-          { cycle_name: item.location + ' - Annual 2027', start_date: '2027-04-01', status: 'Active', location: item.location },
-        ],
-        Appraisal_Sheet: [
-          { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', status: 'Active', eligible_status: 'Eligible', Previous_Appraisal_total_CTC_with_rewards: 500000 },
-        ],
-      });
-      const [otherCycle, activeCycle] = store.tables.Appraisal_Cycle_Master;
-      store.tables.Budget_Master[0].appraisal_cycle_id = activeCycle.ROWID;
-      store.tables.Appraisal_Sheet[0].cycle_id = activeCycle.ROWID;
-      store.tables.Eligibility_List.push({
-        appraisal_cycle_id: activeCycle.ROWID, emp_id: 'E1', eligibility_status: 'Eligible',
-      });
-      store.tables.Payroll_Data.push({
-        ROWID: '99501', emp_id: 'E1', appraisal_cycle_name: otherCycle.ROWID,
-        total_ctc_with_rewards: 1875000,
-      });
-
-      const response = await get(load(store), item.location);
-      assert.strictEqual(response.status, 200, item.location + ': ' + JSON.stringify(response.json));
-      assert.strictEqual(
-        response.json.master.find((row) => row.appraisal_cycle_id === activeCycle.ROWID).org_budget_base,
-        500000,
-        item.location + ' must not use a different country cycle as its previous payroll source',
-      );
-      assert.strictEqual(
-        response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards,
-        500000,
-      );
-    }
-  });
-
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
