@@ -2165,7 +2165,7 @@ async function calculateBudgetBases(
     ).trim();
     if (explicit) return explicit;
     const name = cycleNameOf(cycle);
-    const prefix = name.match(/^(Australia|AU|AUS|India|IN|United States|USA|US)\\s*[-–:]\\s*/i);
+    const prefix = name.match(/^(Australia|AU|AUS|India|IN|United States|USA|US)\s*[-–:]\s*/i);
     return prefix ? prefix[1] : "";
   };
   const cycleMatchesEmployeeLocation = (cycle, employeeMasterRow, fallbackLocation = "") => {
@@ -2214,17 +2214,16 @@ async function calculateBudgetBases(
     if (!current) return null;
     const currentLocation = locationNameForCycle(current);
     const currentName = cycleNameOf(current);
-    const canonicalName = currentLocation && currentName.toLowerCase().startsWith((currentLocation + " - ").toLowerCase())
-      ? currentName.slice(currentLocation.length + 3)
-      : currentName;
+    const canonicalName = currentName.replace(
+      /^(Australia|AU|AUS|India|IN|United States|USA|US)\s*[-–:]\s*/i,
+      "",
+    );
     // A location-specific Annual 2027 cycle continues the original Annual 2027
     // source cycle. Reuse that same-year source before considering older cycles.
     if (currentLocation && canonicalName) {
       const sameYearSource = cycleRows.find((candidate) => {
-        const candidateLocation = String(
-          firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
-        ).trim().toLowerCase();
-        const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation);
+        const candidateLocation = locationNameForCycle(candidate);
+        const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation.toLowerCase());
         return (
           isReusableSharedSourceCycle(candidate) &&
           candidateIsUnscoped &&
@@ -3601,7 +3600,7 @@ async function calculateBudgetBases(
           // intentionally lower-case for comparisons, but UI/test lookups and
           // existing allocation rows use the canonical Employee ID casing.
           appraiser_tech_ed_id: String(
-            String(ownerName || techKey).split(/\\s+-\\s+/)[0].trim() || techKey,
+            String(ownerName || techKey).split(/\s+-\s+/)[0].trim() || techKey,
           ).slice(0, 20),
           percentage: null,
           budget_base: 0,
