@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LETTERS_DEMO, generateLettersForCycle, sheetRowsForLetters, useLettersStats } from "@/lib/letters-store";
+import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
@@ -1191,10 +1191,9 @@ export function AppraisalCycleMasterPage({
     setSaving(true);
     try {
       const result = await generateLettersForCycle(
-        { id: c.id, name: c.name, effective: c.effective, start: c.start },
+        { id: c.id, name: c.name, effective: c.effective, start: c.start, location: c.location },
         user?.name || "HR",
-        // People come from the Appraisal Sheet already loaded in the browser.
-        sheetRowsForLetters(sheetRows, c.id, c.location),
+        // No rows passed: the people are read from the Appraisal_Sheet table for this cycle's location.
       );
       const why =
         result.total === 0

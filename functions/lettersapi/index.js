@@ -480,6 +480,7 @@ const cycleRefsOf = (r) =>
     .filter(Boolean);
 
 async function loadSheet(app, cycleId, requestedLocation) {
+  const t0 = Date.now();
   if (!/^\d{5,25}$/.test(cycleId)) throw fail(400, "Choose an Appraisal Cycle first.");
   const cycleRows = await readAll(app, TBL.cycles, `ROWID = ${cycleId}`);
   const cycle = cycleRows[0];
@@ -491,23 +492,68 @@ async function loadSheet(app, cycleId, requestedLocation) {
   const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
   const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
 
-  // Ask the Data Store only for this cycle's rows (the sheet holds every cycle). Generate stores
-  // the cycle ROWID in the appraisal_cycle_name lookup; other columns are tried in turn. If no
-  // filtered read finds anything (a column does not exist, or the rows name the cycle by text),
-  // fall back to reading the whole table, which is slower but always right.
-  const sheetOf = async () => {
-    const found = new Map();
-    for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
-      try {
-        (await readAll(app, TBL.sheet, `${col} = ${cycleId}`)).forEach((r) => found.set(rowId(r), r));
-      } catch (e) {
-        /* this column does not exist in this table: try the next one */
-      }
-      if (found.size) break;
+  // FAST PATH. The Appraisal_Sheet table holds every cycle and every location, so it is never read
+  // whole: only this cycle's rows are asked for (Generate stores the cycle ROWID in the
+  // appraisal_cycle_name lookup; the other cycle columns are tried only if that finds nothing).
+  // Employee_Master is then asked only for the people on those rows (and their Tech-ED), a few
+  // hundred rows in ROWID IN (...) chunks, not the whole table. The cycle belongs to one
+  // location, so its rows are that location's rows; the location is still checked per employee.
+  // There is deliberately no whole-table fallback: that is what ran past Catalyst's 30 s limit.
+  const timings = {};
+  const BUDGET_MS = 24000;
+  const guard = (step) => {
+    if (Date.now() - t0 > BUDGET_MS) {
+      throw fail(504, `Reading the Appraisal Sheet was too slow at "${step}" (${Date.now() - t0} ms in). Please try again.`);
     }
-    return found.size ? [...found.values()] : readAll(app, TBL.sheet);
   };
-  const [sheetRows, emRows] = await Promise.all([sheetOf(), readAll(app, TBL.employees)]);
+
+  let lap = Date.now();
+  const sheetRows = [];
+  let sheetColumn = "";
+  for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
+    try {
+      const got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
+      if (got.length) {
+        sheetRows.push(...got);
+        sheetColumn = col;
+        break;
+      }
+    } catch (e) {
+      /* this column does not exist in this table: try the next one */
+    }
+  }
+  timings.sheetMs = Date.now() - lap;
+  guard("Appraisal Sheet rows");
+
+  lap = Date.now();
+  const numericIds = new Set();
+  const textIds = new Set();
+  const want = (v) => {
+    const k = lookupText(v);
+    if (k) (/^\d{5,25}$/.test(k) ? numericIds : textIds).add(k);
+  };
+  sheetRows.forEach((r) => {
+    want(r.emp_id);
+    want(r.appraiser_tech_ed);
+  });
+  const chunk = (set, n) => {
+    const all = [...set];
+    const out = [];
+    for (let i = 0; i < all.length; i += n) out.push(all.slice(i, i + n));
+    return out;
+  };
+  const emQueries = [
+    ...chunk(numericIds, 100).map((c) => `ROWID IN (${c.join(",")})`),
+    ...chunk(textIds, 50).map((c) => `emp_id IN (${c.map((x) => `'${x.replace(/'/g, "''")}'`).join(",")})`),
+  ];
+  const emRows = [];
+  // two at a time: this project's Catalyst concurrency limit
+  for (let i = 0; i < emQueries.length; i += 2) {
+    const parts = await Promise.all(emQueries.slice(i, i + 2).map((w) => readAll(app, TBL.employees, w)));
+    parts.forEach((p) => emRows.push(...p));
+    guard("Employee Master");
+  }
+  timings.employeesMs = Date.now() - lap;
 
   const byId = new Map();
   const byRowId = new Map();
@@ -588,10 +634,12 @@ async function loadSheet(app, cycleId, requestedLocation) {
       });
     });
 
+  console.log(`lettersapi sheet: cycle ${cycleId} (${cycleLocation || "all"}) ${rows.length} letters rows from ${sheetRows.length} sheet rows via ${sheetColumn || "no column"}; ${JSON.stringify(timings)}; total ${Date.now() - t0} ms`);
   return {
     cycle: { id: cycleId, name: cycleName, type, location: cycleLocation, effective },
     rows,
     skipped: { withoutEmployee, otherLocation, inCycle, sheetRows: sheetRows.length },
+    timings: { ...timings, totalMs: Date.now() - t0, sheetColumn, employeesRead: emRows.length },
   };
 }
 

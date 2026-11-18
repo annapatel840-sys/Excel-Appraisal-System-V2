@@ -235,7 +235,25 @@ export function sheetRowsForLetters(rows, cycleId, location) {
     });
 }
 
+// The people come from the Appraisal_Sheet TABLE, read by lettersapi for this cycle and its
+// location (never from the copy the browser keeps). Pass sheetRows only to override that.
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
+  if (!Array.isArray(sheetRows)) {
+    let loaded;
+    try {
+      loaded = await api.loadServerSheet(cycle.id, cycle.location || "");
+    } catch (error) {
+      throw new Error("Could not read the Appraisal Sheet from the server: " + (error?.message || "failed."));
+    }
+    if (!loaded.rows.length) {
+      const k = loaded.skipped || {};
+      throw new Error(
+        `No Appraisal Sheet rows were found for ${cycle.name}${cycle.location ? " (" + cycle.location + ")" : ""}. ` +
+          `(Sheet rows for this cycle: ${k.inCycle ?? 0}; no matching employee: ${k.withoutEmployee ?? 0}; another location: ${k.otherLocation ?? 0}.)`,
+      );
+    }
+    sheetRows = loaded.rows.map((r) => ({ ...r, org: r.org || "Wissen India" }));
+  }
   return run(actor, (st) => {
     core.bindAnnualCycle(st, cycle);
     if (Array.isArray(sheetRows)) {
