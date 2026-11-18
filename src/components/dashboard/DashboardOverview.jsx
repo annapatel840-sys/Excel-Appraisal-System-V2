@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
-import { useViewAs } from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useCurrentCycleInfo } from "@/lib/current-cycle";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { resolveBudgetAllocated } from "@/components/appraisal/BudgetStatsBar";
@@ -429,7 +430,8 @@ const Cell = ({ col, row }) => col.cell(row);
 export function DashboardOverview() {
   const { rows: allRows, audit } = useAppraisal();
   const budgetCtx = useBudget();
-  const { effectiveId } = useViewAs();
+  const { effectiveId, actualId } = useViewAs();
+  const catalystUser = useCatalystUser();
   const { name: cycleName, info: cycleInfo } = useCurrentCycleInfo();
   const access = useAccess();
 
@@ -439,9 +441,13 @@ export function DashboardOverview() {
       allRows.filter(
         (r) =>
           String(r.status || "").trim().toLowerCase() === "active" &&
-          String(r.eligibility || "").trim().toLowerCase() === "eligible",
+          String(r.eligibility || "").trim().toLowerCase() === "eligible" &&
+          // Tech-ED previewing as a Comp Manager: only that Comp Manager's own team,
+          // same rule as the Appraisal Sheet.
+          (!(effectiveId === "compmanager" && actualId === "teched") ||
+            currentUserMatchesManager(r.compManagerDisplay || r.compManager, catalystUser, allRows)),
       ),
-    [allRows],
+    [allRows, effectiveId, actualId, catalystUser],
   );
 
   const [unit, setUnit] = useState("n"); // n = numbers, p = percent
