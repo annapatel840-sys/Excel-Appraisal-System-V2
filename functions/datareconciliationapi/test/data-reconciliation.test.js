@@ -84,6 +84,18 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   assert(p.issues.some(x=>x.type==="duplicate_employee_cycle"&&x.rowId==="P2"));
   assert(!p.ops.some(x=>x.rowId==="P2"));
  });
+ await test("Mismatched Appraisal Sheet employee lookup is aligned only by exact emp_id",async()=>{
+  DB[T.employees].push({ROWID:"E2",emp_id:"EMP002",emp_name:"Employee Two",emp_status:"Active"});
+  DB[T.sheet][0].emp_master_row_id="E2";
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.ops.some(o=>o.table==="sheet"&&o.rowId==="S1"&&o.patch.emp_master_row_id==="E1"));
+ });
+ await test("Duplicate Budget_Master cycle rows are report-only",async()=>{
+  DB[T.budgetMaster].push({ROWID:"B2",appraisal_cycle_id:"C2",org_budget_base:1});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.issues.some(x=>x.type==="duplicate_budget_master_cycle"));
+  assert(!p.ops.some(o=>o.table==="budgetMaster"));
+ });
  await test("Tech-ED role is refused by the API",async()=>{
   user={user_id:"2",email_id:"te@test",role:"techEd"};
   const r=await call(load(),"GET","preview");
