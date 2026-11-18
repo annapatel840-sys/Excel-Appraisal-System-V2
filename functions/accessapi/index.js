@@ -284,15 +284,21 @@ const decodeSheetOrder = (row) => {
   }
 };
 
+const sheetOrderRows = async (ap) =>
+  (await selectAll(ap.admin.zcql(), T.log)).filter(
+    (row) => String(row.kind || "").trim() === SHEET_ORDER_KIND,
+  );
+
 app.get(
   "/sheet-layout",
   asyncRoute(async (req, res) => {
     const ap = apps(req);
     const a = await A.check(ap.user, ap.admin);
     if (a.denied) throw a.denied;
-    const rows = await selectAll(ap.admin.zcql(), T.log, "kind = '" + SHEET_ORDER_KIND + "'");
+    const rows = await sheetOrderRows(ap);
     const row = newestRow(rows);
     send(res, {
+      found: rows.length,
       order: decodeSheetOrder(row),
       updatedBy: row ? row.changed_by || "" : "",
       updatedAt: row ? row.changed_at || "" : "",
@@ -319,7 +325,6 @@ app.post(
       throw new HttpError(422, "Send the full list of column keys.");
     const unique = order.filter((key, index) => order.indexOf(key) === index);
     const table = ap.admin.datastore().table(T.log);
-    const old = await selectAll(ap.admin.zcql(), T.log, "kind = '" + SHEET_ORDER_KIND + "'");
     await table.insertRow({
       changed_at: nowDT(),
       changed_by: a.user.email || "",
@@ -331,9 +336,23 @@ app.post(
       reason: JSON.stringify(unique),
       batch_id: "CO-" + Date.now(),
     });
+    // Read it back: if the table cut the text short or did not keep the row,
+    // say so now instead of letting the order silently revert on refresh.
+    const saved = await sheetOrderRows(ap);
+    const newest = newestRow(saved);
+    if (JSON.stringify(decodeSheetOrder(newest)) !== JSON.stringify(unique))
+      throw new HttpError(
+        500,
+        "The column order was not saved correctly (AccessLog.reason may be too short for " +
+          unique.length +
+          " columns). Please tell the developer.",
+      );
     // Keep only the newest row (best effort: a failed clean-up never fails the save).
     try {
-      const ids = old.map((row) => row.ROWID).filter(Boolean);
+      const ids = saved
+        .filter((row) => row.ROWID !== newest.ROWID)
+        .map((row) => row.ROWID)
+        .filter(Boolean);
       if (ids.length) await deleteMany(table, ids);
     } catch (err) {
       console.error(err);
