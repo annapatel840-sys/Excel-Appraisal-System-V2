@@ -187,6 +187,7 @@ const Divider = () => <hr className="my-[3px] border-0 border-t border-[#d1d5db]
 
 export function ColumnFilter({
   boxed = false, // Appraisal Sheet header look: white boxed button
+  sortHighlight = true, // false: only an applied filter darkens the button (a sort just shows its arrow)
   scrollToHeader = false, // on open, bring this table's header into view if it is cut off / far down the page
   columnKey,
   filter,
@@ -335,7 +336,7 @@ export function ColumnFilter({
   };
 
   const filterActive = !!filter && !isEmptyFilter(filter);
-  const triggerActive = filterActive || !!sortDirection || isGrouped;
+  const triggerActive = filterActive || (sortHighlight && !!sortDirection) || isGrouped;
 
   const apply = (next) => {
     onChange(next);

@@ -821,13 +821,12 @@ export function FeedbackRatingMasterPage({
                         <th key={c.k} className={(c.fz ? "fz " : "") + (c.t === "num" ? "n" : "")}>
                           <div className="thc">
                             <span className="tl" title={c.h}>
-                              {cf[c.k] ? <i className="fdot" /> : null}
                               {c.h}
                             </span>
                             <ColumnFilter
                               boxed
                               alwaysBelow
-                              scrollToHeader
+                              sortHighlight={false}
                               allowGroup={false}
                               columnKey={`fb:${c.k}`}
                               label={c.h}
@@ -1054,7 +1053,7 @@ const FB_CSS = `
  font:12.5px var(--font);color:var(--ink);display:flex;flex-direction:column;min-height:100%}
 .fb-root *{box-sizing:border-box}
 .fb-root button,.fb-root input,.fb-root select,.fb-root textarea{font:inherit}
-.fb-root button:not([data-colfilter]),.fb-root input,.fb-root select,.fb-root textarea{color:inherit}
+.fb-root button:where(:not([data-colfilter])),.fb-root input,.fb-root select,.fb-root textarea{color:inherit}
 .fb-root .fb-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 14px 0}
 .fb-root .fb-tag{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;background:#E6EEF8;color:#17365D;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer}
 .fb-root .fb-tag:hover{background:#D3E2F5}
