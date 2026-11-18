@@ -3967,23 +3967,35 @@ async function routeRequest(req, res, identity, resource, a) {
     const cycleId = String(query.cycleId || query.cycle_id || "").trim();
     if (!cycleId) throw new ApiError("Appraisal cycle ID is required.", 400);
     let rows = null;
+    let reason = "";
     if (tables.zcql) {
-      try {
-        const safe = cycleId.replace(/[^A-Za-z0-9_-]/g, "");
-        const result = await fastReadQuery(
-          tables.zcql,
-          "SELECT COUNT(ROWID) FROM Appraisal_Sheet WHERE cycle_id = '" + safe + "'",
-          "Appraisal_Sheet generated count",
-        );
-        const cell = Object.values(Object.values((Array.isArray(result) ? result[0] : null) || {})[0] || {})[0];
-        if (Number.isFinite(Number(cell))) rows = Number(cell);
-      } catch (error) {
-        console.warn("sheet-status count failed:", error && error.message);
+      const safe = cycleId.replace(/[^A-Za-z0-9_-]/g, "");
+      // cycle_id is a lookup (bigint) column on some projects and text on
+      // others, so try the number form first, then the quoted form.
+      const wheres = /^\d+$/.test(safe) ? [safe, "'" + safe + "'"] : ["'" + safe + "'"];
+      for (const where of wheres) {
+        try {
+          const result = await fastReadQuery(
+            tables.zcql,
+            "SELECT COUNT(ROWID) FROM Appraisal_Sheet WHERE cycle_id = " + where,
+            "Appraisal_Sheet generated count",
+          );
+          const cell = Object.values(Object.values((Array.isArray(result) ? result[0] : null) || {})[0] || {})[0];
+          if (Number.isFinite(Number(cell))) {
+            rows = Number(cell);
+            if (rows > 0) break;
+          }
+        } catch (error) {
+          reason = String((error && error.message) || error).slice(0, 200);
+          console.warn("sheet-status count failed:", reason);
+        }
       }
+    } else {
+      reason = "ZCQL unavailable";
     }
     return sendJson(res, 200, {
       success: true,
-      data: { cycleId, generated: rows === null ? null : rows > 0, rows },
+      data: { cycleId, generated: rows === null ? null : rows > 0, rows, reason },
     });
   }
 

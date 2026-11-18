@@ -1227,8 +1227,16 @@ export function AppraisalCycleMasterPage({
     const elSetup = setup ? setup.eligibility : undefined;
     const dlSetup = setup ? setup.delegation : undefined;
     const generatedResult = generatedByCycle[c.id];
-    const gen = !!w?.sheetGenerated || !!generatedResult || !!setup?.sheet?.generated;
-    const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible ?? (setup?.sheet?.generated ? setup.sheet.rows : undefined);
+    // The Appraisal Sheet rows already loaded in the browser are proof too:
+    // the roster only holds rows of the Active cycle's generated sheet.
+    const loadedSheet =
+      c.status === "Active" && !c.archived && Array.isArray(sheetRows) && sheetRows.length > 0;
+    const gen = !!w?.sheetGenerated || !!generatedResult || !!setup?.sheet?.generated || loadedSheet;
+    const generatedRowCount =
+      w?.sheetRows ??
+      generatedResult?.eligible ??
+      (setup?.sheet?.generated ? setup.sheet.rows : undefined) ??
+      (loadedSheet ? sheetRows.length : undefined);
     const m = w ? missingPay(w) : 0;
     const L = lettersOf(c);
     const canMakeLetters = c.status === "Active" && c.process === "Annual";
