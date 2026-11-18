@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { X } from "lucide-react";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
-import { isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+import { isEmptyFilter, matchesValue, NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 
 /*
  * Feedback & Rating Master — HR Operations › Master.
@@ -508,7 +509,6 @@ export function FeedbackRatingMasterPage({
     return f;
   }, [scope, q, te, ccm, risk, cf, sorts, CYCLES]);
 
-  const filterCount = Object.keys(cf).length + (te ? 1 : 0) + (ccm ? 1 : 0) + (risk ? 1 : 0) + (q ? 1 : 0);
   const avg = (a, k) => (a.length ? a.reduce((s, r) => s + r[k], 0) / a.length : 0);
   const pages = Math.max(1, Math.ceil(filtered.length / PER));
   const curPage = Math.min(page, pages);
@@ -517,14 +517,28 @@ export function FeedbackRatingMasterPage({
   const atRisk = filtered.filter((r) => r.risk === "Yes").length;
 
   /* ---------- actions ---------- */
-  const clearFilters = () => {
-    setCf({});
-    setTe("");
-    setCcm("");
-    setRisk("");
-    setQ("");
-    setPage(1);
+
+  const describeColFilter = (c, f) => {
+    if (f.kind === "enum") return `${c.h}: ${f.values.join(", ")}`;
+    const ops = f.kind === "text" ? TEXT_OPS : NUMBER_OPS;
+    const opText = (op) => (ops.find((o) => o.value === op)?.label || op).toLowerCase();
+    const one = (op, v, v2) =>
+      op === "between" ? `between ${v} and ${v2}` : f.kind === "text" ? `${opText(op)} "${v}"` : `${opText(op)} ${v}`;
+    let t = `${c.h} ${one(f.op, f.value, f.value2)}`;
+    if (f.op2 && String(f.value3 ?? "").trim() !== "") t += ` ${f.join === "or" ? "or" : "and"} ${one(f.op2, f.value3)}`;
+    return t;
   };
+  // One removable tag per applied filter, shown above the table (like the Appraisal Sheet).
+  const filterTags = [
+    ...(q ? [{ id: "q", text: `Search: "${q}"`, clear: () => { setQ(""); setPage(1); } }] : []),
+    ...(te ? [{ id: "te", text: `Tech-ED: ${te}`, clear: () => { setTe(""); setPage(1); } }] : []),
+    ...(ccm ? [{ id: "ccm", text: `Comp Manager: ${ccm}`, clear: () => { setCcm(""); setPage(1); } }] : []),
+    ...(risk ? [{ id: "risk", text: `At Risk: ${risk}`, clear: () => { setRisk(""); setPage(1); } }] : []),
+    ...Object.entries(cf).flatMap(([k, f]) => {
+      const c = colOf(k);
+      return c ? [{ id: "c:" + k, text: describeColFilter(c, f), clear: () => setColFilter(k, null) }] : [];
+    }),
+  ];
   const onCycle = (v) => {
     // Keep the id's original type: real cycle ids are long ROWID strings; +v would break the match.
     const picked = CYCLES.find((c) => String(c.id) === String(v));
@@ -737,23 +751,31 @@ export function FeedbackRatingMasterPage({
               ))}
             </select>
             <select className="sel" aria-label="Comp Manager" value={ccm} onChange={(e) => { setCcm(e.target.value); setPage(1); }}>
-              <option value="">Comp Manager: all</option>
+              <option value="">Comp Manager: All</option>
               {ccmList.map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>
             <select className="sel" aria-label="At Risk" value={risk} onChange={(e) => { setRisk(e.target.value); setPage(1); }}>
-              <option value="">At Risk: all</option>
+              <option value="">At Risk: All</option>
               <option value="Yes">At Risk: Yes</option>
               <option value="No">At Risk: No</option>
             </select>
-            <button className="btn" type="button" disabled={!filterCount} onClick={clearFilters}>
-              Clear filters
-            </button>
             <span className="sp mut">
               {filtered.length} of {scope.length} employees
             </span>
           </div>
+
+          {filterTags.length > 0 && (
+            <div className="fb-tags">
+              {filterTags.map((t) => (
+                <button key={t.id} type="button" className="fb-tag" title="Remove this filter" onClick={t.clear}>
+                  {t.text}
+                  <X size={12} />
+                </button>
+              ))}
+            </div>
+          )}
 
           {error && <div className="note" style={{ margin: 14 }}>{error}</div>}
           {loading && <div className="note" style={{ margin: 14 }}>Loading feedback and ratings…</div>}
@@ -783,7 +805,7 @@ export function FeedbackRatingMasterPage({
               No feedback loaded for this cycle. Upload it from Upload › Feedback &amp; Rating, then come back here.
             </div>
           ) : !filtered.length ? (
-            <div className="note" style={{ margin: 14 }}>No employee matches the filters. Use Clear filters.</div>
+            <div className="note" style={{ margin: 14 }}>No employee matches the filters. Remove a filter tag above to widen the list.</div>
           ) : (
             <>
               <div className="twx">
@@ -1031,7 +1053,11 @@ const FB_CSS = `
 .fb-root{--font:"Inter","Segoe UI",Arial,sans-serif;--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--gutter:#D5DFEB;--line:#E5E7EB;--info-bg:#DCEBFF;--info-border:#B9D3F5;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--err:#C0392B;--ok:#15803D;--warn:#B7791F;--warn-bg:#FEF6E7;--grey:#6B7280;--grey-bg:#EEF0F3;--info:#1D4FA8;--main:#2F6FED;--totals-bg:#E6EEF8;--rp-line:#E5E7EB;--rp-muted:#6B7280;--rp-accent:#102A43;--rp-accent-soft:#EEF0F3;
  font:12.5px var(--font);color:var(--ink);display:flex;flex-direction:column;min-height:100%}
 .fb-root *{box-sizing:border-box}
-.fb-root button,.fb-root input,.fb-root select,.fb-root textarea{font:inherit;color:inherit}
+.fb-root button,.fb-root input,.fb-root select,.fb-root textarea{font:inherit}
+.fb-root button:not([data-colfilter]),.fb-root input,.fb-root select,.fb-root textarea{color:inherit}
+.fb-root .fb-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 14px 0}
+.fb-root .fb-tag{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;background:#E6EEF8;color:#17365D;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer}
+.fb-root .fb-tag:hover{background:#D3E2F5}
 .fb-root .fb-tabrow{background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 20px;height:48px;flex:none;gap:10px;position:relative;border-radius:8px 8px 0 0}
 .fb-root .fb-title{font-size:15px;font-weight:800;color:var(--navy)}
 .fb-root .tr-right{margin-left:auto;display:flex;align-items:center;gap:10px}

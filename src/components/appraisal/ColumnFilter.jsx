@@ -518,6 +518,7 @@ export function ColumnFilter({
             ref={triggerRef}
             type="button"
             aria-label={`Filter ${label}`}
+            data-colfilter=""
             className={cn(
               boxed
                 ? "flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-[5px] border border-[#9fb4ce] bg-white px-0.5 text-[#102a43] transition-colors hover:bg-[#dcebff]"
