@@ -3506,6 +3506,7 @@ PROVIDER
 
 export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
+  const access = useAccess();
   const [selectedLocation] = useSelectedLocation();
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
@@ -3515,9 +3516,8 @@ export function AppraisalProvider({ children }) {
   // HR users have universal appraisal visibility:
   // no status/eligibility restriction is applied to their employee data.
   const isHRUser =
-    String(authenticatedUser?.role || "")
-      .trim()
-      .toLowerCase() === "hr";
+    access.role === "hr" ||
+    String(authenticatedUser?.role || "").trim().toLowerCase() === "hr";
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
@@ -3907,7 +3907,6 @@ export function AppraisalProvider({ children }) {
   // saved, whichever screen asks (Appraisal Sheet, Detailed Screen, Bulk Edit,
   // Import). Second safeguard: the screens already lock these fields, and the
   // server refuses them too. Keys that are not access-controlled stay allowed.
-  const access = useAccess();
   const accessRef = useRef(access);
   accessRef.current = access;
   const rejectLockedFields = useCallback((keys) => {
