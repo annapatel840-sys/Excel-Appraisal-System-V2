@@ -372,11 +372,21 @@ async function authorize(req, method, rulesOnly = false) {
      a location     -> that location's own cycle, else the org-wide cycle
      no location    -> the org-wide cycle, else the first Active cycle
    Returns { id, name, location } where location "" means org-wide. */
-async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
+async function getActiveCycle(app, { location = "", cycleId = "", allowClosed = false } = {}) {
   const rows = await readAll(app, TBL.cycles);
-  const active = rows.filter(
-    (r) => lower(r.status) === "active" && !isOn(r.archived) && !isOn(r.hidden),
+  const available = rows.filter(
+    (r) =>
+      (lower(r.status) === "active" || (allowClosed && lower(r.status) === "closed")) &&
+      !isOn(r.archived) &&
+      !isOn(r.hidden),
   );
+  const active = available.filter((r) => lower(r.status) === "active");
+  const closed = available
+    .filter((r) => lower(r.status) === "closed")
+    .sort((a, b) =>
+      text(b.end_date || b.effective_date || b.start_date || "")
+        .localeCompare(text(a.end_date || a.effective_date || a.start_date || "")),
+    );
   const locations = await readLocations(app);
   // location = the location on screen (the requested one, else the cycle's own),
   // written as its Location Master name when that is known.
@@ -387,7 +397,7 @@ async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
   };
 
   if (text(cycleId)) {
-    const row = active.find((r) => rowId(r) === text(cycleId));
+    const row = available.find((r) => rowId(r) === text(cycleId));
     if (!row) {
       throw fail(409, "The appraisal cycle changed. Refresh Designation Master before saving.");
     }
@@ -398,16 +408,18 @@ async function getActiveCycle(app, { location = "", cycleId = "" } = {}) {
     const wanted = locationAliases(location, locations);
     // The cycle may store the code while the screen sends the name (or the reverse),
     // so the two are compared by every spelling Location Master knows.
-    const own = active.find((r) => {
+    const matchesLocation = (r) => {
       const loc = cycleLocationOf(r);
       return loc && [...locationAliases(loc, locations)].some((a) => wanted.has(a));
-    });
-    const row = own || active.find((r) => !cycleLocationOf(r));
+    };
+    const own = active.find(matchesLocation) || closed.find(matchesLocation);
+    const row = own || active.find((r) => !cycleLocationOf(r)) || closed.find((r) => !cycleLocationOf(r));
     if (!row) throw fail(409, `No active appraisal cycle was found for ${text(location)}.`);
     return shape(row, location);
   }
 
-  const row = active.find((r) => !cycleLocationOf(r)) || active[0];
+  const row = active.find((r) => !cycleLocationOf(r)) || active[0] ||
+    closed.find((r) => !cycleLocationOf(r)) || closed[0];
   if (!row) throw fail(409, "No active appraisal cycle was found.");
   return shape(row);
 }
@@ -1267,7 +1279,7 @@ module.exports = async function designationMasterApi(req, res) {
     const { adminApp, actor } = await authorize(req, req.method, rulesOnly);
 
     if (req.method === "GET") {
-      const cycle = await getActiveCycle(adminApp, { location });
+      const cycle = await getActiveCycle(adminApp, { location, allowClosed: true });
       if (view === "summary") {
         return sendJson(res, 200, { success: true, data: await loadSummary(adminApp, cycle) });
       }
@@ -1278,11 +1290,11 @@ module.exports = async function designationMasterApi(req, res) {
     }
 
     const payload = await readBody(req);
-    // A save goes to the cycle (location) the screen was loaded with; it fails
-    // with 409 if that cycle is no longer Active.
+    // HR keeps the same Designation Master operations on Closed cycles until Archive.
     const cycle = await getActiveCycle(adminApp, {
       cycleId: payload.cycleId,
       location: payload.location || location,
+      allowClosed: true,
     });
     return sendJson(res, 200, { success: true, data: await saveData(adminApp, cycle, actor, payload) });
   } catch (error) {
