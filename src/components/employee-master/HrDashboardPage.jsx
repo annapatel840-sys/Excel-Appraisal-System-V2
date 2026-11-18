@@ -719,37 +719,31 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         </div>
       )}
 
-      {activeCycle && (
-        <div className="hrd-cyc">
-          <div className={`hrd-stp${step > 0 ? " run" : ""}`} style={{ "--n": step }}>
-            {step > 0 && (() => {
-              const run = {
-                width: `${step * 25}%`,
-                "--n": step,
-                background: `linear-gradient(90deg, ${STEP_COLORS.slice(0, step + 1).join(", ")})`,
-              };
-              return (
-                <>
-                  <span className="hrd-run shine" style={run} />
-                </>
-              );
-            })()}
-            {STEPS.map((s, i) => (
-              <div key={s} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
-            ))}
-          </div>
-          <span className="hrd-cycname">Cycle<b>{cycleName}</b></span>
-        </div>
-      )}
-
       <div className="hrd-cols">
         <div className="hrd-stack">
           <section className="hrd-card">
             <div className="hrd-ag">
-              <span className={`hrd-dot${failed.length ? " w" : ""}`} />
-              <div className="hrd-agt">
-                <b>HR Assistant checked the screens for {locLabel}.</b> {stateText}
-              </div>
+              {activeCycle && (
+                <>
+                  <span className="hrd-cycname">Appraisal Cycle:<b>{cycleName}</b></span>
+                  <div className={`hrd-stp${step > 0 ? " run" : ""}`} style={{ "--n": step }}>
+                    {step > 0 && (
+                      <span
+                        className="hrd-run shine"
+                        style={{
+                          width: `${step * 25}%`,
+                          "--n": step,
+                          background: `linear-gradient(90deg, ${STEP_COLORS.slice(0, step + 1).join(", ")})`,
+                        }}
+                      />
+                    )}
+                    {STEPS.map((s, i) => (
+                      <div key={s} className={i < step ? "done" : i === step ? "on" : ""}><i />{s}</div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="hrd-agt">{stateText}</div>
               <button type="button" className="hrd-btn" onClick={() => load(true)} disabled={loading}>Check again</button>
             </div>
             <div className="hrd-cb">
