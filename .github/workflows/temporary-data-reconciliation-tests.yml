@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/temporary-data-reconciliation-utility-v2
+      - fix/reconciliation-duplicate-identity
     paths:
       - "functions/datareconciliationapi/**"
       - "src/pages/SettingsPage.jsx"
