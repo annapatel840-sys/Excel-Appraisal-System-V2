@@ -496,6 +496,40 @@ async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
     restore(start);
   });
 
+  await test('closed cycle: Tech-ED and Comp Manager retain their team scope but cannot edit; HR can still edit', async () => {
+    const before = snapshot();
+    cAct.status = 'Closed';
+    resetCaches();
+    try {
+      const closedRoster = await EMP(
+        'GET',
+        '/?view=appraisal&page=1&limit=100&status=all&eligible=all&location=All',
+        U.ashok,
+      );
+      assert.strictEqual(closedRoster.status, 200, JSON.stringify(closedRoster.body));
+      assert.strictEqual(closedRoster.body.activeCycle?.status, 'Closed');
+      assert.ok(closedRoster.body.data.some((employee) => employee.emp_id === 'EMP0100'));
+      const techEd = await EMP('PATCH', '/', U.ashok, {
+        emp_id: 'EMP0100', cycle_id: cAct.ROWID, hike_amount: 999,
+      });
+      assert.strictEqual(techEd.status, 403, JSON.stringify(techEd.body));
+      assert.match(techEd.body.message, /Closed.*read-only/i);
+      const compManager = await EMP('PATCH', '/', U.priya, {
+        emp_id: 'EMP0100', cycle_id: cAct.ROWID, hike_amount: 999,
+      });
+      assert.strictEqual(compManager.status, 403, JSON.stringify(compManager.body));
+      assert.strictEqual(row(SHEET, (r) => r.emp_id === 'EMP0100').hike_amount, 100);
+      const hr = await EMP('PATCH', '/', U.hr, {
+        emp_id: 'EMP0100', cycle_id: cAct.ROWID, hike_amount: 777,
+      });
+      assert.strictEqual(hr.status, 200, JSON.stringify(hr.body));
+      assert.strictEqual(row(SHEET, (r) => r.emp_id === 'EMP0100').hike_amount, 777);
+    } finally {
+      restore(before);
+      resetCaches();
+    }
+  });
+
   /* ================= DRY RUN ================= */
   delete process.env.ACCESS_ENFORCE;
   resetCaches();
