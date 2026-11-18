@@ -1182,6 +1182,7 @@ export function AppraisalCycleMasterPage({
   // employees who have none and replaces unsent Out-of-date ones; Reviewed and
   // Sent letters are never touched.
   const generateLetters = async (c) => {
+    showBanner("Generating letters", `Reading the Appraisal Sheet for ${c.name}. This can take up to a minute the first time...`);
     setSaving(true);
     try {
       const result = await generateLettersForCycle(

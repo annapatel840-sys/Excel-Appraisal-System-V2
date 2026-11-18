@@ -214,8 +214,14 @@ export async function generateLettersForCycle(cycle, actor) {
     const location = cycle.location || "";
     await syncTemplates({ location });
     // Only a failed load stops Generate; one unreadable template just means that template makes no letter.
-    if (loadFailed) throw new Error(sync.message || "The templates could not be loaded.");
-    const { cycle: srv, rows, skipped } = await api.loadServerSheet(cycle.id, location);
+    if (loadFailed) throw new Error("Step 1 of 2, loading the " + (location || "") + " templates: " + (sync.message || "failed."));
+    let loaded;
+    try {
+      loaded = await api.loadServerSheet(cycle.id, location);
+    } catch (error) {
+      throw new Error("Step 2 of 2, reading the Appraisal Sheet: " + (error?.message || "failed."));
+    }
+    const { cycle: srv, rows, skipped } = loaded;
     if (!rows.length) {
       throw new Error(
         `No Appraisal Sheet rows were found for ${cycle.name}${location ? " (" + location + ")" : ""}. Generate the Appraisal Sheet first.` +

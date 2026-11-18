@@ -29,7 +29,7 @@ async function request({ method = "GET", body, params } = {}, attempt = 0) {
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
   });
-  if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 2) {
+  if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 1) {
     await sleep(1500);
     return request({ method, body, params }, attempt + 1);
   }
