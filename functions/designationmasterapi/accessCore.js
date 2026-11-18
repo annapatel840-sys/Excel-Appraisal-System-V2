@@ -387,7 +387,12 @@ async function activeCycleIds(zcql) {
   const available = rows.filter((row) => !isTruthyFlag(row.archived) && !isTruthyFlag(row.hidden));
   const locationOf = (row) => {
     const value = String(row.location || row.cycle_location || row.cycleLocation || "").trim().toLowerCase();
-    return !value || ["all", "all locations", "alllocations"].includes(value) ? "*" : value;
+    if (!value || ["all", "all locations", "alllocations"].includes(value)) return "*";
+    const key = value.replace(/[^a-z0-9]/g, "");
+    if (["australia", "au", "aus"].includes(key)) return "australia";
+    if (["india", "in"].includes(key)) return "india";
+    if (["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(key)) return "unitedstates";
+    return key;
   };
   const active = available.filter((row) =>
     String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase()
@@ -751,7 +756,8 @@ async function get(cat, opts, context) {
   if (requestedCycleId) {
     const cycleRows = await selectAll(z, SETTINGS.cycle.table);
     const selectedCycle = cycleRows.find((row) =>
-      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId
+      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId ||
+      String(row[SETTINGS.cycle.nameColumn] || "").trim().toLowerCase() === requestedCycleId.toLowerCase()
     );
     if (selectedCycle) {
       cycleStatus = String(selectedCycle[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
