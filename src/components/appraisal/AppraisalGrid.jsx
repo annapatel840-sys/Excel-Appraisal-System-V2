@@ -1988,7 +1988,7 @@ export function AppraisalGrid({
   isHR = false,
   onRequest,
 }) {
-  const { updateCell, updateLinkedCells, bulkUpdate, modified } =
+  const { updateCell, updateLinkedCells, bulkUpdate, modified, readOnlyCycle } =
     useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
   const [selectedLocation] = useSelectedLocation();
@@ -2076,9 +2076,9 @@ export function AppraisalGrid({
 
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
-  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const sheetEditable = access.canScreen("appraisalSheet", "edit") && !readOnlyCycle;
   const canColumnBulkEdit = sheetEditable && access.canAction("bulkEdit");
-  const canDelegate = access.canAction("delegateRequest");
+  const canDelegate = access.canAction("delegateRequest") && !readOnlyCycle;
   const historyMetricColumns = HISTORY_METRIC_COLUMNS.filter(
     (col) => !access.isHidden(HISTORY_METRIC_FIELD[col.key]),
   );
