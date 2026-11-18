@@ -217,6 +217,14 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
    feedback:DB[T.feedback].filter(row=>/^F_AU_[1-4]$/.test(row.ROWID)),
   }),beforeManual);
  });
+ await test("India reconciliation never copies Australia-scoped historical Payroll or Feedback",async()=>{
+  DB[T.cycles][0].location="Australia";
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const plan=await api._internals.buildPlan(tables);
+  assert(!plan.ops.some(op=>op.kind==="insert"&&(op.table==="payroll"||op.table==="feedback")));
+  assert(plan.issues.some(issue=>issue.type==="missing_payroll_source"));
+  assert(plan.issues.some(issue=>issue.type==="missing_feedback_source"));
+ });
  console.log("RESULT",passed,"passed,",failed,"failed");
  if(failed)process.exitCode=1;
 })();
