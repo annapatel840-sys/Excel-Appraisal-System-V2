@@ -1292,9 +1292,8 @@ function renderImpact(){
 
 /* ---------------- right panel: Spread and Checks ----------------
    Group by lists Manager Rating plus every select-type field HR allows in HR Config (Band, Skill ... as they are added). */
-var PT_KEY="bulkPanelTab_v1",GB_KEY="bulkGroupBy_v1",PT="budget",GB="rating";
-try{PT=localStorage.getItem(PT_KEY)||"budget";if(PT==="spread")PT="budget";GB=localStorage.getItem(GB_KEY)||"rating"}catch(x){}
-PT="summary";
+var PT_KEY="bulkPanelTab_v1",GB_KEY="bulkGroupBy_v1",PT="summary",GB="rating";
+try{GB=localStorage.getItem(GB_KEY)||"rating"}catch(x){}
 function groupOpts(){
   var o=[{id:"rating",label:"Manager Rating"}],seen={};
   FDEFS.forEach(function(d){if(d.type==="select"&&d.field&&!seen[d.field]){seen[d.field]=1;o.push({id:d.field,label:d.label})}});
@@ -1375,24 +1374,16 @@ function chartsTab(c){
   h+='<div class="wg"></div><span class="wch">2 · Performance Differentiation</span><div class="wm q">Do top performers get meaningfully more? Click a bar to drill down.</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]].concat(chLY?[[cmpLbl(),"#C4C9D1"]]:[]))
     +svgBars(keys.map(function(k){return {k:k,l:k==="No Rating"?"None":"Rating "+k}}),[{color:CCOL.before,vals:keys.map(function(k){return avg(k,"b")})},{color:CCOL.after,vals:keys.map(function(k){return avg(k,"a")})}].concat(chLY?[{color:"#C4C9D1",vals:keys.map(function(k){return avg(k,"l")})}]:[]),function(v){return v.toFixed(1)+"%"},true);
   if(g["5"]&&g["3"])h+='<div class="wm">Top rating gets <b>'+(avg("5","a")-avg("3","a")).toFixed(1)+' pp</b> more than rating 3 after this change (now '+(avg("5","b")-avg("3","b")).toFixed(1)+' pp). A flat gap means pay is not tied to performance.</div>';
-  /* 4 Position in band */
-  var bsum={},bn={};c.scope.forEach(function(e){bsum[e.band]=(bsum[e.band]||0)+e.basePay+e.hikeAmt;bn[e.band]=(bn[e.band]||0)+1});
-  var edges=[0.85,0.95,1.05,1.15],lab=["< 0.85","0.85–0.95","0.95–1.05","1.05–1.15","> 1.15"],c0=[0,0,0,0,0],c1=[0,0,0,0,0];
-  function bin(v){var i=0;while(i<edges.length&&v>=edges[i])i++;return i}
-  vr.forEach(function(e){var m=bsum[e.band]/bn[e.band];if(!m)return;c0[bin((e.basePay+hn(e))/m)]++;c1[bin((e.basePay+ha(e))/m)]++});
-  h+='<div class="wg"></div><span class="wch">3 · Position in Band</span><div class="wm q">Where do people sit against their band midpoint, before and after? (Demo uses the band average; Band Master midpoint when connected.)</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]])
-    +svgBars(lab.map(function(l){return {k:l,l:l}}),[{color:CCOL.before,vals:c0},{color:CCOL.after,vals:c1}],function(v){return String(Math.round(v))},false)
-    +'<div class="wm">Above 1.15 of the band midpoint: <b>'+c0[4]+'</b> → <b>'+c1[4]+'</b> people · below 0.85: <b>'+c0[0]+'</b> → <b>'+c1[0]+'</b>.</div>';
   /* 5 Target PB vs PB paid (outside the budget) */
   var pbp=0;c.scope.forEach(function(e){pbp+=Number(e.pbPaid)||0});
   var mt=Math.max(b0.tpb,b1.tpb,pbp)*1.04||1;
   function hb2(l,v,col){return '<div class="hb"><span class="l" style="width:110px">'+l+'</span><span class="t"><i style="width:'+(v/mt*100)+'%;background:'+col+'"></i></span><b>'+big(v)+'</b></div>'}
-  h+='<div class="wg"></div><span class="wch">4 · Target PB vs PB Paid</span><div class="wm q">Outside the budget: how far is the Target PB from what has been paid?</div>'+hb2("PB Paid",pbp,CCOL.alloc)+hb2("Target PB Now",b0.tpb,CCOL.before)+hb2("Target PB After",b1.tpb,CCOL.after)
+  h+='<div class="wg"></div><span class="wch">3 · Target PB vs PB Paid</span><div class="wm q">Outside the budget: how far is the Target PB from what has been paid?</div>'+hb2("PB Paid",pbp,CCOL.alloc)+hb2("Target PB Now",b0.tpb,CCOL.before)+hb2("Target PB After",b1.tpb,CCOL.after)
     +'<div class="wm">Gap (Target PB Less PB Paid): <b>'+big(b0.tpb-pbp)+'</b> → <b>'+big(b1.tpb-pbp)+'</b></div>';
   /* 8 Scenario comparison */
   var rows=[{n:"This Preview",u:b1.util,avg:(function(){var bs=0;c.scope.forEach(function(e){bs+=e.basePay});return bs?p.hike.after/bs*100:null})(),r:p.n.chg,cur:1}].concat(S.scenarios.map(function(x){return {n:x.name,u:x.util,avg:x.avg==null?null:x.avg,r:x.rows}}));
   var mu=Math.max.apply(null,rows.map(function(x){return x.u}).concat([100]))*1.04;
-  h+='<div class="wg"></div><span class="wch">5 · Scenario Comparison</span><div class="wm q">Budget utilised and average hike % for this preview against your saved scenarios.</div>'
+  h+='<div class="wg"></div><span class="wch">4 · Scenario Comparison</span><div class="wm q">Budget utilised and average hike % for this preview against your saved scenarios.</div>'
     +rows.map(function(x){return '<div class="hb"><span class="l" title="'+esc(x.n)+'" style="width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'</span><span class="t"><i style="width:'+(x.u/mu*100)+'%;background:'+(x.cur?CCOL.after:CCOL.before)+'"></i></span><b>'+x.u.toFixed(1)+'% · avg hike '+(x.avg==null?'—':x.avg.toFixed(1)+'%')+' · '+x.r+' rows</b></div>'}).join("")
     +(S.scenarios.length?'':'<div class="wm">No saved scenarios yet. Use the settings icon › Save as Scenario to keep this one and compare options here.</div>');
   return h+'</div>';
@@ -2151,7 +2142,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
 
 /* ===== v50: workspace. Same elements and handlers as v48, moved into panes; nothing else changed ===== */
 (function(){
-  var K="bulkWs_v52",st={lw:440,rw:290,lc:false,rc:false,lt:"rules",hid:[]},ct="emp";
+  var K="bulkWs_v52",st={lw:440,rw:290,lc:false,rc:false,lt:"rules",hid:[]},ct="res";
   try{var s=JSON.parse(localStorage.getItem(K)||"null");if(s)for(var k in s)st[k]=s[k]}catch(x){}
   function save(){try{localStorage.setItem(K,JSON.stringify(st))}catch(x){}}
   function mk(tag,id,cls,html){var e=document.createElement(tag);if(id)e.id=id;if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e}
@@ -2195,7 +2186,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   /* centre tabs: Employees and Scenarios sit with the result tabs */
   var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios");
   tEmp.type="button";tEmp.setAttribute("data-x","emp");tScn.type="button";tScn.setAttribute("data-x","scn");
-  mpTabs.insertBefore(tEmp,mpTabs.firstChild);mpTabs.insertBefore(tScn,lyTog);
+  mpTabs.insertBefore(tEmp,mpTabs.firstChild.nextSibling);mpTabs.insertBefore(tScn,lyTog);
   /* "+" chooses which tabs show */
   var plus=mk("button","tabPlus","tplus","＋");plus.type="button";plus.title="Choose the tabs shown in this pane";
   mpTabs.insertBefore(plus,lyTog);

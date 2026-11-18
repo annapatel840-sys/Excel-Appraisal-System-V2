@@ -74,7 +74,6 @@ const esc = (s) =>
 const COLS = [
   { k: "emp", h: "Employee", t: "text", w: 220, fz: 1 },
   { k: "dept", h: "Department", t: "text", w: 110 },
-  { k: "band", h: "Band", t: "text", w: 70 },
   { k: "cyc", h: "Cycle", t: "text", w: 120 },
   { k: "eff", h: "Effective Date", t: "date", w: 112 },
   { k: "mr", h: "Manager Rating", t: "num", w: 92, dp: 1 },

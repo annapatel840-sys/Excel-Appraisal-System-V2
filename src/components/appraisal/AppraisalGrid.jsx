@@ -111,7 +111,6 @@ const WIDTHS = {
   name: 190, // combined Employee column (id - name on top, designation below)
   sourceOfHire: 130,
   location: 120,
-  location: 120,
   designation: 150,
   reportingManager: 125,
   compManager: 125,
@@ -201,13 +200,16 @@ const DEFAULT_COLUMN_ORDER = (() => {
     ...tail,
   ].filter((key, index, list) => list.indexOf(key) === index);
   // Client Rating sits straight after Manager Rating. "Last Appraisal" is
-  // second to last and "Source of Hire" is the very last column.
+  // second to last and "Source of Hire" is followed by "Location" as the last columns.
   const rest = order.filter(
-    (key) => !["clientRating", "lastAppraisalDate", "sourceOfHire"].includes(key),
+    (key) =>
+      !["clientRating", "lastAppraisalDate", "sourceOfHire", "location"].includes(
+        key,
+      ),
   );
   const ratingAt = rest.indexOf("managerRating");
   rest.splice(ratingAt >= 0 ? ratingAt + 1 : rest.length, 0, "clientRating");
-  rest.push("lastAppraisalDate", "sourceOfHire");
+  rest.push("lastAppraisalDate", "sourceOfHire", "location");
   return rest;
 })();
 
@@ -2090,7 +2092,9 @@ export function AppraisalGrid({
     const saved = readStore(VIEW_KEY, {});
 
     return {
-      hidden: saved.hidden || {},
+      // Location and Source of Hire start unticked in Config > Show; an
+      // explicit choice the user saved (true/false) wins over this default.
+      hidden: { location: true, sourceOfHire: true, ...(saved.hidden || {}) },
       wrap: saved.wrap || {},
       tag: saved.tag || {},
       density: saved.density === "compact" ? "compact" : "comfortable",
@@ -2114,11 +2118,8 @@ export function AppraisalGrid({
     setViewPrefs((previous) => {
       const hidden = { ...previous.hidden };
 
-      if (hidden[key]) {
-        delete hidden[key];
-      } else {
-        hidden[key] = true;
-      }
+      // Store an explicit true/false so the default-hidden columns can be re-shown.
+      hidden[key] = !hidden[key];
 
       return { ...previous, hidden };
     });
