@@ -905,7 +905,10 @@ export function EligibilityList({
   // Tab-bar slot (right side): Add an Employee on the list, Apply / Edit / Cancel on the criteria.
   const [actionsHost, setActionsHost] = useState(null);
   // Tabs: crit | list (Eligible only) | ne (Not Eligible only) | act (pending step)
-  const [tab, setTab] = useState(criteriaApplied ? "list" : "crit");
+  // Existing saved rows are authoritative even if older cycles are missing
+  // the criteria-applied flag. Never hide a populated list behind the Criteria tab.
+  const hasSavedRows = rawEmployees.length > 0;
+  const [tab, setTab] = useState(criteriaApplied || hasSavedRows ? "list" : "crit");
   const tabTouched = useRef(false);
   const pickTab = (next) => {
     tabTouched.current = true;
@@ -914,8 +917,8 @@ export function EligibilityList({
   };
   // Open on the list once it exists, on the criteria while nothing is generated.
   useEffect(() => {
-    if (!tabTouched.current) setTab(criteriaApplied ? "list" : "crit");
-  }, [criteriaApplied]);
+    if (!tabTouched.current) setTab(criteriaApplied || hasSavedRows ? "list" : "crit");
+  }, [criteriaApplied, hasSavedRows]);
 
   const canEdit = Boolean(onChangeEligibility) && fieldAccess.canEdit("Eligibility");
 
