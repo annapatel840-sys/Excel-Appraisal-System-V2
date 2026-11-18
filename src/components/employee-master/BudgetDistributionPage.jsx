@@ -6,6 +6,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal, useAppraisalRefresh } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { fetchAllEmployeeMasterEmployees } from "@/lib/employee-master-data";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
 import { matchesCycleLocation } from "@/lib/location-store";
 import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
@@ -73,7 +74,7 @@ const HR_COLS = [
 
 const CSS = `
 .bd-root {
-  max-width: 1320px;
+  max-width: 1600px;
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -348,6 +349,18 @@ export function BudgetDistributionPage() {
   const remaining = totals.updated - utilised;
 
   const [open, setOpen] = useState({});
+  // Every employee (any location / cycle), loaded once when a row is first opened, so a Comp Manager
+  // that is not in this cycle's roster can still be shown as "EMP004 - Name".
+  const [masterEmployees, setMasterEmployees] = useState(null);
+  const anyOpen = Object.values(open).some(Boolean);
+  useEffect(() => {
+    if (!anyOpen || masterEmployees !== null) return undefined;
+    let alive = true;
+    fetchAllEmployeeMasterEmployees()
+      .then((list) => { if (alive) setMasterEmployees(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setMasterEmployees([]); });
+    return () => { alive = false; };
+  }, [anyOpen, masterEmployees]);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
   const [cycleLabel, setCycleLabel] = useState("");
@@ -370,32 +383,17 @@ export function BudgetDistributionPage() {
           );
           return status === "active" && !archived && !hidden;
         });
-        const selectedActive =
+        const active =
           activeCycles.find((cycle) =>
             String(cycle.id || cycle.appraisal_cycle_id || cycle.cycle_id || cycle.ROWID || "") === String(activeBudgetCycleId || ""),
           ) ||
           activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation)) ||
           null;
-        const selectedClosed = all
-          .filter((cycle) => {
-            const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-            const archived = [true, 1, "true", "1", "yes"].includes(
-              typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
-            );
-            const hidden = [true, 1, "true", "1", "yes"].includes(
-              typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
-            );
-            return status === "closed" && !archived && !hidden && matchesCycleLocation(cycle, selectedLocation);
-          })
-          .sort((a, b) => String(b.end_date || b.effective_date || b.start_date || "")
-            .localeCompare(String(a.end_date || a.effective_date || a.start_date || "")))[0] || null;
-        const selected = selectedActive || selectedClosed;
-        const selectedId = String(selected?.id || selected?.appraisal_cycle_id || selected?.cycle_id || selected?.ROWID || "");
-        setActiveCycleId(selectedId);
-        setCycleLabel(selected
-          ? String(selected.name || selected.cycle_name || selected.appraisal_year || "Cycle unavailable") +
-            (String(selected.status || "").toLowerCase() === "closed" ? " · Closed" : "")
-          : "No available cycle");
+        const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
+        setActiveCycleId(activeId);
+        setCycleLabel(active
+          ? String(active.name || active.cycle_name || active.appraisal_year || "Active cycle unavailable")
+          : "No active cycle");
       }).catch((cycleError) => {
         console.error("Failed to load Budget Distribution cycle:", cycleError);
         if (mounted) {
@@ -415,7 +413,7 @@ export function BudgetDistributionPage() {
         window.removeEventListener("appraisal:cycle-updated", loadCycle);
       }
     };
-  // Cycle refresh is event-driven; budget row changes must not clear the selected
+  // Cycle refresh is event-driven; budget row changes must not clear the active
   // cycle label or trigger redundant cycle requests.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, activeBudgetCycleId]);
@@ -794,17 +792,37 @@ export function BudgetDistributionPage() {
                                     String(item.budget_distribution_id || "") === String(row.id || "") &&
                                     String(item.appraisal_cycle_id || activeCycleId) === String(activeCycleId)
                                   );
+                                  // "EMP004 - Name": the ID in its real (upper) case plus the name, looked up in the cycle
+                                  // roster, the Tech-ED list, the Appraisal Sheet and finally the full Employee Master.
                                   const managerLabel = (raw) => {
                                     const text = String(raw || "").trim();
+                                    if (!text) return "";
                                     const parts = text.split(/\s+-\s+/);
-                                    const id = parts.length > 1 ? parts[0] : text;
-                                    const linked = (employeeRows || []).find((employee) =>
-                                      [employee.emp_id, employee.employee_id, employee.row_id, employee.ROWID]
-                                        .filter(Boolean).some((value) => normalize(value) === normalize(id))
-                                    );
-                                    if (parts.length > 1) return text;
-                                    const name = String(linked?.name || linked?.emp_name || "").trim();
-                                    return name && id ? id + " - " + name : text;
+                                    const id = parts.length > 1 ? parts[0].trim() : text;
+                                    const key = normalize(id);
+                                    const idOf = (e) => String(e.emp_id || e.employee_id || e.empId || "").trim();
+                                    const nameOf = (e) => String(e.name || e.emp_name || e.employee_name || "").trim();
+                                    const sameRow = (e) => [e.row_id, e.ROWID].filter(Boolean).some((v) => String(v).trim() === text);
+                                    const lookups = [employeeRows || [], masterEmployees || []];
+                                    let eid = "";
+                                    let ename = parts.length > 1 ? parts.slice(1).join(" - ").trim() : "";
+                                    for (const list of lookups) {
+                                      const hit = list.find((e) => normalize(idOf(e)) === key || sameRow(e));
+                                      if (hit) { eid = idOf(hit) || eid; ename = ename || nameOf(hit); if (eid && ename) break; }
+                                    }
+                                    if (!ename) {
+                                      const t = (techEdOwners || []).find((o) => normalize(o.employee_id) === key);
+                                      if (t) { eid = eid || String(t.employee_id || "").trim(); ename = String(t.name || "").trim(); }
+                                    }
+                                    if (!ename) {
+                                      const seen = (appraisalAll || []).find((a) => {
+                                        const d = String(a.compManagerDisplay || a.compManager || "").trim();
+                                        return d.includes(" - ") && normalize(d.split(/\s+-\s+/)[0]) === key;
+                                      });
+                                      if (seen) ename = String(seen.compManagerDisplay || seen.compManager).split(/\s+-\s+/).slice(1).join(" - ").trim();
+                                    }
+                                    const shownId = eid || id.toUpperCase();
+                                    return ename ? shownId + " - " + ename : shownId;
                                   };
                                   return (
                                     <div className="manager-allocation">
