@@ -4226,6 +4226,26 @@ module.exports = async function (req, res) {
         sourceRows.masterEmployeeRows || [],
         sourceRows.appraisalRows || [],
       );
+      const budgetCycleRefs = new Set(
+        (bundle.master || []).map((row) => String(row.appraisal_cycle_id || "").trim().toLowerCase()).filter(Boolean),
+      );
+      const isArchivedCycle = (cycle) => {
+        const status = String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase();
+        const archived = firstValue(cycle, ["archived", "is_archived", "isArchived"]);
+        const hidden = firstValue(cycle, ["hidden", "is_hidden"]);
+        return status === "archived" ||
+          [true, 1, "true", "1", "yes"].includes(typeof archived === "string" ? archived.trim().toLowerCase() : archived) ||
+          [true, 1, "true", "1", "yes"].includes(typeof hidden === "string" ? hidden.trim().toLowerCase() : hidden);
+      };
+      const displayCycle = sourceRows.cycleRows.find(
+        (cycle) => cycleIdOf(cycle) === String(calculatedBundle.active_appraisal_cycle_id || ""),
+      ) || sourceRows.cycleRows
+        .filter((cycle) =>
+          !isArchivedCycle(cycle) &&
+          budgetCycleRefs.has(cycleIdOf(cycle).toLowerCase()),
+        )
+        .sort((left, right) => cycleRank(right) - cycleRank(left))[0] || null;
+      const displayCycleId = displayCycle ? cycleIdOf(displayCycle) : "";
       logBudgetStage("response ready", {
         returnedTechEdRows: bundle.techEd.length,
         returnedCompManagerRows: bundle.compManager.length,
@@ -4244,6 +4264,7 @@ module.exports = async function (req, res) {
         timing: { stages: budgetStages, writes: { ...WRITE_STATS } },
         active_appraisal_cycle_id:
           calculatedBundle.active_appraisal_cycle_id || "",
+        display_appraisal_cycle_id: displayCycleId,
         more_records: false,
         next_token: null,
       });
