@@ -3,10 +3,11 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
+import { LETTERS_DEMO, generateLettersForCycle, sheetRowsForLetters, useLettersStats } from "@/lib/letters-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { isAllLocations, matchesLocation } from "@/lib/location-store";
+import { matchesLocation } from "@/lib/location-store";
 import {
   FilterStatus,
   FilterTh,
@@ -271,11 +272,6 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
-  const bannerRef = useRef(null);
-  // The banner sits at the top of the page; bring it into view so a result or error is never missed.
-  useEffect(() => {
-    if (banner && bannerRef.current && bannerRef.current.scrollIntoView) bannerRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [banner]);
   const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
   // screen state
@@ -371,6 +367,7 @@ export function AppraisalCycleMasterPage({
   const [confirmRemark, setConfirmRemark] = useState("");
   const [modalError, setModalError] = useState("");
   const [generatedByCycle, setGeneratedByCycle] = useState({});
+  const { rows: sheetRows } = useAppraisal();
 
   const showBanner = (title, body, error = false) =>
     setBanner({ title, body, error });
@@ -456,13 +453,21 @@ export function AppraisalCycleMasterPage({
 
   const loadSetupStatus = useCallback(async (cycleId) => {
     if (!cycleId) return;
-    const [eligibility, delegation] = await Promise.all([
+    const [eligibility, delegation, sheet] = await Promise.all([
       // _ts keeps this read out of the shared 15 s read cache, so returning
       // from the Eligibility screen always shows the current state.
       payrollCycleRequest("eligibility", { query: { cycleId, count: 1, _ts: Date.now() } })
         .then((data) =>
           data && typeof data.criteriaApplied === "boolean"
             ? { generated: data.criteriaApplied, total: Number(data.total) || 0 }
+            : null,
+        )
+        .catch(() => null),
+      // Saved on the server: is the Appraisal Sheet already generated?
+      payrollCycleRequest("sheet-status", { query: { cycleId, _ts: Date.now() } })
+        .then((data) =>
+          data && typeof data.generated === "boolean"
+            ? { generated: data.generated, rows: Number(data.rows) || 0 }
             : null,
         )
         .catch(() => null),
@@ -474,7 +479,7 @@ export function AppraisalCycleMasterPage({
         .then((payload) => (payload && payload.ok && Array.isArray(payload.rows) ? payload.rows.length : null))
         .catch(() => null),
     ]);
-    setSetupStatus((previous) => ({ ...previous, [cycleId]: { eligibility, delegation } }));
+    setSetupStatus((previous) => ({ ...previous, [cycleId]: { eligibility, delegation, sheet } }));
   }, []);
 
   const currentSetupCycleId = isActiveSetupCycle(current) ? current.id : "";
@@ -811,6 +816,7 @@ export function AppraisalCycleMasterPage({
           ...previous,
           [cycle.id]: result?.data || result || { eligible: 0 },
         }));
+        loadSetupStatus(cycle.id); // saved state: still "generated" after a reload
         showBanner(
           "Appraisal Sheet Generated",
           `${cycle.name}: ${result?.data?.eligible ?? result?.eligible ?? "eligible"} eligible employee(s) processed.`,
@@ -1182,26 +1188,19 @@ export function AppraisalCycleMasterPage({
   // employees who have none and replaces unsent Out-of-date ones; Reviewed and
   // Sent letters are never touched.
   const generateLetters = async (c) => {
-    showBanner("Generating letters", `Reading the Appraisal Sheet for ${c.name}. This can take up to a minute the first time...`);
     setSaving(true);
     try {
       const result = await generateLettersForCycle(
-        {
-          id: c.id,
-          name: c.name,
-          effective: c.effective,
-          start: c.start,
-          type: c.type,
-          location: isAllLocations(c.location) ? "" : c.location,
-        },
+        { id: c.id, name: c.name, effective: c.effective, start: c.start },
         user?.name || "HR",
+        // People come from the Appraisal Sheet already loaded in the browser.
+        sheetRowsForLetters(sheetRows, c.id, c.location),
       );
       showBanner(
         "Letters generated",
         `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${LETTERS_DEMO ? " Sample data." : ""}`,
       );
     } catch (error) {
-      console.error("Letters generate failed:", error);
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
     } finally {
       setSaving(false);
@@ -1228,8 +1227,8 @@ export function AppraisalCycleMasterPage({
     const elSetup = setup ? setup.eligibility : undefined;
     const dlSetup = setup ? setup.delegation : undefined;
     const generatedResult = generatedByCycle[c.id];
-    const gen = !!w?.sheetGenerated || !!generatedResult;
-    const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible;
+    const gen = !!w?.sheetGenerated || !!generatedResult || !!setup?.sheet?.generated;
+    const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible ?? (setup?.sheet?.generated ? setup.sheet.rows : undefined);
     const m = w ? missingPay(w) : 0;
     const L = lettersOf(c);
     const canMakeLetters = c.status === "Active" && c.process === "Annual";
@@ -2314,7 +2313,7 @@ export function AppraisalCycleMasterPage({
         </div>
       )}
       {banner && (
-        <div ref={bannerRef} className={`acx-banner ${banner.error ? "error" : ""}`}>
+        <div className={`acx-banner ${banner.error ? "error" : ""}`}>
           {banner.error ? (
             <AlertCircle size={17} />
           ) : (

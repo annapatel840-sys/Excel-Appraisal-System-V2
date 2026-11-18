@@ -396,6 +396,11 @@ async function activeCycleId(zcql) {
    Sheet rows of other cycles are not used: they hold past managers. */
 async function loadDelegation(zcql, cycleId) {
   const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {}, rowIdOf: {} };
+  // Letters is an HR-only screen: the role comes from Catalyst / the role
+  // table, never from Delegation, so this function skips the Delegation,
+  // Employee_Master and Appraisal_Sheet full-table reads below (the cold-start
+  // timeout). Set ACCESS_SKIP_DELEGATION=true in catalyst-config.json.
+  if (String(process.env.ACCESS_SKIP_DELEGATION || '').toLowerCase() === 'true') return out;
   const z = zq(zcql);
   const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
   const [rows, masterRows, sheetRows] = await Promise.all([

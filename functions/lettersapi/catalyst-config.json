@@ -5,6 +5,7 @@
 		"type": "advancedio",
 		"env_variables": {
 			"ACCESS_ENFORCE": "true",
+			"ACCESS_SKIP_DELEGATION": "true",
 			"LETTERS_BUCKET_PREFIX": "letter-templates"
 		}
 	},

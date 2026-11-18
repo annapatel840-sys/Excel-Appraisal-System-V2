@@ -316,6 +316,10 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "payroll", "view");
     return;
   }
+  if (resource === "sheet-status" && method === "GET") {
+    access.requireScreen(a, "cycleMaster", "view");
+    return;
+  }
   if (resource === "eligibility" && method === "GET") {
     access.requireScreen(a, "employeeMaster", "view");
     return;
@@ -3956,6 +3960,33 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 200, { success: true, data: cycles });
   }
 
+  // Has the Appraisal Sheet been generated for this cycle? One COUNT query on
+  // the cycle's rows; the sheet itself is never read. The Appraisal Cycle
+  // Master uses it so "Generate" stays done after a page reload.
+  if (resource === "sheet-status" && req.method === "GET") {
+    const cycleId = String(query.cycleId || query.cycle_id || "").trim();
+    if (!cycleId) throw new ApiError("Appraisal cycle ID is required.", 400);
+    let rows = null;
+    if (tables.zcql) {
+      try {
+        const safe = cycleId.replace(/[^A-Za-z0-9_-]/g, "");
+        const result = await fastReadQuery(
+          tables.zcql,
+          "SELECT COUNT(ROWID) FROM Appraisal_Sheet WHERE cycle_id = '" + safe + "'",
+          "Appraisal_Sheet generated count",
+        );
+        const cell = Object.values(Object.values((Array.isArray(result) ? result[0] : null) || {})[0] || {})[0];
+        if (Number.isFinite(Number(cell))) rows = Number(cell);
+      } catch (error) {
+        console.warn("sheet-status count failed:", error && error.message);
+      }
+    }
+    return sendJson(res, 200, {
+      success: true,
+      data: { cycleId, generated: rows === null ? null : rows > 0, rows },
+    });
+  }
+
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
     const requestedLocation = String(query.location || "").trim().toLowerCase();
@@ -4801,6 +4832,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "sheet-status" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "feedback" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);

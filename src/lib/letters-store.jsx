@@ -18,11 +18,9 @@ import * as api from "./letters-api";
  * only talk to this file, so they do not change. See docs/LETTERS.md.
  */
 
-/* Live mode: Letters are made from the real Appraisal Sheet and the templates
-   come from the location Stratus buckets. No sample employees or letters. */
-export const LETTERS_DEMO = false;
+export const LETTERS_DEMO = true;
 
-const STORE_KEY = "letters_live_v1";
+const STORE_KEY = "letters_demo_v2";
 
 function loadSaved() {
   try {
@@ -41,7 +39,7 @@ function loadSaved() {
   }
 }
 
-let S = loadSaved() || core.createState({ sample: LETTERS_DEMO });
+let S = loadSaved() || core.createState();
 let version = 0;
 const listeners = new Set();
 
@@ -70,8 +68,6 @@ function commit() {
   listeners.forEach((l) => l());
 }
 
-const isAll = (v) => ["", "all", "all locations", "alllocations"].includes(String(v || "").trim().toLowerCase());
-
 const subscribe = (l) => {
   listeners.add(l);
   return () => listeners.delete(l);
@@ -94,9 +90,6 @@ function run(actor, fn) {
 // { status: "idle" | "loading" | "ok" | "error", message }
 let sync = { status: "idle", message: "" };
 let syncing = null;
-let syncedFor = null; // the location the loaded templates belong to
-let loadedFor = null; // location whose templates are already in the state
-let loadFailed = false; // the last template load failed outright (not just one unreadable template)
 
 function setSync(next) {
   sync = next;
@@ -106,34 +99,18 @@ function setSync(next) {
 
 // Load the templates held on the server into the state. Call it when the
 // Letters screen opens; {force:true} is the Retry button.
-export function syncTemplates({ force = false, location = "" } = {}) {
+export function syncTemplates({ force = false } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  const loc = isAll(location) ? "" : String(location).trim();
-  if (syncing && !force && syncedFor === loc) return syncing;
-  // Already loaded for this location: do not hit the server again (every call is a cold-start risk).
-  if (!force && loadedFor === loc && sync.status === "ok") return Promise.resolve();
-  syncedFor = loc;
-  loadedFor = null;
+  if (syncing && !force) return syncing;
   setSync({ status: "loading", message: "" });
   syncing = api
-    .loadServerTemplates(loc)
+    .loadServerTemplates()
     .then(({ templates, problems }) => {
-      loadFailed = false;
-      loadedFor = problems.length ? null : loc;
-      run("HR", (st) => {
-        // Only this location's templates are kept: drop the server templates of
-        // another location that an earlier load left in the state.
-        if (loc) st.tpls = st.tpls.filter((t) => !t.fromServer || String(t.location || "").toLowerCase() === loc.toLowerCase());
-        core.applyServerTemplates(st, templates);
-      });
+      run("HR", (st) => core.applyServerTemplates(st, templates));
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });
       else setSync({ status: "ok", message: "" });
     })
-    .catch((error) => {
-      loadFailed = true;
-      loadedFor = null;
-      setSync({ status: "error", message: error?.message || "The templates could not be loaded." });
-    })
+    .catch((error) => setSync({ status: "error", message: error?.message || "The templates could not be loaded." }))
     .finally(() => {
       syncing = null;
     });
@@ -207,36 +184,64 @@ export function useLettersStats() {
 
 // Appraisal Cycle screen -> Letters step -> Generate / Regenerate.
 // cycle = { id, name, effective, start } from the Appraisal Cycle Master.
-export async function generateLettersForCycle(cycle, actor) {
-  if (!LETTERS_DEMO) {
-    // Live: read the cycle's real Appraisal Sheet rows (and make sure this
-    // location's templates are loaded) before making any letter.
-    const location = cycle.location || "";
-    await syncTemplates({ location });
-    // Only a failed load stops Generate; one unreadable template just means that template makes no letter.
-    if (loadFailed) throw new Error("Step 1 of 2, loading the " + (location || "") + " templates: " + (sync.message || "failed."));
-    let loaded;
-    try {
-      loaded = await api.loadServerSheet(cycle.id, location);
-    } catch (error) {
-      throw new Error("Step 2 of 2, reading the Appraisal Sheet: " + (error?.message || "failed."));
-    }
-    const { cycle: srv, rows, skipped } = loaded;
-    if (!rows.length) {
-      throw new Error(
-        `No Appraisal Sheet rows were found for ${cycle.name}${location ? " (" + location + ")" : ""}. Generate the Appraisal Sheet first.` +
-          ` (Sheet rows for this cycle: ${skipped.inCycle ?? 0}; no matching employee: ${skipped.withoutEmployee ?? 0}; another location: ${skipped.otherLocation ?? 0}.)`,
-      );
-    }
-    return run(actor, (st) => {
-      core.applyServerSheet(st, { ...cycle, type: cycle.type || srv.type, location: location || srv.location, effective: cycle.effective || srv.effective }, rows);
-      const result = core.generateLetters(st, String(cycle.id));
-      core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${rows.length} Appraisal Sheet rows read; ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged`);
-      return { ...result, rows: rows.length };
+// sheetRows (optional) = the Appraisal Sheet rows the screen already holds in
+// the browser. When given they replace the demo people for this cycle, so
+// nothing has to be read from the Appraisal_Sheet table on the server.
+export function sheetRowsForLetters(rows, cycleId, location) {
+  const want = String(location || "").trim().toLowerCase();
+  const all = !want || want === "all";
+  const num = (v) => Number(v || 0);
+  return (Array.isArray(rows) ? rows : [])
+    .filter((e) => e && (all || String(e.location || "").trim().toLowerCase() === want))
+    .map((e) => {
+      const pb = num(e.newPBToBeOffered);
+      const base = num(e.currentAnnualBasePay);
+      const hike = num(e.hikeAmount);
+      const promo = /^y/i.test(String(e.eligibleForPromotion || ""));
+      return {
+        id: String(e.empId || e.id),
+        name: e.name || "",
+        tech: e.reportingManager || e.manager || "",
+        org: "Wissen India",
+        cycle: String(cycleId),
+        status: /^inactive|resign|exit/i.test(String(e.status || "")) ? "Inactive" : "Active",
+        email: e.email || "",
+        v: {
+          promo: promo ? "Yes" : "No",
+          basePay: base,
+          newBase: base + hike,
+          hikeAmt: hike,
+          hikePct: num(e.hikePct),
+          newPB: pb,
+          newRB: num(e.newRB),
+          tpbNext: num(e.targetPBNextYear),
+          newTitle: e.newTitle || "",
+          designation: e.designation || "",
+          effDate: "",
+          pbInst: e.newPBInstallment || "",
+          band: "",
+          rating: e.managerRating === undefined || e.managerRating === null ? "" : String(e.managerRating),
+          compRemarks: e.compManagerRemarks || "",
+          pbMonths: [],
+          rbMonth: e.monthRB || "",
+          tpbMonth: "",
+          emLocation: e.location || "",
+          emDoj: e.doj || "",
+          emGrade: "",
+          emManager: e.reportingManager || "",
+          emDept: e.department || "",
+        },
+      };
     });
-  }
+}
+
+export async function generateLettersForCycle(cycle, actor, sheetRows) {
   return run(actor, (st) => {
     core.bindAnnualCycle(st, cycle);
+    if (Array.isArray(sheetRows)) {
+      const id = String(cycle.id);
+      st.sheet = st.sheet.filter((r) => r.cycle !== id).concat(sheetRows.map((r) => ({ ...r, cycle: id })));
+    }
     const result = core.generateLetters(st, String(cycle.id));
     core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged`);
     return result;
@@ -261,7 +266,7 @@ export const saveFields = (draft, reason, actor) => run(actor, (st) => core.save
 // Demo helpers (shown only while LETTERS_DEMO is true).
 export const loadSampleLetters = (actor) => run(actor, (st) => core.loadSampleLetters(st));
 export function resetSampleData() {
-  S = core.createState({ sample: LETTERS_DEMO });
+  S = core.createState();
   commit();
   syncTemplates({ force: true }); // templates on the server come straight back
 }
