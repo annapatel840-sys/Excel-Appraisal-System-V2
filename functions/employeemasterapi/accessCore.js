@@ -331,12 +331,23 @@ function defaultLimit(f, roleKey) {
 async function loadMatrix(zcql, C, roles) {
   const z = zq(zcql);
   const [s, a, f] = await Promise.all([selectAll(z, T.screen), selectAll(z, T.action), selectAll(z, T.field)]);
-  const m = { screens: {}, actions: {}, fields: {}, rowids: { screen: {}, action: {}, field: {} } };
+  const m = { screens: {}, actions: {}, fields: {}, locScreens: {}, rowids: { screen: {}, action: {}, field: {} }, locRowids: { screen: {} } };
   roles.forEach((r) => {
     m.screens[r.key] = {}; m.actions[r.key] = {}; m.fields[r.key] = {};
     C.screens.forEach((x) => { m.screens[r.key][x.key] = defaultLevel(C, x, r.key); });
     C.actions.forEach((x) => { m.actions[r.key][x.key] = defaultAllowed(x, r.key); });
     C.fields.forEach((x) => { let d = defaultLimit(x, r.key); if (d && HR_FIELD_GROUPS.has(x.group) && r.key !== 'hr') d = 'hidden'; if (d) m.fields[r.key][x.key] = d; });
+  });
+  // Per-location screen levels: RoleScreen rows with screen_key '<screen>@@<location>'.
+  // m.locScreens[role][location][screen] = level; no row = the role's normal level applies.
+  s.forEach((x) => {
+    const at = String(x.screen_key || '').indexOf('@@');
+    if (at < 1) return;
+    const sk = x.screen_key.slice(0, at), loc = x.screen_key.slice(at + 2).trim();
+    const it = C.screenBy[sk];
+    if (!it || it.hrOnly || !loc || !m.screens[x.role_key] || LEVELS.indexOf(x.level) < 0) return;
+    ((m.locScreens[x.role_key] = m.locScreens[x.role_key] || {})[loc] = m.locScreens[x.role_key][loc] || {})[sk] = x.level;
+    m.locRowids.screen[x.role_key + '|' + sk + '@@' + loc] = x.ROWID;
   });
   s.forEach((x) => { const it = C.screenBy[x.screen_key]; if (!it || !m.screens[x.role_key]) return; m.rowids.screen[x.role_key + '|' + x.screen_key] = x.ROWID; if (!it.hrOnly && LEVELS.indexOf(x.level) > -1) m.screens[x.role_key][x.screen_key] = x.level; });
   a.forEach((x) => { const it = C.actionBy[x.action_key]; if (!it || !m.actions[x.role_key]) return; m.rowids.action[x.role_key + '|' + x.action_key] = x.ROWID; if (!it.fixed) m.actions[x.role_key][x.action_key] = bool(x.allowed); });
@@ -366,19 +377,51 @@ function resolveFields(C, lim) {
 /* ---------------------------------------------------------------------
    People: Employee_Master + Delegation + Catalyst roles
    --------------------------------------------------------------------- */
-async function activeCycleId(zcql) {
+async function activeCycleIds(zcql) {
   const c = SETTINGS.cycle;
   const rows = await selectAll(zq(zcql), c.table);
   const isTruthyFlag = (value) =>
     [true, 1, "true", "1", "yes"].includes(
       typeof value === "string" ? value.trim().toLowerCase() : value,
     );
-  const active = rows.find((row) =>
-    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
-    !isTruthyFlag(row.archived) &&
-    !isTruthyFlag(row.hidden)
+  const available = rows.filter((row) => !isTruthyFlag(row.archived) && !isTruthyFlag(row.hidden));
+  const locationOf = (row) => {
+    const value = String(row.location || row.cycle_location || row.cycleLocation || "").trim().toLowerCase();
+    if (!value || ["all", "all locations", "alllocations"].includes(value)) return "*";
+    const key = value.replace(/[^a-z0-9]/g, "");
+    if (["australia", "au", "aus"].includes(key)) return "australia";
+    if (["india", "in"].includes(key)) return "india";
+    if (["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(key)) return "unitedstates";
+    return key;
+  };
+  const active = available.filter((row) =>
+    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase()
   );
-  return active ? String(active[c.idColumn] || "") || null : null;
+  // While any location remains Active, keep its normal delegation. For a
+  // location whose cycle has been Closed, use only that location's latest
+  // Closed cycle so its Tech-ED / Comp Manager can still read the saved sheet.
+  const activeLocations = new Set(active.map(locationOf));
+  const globalActive = activeLocations.has("*");
+  const latestClosedByLocation = new Map();
+  if (!globalActive) {
+    available.filter((row) => String(row[c.statusColumn] || "").trim().toLowerCase() === "closed")
+      .forEach((row) => {
+        const location = locationOf(row);
+        if (activeLocations.has(location)) return;
+        const current = latestClosedByLocation.get(location);
+        const rank = String(row.end_date || row.effective_date || row.start_date || row[c.nameColumn] || "");
+        const currentRank = current ? String(current.end_date || current.effective_date || current.start_date || current[c.nameColumn] || "") : "";
+        if (!current || rank > currentRank) latestClosedByLocation.set(location, row);
+      });
+  }
+  return [...active, ...latestClosedByLocation.values()]
+    .map((row) => String(row[c.idColumn] || "").trim())
+    .filter(Boolean);
+}
+// Older callers (accessapi) still ask for one Active cycle id; the first one is kept.
+async function activeCycleId(zcql) {
+  const ids = await activeCycleIds(zcql);
+  return ids[0] || "";
 }
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
@@ -394,14 +437,13 @@ async function activeCycleId(zcql) {
         Master import), then Employee_Master (before Generate).
    A person reassigned in Delegation therefore leaves the old manager's team.
    Sheet rows of other cycles are not used: they hold past managers. */
-async function loadDelegation(zcql, cycleId) {
+async function loadDelegation(zcql, cycleIds) {
   const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {}, rowIdOf: {} };
   const z = zq(zcql);
   const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
-  const [rows, masterRows, sheetRows] = await Promise.all([
-    cycleId
-      ? selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
-      : Promise.resolve([]),
+  const activeCycleSet = new Set((Array.isArray(cycleIds) ? cycleIds : [cycleIds]).map((id) => String(id || "").trim()).filter(Boolean));
+  const [allDelegationRows, masterRows, sheetRows] = await Promise.all([
+    activeCycleSet.size ? selectAll(z, d.table) : Promise.resolve([]),
     selectAll(z, e.table),
     selectAll(z, s.table),
   ]);
@@ -436,8 +478,13 @@ async function loadDelegation(zcql, cycleId) {
     }
     return '';
   };
-  const cycleSheetRows = cycleId
-    ? sheetRows.filter((r) => cycleOf(r) === String(cycleId))
+  // Scope reviewers across every active location cycle. A single arbitrary
+  // Active cycle is insufficient after location-wise cycle creation.
+  const rows = allDelegationRows.filter((row) =>
+    activeCycleSet.has(lookupText(row[d.cycleColumn])),
+  );
+  const cycleSheetRows = activeCycleSet.size
+    ? sheetRows.filter((r) => activeCycleSet.has(cycleOf(r)))
     : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
@@ -591,7 +638,15 @@ function accessOf(C, roles, m, person, roleKey, ovs) {
     if (o.type === 'field' && lim[o.key] !== undefined && LIMITS.indexOf(o.value) > -1 && !(C.fieldBy[o.key].kind !== 'input' && o.value === 'edit')) lim[o.key] = o.value;
   });
   resolveFields(C, lim);
-  return { role, roleOverride: !!ro, screens, actions, fields: lim, teams: mine.filter((o) => o.type === 'team').map((o) => o.key) };
+  // Location rules of this role (a personal screen override still wins over them).
+  const locScreens = {};
+  const lr = role && m.locScreens ? m.locScreens[role] : null;
+  if (lr) Object.keys(lr).forEach((loc) => {
+    const out = {};
+    Object.keys(lr[loc]).forEach((k) => { if (!mine.find((x) => x.type === 'screen' && x.key === k)) out[k] = lr[loc][k]; });
+    if (Object.keys(out).length) locScreens[loc] = out;
+  });
+  return { role, roleOverride: !!ro, screens, actions, fields: lim, locScreens, teams: mine.filter((o) => o.type === 'team').map((o) => o.key) };
 }
 
 /* ---------------------------------------------------------------------
@@ -605,11 +660,11 @@ async function getVersion(zcql) {
   return rows[0] ? { version: Number(rows[0].version) || 1, rowid: rows[0].ROWID } : { version: 1, rowid: null };
 }
 async function loadBase(z, version) {
-  const [C, roles, cycleId, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleId(z), selectAll(z, T.override)]);
-  const [deleg, m] = await Promise.all([loadDelegation(z, cycleId), loadMatrix(z, C, roles)]);
+  const [C, roles, cycleIds, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleIds(z), selectAll(z, T.override)]);
+  const [deleg, m] = await Promise.all([loadDelegation(z, cycleIds), loadMatrix(z, C, roles)]);
   const overridesBy = {};
   ovRows.filter((o) => !bool(o.removed)).map(overrideRow).forEach((o) => { const k = norm(o.empId); (overridesBy[k] = overridesBy[k] || []).push(o); });
-  return { version, C, roles, cycleId, deleg, m, overridesBy };
+  return { version, C, roles, cycleId: cycleIds[0] || null, cycleIds, deleg, m, overridesBy };
 }
 /* Returns the cached base data; at most one query (the version row) when warm,
    and none when the version was checked less than 30 s ago. */
@@ -672,9 +727,9 @@ function scopeOf(base, ro, a, person) {
     const rowId = (d.rowIdOf || {})[k];
     if (rowId) rowIds.push(rowId);
   });
-  return { all: false, cycleId: base.cycleId, empIds, rowIds };
+  return { all: false, cycleId: base.cycleId, cycleIds: base.cycleIds || [], empIds, rowIds };
 }
-async function get(cat, opts) {
+async function get(cat, opts, context) {
   // getCurrentUser() throws when the request carries no user credentials.
   let u = null;
   try { u = await cat.userManagement().getCurrentUser(); } catch (e) { u = null; }
@@ -695,11 +750,27 @@ async function get(cat, opts) {
   const a = accessOf(base.C, base.roles, base.m, person, b.role, ovs);
   if (!a.role) throw fail(403, 'You have no access to the Compensation tool. Please contact HR.');
   const ro = base.roles.find((r) => r.key === a.role);
+  const requestedCycleId = String(context?.cycleId || context?.cycle_id || "").trim();
+  let cycleStatus = "";
+  let cycleArchived = false;
+  if (requestedCycleId) {
+    const cycleRows = await selectAll(z, SETTINGS.cycle.table);
+    const selectedCycle = cycleRows.find((row) =>
+      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId ||
+      String(row[SETTINGS.cycle.nameColumn] || "").trim().toLowerCase() === requestedCycleId.toLowerCase()
+    );
+    if (selectedCycle) {
+      cycleStatus = String(selectedCycle[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
+      cycleArchived = bool(selectedCycle.archived);
+    }
+  }
   return {
     version: base.version,
+    cycleStatus,
+    cycleArchived,
     user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
-    screens: a.screens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
+    screens: a.screens, locationScreens: a.locScreens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
   };
 }
 
@@ -707,10 +778,10 @@ async function get(cat, opts) {
    Enforced (ACCESS_ENFORCE='true'): returns access with enforced:true, dryRun:false; rethrows HttpError.
    Dry run: never throws an HttpError. Returns the access with enforced:false, dryRun:true, or
    { dryRun:true, enforced:false, denied:HttpError } when the person would be refused (logged). */
-async function check(cat, opts) {
+async function check(cat, opts, context) {
   const enforced = isEnforced();
   try {
-    const a = await get(cat, opts);
+    const a = await get(cat, opts, context);
     return Object.assign(a, { enforced, dryRun: !enforced });
   } catch (err) {
     if (enforced) throw err;
@@ -733,7 +804,17 @@ function guard(a, fn) {
 }
 
 const RANK = { none: 0, view: 1, edit: 2 };
-function requireScreen(a, key, level) { if (RANK[a.screens[key] || 'none'] < RANK[level || 'view']) throw new HttpError(403, 'You do not have access to this screen.'); }
+function requireScreen(a, key, level) {
+  if (RANK[a.screens[key] || 'none'] < RANK[level || 'view'])
+    throw new HttpError(403, 'You do not have access to this screen.');
+  if (
+    level === 'edit' &&
+    ['techEd', 'compMgr'].includes(a.role) &&
+    (String(a.cycleStatus || '').toLowerCase() === 'closed' || a.cycleArchived)
+  ) {
+    throw new HttpError(403, 'This appraisal cycle is Closed. Tech-ED and Comp Manager access is read-only.');
+  }
+}
 function requireAction(a, key) { if (!a.actions[key]) throw new HttpError(403, 'You are not allowed to do this.'); }
 /* canEdit(a, fieldKey) — also accepts an Appraisal_Sheet column name. */
 function canEdit(a, fieldKey) {
@@ -805,7 +886,7 @@ async function bumpVersion(cat, by, why) {
 module.exports = {
   SETTINGS, T, BUILT_IN_ROLES, START_CATALOG, FIELD_COLUMNS, COLUMN_FIELDS, LEVELS, LIMITS, OV_TYPES, HttpError,
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
-  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
+  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, activeCycleIds, loadDelegation, hasTeam, emRow, findEmployee,
   loadOverrides, live, baseRoleOf, accessOf, scopeOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
   fieldOfColumn, fieldKeyOf, fieldLimitOf, requireEditFields, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE
