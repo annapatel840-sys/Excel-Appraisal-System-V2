@@ -271,6 +271,11 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
+  const bannerRef = useRef(null);
+  // The banner sits at the top of the page; bring it into view so a result or error is never missed.
+  useEffect(() => {
+    if (banner && bannerRef.current && bannerRef.current.scrollIntoView) bannerRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [banner]);
   const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
   // screen state
@@ -1195,6 +1200,7 @@ export function AppraisalCycleMasterPage({
         `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${LETTERS_DEMO ? " Sample data." : ""}`,
       );
     } catch (error) {
+      console.error("Letters generate failed:", error);
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
     } finally {
       setSaving(false);
@@ -2307,7 +2313,7 @@ export function AppraisalCycleMasterPage({
         </div>
       )}
       {banner && (
-        <div className={`acx-banner ${banner.error ? "error" : ""}`}>
+        <div ref={bannerRef} className={`acx-banner ${banner.error ? "error" : ""}`}>
           {banner.error ? (
             <AlertCircle size={17} />
           ) : (
