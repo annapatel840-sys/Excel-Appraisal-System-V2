@@ -252,7 +252,7 @@ const HEADS = [
 export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
   // Dashboard uses these AppraisalContext rows for its Active + Eligible headcount.
-  const { rows: dashboardRows = [] } = useAppraisal();
+  const { rows: dashboardRows = [], readOnlyCycle } = useAppraisal();
   const {
     budgetDistributionRows = [],
     budgetCompManagerRows = [],
@@ -266,6 +266,7 @@ export function TechEdBudgetMasterPage() {
   } = useBudget();
   const access = useAccess();
   const canAllot =
+    !readOnlyCycle &&
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("allotNextLevel");
   const canAudit = access.canAction("viewAudit");

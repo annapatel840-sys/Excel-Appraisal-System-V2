@@ -134,6 +134,7 @@ export function SheetPage() {
     saveError,
     clearSaveError,
     showingSaved,
+    readOnlyCycle,
   } = useAppraisal();
   const {
     totals: budgetMasterTotals,
@@ -151,7 +152,7 @@ export function SheetPage() {
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const { settings } = useSettings();
-  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const sheetEditable = access.canScreen("appraisalSheet", "edit") && !readOnlyCycle;
   const canImport = sheetEditable && access.canAction("importAppraisal");
   const canExport = access.canAction("exportGrid");
   const canViewAudit = access.canAction("viewAudit");
@@ -361,6 +362,11 @@ export function SheetPage() {
     <>
       <AppShell notifications={<NotificationBell items={notificationItems} />}>
         <div className={cn("flex min-h-0 flex-1 flex-col gap-2 bg-[#f3f4f6]", budgetVertical && "pl-1 pr-0 pt-0")}>
+          {readOnlyCycle && (
+            <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+              This appraisal cycle is Closed. Tech-ED and Comp Manager can view the saved data but cannot make changes.
+            </div>
+          )}
           {(saveError || loadError) && (
             <div
               role="alert"

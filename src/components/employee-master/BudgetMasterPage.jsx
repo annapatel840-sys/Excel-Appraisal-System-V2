@@ -806,7 +806,7 @@
 //     budgetWarning = "",
 //   } = useBudget();
 //   // Dashboard is the source of truth for live Active + Eligible appraisal rows.
-//   const { rows: dashboardRows = [] } = useAppraisal();
+//   const { rows: dashboardRows = [], readOnlyCycle } = useAppraisal();
 //   // Access rules (permissive when accessapi is unavailable).
 //   const access = useAccess();
 //   const canConfig =
@@ -3611,6 +3611,7 @@ function HRApplyBudget() {
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
+    !readOnlyCycle &&
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("changeBudgetConfig");
   const canAudit = access.canAction("viewAudit");

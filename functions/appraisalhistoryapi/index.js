@@ -169,7 +169,15 @@ async function checkAccess(req) {
   const adminApp = catalyst.initialize(req, { scope: "admin" });
 
   try {
-    return await access.check(userApp, adminApp);
+    const params = req.queryParams || req.query || {};
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const urlParams = new URL(String(req.url || "/"), "http://local").searchParams;
+    const context = {
+      cycleId: body.cycle_id || body.appraisal_cycle_id || body.cycleId || body.appraisal_year ||
+        params.cycleId || params.cycle_id || params.appraisal_year ||
+        urlParams.get("cycleId") || urlParams.get("cycle_id") || urlParams.get("appraisal_year") || "",
+    };
+    return await access.check(userApp, adminApp, context);
   } catch (error) {
     if (access.isEnforced()) throw error;
     // Dry run must never change legacy behaviour, even if access data is unreadable.
