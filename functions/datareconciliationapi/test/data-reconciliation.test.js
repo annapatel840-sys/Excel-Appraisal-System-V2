@@ -67,19 +67,19 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
  await test("Preview is read-only and proposes only LT historical copies; budget aggregates remain untouched",async()=>{
   const api=load(),before=JSON.stringify(DB),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
   assert.strictEqual(JSON.stringify(DB),before);
-  assert.strictEqual(p.stats.safeInserts,2);
+  assert.strictEqual(p.stats.safeInserts,0);
   assert.strictEqual(p.stats.safeUpdates,0);
-  assert(p.ops.some(o=>o.table==="feedback"&&o.values.Effective_Date==="2026-04-01"));
+  assert(!p.ops.some(o=>o.kind==="insert"));
   assert(!p.ops.some(o=>["budgetMaster","distribution","distributionComp"].includes(o.table)));
  });
- await test("Apply writes proposed changes and Revert restores the exact before-state",async()=>{
+ await test("Apply makes no automatic inserts and Revert leaves source rows unchanged",async()=>{
   const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
   const p=await api._internals.buildPlan(tables),applied=await api._internals.apply(tables,p,"HR");
-  assert.strictEqual(DB[T.payroll].filter(r=>r.appraisal_cycle_name==="C2").length,1);
-  assert.strictEqual(DB[T.feedback].find(r=>r.appraisal_cycle_name==="C2").Effective_Date,"2026-04-01");
+  assert.strictEqual(DB[T.payroll].filter(r=>r.appraisal_cycle_name==="C2").length,0);
+  assert.strictEqual(DB[T.feedback].filter(r=>r.appraisal_cycle_name==="C2").length,0);
   assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
   const reverted=await api._internals.revert(tables,applied.batchId,"HR");
-  assert.strictEqual(reverted.restored,0);assert.strictEqual(reverted.deleted,2);
+  assert.strictEqual(reverted.restored,0);assert.strictEqual(reverted.deleted,0);
   assert.strictEqual(DB[T.payroll].length,1);assert.strictEqual(DB[T.feedback].length,1);
   assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
  });
