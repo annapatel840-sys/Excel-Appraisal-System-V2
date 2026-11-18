@@ -85,17 +85,24 @@ async function buildPlan(t){
  stats.unresolved=issues.filter(x=>!x.safe).length;
  return {ops,issues,stats};
 }
-function view(p){return {planToken:hash(p.ops),summary:{...p.stats,issueCount:p.issues.length,issueTypes:p.issues.reduce((o,x)=>(o[x.type]=(o[x.type]||0)+1,o),{})},issues:p.issues.slice(0,2000),issuesTruncated:p.issues.length>2000,operations:p.ops.map(o=>({action:o.kind,table:o.table,rowId:o.rowId||"",reason:o.reason}))};}
+function view(p){return {planToken:hash({ops:p.ops,issues:p.issues,stats:p.stats}),summary:{...p.stats,issueCount:p.issues.length,issueTypes:p.issues.reduce((o,x)=>(o[x.type]=(o[x.type]||0)+1,o),{})},issues:p.issues.slice(0,2000),issuesTruncated:p.issues.length>2000,operations:p.ops.map(o=>({action:o.kind,table:o.table,rowId:o.rowId||"",reason:o.reason}))};}
 async function auditWrite(t,rows){for(let i=0;i<rows.length;i+=WRITE)await t.audit.insertRows(rows.slice(i,i+WRITE));}
 async function apply(t,p,actor){
- const batchId=crypto.randomUUID().replace(/-/g,"").slice(0,24),undo=[];
+ const batchId=crypto.randomUUID().replace(/-/g,"").slice(0,24);
  for(const key of Object.keys(TABLES).filter(k=>k!=="audit")){
   const ops=p.ops.filter(o=>o.table===key);
   const updates=ops.filter(o=>o.kind==="update"),inserts=ops.filter(o=>o.kind==="insert");
-  for(let i=0;i<updates.length;i+=WRITE){const part=updates.slice(i,i+WRITE);await t[key].updateRows(part.map(o=>({ROWID:o.rowId,...o.patch})));part.forEach(o=>undo.push({kind:"update",undo:o.undo}));}
-  for(let i=0;i<inserts.length;i+=WRITE){const part=inserts.slice(i,i+WRITE),created=await t[key].insertRows(part.map(o=>o.values));part.forEach((o,j)=>{const id=rid(created?.[j]);if(!id)throw new Error("Inserted "+key+" row did not return ROWID.");undo.push({kind:"insert",undo:{table:key,rowId:id,values:o.values}});});}
+  for(let i=0;i<updates.length;i+=WRITE){
+   const part=updates.slice(i,i+WRITE),packs=packUndo(part.map(o=>({kind:"update",undo:o.undo})));
+   await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
+   await t[key].updateRows(part.map(o=>({ROWID:o.rowId,...o.patch})));
+  }
+  for(let i=0;i<inserts.length;i+=WRITE){
+   const part=inserts.slice(i,i+WRITE),created=await t[key].insertRows(part.map(o=>o.values));
+   const inserted=part.map((o,j)=>{const id=rid(created?.[j]);if(!id)throw new Error("Inserted "+key+" row did not return ROWID.");return {kind:"insert",undo:{table:key,rowId:id,values:o.values}};});
+   const packs=packUndo(inserted);await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
+  }
  }
- const packs=packUndo(undo);await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
  await auditWrite(t,[auditRow(actor,SOURCE.summary,batchId,{kind:"data-reconciliation",action:"Applied",updates:p.stats.safeUpdates,inserts:p.stats.safeInserts})]);
  return {batchId,updates:p.stats.safeUpdates,inserts:p.stats.safeInserts};
 }
@@ -118,7 +125,7 @@ module.exports=async function(req,res){
   const actor=await requireHR(req),resource=String(query(req).resource||""),ds=catalyst.initialize(req,{scope:"admin"}).datastore();
   const t=Object.fromEntries(Object.entries(TABLES).map(([k,id])=>[k,ds.table(id)]));
   if(resource==="preview"&&req.method==="GET"){const p=await buildPlan(t);return send(res,200,{success:true,data:view(p)});}
-  if(resource==="apply"&&req.method==="POST"){const b=await bodyOf(req),p=await buildPlan(t);if(!b.planToken||b.planToken!==hash(p.ops))throw new ApiError("Data changed after Preview. Run Preview again.",409);const result=await apply(t,p,actor);const after=await buildPlan(t);return send(res,200,{success:true,data:{...result,after:view(after).summary}});}
+  if(resource==="apply"&&req.method==="POST"){const b=await bodyOf(req),p=await buildPlan(t);if(!b.planToken||b.planToken!==hash({ops:p.ops,issues:p.issues,stats:p.stats}))throw new ApiError("Data changed after Preview. Run Preview again.",409);const result=await apply(t,p,actor);const after=await buildPlan(t);return send(res,200,{success:true,data:{...result,after:view(after).summary}});}
   if(resource==="revert"&&req.method==="POST"){const b=await bodyOf(req);return send(res,200,{success:true,data:await revert(t,String(b.batchId||""),actor)});}
   return send(res,404,{success:false,message:"Operation not found."});
  }catch(e){if(e instanceof access.HttpError)return send(res,e.status||403,{success:false,message:e.message});const status=e instanceof ApiError?e.status:500;if(status>=500)console.error(JSON.stringify({function:"datareconciliationapi",error:e.message,stack:e.stack}));return send(res,status,{success:false,message:e.message||"Data reconciliation failed."});}
