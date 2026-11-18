@@ -4552,7 +4552,7 @@ export function AppraisalProvider({ children }) {
 
       return currentEmployee;
     },
-    [rows, currentUserName, updateRows],
+    [rows, currentUserName, updateRows, rejectWhileShowingSaved],
   );
 
   /* ==========================================================
