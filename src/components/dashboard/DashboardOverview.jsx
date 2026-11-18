@@ -512,7 +512,14 @@ export function DashboardOverview() {
   const budRows = useMemo(() => {
     if (!L0) {
       // A Comp Manager sees one row: their own team.
-      const name = rows.find((r) => r.compManager)?.compManager || "My Team";
+      // With no team at this location, still show who this is: "EMP002 - Ashok Kumar".
+      const u = catalystUser || {};
+      const uid = String(u.empId || u.emp_id || u.employeeId || u.employee_id || "").trim();
+      const uname = String(
+        u.name || u.display_name || u.displayName || [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "",
+      ).trim();
+      const me = uid && uname && !uname.toLowerCase().startsWith(uid.toLowerCase()) ? `${uid} - ${uname}` : uid || uname;
+      const name = rows.find((r) => r.compManager)?.compManager || me || "My Team";
       return [{
         key: "cm:me", k: name, rows, n: rows.length, pt: parts, al: allocated, hasAl: allocated > 0,
         u: allocated > 0 ? (parts.total / allocated) * 100 : null,
@@ -530,7 +537,7 @@ export function DashboardOverview() {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, L0, L1, open, budgetCtx, parts, allocated]);
+  }, [rows, L0, L1, open, budgetCtx, parts, allocated, catalystUser]);
   const CMM = !L0; // Comp Manager login: one row, no total line
   const overCount = budRows.filter((r) => r.d === 0 && r.hasAl && r.pt.total > r.al).length;
 
