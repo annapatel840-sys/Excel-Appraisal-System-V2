@@ -500,6 +500,26 @@ export function DashboardOverview() {
     if (effectiveId === "compmanager") return [];
     return effectiveId === "teched" ? all.slice(1) : all;
   }, [effectiveId]);
+  // "EMP002 - Ashok Kumar" for this login. The login gives the ID and name when it can; otherwise the
+  // label seen on a location where this Comp Manager has a team is remembered for the browser session.
+  const selfKey = `ovw-cm-self:${String(catalystUser?.email || catalystUser?.id || "").toLowerCase()}`;
+  const seenLabel = rows.find((r) => r.compManager)?.compManager || "";
+  useEffect(() => {
+    if (!seenLabel || effectiveId !== "compmanager") return;
+    try { window.sessionStorage.setItem(selfKey, seenLabel); } catch { /* optional */ }
+  }, [seenLabel, selfKey, effectiveId]);
+  const selfLabel = useMemo(() => {
+    const u = catalystUser || {};
+    const uid = String(u.empId || u.emp_id || u.employeeId || u.employee_id || "").trim();
+    const uname = String(
+      u.name || u.display_name || u.displayName || [u.first_name, u.last_name].filter(Boolean).join(" ") || "",
+    ).trim();
+    if (uid && uname) return uname.toLowerCase().startsWith(uid.toLowerCase()) ? uname : `${uid} - ${uname}`;
+    let cached = "";
+    try { cached = window.sessionStorage.getItem(selfKey) || ""; } catch { /* optional */ }
+    return cached || uid || uname;
+  }, [catalystUser, selfKey]);
+
   const L0 = levels[0];
   const L1 = levels[1];
 
@@ -513,13 +533,7 @@ export function DashboardOverview() {
     if (!L0) {
       // A Comp Manager sees one row: their own team.
       // With no team at this location, still show who this is: "EMP002 - Ashok Kumar".
-      const u = catalystUser || {};
-      const uid = String(u.empId || u.emp_id || u.employeeId || u.employee_id || "").trim();
-      const uname = String(
-        u.name || u.display_name || u.displayName || [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "",
-      ).trim();
-      const me = uid && uname && !uname.toLowerCase().startsWith(uid.toLowerCase()) ? `${uid} - ${uname}` : uid || uname;
-      const name = rows.find((r) => r.compManager)?.compManager || me || "My Team";
+      const name = rows.find((r) => r.compManager)?.compManager || selfLabel || "My Team";
       return [{
         key: "cm:me", k: name, rows, n: rows.length, pt: parts, al: allocated, hasAl: allocated > 0,
         u: allocated > 0 ? (parts.total / allocated) * 100 : null,
@@ -537,7 +551,7 @@ export function DashboardOverview() {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, L0, L1, open, budgetCtx, parts, allocated, catalystUser]);
+  }, [rows, L0, L1, open, budgetCtx, parts, allocated, selfLabel]);
   const CMM = !L0; // Comp Manager login: one row, no total line
   const overCount = budRows.filter((r) => r.d === 0 && r.hasAl && r.pt.total > r.al).length;
 
