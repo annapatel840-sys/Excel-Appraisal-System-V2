@@ -188,6 +188,43 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   assert(!p.ops.some(o=>["budgetMaster","distribution","distributionComp"].includes(o.table)));
   assert(!p.issues.some(x=>x.table==="budgetMaster"||x.table==="distribution"||x.table==="distributionComp"));
  });
+ await test("Australia repair preserves four existing manual Payroll and Feedback rows and copies only unique missing sources",async()=>{
+  DB[T.cycles].push({ROWID:"C3",cycle_name:"Australia - Annual 2026",status:"Active",effective_date:"2026-04-01",location:"Australia"});
+  DB[T.cycles][0].location="Australia";
+  for(let i=1;i<=4;i++){
+   const rowId="E_AU_"+i,empId="AU00"+i;
+   DB[T.employees].push({ROWID:rowId,emp_id:empId,emp_name:"Australia "+i,emp_status:"Active",location:"Australia"});
+   DB[T.sheet].push({ROWID:"S_AU_"+i,emp_id:empId,emp_master_row_id:rowId,cycle_id:"C3",status:"Active",eligible_status:"Eligible"});
+   DB[T.payroll].push({ROWID:"P_AU_"+i,emp_id:rowId,emp_name:"Australia "+i,appraisal_cycle_name:"C3",current_annual_base_pay:100000});
+   DB[T.feedback].push({ROWID:"F_AU_"+i,emp_ID:rowId,emp_name:rowId,appraisal_cycle_name:"C3",manager_feedback:"Manual Australia record "+i,manager_rating:4});
+  }
+  const rowId="E_AU_5";
+  DB[T.employees].push({ROWID:rowId,emp_id:"AU005",emp_name:"Australia 5",emp_status:"Active",location:"AU"});
+  DB[T.sheet].push({ROWID:"S_AU_5",emp_id:"AU005",emp_master_row_id:rowId,cycle_id:"C3",status:"Active",eligible_status:"Eligible"});
+  DB[T.payroll].push({ROWID:"P_AU_5_OLD",emp_id:rowId,emp_name:"Australia 5",appraisal_cycle_name:"C1",current_annual_base_pay:150000});
+  DB[T.feedback].push({ROWID:"F_AU_5_OLD",emp_ID:rowId,emp_name:rowId,appraisal_cycle_name:"C1",manager_feedback:"Historical",manager_rating:3});
+  const beforeManual=JSON.stringify({
+   payroll:DB[T.payroll].filter(row=>/^P_AU_[1-4]$/.test(row.ROWID)),
+   feedback:DB[T.feedback].filter(row=>/^F_AU_[1-4]$/.test(row.ROWID)),
+  });
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const plan=await api._internals.buildPlan(tables);
+  assert.strictEqual(plan.ops.filter(op=>op.kind==="insert"&&op.table==="payroll").length,1);
+  assert.strictEqual(plan.ops.filter(op=>op.kind==="insert"&&op.table==="feedback").length,1);
+  assert(!plan.ops.some(op=>/^P_AU_[1-4]$/.test(op.rowId)||/^F_AU_[1-4]$/.test(op.rowId)));
+  assert.strictEqual(JSON.stringify({
+   payroll:DB[T.payroll].filter(row=>/^P_AU_[1-4]$/.test(row.ROWID)),
+   feedback:DB[T.feedback].filter(row=>/^F_AU_[1-4]$/.test(row.ROWID)),
+  }),beforeManual);
+ });
+ await test("India reconciliation never copies Australia-scoped historical Payroll or Feedback",async()=>{
+  DB[T.cycles][0].location="Australia";
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const plan=await api._internals.buildPlan(tables);
+  assert(!plan.ops.some(op=>op.kind==="insert"&&(op.table==="payroll"||op.table==="feedback")));
+  assert(plan.issues.some(issue=>issue.type==="missing_payroll_source"));
+  assert(plan.issues.some(issue=>issue.type==="missing_feedback_source"));
+ });
  console.log("RESULT",passed,"passed,",failed,"failed");
  if(failed)process.exitCode=1;
 })();

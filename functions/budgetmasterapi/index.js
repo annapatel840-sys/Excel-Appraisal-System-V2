@@ -2142,60 +2142,88 @@ async function calculateBudgetBases(
     cycleById.get(String(cycleId)) ||
     cycleByName.get(String(cycleId).toLowerCase()) ||
     null;
+  // Location values are not consistently stored: Employee_Master may use
+  // AU/US while Cycle Master uses Australia/United States (or the cycle name
+  // carries the location prefix). Expand the three supported country aliases
+  // before matching historical payroll sources.
+  const countryLocationAliases = {
+    australia: ["australia", "au", "aus"],
+    india: ["india", "in"],
+    unitedstates: ["unitedstates", "unitedstatesofamerica", "us", "usa"],
+  };
+  const expandLocationAliases = (raw) => {
+    const key = normalizeLocationKey(raw);
+    if (!key) return [];
+    const group = Object.values(countryLocationAliases).find((aliases) =>
+      aliases.includes(key),
+    );
+    return group ? group : [key];
+  };
+  const locationNameForCycle = (cycle) => {
+    const explicit = String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    if (explicit) return explicit;
+    const name = cycleNameOf(cycle);
+    const prefix = name.match(/^(Australia|AU|AUS|India|IN|United States|USA|US)\s*[-–:]\s*/i);
+    return prefix ? prefix[1] : "";
+  };
   const cycleMatchesEmployeeLocation = (cycle, employeeMasterRow, fallbackLocation = "") => {
     const masterLocationValues = [
       "location",
       "work_location",
       "location_name",
       "location_code",
-    ].map((field) => normalizeLocationKey(firstValue(employeeMasterRow, [field]))).filter(Boolean);
-    const employeeLocationAliases = new Set(masterLocationValues);
-    if (employeeLocationAliases.size) {
+    ].map((field) => firstValue(employeeMasterRow, [field])).filter(Boolean);
+    const employeeLocationAliases = new Set(
+      masterLocationValues.flatMap(expandLocationAliases),
+    );
+    if (masterLocationValues.length) {
       const locationRecord = locationRows.find((location) => {
         const aliases = [
           firstValue(location, ["location_name", "name", "location"]),
           firstValue(location, ["location_code", "code", "short_code"]),
           idOf(location),
-        ].map(normalizeLocationKey);
-        return masterLocationValues.some((masterAlias) => aliases.includes(masterAlias));
+        ].filter(Boolean).flatMap(expandLocationAliases);
+        return masterLocationValues.some((masterValue) =>
+          expandLocationAliases(masterValue).some((alias) => aliases.includes(alias)),
+        );
       });
       if (locationRecord) {
         [
           firstValue(locationRecord, ["location_name", "name", "location"]),
           firstValue(locationRecord, ["location_code", "code", "short_code"]),
           idOf(locationRecord),
-        ].map(normalizeLocationKey).filter(Boolean).forEach((alias) => employeeLocationAliases.add(alias));
+        ].filter(Boolean).flatMap(expandLocationAliases)
+          .forEach((alias) => employeeLocationAliases.add(alias));
       }
     } else if (fallbackLocation) {
-      employeeLocationAliases.add(normalizeLocationKey(fallbackLocation));
+      expandLocationAliases(fallbackLocation).forEach((alias) =>
+        employeeLocationAliases.add(alias),
+      );
     }
-    const candidateLocation = normalizeLocationKey(
-      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
-    );
-    return (
-      !candidateLocation ||
-      ["all", "alllocations"].includes(candidateLocation) ||
-      employeeLocationAliases.has(candidateLocation)
+    const candidateLocation = locationNameForCycle(cycle);
+    if (!candidateLocation || ["all", "all locations"].includes(candidateLocation.toLowerCase()))
+      return true;
+    return expandLocationAliases(candidateLocation).some((alias) =>
+      employeeLocationAliases.has(alias),
     );
   };
   const previousCycleFor = (cycleId, employeeMasterRow = {}) => {
     const current = currentCycleFor(cycleId);
     if (!current) return null;
-    const currentLocation = String(
-      firstValue(current, ["location", "cycle_location", "cycleLocation"]) || "",
-    ).trim();
+    const currentLocation = locationNameForCycle(current);
     const currentName = cycleNameOf(current);
-    const canonicalName = currentLocation && currentName.toLowerCase().startsWith((currentLocation + " - ").toLowerCase())
-      ? currentName.slice(currentLocation.length + 3)
-      : currentName;
+    const canonicalName = currentName.replace(
+      /^(Australia|AU|AUS|India|IN|United States|USA|US)\s*[-–:]\s*/i,
+      "",
+    );
     // A location-specific Annual 2027 cycle continues the original Annual 2027
     // source cycle. Reuse that same-year source before considering older cycles.
     if (currentLocation && canonicalName) {
       const sameYearSource = cycleRows.find((candidate) => {
-        const candidateLocation = String(
-          firstValue(candidate, ["location", "cycle_location", "cycleLocation"]) || "",
-        ).trim().toLowerCase();
-        const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation);
+        const candidateLocation = locationNameForCycle(candidate);
+        const candidateIsUnscoped = !candidateLocation || ["all", "all locations", "alllocations"].includes(candidateLocation.toLowerCase());
         return (
           isReusableSharedSourceCycle(candidate) &&
           candidateIsUnscoped &&
@@ -3572,7 +3600,7 @@ async function calculateBudgetBases(
           // intentionally lower-case for comparisons, but UI/test lookups and
           // existing allocation rows use the canonical Employee ID casing.
           appraiser_tech_ed_id: String(
-            String(ownerName || techKey).split(/\\s+-\\s+/)[0].trim() || techKey,
+            String(ownerName || techKey).split(/\s+-\s+/)[0].trim() || techKey,
           ).slice(0, 20),
           percentage: null,
           budget_base: 0,
