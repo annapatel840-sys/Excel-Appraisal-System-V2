@@ -47,32 +47,41 @@ function load(selectedLocation) {
           !isTruthyFlag(cycle?.hidden) &&
           matchesSelectedLocation(cycle, selectedLocation);
       };
+      // Active cycle first: one set up for exactly this location beats a
+      // location-less one; Annual beats other processes; then the later start
+      // date. Only when no cycle is Active is the latest Closed one used.
+      const want = locationKey(selectedLocation);
+      const locOf = (c) => String(c?.location ?? c?.cycle_location ?? "").trim().toLowerCase();
+      const startOf = (c) => {
+        const t = Date.parse(c?.start_date ?? c?.startDate ?? c?.start ?? "");
+        return Number.isFinite(t) ? t : 0;
+      };
+      const annual = (c) =>
+        /^annual$/i.test(String(c?.process ?? c?.cycle_process ?? "")) || /^annual$/i.test(String(c?.type ?? c?.cycle_type ?? ""))
+          ? 0
+          : 1;
       const picked =
-        list.find((cycle) => isActiveCycle(cycle) && matchesSelectedLocation(cycle, selectedLocation)) ||
+        list
+          .filter((cycle) => isActiveCycle(cycle) && matchesSelectedLocation(cycle, selectedLocation))
+          .sort(
+            (a, b) =>
+              (locOf(a) === want ? 0 : 1) - (locOf(b) === want ? 0 : 1) ||
+              annual(a) - annual(b) ||
+              startOf(b) - startOf(a),
+          )[0] ||
         list.filter(matchesAvailableCycle)
           .sort((a, b) => String(b?.end ?? b?.end_date ?? b?.effective_date ?? b?.start_date ?? "")
             .localeCompare(String(a?.end ?? a?.end_date ?? a?.effective_date ?? a?.start_date ?? "")))[0] ||
         null;
+      cycleInfos.set(key, picked);
       cycleNames.set(
         key,
         String(picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "").trim(),
-      );
-      cycleInfos.set(
-        key,
-        picked
-          ? {
-              status: String(picked.status ?? picked.cycle_status ?? "Active").trim(),
-              start: String(picked.start ?? picked.start_date ?? "").trim(),
-              end: String(picked.end ?? picked.end_date ?? picked.close_date ?? "").trim(),
-              effective: String(picked.effective ?? picked.effective_date ?? "").trim(),
-            }
-          : null,
       );
       listeners.forEach((listener) => listener());
     })
     .catch(() => {
       cycleNames.set(key, "");
-      cycleInfos.set(key, null);
       listeners.forEach((listener) => listener());
     })
     .finally(() => {
@@ -102,7 +111,6 @@ export function useCurrentCycleName() {
     const refresh = () => {
       fetchedAt.delete(key);
       cycleNames.set(key, "");
-      cycleInfos.delete(key);
       listeners.forEach((listener) => listener());
       load(selectedLocation);
     };
@@ -110,17 +118,4 @@ export function useCurrentCycleName() {
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [key, selectedLocation]);
   return name;
-}
-
-// Name plus the Active cycle's status and dates, for the Overview title.
-export function useCurrentCycleInfo() {
-  const name = useCurrentCycleName();
-  const [selectedLocation] = useSelectedLocation();
-  const key = locationKey(selectedLocation);
-  const info = useSyncExternalStore(
-    subscribe,
-    () => cycleInfos.get(key) || null,
-    () => null,
-  );
-  return { name, info };
 }
