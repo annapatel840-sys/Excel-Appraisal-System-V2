@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import * as core from "./letters-core";
 import * as api from "./letters-api";
+import * as stateSync from "./letters-state-sync";
 
 /*
  * Letters store.
@@ -18,7 +19,7 @@ import * as api from "./letters-api";
  * only talk to this file, so they do not change. See docs/LETTERS.md.
  */
 
-export const LETTERS_DEMO = false;
+export const LETTERS_DEMO = true;
 
 const STORE_KEY = "letters_demo_v2";
 
@@ -33,26 +34,13 @@ function loadSaved() {
       ["cycles", "sheet", "letters", "audit", "rules", "fields", "tpls"].every((k) => Array.isArray(s[k])) &&
       s.sign &&
       s.generated;
-    if (!ok) return null;
-
-    // Remove demo/sample cycles and their dependent rows from older browser
-    // storage. Real Appraisal_Sheet records are fetched from lettersapi and
-    // must not be mixed with the locally seeded demo sheet or sample letters.
-    const sampleCycleIds = new Set(
-      s.cycles.filter((cycle) => cycle?.sample).map((cycle) => String(cycle.id)),
-    );
-    s.cycles = s.cycles.filter((cycle) => !cycle?.sample);
-    s.sheet = s.sheet.filter((row) => !sampleCycleIds.has(String(row?.cycle)));
-    s.letters = s.letters.filter((letter) => !sampleCycleIds.has(String(letter?.cycle)));
-    sampleCycleIds.forEach((id) => delete s.generated[id]);
-
-    return s;
+    return ok ? s : null;
   } catch {
     return null;
   }
 }
 
-let S = loadSaved() || core.createState({ sample: false });
+let S = loadSaved() || core.createState();
 let version = 0;
 const listeners = new Set();
 
@@ -79,7 +67,19 @@ function commit() {
   version += 1;
   persist();
   listeners.forEach((l) => l());
+  stateSync.notifyChanged(); // changed cycles are saved to the server
 }
+
+// The sync module edits S in place and only needs the screens told.
+stateSync.attach({
+  getS: () => S,
+  touch: () => {
+    version += 1;
+    persist();
+    listeners.forEach((l) => l());
+  },
+});
+export const syncLetterState = stateSync.syncLetterState;
 
 const subscribe = (l) => {
   listeners.add(l);
@@ -103,7 +103,6 @@ function run(actor, fn) {
 // { status: "idle" | "loading" | "ok" | "error", message }
 let sync = { status: "idle", message: "" };
 let syncing = null;
-let syncRequestId = 0;
 
 function setSync(next) {
   sync = next;
@@ -113,35 +112,22 @@ function setSync(next) {
 
 // Load the templates held on the server into the state. Call it when the
 // Letters screen opens; {force:true} is the Retry button.
-export function syncTemplates({ force = false, location = "" } = {}) {
+export function syncTemplates({ force = false } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  const requestedLocation = ["", "all", "all locations"].includes(String(location || "").trim().toLowerCase())
-    ? ""
-    : String(location).trim();
-  if (syncing && !force && syncing.location === requestedLocation) return syncing.promise;
-
-  const requestId = ++syncRequestId;
+  if (syncing && !force) return syncing;
   setSync({ status: "loading", message: "" });
-  const promise = api
-    .loadServerTemplates(requestedLocation)
+  syncing = api
+    .loadServerTemplates()
     .then(({ templates, problems }) => {
-      // A slower response for a previous location must not overwrite the
-      // templates requested for the location currently selected in the UI.
-      if (requestId !== syncRequestId) return;
       run("HR", (st) => core.applyServerTemplates(st, templates));
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });
       else setSync({ status: "ok", message: "" });
     })
-    .catch((error) => {
-      if (requestId === syncRequestId) {
-        setSync({ status: "error", message: error?.message || "The templates could not be loaded." });
-      }
-    })
+    .catch((error) => setSync({ status: "error", message: error?.message || "The templates could not be loaded." }))
     .finally(() => {
-      if (syncing && syncing.id === requestId) syncing = null;
+      syncing = null;
     });
-  syncing = { id: requestId, location: requestedLocation, promise };
-  return promise;
+  return syncing;
 }
 
 /* Publish a template: the server first (Word file, content, index row), then
@@ -262,46 +248,36 @@ export function sheetRowsForLetters(rows, cycleId, location) {
     });
 }
 
-// The people come from the Appraisal_Sheet TABLE, read by lettersapi for this cycle and its
-// location (never from the copy the browser keeps). Pass sheetRows only to override that.
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
-  if (!Array.isArray(sheetRows)) {
-    let loaded;
-    try {
-      loaded = await api.loadServerSheet(cycle.id, cycle.location || "");
-    } catch (error) {
-      throw new Error("Could not read the Appraisal Sheet from the server: " + (error?.message || "failed."));
-    }
-    if (!loaded.rows.length) {
-      const k = loaded.skipped || {};
-      throw new Error(
-        `No Appraisal Sheet rows were found for ${cycle.name}${cycle.location ? " (" + cycle.location + ")" : ""}. ` +
-          `(Sheet rows for this cycle: ${k.inCycle ?? 0}; no matching employee: ${k.withoutEmployee ?? 0}; another location: ${k.otherLocation ?? 0}.)`,
-      );
-    }
-    sheetRows = loaded.rows.map((r) => ({ ...r, org: r.org || "Wissen India" }));
-  }
-  return run(actor, (st) => {
-    core.bindAnnualCycle(st, cycle);
+  // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
+  await stateSync.syncLetterState({ location: cycle.location || "All" });
+  const result = run(actor, (st) => {
+    const cy = core.bindAnnualCycle(st, cycle);
+    if (cycle.location && !/^all/i.test(String(cycle.location))) cy.loc = cycle.location;
     if (Array.isArray(sheetRows)) {
       const id = String(cycle.id);
       st.sheet = st.sheet.filter((r) => r.cycle !== id).concat(sheetRows.map((r) => ({ ...r, cycle: id })));
     }
-    const result = core.generateLetters(st, String(cycle.id));
+    const out = core.generateLetters(st, String(cycle.id));
     // Why people got no letter: no Letter Rule matched their numbers, or the
     // rule's template has no active version for their location.
     const mine = st.sheet.filter((r) => r.cycle === String(cycle.id) && r.status === "Active");
-    result.people = mine.length;
-    result.noRule = 0;
-    result.noTemplate = 0;
+    out.people = mine.length;
+    out.noRule = 0;
+    out.noTemplate = 0;
     mine.forEach((r) => {
       const rules = core.pick(st, r);
-      if (!rules.length) result.noRule += 1;
-      else if (rules.every((rule) => !core.resolveTemplate(st, rule.tpl, r))) result.noTemplate += 1;
+      if (!rules.length) out.noRule += 1;
+      else if (rules.every((rule) => !core.resolveTemplate(st, rule.tpl, r))) out.noTemplate += 1;
     });
-    core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged`);
-    return result;
+    core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${out.created} new, ${out.regenerated} regenerated, ${out.kept} unchanged`);
+    return out;
   });
+  // Stored on the server so every computer sees them.
+  const saveState = await stateSync.flush();
+  result.saved = saveState.ok;
+  result.saveError = saveState.ok ? "" : saveState.message;
+  return result;
 }
 
 export const reviewLetters = (ids, actor) => run(actor, (st) => core.markReviewed(st, ids));

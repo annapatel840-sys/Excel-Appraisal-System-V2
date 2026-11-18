@@ -48,14 +48,7 @@
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-const TBL = {
-  templates: "Letter_Templates",
-  versions: "Letter_Template_Versions",
-  locations: "Location_Master",
-  cycles: "Appraisal_Cycle_Master",
-  sheet: "Appraisal_Sheet",
-  employees: "Employee_Master",
-};
+const TBL = { templates: "Letter_Templates", versions: "Letter_Template_Versions", locations: "Location_Master" };
 const SCREEN_KEY = "employeeMaster";
 const BUCKET_PREFIX = () => process.env.LETTERS_BUCKET_PREFIX || "letter-templates";
 const MAX_BODY_BYTES = 12 * 1024 * 1024; // whole request (JSON with base64)
@@ -93,17 +86,16 @@ function safeFileName(name) {
 const objectKey = (tplId, ver, file) => `${tplId}/v${ver}/${file}`;
 
 /* ---------- ZCQL (same shape as the other functions: no getPagedRows) ---------- */
-async function readAll(app, table, where = "", cols = "*") {
+async function readAll(app, table, where = "") {
   const zcql = app.zcql();
   const rows = [];
   let last = "0";
   for (let guard = 0; guard < 500; guard += 1) {
     const q =
-      `SELECT ${cols} FROM ${table} WHERE ROWID > ${last}` +
+      `SELECT * FROM ${table} WHERE ROWID > ${last}` +
       (where ? ` AND ${where}` : "") +
       " ORDER BY ROWID ASC LIMIT 300";
-    // a "too many requests" answer waits briefly and retries instead of failing the read
-    const result = await (typeof access.whenNotBusy === "function" ? access.whenNotBusy(() => zcql.executeZCQLQuery(q)) : zcql.executeZCQLQuery(q));
+    const result = await zcql.executeZCQLQuery(q);
     const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
     rows.push(...page);
     if (page.length < 300) break;
@@ -261,14 +253,8 @@ function shape(row, cfg, history) {
   };
 }
 
-const isAllLoc = (v) => ["", "all", "all locations", "alllocations"].includes(text(v).toLowerCase());
-
-// `location` (optional): only the templates stored for that location. Each
-// location has its own bucket, so only that bucket is read.
-async function loadTemplates(app, location) {
-  const onlyLoc = isAllLoc(location) ? "" : text(location).toLowerCase();
-  const [allRows, vers] = await Promise.all([readAll(app, TBL.templates), readAll(app, TBL.versions)]);
-  const rows = onlyLoc ? allRows.filter((r) => text(r.location).toLowerCase() === onlyLoc) : allRows;
+async function loadTemplates(app) {
+  const [rows, vers] = await Promise.all([readAll(app, TBL.templates), readAll(app, TBL.versions)]);
   const templates = [];
   const problems = [];
   // Read the config files two at a time (this project's Catalyst concurrency limit).
@@ -408,294 +394,6 @@ async function setActive(app, payload) {
   return { id, active: !!payload.active };
 }
 
-/* ---------- Appraisal Sheet -> the rows the Letters engine works on ----------
-   GET /?view=sheet&cycleId=<Appraisal_Cycle_Master ROWID>[&location=<name>]
-   Reads the REAL Appraisal Sheet rows of one cycle and joins Employee Master
-   (location, manager, department, date of joining, grade). Only employees of
-   the cycle's location come back (the cycle is per location). Nothing here is
-   sample data. */
-const pick1 = (r, keys) => {
-  for (const k of keys) {
-    const v = r && r[k];
-    if (v !== undefined && v !== null && text(typeof v === "object" ? "" : v) !== "") return text(v);
-  }
-  return "";
-};
-const lookupText = (v) => {
-  if (v == null) return "";
-  if (typeof v === "object") return lookupText(v.ROWID ?? v.rowid ?? v.emp_id ?? v.id ?? v.value ?? v.name ?? "");
-  return text(v);
-};
-const amt = (v) => {
-  const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
-  return Number.isFinite(n) ? n : 0;
-};
-const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-// "May-26", "May 2026", "2026-05", "2026-05-01", "01-May-2026" -> { m: 0-11, y: 2026 } or null
-function parseMonth(v) {
-  const t = text(v);
-  if (!t) return null;
-  let m = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?/.exec(t);
-  if (m) return { m: Number(m[2]) - 1, y: Number(m[1]) };
-  m = /([A-Za-z]{3})[A-Za-z]*[\s\-\/,]*(?:\d{1,2}[\s\-\/,]+)?(\d{2,4})/.exec(t);
-  if (m && MONTHS.includes(m[1].toLowerCase())) {
-    const y = Number(m[2]);
-    return { m: MONTHS.indexOf(m[1].toLowerCase()), y: y < 100 ? 2000 + y : y };
-  }
-  m = /(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})/.exec(t);
-  if (m) return { m: Number(m[2]) - 1, y: Number(m[3]) };
-  return null;
-}
-const monthLabel = (d) => `${MONTHS[d.m][0].toUpperCase()}${MONTHS[d.m].slice(1)}-${String(d.y).slice(-2)}`;
-function addMonths(d, n) {
-  const idx = d.y * 12 + d.m + n;
-  return { y: Math.floor(idx / 12), m: idx % 12 };
-}
-// "2026-04-01" / "01-Apr-2026" -> "01-Apr-2026"
-function fmtDate(v) {
-  const t = text(v);
-  if (!t) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if (iso) return `${iso[3]}-${MON[Number(iso[2]) - 1]}-${iso[1]}`;
-  const d = new Date(t);
-  if (!Number.isNaN(d.getTime())) return `${String(d.getDate()).padStart(2, "0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;
-  return t;
-}
-// PB paid in N instalments, N evenly spread across a year, from the first pay month.
-function pbSchedule(total, count, firstMonth) {
-  const start = parseMonth(firstMonth);
-  const n = Math.max(1, Math.min(12, Math.round(Number(count) || 1)));
-  if (!(total > 0) || !start) return [];
-  const step = Math.max(1, Math.floor(12 / n));
-  const each = Math.round((total / n) * 100) / 100;
-  return Array.from({ length: n }, (_x, i) => [monthLabel(addMonths(start, i * step)), each]);
-}
-// A sheet row can name its cycle in several columns (Generate stores the cycle ROWID
-// in the appraisal_cycle_name lookup). Every reference counts, not only the first.
-const cycleRefsOf = (r) =>
-  [
-    r.cycle_id, r.appraisal_cycle_id, r.appraisalCycleId, r.cycleId,
-    r.appraisal_cycle_name, r.appraisalCycleName, r.cycle_name, r.appraisal_cycle, r.appraisal_year,
-  ]
-    .map(lookupText)
-    .filter(Boolean);
-
-// Only the Appraisal_Sheet columns the letters use. Every name below is a real column (see
-// FIELD_COLUMNS in accessCore.js); if the table ever lacks one, the read repeats with every column.
-const SHEET_COLS = [
-  "ROWID", "emp_id", "appraisal_cycle_name", "appraiser_tech_ed", "current_annual_base_pay", "hike_amount", "hike_pct",
-  "new_pb_to_be_offered", "new_rb", "target_pb_next_year", "new_pb_installment", "pb_installment", "month_pb", "month_rb",
-  "eligible_for_promotion", "new_title", "designation", "manager_rating", "comp_manager_remarks",
-].join(",");
-let sheetColsBroken = false;
-
-// This cycle's rows only (the table holds every cycle and every location). Generate stores the
-// cycle ROWID in appraisal_cycle_name; the other cycle columns are tried only if that finds nothing.
-async function readSheetRows(app, cycleId) {
-  for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
-    try {
-      let got;
-      if (col === "appraisal_cycle_name" && !sheetColsBroken) {
-        try {
-          got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`, SHEET_COLS);
-        } catch (e) {
-          sheetColsBroken = true;
-          got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
-        }
-      } else {
-        got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
-      }
-      if (got.length) return { rows: got, column: col };
-    } catch (e) {
-      /* this column does not exist in this table: try the next one */
-    }
-  }
-  return { rows: [], column: "" };
-}
-
-// Employee Master rows of ONE location (a single filtered query, one page for a few hundred people).
-// null when the column cannot be filtered, so the caller falls back to the people on the sheet.
-async function readEmployeesAt(app, location) {
-  try {
-    return await readAll(app, TBL.employees, `location = '${String(location).replace(/'/g, "''")}'`);
-  } catch (e) {
-    return null;
-  }
-}
-
-// Employee Master rows by ROWID / employee id, in small IN (...) chunks, two at a time.
-async function readEmployeesByIds(app, numericIds, textIds, guard) {
-  const chunk = (set, n) => {
-    const all = [...set];
-    const out = [];
-    for (let i = 0; i < all.length; i += n) out.push(all.slice(i, i + n));
-    return out;
-  };
-  const queries = [
-    ...chunk(numericIds, 100).map((c) => `ROWID IN (${c.join(",")})`),
-    ...chunk(textIds, 50).map((c) => `emp_id IN (${c.map((x) => `'${x.replace(/'/g, "''")}'`).join(",")})`),
-  ];
-  const out = [];
-  for (let i = 0; i < queries.length; i += 2) {
-    const parts = await Promise.all(queries.slice(i, i + 2).map((w) => readAll(app, TBL.employees, w)));
-    parts.forEach((p) => out.push(...p));
-    if (guard) guard("Employee Master");
-  }
-  return out;
-}
-
-async function loadSheet(app, cycleId, requestedLocation) {
-  const t0 = Date.now();
-  if (!/^\d{5,25}$/.test(cycleId)) throw fail(400, "Choose an Appraisal Cycle first.");
-  const askedLoc = isAllLoc(requestedLocation) ? "" : text(requestedLocation);
-  const timings = {};
-  const BUDGET_MS = 24000;
-  const guard = (step) => {
-    if (Date.now() - t0 > BUDGET_MS) {
-      throw fail(504, `Reading the Appraisal Sheet was too slow at "${step}" (${Date.now() - t0} ms in). Please try again.`);
-    }
-  };
-
-  // FAST PATH. Nothing here reads a whole table. The cycle row, this cycle's sheet rows and (when the
-  // screen names the location) that location's employees are asked for TOGETHER, so the wait is the
-  // slowest one of them, not their sum.
-  let lap = Date.now();
-  const [cycleRows, sheet, employeesAtAsked] = await Promise.all([
-    readAll(app, TBL.cycles, `ROWID = ${cycleId}`),
-    readSheetRows(app, cycleId),
-    askedLoc ? readEmployeesAt(app, askedLoc) : Promise.resolve(null),
-  ]);
-  timings.firstReadsMs = Date.now() - lap;
-  guard("first reads");
-  const cycle = cycleRows[0];
-  if (!cycle) throw fail(404, "This Appraisal Cycle was not found.");
-  const cycleName = pick1(cycle, ["cycle_name", "name"]);
-  const cycleLocation = pick1(cycle, ["location", "cycle_location", "location_name"]);
-  const wanted = askedLoc || cycleLocation;
-  const typeText = pick1(cycle, ["cycle_type", "type"]) || cycleName;
-  const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
-  const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
-  const sheetRows = sheet.rows;
-  const sheetColumn = sheet.column;
-
-  lap = Date.now();
-  let emRows = employeesAtAsked;
-  if (!emRows && wanted && !isAllLoc(wanted)) emRows = await readEmployeesAt(app, wanted); // location taken from the cycle
-  const lookupIds = (from) => {
-    const numeric = new Set();
-    const texts = new Set();
-    from.forEach((v) => {
-      const k = lookupText(v);
-      if (k) (/^\d{5,25}$/.test(k) ? numeric : texts).add(k);
-    });
-    return { numeric, texts };
-  };
-  if (emRows && emRows.length) {
-    // The location's people are in hand. Only a Tech-ED who works in another location can still be missing (name only).
-    const haveRow = new Set(emRows.map(rowId));
-    const haveId = new Set(emRows.map((r) => text(r.emp_id).toLowerCase()));
-    const missing = lookupIds(sheetRows.map((r) => r.appraiser_tech_ed));
-    [...missing.numeric].forEach((k) => haveRow.has(k) && missing.numeric.delete(k));
-    [...missing.texts].forEach((k) => haveId.has(k.toLowerCase()) && missing.texts.delete(k));
-    if (missing.numeric.size || missing.texts.size) {
-      emRows = emRows.concat(await readEmployeesByIds(app, missing.numeric, missing.texts, guard));
-    }
-  } else {
-    // No location filter available: read just the people named on the sheet rows.
-    const ids = lookupIds(sheetRows.flatMap((r) => [r.emp_id, r.appraiser_tech_ed]));
-    emRows = await readEmployeesByIds(app, ids.numeric, ids.texts, guard);
-  }
-  timings.employeesMs = Date.now() - lap;
-  guard("Employee Master");
-
-  const byId = new Map();
-  const byRowId = new Map();
-  emRows.forEach((r) => {
-    const id = text(r.emp_id);
-    if (id) byId.set(id.toLowerCase(), r);
-    if (rowId(r)) byRowId.set(rowId(r), r);
-  });
-  const emOf = (v) => {
-    const k = lookupText(v);
-    return byId.get(k.toLowerCase()) || byRowId.get(k) || null;
-  };
-
-  const rows = [];
-  let withoutEmployee = 0;
-  let otherLocation = 0;
-  let inCycle = 0;
-  sheetRows
-    .filter((r) => {
-      const refs = cycleRefsOf(r);
-      return refs.some((x) => x === cycleId || (cycleName && x.toLowerCase() === cycleName.toLowerCase()));
-    })
-    .forEach((r) => {
-      inCycle += 1;
-      const em = emOf(r.emp_id);
-      if (!em) {
-        withoutEmployee += 1;
-        return;
-      }
-      const location = pick1(em, ["location", "location_name", "work_location"]);
-      if (!isAllLoc(wanted) && location.toLowerCase() !== wanted.toLowerCase()) {
-        otherLocation += 1;
-        return;
-      }
-      const empId = text(em.emp_id);
-      const basePay = amt(r.current_annual_base_pay ?? em.current_salary);
-      const hikeAmt = amt(r.hike_amount);
-      const hikePct = amt(r.hike_pct) || (basePay > 0 ? Math.round((hikeAmt / basePay) * 10000) / 100 : 0);
-      const newPB = amt(r.new_pb_to_be_offered);
-      const newRB = amt(r.new_rb);
-      const tpbNext = amt(r.target_pb_next_year);
-      const instalments = amt(r.new_pb_installment) || amt(r.pb_installment) || (newPB > 0 ? 1 : 0);
-      const monthPB = pick1(r, ["month_pb"]);
-      const monthRB = pick1(r, ["month_rb"]);
-      rows.push({
-        id: empId,
-        name: pick1(em, ["emp_name", "name"]) || empId,
-        tech: lookupText(emOf(r.appraiser_tech_ed)?.emp_name) || pick1(r, ["appraiser_tech_ed"]) || pick1(em, ["appraiser_tech_ed"]),
-        org: pick1(em, ["organization", "org", "entity", "company"]),
-        cycle: cycleId,
-        status: pick1(em, ["emp_status"]) || "Active",
-        email: pick1(em, ["email_id", "email"]).toLowerCase(),
-        v: {
-          promo: /^(yes|true|1|y)$/i.test(text(r.eligible_for_promotion)) ? "Yes" : "No",
-          basePay,
-          newBase: basePay + hikeAmt,
-          hikeAmt,
-          hikePct,
-          newPB,
-          newRB,
-          tpbNext,
-          newTitle: pick1(r, ["new_title"]),
-          designation: pick1(r, ["designation"]) || pick1(em, ["designation"]),
-          effDate: effective,
-          pbInst: instalments > 0 ? `${instalments} instalment${instalments > 1 ? "s" : ""}` : "",
-          band: pick1(em, ["band", "grade"]),
-          rating: pick1(r, ["manager_rating"]),
-          compRemarks: pick1(r, ["comp_manager_remarks"]),
-          pbMonths: pbSchedule(newPB, instalments, monthPB),
-          rbMonth: newRB > 0 ? (parseMonth(monthRB) ? monthLabel(parseMonth(monthRB)) : monthRB) : "",
-          tpbMonth: "",
-          emLocation: location,
-          emDoj: fmtDate(pick1(em, ["date_of_joining", "doj", "joining_date"])),
-          emGrade: pick1(em, ["grade", "band"]),
-          emManager: pick1(em, ["reporting_manager", "manager_name", "reporting_manager_name"]),
-          emDept: pick1(em, ["department"]),
-        },
-      });
-    });
-
-  console.log(`lettersapi sheet: cycle ${cycleId} (${cycleLocation || "all"}) ${rows.length} letters rows from ${sheetRows.length} sheet rows via ${sheetColumn || "no column"}; ${JSON.stringify(timings)}; total ${Date.now() - t0} ms`);
-  return {
-    cycle: { id: cycleId, name: cycleName, type, location: cycleLocation, effective },
-    rows,
-    skipped: { withoutEmployee, otherLocation, inCycle, sheetRows: sheetRows.length },
-    timings: { ...timings, totalMs: Date.now() - t0, sheetColumn, employeesRead: emRows.length },
-  };
-}
-
 /* ---------- request ---------- */
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -741,6 +439,8 @@ async function authorize(req, level) {
   return { adminApp, actor: text(actor) || "unknown" };
 }
 
+const lettersState = require("./lettersState")({ readAll, locationMap, putObject, getObjectBuffer, fail, text, rowId });
+
 module.exports = async function lettersApi(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -756,11 +456,11 @@ module.exports = async function lettersApi(req, res) {
       const q = new URL(req.url, "https://x").searchParams;
       const view = q.get("view") || "templates";
       if (view === "docx") return await sendDocx(adminApp, res, text(q.get("id")), q.get("ver"));
-      if (view === "templates") {
-        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp, q.get("location")) });
+      if (view === "state") {
+        return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, q.get("location")) });
       }
-      if (view === "sheet") {
-        return sendJson(res, 200, { success: true, data: await loadSheet(adminApp, text(q.get("cycleId")), q.get("location")) });
+      if (view === "templates") {
+        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp) });
       }
       throw fail(400, "Unknown view.");
     }
@@ -768,6 +468,9 @@ module.exports = async function lettersApi(req, res) {
     const payload = await readBody(req);
     if (payload.action === "saveTemplate") {
       return sendJson(res, 200, { success: true, data: await saveTemplate(adminApp, actor, payload) });
+    }
+    if (payload.action === "saveState") {
+      return sendJson(res, 200, { success: true, data: await lettersState.saveState(adminApp, actor, payload) });
     }
     if (payload.action === "setActive") {
       return sendJson(res, 200, { success: true, data: await setActive(adminApp, payload) });
@@ -780,4 +483,4 @@ module.exports = async function lettersApi(req, res) {
   }
 };
 
-module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor, parseMonth, pbSchedule, fmtDate, loadSheet };
+module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor };
