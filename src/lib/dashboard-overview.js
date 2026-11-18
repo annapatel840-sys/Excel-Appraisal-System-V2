@@ -10,7 +10,6 @@ export const num = (v) => Number(v) || 0;
 export const sumBy = (rows, fn) => rows.reduce((s, r) => s + num(fn(r)), 0);
 export const avgBy = (rows, fn) => (rows.length ? sumBy(rows, fn) / rows.length : 0);
 
-const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // Hike + PB + RB, the same three parts the Appraisal Sheet's "Consumed" uses.
 export const partsOf = (rows) => {
@@ -73,20 +72,73 @@ export const editedRowIds = (rows, modified) => {
   return ids;
 };
 
+// ---- who owns a Budget Master row -------------------------------------
+// The group key on the Dashboard is the Appraisal Sheet value, e.g.
+// "EMP001 - Prabhuprasad Parida". Budget_Distribution may instead store the
+// Employee_Master ROWID (a foreign key), a plain id, or a plain name, so a plain
+// text compare finds nothing. These helpers compare by id / name parts and
+// turn a stored ROWID back into its "ID - Name" assignment.
+const compact = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const ownerOf = (v) => {
+  const text = String(v ?? "").trim();
+  if (!text) return null;
+  // The separator is the spaced " - " (ids such as WIS-1234 contain hyphens).
+  const sp = text.split(/\s+-\s+/);
+  const full = compact(text);
+  return sp.length > 1
+    ? { full, id: compact(sp[0]), name: compact(sp.slice(1).join(" ")), both: true }
+    : { full, id: full, name: full, both: false };
+};
+const sameOwner = (a, b) => {
+  const x = ownerOf(a);
+  const y = ownerOf(b);
+  if (!x || !y) return false;
+  if (x.full === y.full) return true;
+  if (x.both && y.both) return x.id === y.id;
+  // One side is a bare id or name: compare it with the other side's id and name.
+  const bare = x.both ? y.full : x.full;
+  const other = x.both ? x : y;
+  return bare === other.id || bare === other.name;
+};
+
+// ROWID -> "ID - Name" for every Tech-ED the budget store knows about.
+const fkMap = (budget) => {
+  const map = new Map();
+  const put = (k, v) => {
+    const key = String(k ?? "").trim().toLowerCase();
+    if (key && v && !map.has(key)) map.set(key, String(v).trim());
+  };
+  (budget.techEdOwners || []).forEach((o) => {
+    put(o?.row_id, o?.assignment);
+    put(o?.ROWID, o?.assignment);
+  });
+  [...(budget.employeeRows || []), ...(budget.locationEmployeeRows || [])].forEach((e) => {
+    const id = e?.emp_id || e?.employee_id || e?.employeeId;
+    const name = e?.emp_name || e?.employee_name || e?.name;
+    const label = id && name ? `${id} - ${name}` : id || name;
+    put(e?.ROWID, label);
+    put(e?.row_id, label);
+  });
+  return map;
+};
+
 // Real allocation for a group from the Budget Master tables the budget store
-// already loads. Returns 0 when nothing matches (shown as "no allocation").
+// already loads. Returns 0 when nothing matches (the Dashboard shows 0).
 export const allocationFor = (level, key, budget) => {
-  const target = norm(key);
-  if (!target) return 0;
+  if (!String(key ?? "").trim()) return 0;
   if (level === "cm") {
     return sumBy(
-      (budget.budgetCompManagerRows || []).filter((r) => norm(r.comp_manager) === target),
+      (budget.budgetCompManagerRows || []).filter((r) => sameOwner(r.comp_manager, key)),
       (r) => r.applied_budget,
     );
   }
+  const fk = fkMap(budget);
+  const resolve = (raw) => fk.get(String(raw ?? "").trim().toLowerCase()) || String(raw ?? "").trim();
   return sumBy(
-    (budget.budgetDistributionRows || []).filter(
-      (r) => norm(r.tech_ed_id) === target || norm(r.tech_ed_name) === target,
+    (budget.budgetDistributionRows || []).filter((r) =>
+      [r.tech_ed_id, r.appraiser_tech_ed_id, r.tech_ed, r.appraiser_tech_ed, r.tech_ed_name]
+        .map(resolve)
+        .some((owner) => sameOwner(owner, key)),
     ),
     (r) => r.applied_budget,
   );

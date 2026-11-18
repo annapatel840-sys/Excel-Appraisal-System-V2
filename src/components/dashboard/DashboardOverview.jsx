@@ -670,9 +670,9 @@ export function DashboardOverview() {
   /* ---- budget by level ---- */
   const mx = Math.max(1, ...budRows.map((r) => Math.max(r.al, r.pt.total))) * 1.08;
   const remText = (r) =>
-    !r.hasAl ? <span className="mut">–</span> : r.rem < 0 ? <span style={{ color: "var(--err)", fontWeight: 700 }}>Over by {fmAmt(-r.rem)}</span> : fmAmt(r.rem);
+    !r.hasAl ? "0" : r.rem < 0 ? <span style={{ color: "var(--err)", fontWeight: 700 }}>Over by {fmAmt(-r.rem)}</span> : fmAmt(r.rem);
   const utilText = (u) =>
-    u === null ? <span className="mut">–</span> : <span style={{ fontWeight: 700, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u.toFixed(1)}%</span>;
+    <span style={{ fontWeight: 700, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{(u ?? 0).toFixed(1)}%</span>;
   const rowName = (r) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: r.d * 22 }}>
       {r.kids ? (
@@ -713,7 +713,7 @@ export function DashboardOverview() {
                 <tr key={r.key} className={`data${r.kids ? " click" : ""}`} onClick={r.kids ? () => setOpen((p) => ({ ...p, [r.key]: !p[r.key] })) : undefined}>
                   <td className="rl">{rowName(r)}</td>
                   <td className="n">{inr(r.n)}</td>
-                  <td className="n" data-tip={r.hasAl ? money(r.al) : "No allocation found in Budget Master"}>{r.hasAl ? fmAmt(r.al) : <span className="mut">–</span>}</td>
+                  <td className="n" data-tip={r.hasAl ? money(r.al) : "No allocation found in Budget Master"}>{fmAmt(r.al)}</td>
                   <td className="n" data-tip={money(r.pt.total)}>{fmAmt(r.pt.total)}</td>
                   <td className="n">{utilText(r.u)}</td>
                   <td className="n">{remText(r)}</td>
@@ -721,7 +721,7 @@ export function DashboardOverview() {
                 </tr>
               ))}
               <tr className="tot">
-                <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{allRow.hasAl ? fmAmt(allRow.al) : "–"}</td>
+                <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{fmAmt(allRow.al)}</td>
                 <td className="n">{fmAmt(allRow.pt.total)}</td><td className="n">{utilText(allRow.u)}</td><td className="n">{remText(allRow)}</td><td />
               </tr>
             </tbody>
@@ -745,7 +745,7 @@ export function DashboardOverview() {
                   {r.hasAl ? <div className="mk" data-tip={`Allocated ${fmMoney(r.al)}`} style={{ left: `calc(${pw(r.al)} - 1px)` }} /> : null}
                 </div>
                 <div className="nums">
-                  <span>{utilText(r.u)} <span className="mut">{r.hasAl ? `of ${fmAmt(r.al)}` : "no allocation"}</span></span>
+                  <span>{utilText(r.u)} <span className="mut">{`of ${fmAmt(r.al)}`}</span></span>
                   <span>{remText(r)}</span>
                 </div>
               </div>
@@ -785,7 +785,7 @@ export function DashboardOverview() {
 
   const cell = (v, al) => (
     <td className="n">
-      <span style={{ fontWeight: 800, color: "var(--navy)" }}>{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "–"}</span>
+      <span style={{ fontWeight: 800, color: "var(--navy)" }}>{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "0.0%"}</span>
       <div className="sub2">{fmAmt(v)}</div>
     </td>
   );
@@ -793,7 +793,7 @@ export function DashboardOverview() {
     const u = al > 0 ? (pt.total / al) * 100 : null;
     return (
       <td className="n">
-        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u === null ? "–" : `${u.toFixed(1)}%`}</span>
+        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u === null ? "0.0%" : `${u.toFixed(1)}%`}</span>
         <div className="sub2">{fmAmt(pt.total)}</div>
       </td>
     );
@@ -913,12 +913,12 @@ export function DashboardOverview() {
                     {budRows.map((r) => (
                       <tr className="data" key={r.key}>
                         <td className="rl"><span style={{ paddingLeft: r.d * 22 }}>{r.k}</span></td>
-                        <td className="n">{r.hasAl ? fmAmt(r.al) : <span className="mut">–</span>}</td>
+                        <td className="n">{fmAmt(r.al)}</td>
                         {cell(r.pt.hike, r.al)}{cell(r.pt.pb, r.al)}{cell(r.pt.rb, r.al)}{totCell(r.pt, r.al)}
                       </tr>
                     ))}
                     <tr className="tot">
-                      <td className="rl">Total</td><td className="n">{allRow.hasAl ? fmAmt(allRow.al) : "–"}</td>
+                      <td className="rl">Total</td><td className="n">{fmAmt(allRow.al)}</td>
                       {cell(parts.hike, allocated)}{cell(parts.pb, allocated)}{cell(parts.rb, allocated)}{totCell(parts, allocated)}
                     </tr>
                   </tbody>
