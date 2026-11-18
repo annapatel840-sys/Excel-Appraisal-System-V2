@@ -93,16 +93,17 @@ function safeFileName(name) {
 const objectKey = (tplId, ver, file) => `${tplId}/v${ver}/${file}`;
 
 /* ---------- ZCQL (same shape as the other functions: no getPagedRows) ---------- */
-async function readAll(app, table, where = "") {
+async function readAll(app, table, where = "", cols = "*") {
   const zcql = app.zcql();
   const rows = [];
   let last = "0";
   for (let guard = 0; guard < 500; guard += 1) {
     const q =
-      `SELECT * FROM ${table} WHERE ROWID > ${last}` +
+      `SELECT ${cols} FROM ${table} WHERE ROWID > ${last}` +
       (where ? ` AND ${where}` : "") +
       " ORDER BY ROWID ASC LIMIT 300";
-    const result = await zcql.executeZCQLQuery(q);
+    // a "too many requests" answer waits briefly and retries instead of failing the read
+    const result = await (typeof access.whenNotBusy === "function" ? access.whenNotBusy(() => zcql.executeZCQLQuery(q)) : zcql.executeZCQLQuery(q));
     const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
     rows.push(...page);
     if (page.length < 300) break;
@@ -479,26 +480,74 @@ const cycleRefsOf = (r) =>
     .map(lookupText)
     .filter(Boolean);
 
+// Only the Appraisal_Sheet columns the letters use. Every name below is a real column (see
+// FIELD_COLUMNS in accessCore.js); if the table ever lacks one, the read repeats with every column.
+const SHEET_COLS = [
+  "ROWID", "emp_id", "appraisal_cycle_name", "appraiser_tech_ed", "current_annual_base_pay", "hike_amount", "hike_pct",
+  "new_pb_to_be_offered", "new_rb", "target_pb_next_year", "new_pb_installment", "pb_installment", "month_pb", "month_rb",
+  "eligible_for_promotion", "new_title", "designation", "manager_rating", "comp_manager_remarks",
+].join(",");
+let sheetColsBroken = false;
+
+// This cycle's rows only (the table holds every cycle and every location). Generate stores the
+// cycle ROWID in appraisal_cycle_name; the other cycle columns are tried only if that finds nothing.
+async function readSheetRows(app, cycleId) {
+  for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
+    try {
+      let got;
+      if (col === "appraisal_cycle_name" && !sheetColsBroken) {
+        try {
+          got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`, SHEET_COLS);
+        } catch (e) {
+          sheetColsBroken = true;
+          got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
+        }
+      } else {
+        got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
+      }
+      if (got.length) return { rows: got, column: col };
+    } catch (e) {
+      /* this column does not exist in this table: try the next one */
+    }
+  }
+  return { rows: [], column: "" };
+}
+
+// Employee Master rows of ONE location (a single filtered query, one page for a few hundred people).
+// null when the column cannot be filtered, so the caller falls back to the people on the sheet.
+async function readEmployeesAt(app, location) {
+  try {
+    return await readAll(app, TBL.employees, `location = '${String(location).replace(/'/g, "''")}'`);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Employee Master rows by ROWID / employee id, in small IN (...) chunks, two at a time.
+async function readEmployeesByIds(app, numericIds, textIds, guard) {
+  const chunk = (set, n) => {
+    const all = [...set];
+    const out = [];
+    for (let i = 0; i < all.length; i += n) out.push(all.slice(i, i + n));
+    return out;
+  };
+  const queries = [
+    ...chunk(numericIds, 100).map((c) => `ROWID IN (${c.join(",")})`),
+    ...chunk(textIds, 50).map((c) => `emp_id IN (${c.map((x) => `'${x.replace(/'/g, "''")}'`).join(",")})`),
+  ];
+  const out = [];
+  for (let i = 0; i < queries.length; i += 2) {
+    const parts = await Promise.all(queries.slice(i, i + 2).map((w) => readAll(app, TBL.employees, w)));
+    parts.forEach((p) => out.push(...p));
+    if (guard) guard("Employee Master");
+  }
+  return out;
+}
+
 async function loadSheet(app, cycleId, requestedLocation) {
   const t0 = Date.now();
   if (!/^\d{5,25}$/.test(cycleId)) throw fail(400, "Choose an Appraisal Cycle first.");
-  const cycleRows = await readAll(app, TBL.cycles, `ROWID = ${cycleId}`);
-  const cycle = cycleRows[0];
-  if (!cycle) throw fail(404, "This Appraisal Cycle was not found.");
-  const cycleName = pick1(cycle, ["cycle_name", "name"]);
-  const cycleLocation = pick1(cycle, ["location", "cycle_location", "location_name"]);
-  const wanted = isAllLoc(requestedLocation) ? cycleLocation : text(requestedLocation);
-  const typeText = pick1(cycle, ["cycle_type", "type"]) || cycleName;
-  const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
-  const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
-
-  // FAST PATH. The Appraisal_Sheet table holds every cycle and every location, so it is never read
-  // whole: only this cycle's rows are asked for (Generate stores the cycle ROWID in the
-  // appraisal_cycle_name lookup; the other cycle columns are tried only if that finds nothing).
-  // Employee_Master is then asked only for the people on those rows (and their Tech-ED), a few
-  // hundred rows in ROWID IN (...) chunks, not the whole table. The cycle belongs to one
-  // location, so its rows are that location's rows; the location is still checked per employee.
-  // There is deliberately no whole-table fallback: that is what ran past Catalyst's 30 s limit.
+  const askedLoc = isAllLoc(requestedLocation) ? "" : text(requestedLocation);
   const timings = {};
   const BUDGET_MS = 24000;
   const guard = (step) => {
@@ -507,53 +556,57 @@ async function loadSheet(app, cycleId, requestedLocation) {
     }
   };
 
+  // FAST PATH. Nothing here reads a whole table. The cycle row, this cycle's sheet rows and (when the
+  // screen names the location) that location's employees are asked for TOGETHER, so the wait is the
+  // slowest one of them, not their sum.
   let lap = Date.now();
-  const sheetRows = [];
-  let sheetColumn = "";
-  for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
-    try {
-      const got = await readAll(app, TBL.sheet, `${col} = ${cycleId}`);
-      if (got.length) {
-        sheetRows.push(...got);
-        sheetColumn = col;
-        break;
-      }
-    } catch (e) {
-      /* this column does not exist in this table: try the next one */
-    }
-  }
-  timings.sheetMs = Date.now() - lap;
-  guard("Appraisal Sheet rows");
+  const [cycleRows, sheet, employeesAtAsked] = await Promise.all([
+    readAll(app, TBL.cycles, `ROWID = ${cycleId}`),
+    readSheetRows(app, cycleId),
+    askedLoc ? readEmployeesAt(app, askedLoc) : Promise.resolve(null),
+  ]);
+  timings.firstReadsMs = Date.now() - lap;
+  guard("first reads");
+  const cycle = cycleRows[0];
+  if (!cycle) throw fail(404, "This Appraisal Cycle was not found.");
+  const cycleName = pick1(cycle, ["cycle_name", "name"]);
+  const cycleLocation = pick1(cycle, ["location", "cycle_location", "location_name"]);
+  const wanted = askedLoc || cycleLocation;
+  const typeText = pick1(cycle, ["cycle_type", "type"]) || cycleName;
+  const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
+  const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
+  const sheetRows = sheet.rows;
+  const sheetColumn = sheet.column;
 
   lap = Date.now();
-  const numericIds = new Set();
-  const textIds = new Set();
-  const want = (v) => {
-    const k = lookupText(v);
-    if (k) (/^\d{5,25}$/.test(k) ? numericIds : textIds).add(k);
+  let emRows = employeesAtAsked;
+  if (!emRows && wanted && !isAllLoc(wanted)) emRows = await readEmployeesAt(app, wanted); // location taken from the cycle
+  const lookupIds = (from) => {
+    const numeric = new Set();
+    const texts = new Set();
+    from.forEach((v) => {
+      const k = lookupText(v);
+      if (k) (/^\d{5,25}$/.test(k) ? numeric : texts).add(k);
+    });
+    return { numeric, texts };
   };
-  sheetRows.forEach((r) => {
-    want(r.emp_id);
-    want(r.appraiser_tech_ed);
-  });
-  const chunk = (set, n) => {
-    const all = [...set];
-    const out = [];
-    for (let i = 0; i < all.length; i += n) out.push(all.slice(i, i + n));
-    return out;
-  };
-  const emQueries = [
-    ...chunk(numericIds, 100).map((c) => `ROWID IN (${c.join(",")})`),
-    ...chunk(textIds, 50).map((c) => `emp_id IN (${c.map((x) => `'${x.replace(/'/g, "''")}'`).join(",")})`),
-  ];
-  const emRows = [];
-  // two at a time: this project's Catalyst concurrency limit
-  for (let i = 0; i < emQueries.length; i += 2) {
-    const parts = await Promise.all(emQueries.slice(i, i + 2).map((w) => readAll(app, TBL.employees, w)));
-    parts.forEach((p) => emRows.push(...p));
-    guard("Employee Master");
+  if (emRows && emRows.length) {
+    // The location's people are in hand. Only a Tech-ED who works in another location can still be missing (name only).
+    const haveRow = new Set(emRows.map(rowId));
+    const haveId = new Set(emRows.map((r) => text(r.emp_id).toLowerCase()));
+    const missing = lookupIds(sheetRows.map((r) => r.appraiser_tech_ed));
+    [...missing.numeric].forEach((k) => haveRow.has(k) && missing.numeric.delete(k));
+    [...missing.texts].forEach((k) => haveId.has(k.toLowerCase()) && missing.texts.delete(k));
+    if (missing.numeric.size || missing.texts.size) {
+      emRows = emRows.concat(await readEmployeesByIds(app, missing.numeric, missing.texts, guard));
+    }
+  } else {
+    // No location filter available: read just the people named on the sheet rows.
+    const ids = lookupIds(sheetRows.flatMap((r) => [r.emp_id, r.appraiser_tech_ed]));
+    emRows = await readEmployeesByIds(app, ids.numeric, ids.texts, guard);
   }
   timings.employeesMs = Date.now() - lap;
+  guard("Employee Master");
 
   const byId = new Map();
   const byRowId = new Map();
