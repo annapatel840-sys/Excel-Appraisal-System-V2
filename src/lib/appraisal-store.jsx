@@ -2783,7 +2783,13 @@ const mapCatalystEmployee = (employee, index) => {
 
     // The "Last Appraisal" column is a date field, never the archived cycle name.
     lastAppraisalDate: String(employee.last_appraisal_date || employee.lastAppraisalDate || ""),
-    prevAppraisalCycle: String(employee.prev_appraisal_cycle || employee.prevAppraisalCycle || ""),
+    prevAppraisalCycle: String(
+      employee.last_appraisal_cycle_name ||
+        employee.lastAppraisalCycleName ||
+        employee.prev_appraisal_cycle ||
+        employee.prevAppraisalCycle ||
+        "",
+    ),
     previousAppraisalTotalCtcWithRewards: Number(employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? 0),
     // Previous cycle's bonuses, fetched from the last closed Payroll_Data row by
     // employeesapi. Read-only inputs for the Total Bonus / Total Rewards Hike
