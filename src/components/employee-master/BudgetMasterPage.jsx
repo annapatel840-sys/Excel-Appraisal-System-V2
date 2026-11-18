@@ -3607,7 +3607,7 @@ function HRApplyBudget() {
     activeBudgetCycleId = "",
   } = useBudget();
   // Dashboard is the source of truth for live Active + Eligible appraisal rows.
-  const { rows: dashboardRows = [] } = useAppraisal();
+  const { rows: dashboardRows = [], readOnlyCycle = false } = useAppraisal();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
