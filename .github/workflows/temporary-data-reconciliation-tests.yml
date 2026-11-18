@@ -1,0 +1,18 @@
+name: Temporary data reconciliation tests
+on:
+  push:
+    branches:
+      - fix/temporary-data-reconciliation-utility-v2
+    paths:
+      - "functions/datareconciliationapi/**"
+      - ".github/workflows/temporary-data-reconciliation-tests.yml"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run safety and rollback tests
+        run: node functions/datareconciliationapi/test/data-reconciliation.test.js
