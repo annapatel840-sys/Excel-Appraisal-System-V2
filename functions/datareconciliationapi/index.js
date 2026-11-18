@@ -66,7 +66,22 @@ async function buildPlan(t){
  });
  fixEmployeePair("eligibility","employee_master_id","emp_id");fixEmployeePair("sheet","emp_master_row_id","emp_id");
  fixCycle("payroll","appraisal_cycle_name");fixCycle("feedback","appraisal_cycle_name");fixCycle("eligibility","appraisal_cycle_id");fixCycle("sheet","cycle_id");fixCycle("budgetMaster","appraisal_cycle_id");fixCycle("distribution","appraisal_cycle_id");fixCycle("distributionComp","appraisal_cycle_id");
- const dup=(key,empCol,cycleCol)=>{const seen=new Map();data[key].forEach(r=>{const e=ref(r[empCol])||norm(r.emp_id),c=ref(r[cycleCol]);if(!e||!c)return;const k=e+"|"+c;if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row; existing row "+rid(seen.get(k))+".");}else seen.set(k,r);});};
+ const dup=(key,empCol,cycleCol)=>{const seen=new Map();data[key].forEach(r=>{
+  let employee=null;
+  if((key==="sheet"||key==="eligibility")&&!blank(r.emp_id)){
+   const matches=byId.get(norm(r.emp_id))||[];
+   if(matches.length===1)employee=matches[0];
+  }else{
+   const found=employeeFor(r[empCol]);
+   if(found.person)employee=found.person;
+  }
+  // Do not infer duplicate identity from an unresolved/stale lookup value.
+  if(!employee)return;
+  const c=ref(r[cycleCol]);if(!c)return;
+  const k=rid(employee)+"|"+c;
+  if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row for "+String(employee.emp_id||rid(employee))+"; existing row "+rid(seen.get(k))+".");}
+  else seen.set(k,r);
+ });};
  dup("payroll","emp_id","appraisal_cycle_name");dup("feedback","emp_ID","appraisal_cycle_name");dup("eligibility","employee_master_id","appraisal_cycle_id");dup("sheet","emp_master_row_id","cycle_id");
  const closedCycles=[...data.cycles].filter(closed).sort((a,b)=>cycleDate(b).localeCompare(cycleDate(a)));
  for(const cycle of data.cycles.filter(c=>active(c)&&!newJoiner(c))){
