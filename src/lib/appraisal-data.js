@@ -353,6 +353,15 @@ export const COLUMNS = [
     width: 150,
   },
   {
+    key: "prevAppraisalCycle",
+    label: "Prev. Appraisal Cycle",
+    type: "text",
+    // Display-only: the closed cycle of the last appraisal; a new joiner shows
+    // the current cycle name (worked out by employeesapi from Payroll_Data).
+    editable: false,
+    width: 170,
+  },
+  {
     key: "managerRating",
     label: "Manager Rating",
     type: "enum",
@@ -739,6 +748,7 @@ export function buildEmployees(count = 250) {
       // Do not fabricate a Last Appraisal value in demo/fallback rows.
       // The live employeesapi derives this from the actual previous cycle.
       lastAppraisalDate: "",
+      prevAppraisalCycle: "",
 
       managerRating: rating,
 

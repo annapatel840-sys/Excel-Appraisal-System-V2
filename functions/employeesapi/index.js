@@ -2853,6 +2853,12 @@ async function enrichPreviousAppraisalValues(
       last_appraisal_date: lastArchivedEffectiveDate,
       lastAppraisalDate: lastArchivedEffectiveDate,
       last_appraisal_cycle_name: label,
+      // "Prev. Appraisal Cycle" column: an existing employee shows the closed
+      // cycle their last appraisal came from (latest closed Annual); a new
+      // joiner has no earlier appraisal, so it shows the current cycle name.
+      prev_appraisal_cycle: isNewJoinerRow
+        ? currentCycleName || previousCycleName || label
+        : previousCycleName || currentCycleName || label,
       // Feedback & Rating is optional during the first cycle. Populate these
       // fields from the current cycle when uploaded; otherwise retain any
       // explicitly stored Appraisal_Sheet value (or leave blank/zero).

@@ -263,6 +263,85 @@ async function syncCatalystRoles(adm, roles, users, by) {
   return changed;
 }
 
+/* Shared Appraisal Sheet column order (set by HR, seen by every login, view and location).
+   Kept in the existing AccessLog table, like the delegation request queue above, so no new
+   table is needed. One row per save; the newest row wins and older ones are removed.
+   The order (JSON list of column keys) is stored in the Text column `reason`. */
+const SHEET_ORDER_KIND = "sheet-order:appraisalSheet";
+const newestRow = (rows) =>
+  rows.reduce((best, row) => {
+    if (!best) return row;
+    const byTime = String(row.changed_at || "").localeCompare(String(best.changed_at || ""));
+    if (byTime) return byTime > 0 ? row : best;
+    return String(row.ROWID || "").localeCompare(String(best.ROWID || ""), undefined, { numeric: true }) > 0 ? row : best;
+  }, null);
+const decodeSheetOrder = (row) => {
+  try {
+    const list = JSON.parse((row && row.reason) || "[]");
+    return Array.isArray(list) ? list.filter((key) => typeof key === "string" && key) : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+app.get(
+  "/sheet-layout",
+  asyncRoute(async (req, res) => {
+    const ap = apps(req);
+    const a = await A.check(ap.user, ap.admin);
+    if (a.denied) throw a.denied;
+    const rows = await selectAll(ap.admin.zcql(), T.log, "kind = '" + SHEET_ORDER_KIND + "'");
+    const row = newestRow(rows);
+    send(res, {
+      order: decodeSheetOrder(row),
+      updatedBy: row ? row.changed_by || "" : "",
+      updatedAt: row ? row.changed_at || "" : "",
+    });
+  }),
+);
+
+app.post(
+  "/sheet-layout",
+  asyncRoute(async (req, res) => {
+    const ap = apps(req);
+    const a = await A.check(ap.user, ap.admin);
+    if (a.denied) throw a.denied;
+    if (a.role !== "hr")
+      throw new HttpError(403, "Only HR Admin can change the column order.");
+    const body = req.body || {};
+    const order = Array.isArray(body.order) ? body.order : null;
+    if (
+      !order ||
+      order.length < 2 ||
+      order.length > 300 ||
+      order.some((key) => typeof key !== "string" || !key || key.length > 80)
+    )
+      throw new HttpError(422, "Send the full list of column keys.");
+    const unique = order.filter((key, index) => order.indexOf(key) === index);
+    const table = ap.admin.datastore().table(T.log);
+    const old = await selectAll(ap.admin.zcql(), T.log, "kind = '" + SHEET_ORDER_KIND + "'");
+    await table.insertRow({
+      changed_at: nowDT(),
+      changed_by: a.user.email || "",
+      kind: SHEET_ORDER_KIND,
+      target: "appraisalSheet",
+      role: "hr",
+      old_value: "",
+      new_value: "",
+      reason: JSON.stringify(unique),
+      batch_id: "CO-" + Date.now(),
+    });
+    // Keep only the newest row (best effort: a failed clean-up never fails the save).
+    try {
+      const ids = old.map((row) => row.ROWID).filter(Boolean);
+      if (ids.length) await deleteMany(table, ids);
+    } catch (err) {
+      console.error(err);
+    }
+    send(res, { order: unique });
+  }),
+);
+
 /* Shared request queue for delegation and screen requests.
    Persisted in the existing AccessLog table so all users/devices see the same queue. */
 const DELEGATION_REQUEST_PREFIX = "delegation-request:";

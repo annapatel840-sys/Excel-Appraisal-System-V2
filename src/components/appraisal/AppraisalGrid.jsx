@@ -15,6 +15,9 @@ import { createPortal } from "react-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
+import { ColumnOrderMenu } from "./ColumnOrderMenu";
+import { mergeColumnOrder, moveColumn, useSharedColumnOrder } from "@/lib/sheet-column-order";
+import { useViewAs } from "@/lib/view-as-store";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
@@ -118,6 +121,7 @@ const WIDTHS = {
   wissenExperience: 100,
   totalExperience: 96,
   lastAppraisalDate: 140,
+  prevAppraisalCycle: 170,
   previousAppraisalTotalCtcWithRewards: 170,
   setTargetCriteria: 190,
   managerRating: 210,
@@ -203,13 +207,14 @@ const DEFAULT_COLUMN_ORDER = (() => {
   // second to last and "Source of Hire" is followed by "Location" as the last columns.
   const rest = order.filter(
     (key) =>
-      !["clientRating", "lastAppraisalDate", "sourceOfHire", "location"].includes(
+      !["clientRating", "lastAppraisalDate", "sourceOfHire", "location", "prevAppraisalCycle"].includes(
         key,
       ),
   );
   const ratingAt = rest.indexOf("managerRating");
   rest.splice(ratingAt >= 0 ? ratingAt + 1 : rest.length, 0, "clientRating");
-  rest.push("lastAppraisalDate", "sourceOfHire", "location");
+  // "Prev. Appraisal Cycle" is always the very last column.
+  rest.push("lastAppraisalDate", "sourceOfHire", "location", "prevAppraisalCycle");
   return rest;
 })();
 
@@ -2265,7 +2270,18 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  const [columnOrder] = useState(DEFAULT_COLUMN_ORDER);
+  // Column order is set by HR for everyone (saved by accessapi); until it loads,
+  // or when HR never changed it, the default order is used.
+  const { order: sharedColumnOrder, save: saveSharedColumnOrder } =
+    useSharedColumnOrder();
+  const columnOrder = useMemo(
+    () => mergeColumnOrder(sharedColumnOrder, DEFAULT_COLUMN_ORDER),
+    [sharedColumnOrder],
+  );
+  const { effectiveId: viewAsId } = useViewAs();
+  // Only an HR login that is also looking at the HR view can move columns.
+  const canReorderColumns = isHR && viewAsId === "hr";
+  const [orderMenu, setOrderMenu] = useState(null);
 
   // every column this login may see (before the user's own Show / hide)
   const allColumns = useMemo(
@@ -4951,6 +4967,19 @@ export function AppraisalGrid({
                   return (
                     <th
                       key={col.key}
+                      onContextMenu={
+                        canReorderColumns && !isFrozen
+                          ? (event) => {
+                              event.preventDefault();
+                              setOrderMenu({
+                                key: col.key,
+                                label: headerLabel,
+                                x: event.clientX,
+                                y: event.clientY,
+                              });
+                            }
+                          : undefined
+                      }
                       className="sticky border-r border-b border-[#c9d8ec] p-0"
                       style={{
                         position: "sticky",
@@ -5161,6 +5190,22 @@ export function AppraisalGrid({
             </tfoot>
           </table>
         </div>
+
+        {orderMenu && canReorderColumns && (
+          <ColumnOrderMenu
+            target={orderMenu}
+            columns={orderedColumns
+              .filter((column) => column.key !== orderMenu.key && !FROZEN_KEYS.has(column.key))
+              .map((column) => ({
+                key: column.key,
+                label: MERGED_LABELS[column.key] || column.label,
+              }))}
+            onClose={() => setOrderMenu(null)}
+            onConfirm={(targetKey, side) =>
+              saveSharedColumnOrder(moveColumn(columnOrder, orderMenu.key, targetKey, side))
+            }
+          />
+        )}
 
         {/* PAGINATION / GROUP STATUS BAR */}
 

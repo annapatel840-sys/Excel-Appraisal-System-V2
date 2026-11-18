@@ -87,3 +87,13 @@ export function getDelegation(cycleId) {
 export function fillDelegation(cycleId) {
   return request("delegation/fill", { method: "POST", body: { cycleId, replace: true } });
 }
+
+/** GET /sheet-layout -> { ok, order:[column keys], updatedBy, updatedAt, enforced } (any signed-in login) */
+export function getSheetLayout() {
+  return request("sheet-layout");
+}
+
+/** POST /sheet-layout { order } -> { ok, order, enforced } (HR Admin only) */
+export function saveSheetLayout(order) {
+  return request("sheet-layout", { method: "POST", body: { order } });
+}
