@@ -4090,7 +4090,7 @@ async function routeRequest(req, res, identity, resource, a) {
     records = single.records;
     masterRecords = single.masterRecords;
     const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch(() => ({ criteria: null }));
-    criteriaApplied = Boolean(single.criteriaApplied && criteriaMeta.criteria);
+    criteriaApplied = Boolean(single.criteriaApplied);
 
     return sendJson(res, 200, {
       success: true,
