@@ -268,12 +268,15 @@ async function syncCatalystRoles(adm, roles, users, by) {
    table is needed. AccessLog.reason may be a short column, so one save is written as several
    small rows (same batch_id "CO-<time>", piece number in `target`, piece of the JSON list of
    column keys in `reason`). The newest batch that reads back complete wins; older ones are removed. */
-const SHEET_ORDER_KIND = "sheet-order:appraisalSheet";
+// Short on purpose: AccessLog.kind is a short column (about 20 characters), so a long
+// label is cut off and the rows can no longer be found. Rows whose kind starts with
+// this text (including cut-off ones from earlier tries) all count as ours.
+const SHEET_ORDER_KIND = "sheet-order";
 const SHEET_ORDER_PIECE = 80;
 
 const sheetOrderRows = async (ap) =>
   (await selectAll(ap.admin.zcql(), T.log)).filter(
-    (row) => String(row.kind || "").trim() === SHEET_ORDER_KIND,
+    (row) => String(row.kind || "").trim().startsWith(SHEET_ORDER_KIND),
   );
 
 // Batches, newest first, each rebuilt to { batch, rows, order } (order is [] when incomplete).
@@ -366,7 +369,10 @@ app.post(
     if (!mine || JSON.stringify(mine.order) !== JSON.stringify(unique))
       throw new HttpError(
         500,
-        "The column order was not saved correctly. Please tell the developer.",
+        "The column order was not saved correctly (wrote " + pieces.length +
+          " pieces, read back " + (mine ? mine.rows.length : 0) +
+          (mine ? " with " + mine.rows.reduce((n, row) => n + String(row.reason || "").length, 0) : "") +
+          " of " + text.length + " characters). Please tell the developer.",
       );
     // Keep only the newest batch (best effort: a failed clean-up never fails the save).
     try {
