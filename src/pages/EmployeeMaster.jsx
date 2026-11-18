@@ -4499,6 +4499,7 @@ export function EmployeeMaster() {
           limit: 100000,
           search: "",
           location: locationFilter,
+          fresh: true,
         });
         if (cancelled) return;
 
@@ -5910,6 +5911,8 @@ export function EmployeeMaster() {
       limit: 100000,
       search: "",
       cycleId: eligibilityCycleId,
+      location: locationFilter,
+      fresh: true,
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
