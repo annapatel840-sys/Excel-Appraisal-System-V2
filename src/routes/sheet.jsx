@@ -134,6 +134,7 @@ export function SheetPage() {
     saveError,
     clearSaveError,
     showingSaved,
+    readOnlyCycle,
   } = useAppraisal();
   const {
     totals: budgetMasterTotals,
@@ -151,7 +152,7 @@ export function SheetPage() {
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const { settings } = useSettings();
-  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const sheetEditable = access.canScreen("appraisalSheet", "edit") && !readOnlyCycle;
   const canImport = sheetEditable && access.canAction("importAppraisal");
   const canExport = access.canAction("exportGrid");
   const canViewAudit = access.canAction("viewAudit");
