@@ -1629,7 +1629,10 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     // The criteria panel / Add Employee picker must use the same location
     // roster as this cycle, not the complete global Employee_Master table.
     masterRecords: masterRows.filter((master) => inCycleLocation(cycle, master, locations)),
-    criteriaApplied: Boolean(synced.criteriaApplied),
+    // Closed cycles do not run the Active-cycle sync. Read the persisted
+    // Apply marker / Criteria-sourced rows instead of reporting false and
+    // prompting HR to generate a list that already exists.
+    criteriaApplied: await eligibilityCriteriaWasApplied(tables, cycle.id, eligibilityRows),
   };
 }
 
