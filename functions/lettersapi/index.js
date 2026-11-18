@@ -491,7 +491,23 @@ async function loadSheet(app, cycleId, requestedLocation) {
   const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
   const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
 
-  const [sheetRows, emRows] = await Promise.all([readAll(app, TBL.sheet), readAll(app, TBL.employees)]);
+  // Ask the Data Store only for this cycle's rows (the sheet holds every cycle). Generate stores
+  // the cycle ROWID in the appraisal_cycle_name lookup; other columns are tried in turn. If no
+  // filtered read finds anything (a column does not exist, or the rows name the cycle by text),
+  // fall back to reading the whole table, which is slower but always right.
+  const sheetOf = async () => {
+    const found = new Map();
+    for (const col of ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) {
+      try {
+        (await readAll(app, TBL.sheet, `${col} = ${cycleId}`)).forEach((r) => found.set(rowId(r), r));
+      } catch (e) {
+        /* this column does not exist in this table: try the next one */
+      }
+      if (found.size) break;
+    }
+    return found.size ? [...found.values()] : readAll(app, TBL.sheet);
+  };
+  const [sheetRows, emRows] = await Promise.all([sheetOf(), readAll(app, TBL.employees)]);
 
   const byId = new Map();
   const byRowId = new Map();
