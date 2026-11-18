@@ -469,7 +469,15 @@ function pbSchedule(total, count, firstMonth) {
   const each = Math.round((total / n) * 100) / 100;
   return Array.from({ length: n }, (_x, i) => [monthLabel(addMonths(start, i * step)), each]);
 }
-const cycleKeyOf = (r) => lookupText(r.cycle_id ?? r.appraisal_cycle_id ?? r.appraisalCycleId ?? r.cycleId ?? "");
+// A sheet row can name its cycle in several columns (Generate stores the cycle ROWID
+// in the appraisal_cycle_name lookup). Every reference counts, not only the first.
+const cycleRefsOf = (r) =>
+  [
+    r.cycle_id, r.appraisal_cycle_id, r.appraisalCycleId, r.cycleId,
+    r.appraisal_cycle_name, r.appraisalCycleName, r.cycle_name, r.appraisal_cycle, r.appraisal_year,
+  ]
+    .map(lookupText)
+    .filter(Boolean);
 
 async function loadSheet(app, cycleId, requestedLocation) {
   if (!/^\d{5,25}$/.test(cycleId)) throw fail(400, "Choose an Appraisal Cycle first.");
@@ -500,9 +508,14 @@ async function loadSheet(app, cycleId, requestedLocation) {
   const rows = [];
   let withoutEmployee = 0;
   let otherLocation = 0;
+  let inCycle = 0;
   sheetRows
-    .filter((r) => cycleKeyOf(r) === cycleId)
+    .filter((r) => {
+      const refs = cycleRefsOf(r);
+      return refs.some((x) => x === cycleId || (cycleName && x.toLowerCase() === cycleName.toLowerCase()));
+    })
     .forEach((r) => {
+      inCycle += 1;
       const em = emOf(r.emp_id);
       if (!em) {
         withoutEmployee += 1;
@@ -562,7 +575,7 @@ async function loadSheet(app, cycleId, requestedLocation) {
   return {
     cycle: { id: cycleId, name: cycleName, type, location: cycleLocation, effective },
     rows,
-    skipped: { withoutEmployee, otherLocation },
+    skipped: { withoutEmployee, otherLocation, inCycle, sheetRows: sheetRows.length },
   };
 }
 
@@ -650,4 +663,4 @@ module.exports = async function lettersApi(req, res) {
   }
 };
 
-module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor, parseMonth, pbSchedule, fmtDate };
+module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor, parseMonth, pbSchedule, fmtDate, loadSheet };

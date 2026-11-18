@@ -95,6 +95,7 @@ function run(actor, fn) {
 let sync = { status: "idle", message: "" };
 let syncing = null;
 let syncedFor = null; // the location the loaded templates belong to
+let loadFailed = false; // the last template load failed outright (not just one unreadable template)
 
 function setSync(next) {
   sync = next;
@@ -113,6 +114,7 @@ export function syncTemplates({ force = false, location = "" } = {}) {
   syncing = api
     .loadServerTemplates(loc)
     .then(({ templates, problems }) => {
+      loadFailed = false;
       run("HR", (st) => {
         // Only this location's templates are kept: drop the server templates of
         // another location that an earlier load left in the state.
@@ -122,7 +124,10 @@ export function syncTemplates({ force = false, location = "" } = {}) {
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });
       else setSync({ status: "ok", message: "" });
     })
-    .catch((error) => setSync({ status: "error", message: error?.message || "The templates could not be loaded." }))
+    .catch((error) => {
+      loadFailed = true;
+      setSync({ status: "error", message: error?.message || "The templates could not be loaded." });
+    })
     .finally(() => {
       syncing = null;
     });
@@ -202,12 +207,13 @@ export async function generateLettersForCycle(cycle, actor) {
     // location's templates are loaded) before making any letter.
     const location = cycle.location || "";
     await syncTemplates({ force: true, location });
-    if (sync.status === "error") throw new Error(sync.message || "The templates could not be loaded.");
+    // Only a failed load stops Generate; one unreadable template just means that template makes no letter.
+    if (loadFailed) throw new Error(sync.message || "The templates could not be loaded.");
     const { cycle: srv, rows, skipped } = await api.loadServerSheet(cycle.id, location);
     if (!rows.length) {
       throw new Error(
         `No Appraisal Sheet rows were found for ${cycle.name}${location ? " (" + location + ")" : ""}. Generate the Appraisal Sheet first.` +
-          (skipped.otherLocation ? ` ${skipped.otherLocation} row(s) belong to another location.` : ""),
+          ` (Sheet rows for this cycle: ${skipped.inCycle ?? 0}; no matching employee: ${skipped.withoutEmployee ?? 0}; another location: ${skipped.otherLocation ?? 0}.)`,
       );
     }
     return run(actor, (st) => {
