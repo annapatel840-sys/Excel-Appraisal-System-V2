@@ -549,7 +549,7 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
       .toLowerCase();
     const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
     const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
-    return status === "active" && !archived && !hidden;
+    return ["active", "closed"].includes(status) && !archived && !hidden;
   });
   const aliasesFor = function (cycle) {
     const name = String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? "").trim();
@@ -568,7 +568,19 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
   };
   const active = requested
     ? available.find(function (cycle) { return aliasesFor(cycle).includes(requested); })
-    : pickCycleForLocation(available, location, locationOf);
+    : pickCycleForLocation(
+        available.filter((cycle) =>
+          String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase() === "active"
+        ),
+        location,
+        locationOf,
+      ) || pickCycleForLocation(
+        available.filter((cycle) =>
+          String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase() === "closed"
+        ),
+        location,
+        locationOf,
+      );
   return active || null;
 }
 
