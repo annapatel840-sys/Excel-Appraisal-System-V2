@@ -2847,6 +2847,10 @@ function writeOriginalSnapshots(value) {
 }
 
 /* ---------- helpers ---------- */
+// Last good "EMP ID - Name" label per Tech-ED. It lives outside the component so
+// it survives leaving this screen and coming back (the component remounts, but
+// the app does not reload, so a ref would start empty again).
+const OWNER_LABEL_CACHE = new Map();
 function normalizeOwnerKey(value) {
   const text = String(value || "")
     .trim()
@@ -3613,7 +3617,7 @@ function HRApplyBudget() {
   const [rows, setRows] = useState([]);
   // Remembers "EMP001 - Name" labels so a later refresh can never downgrade a
   // Tech-ED to just the employee ID.
-  const ownerLabelCache = useRef(new Map());
+  const ownerLabelCache = useRef(OWNER_LABEL_CACHE);
   const [orgPct, setOrgPct] = useState("");
   const [pending, setPending] = useState({});
   const [staged, setStaged] = useState({});
@@ -3812,6 +3816,7 @@ function HRApplyBudget() {
     // employee directory / Appraisal Sheet rows or from the last good label.
     const hasPersonName = (text) => /\S\s-\s\S/.test(String(text || ""));
     const nameById = new Map();
+    const idByName = new Map();
     [
       ...(Array.isArray(employeeRows) ? employeeRows : []),
       ...(Array.isArray(dashboardRows) ? dashboardRows : []),
@@ -3822,19 +3827,38 @@ function HRApplyBudget() {
       const pname = String(
         person?.name || person?.employee_name || person?.emp_name || "",
       ).trim();
-      if (pid && pname) nameById.set(normalizeOwnerKey(pid), pname);
+      if (pid && pname) {
+        nameById.set(normalizeOwnerKey(pid), pname);
+        idByName.set(normalizeOwnerKey(pname), pid);
+      }
     });
+    const labelCache = ownerLabelCache.current;
     ownerValues.forEach((label, key) => {
       let next = String(label || "").trim();
+      // Bare ID -> "ID - Name"
       if (!hasPersonName(next)) {
         const found =
           nameById.get(key) || nameById.get(normalizeOwnerKey(next));
         if (found && next && normalizeOwnerKey(found) !== normalizeOwnerKey(next))
           next = next + " - " + found;
       }
-      if (hasPersonName(next)) ownerLabelCache.current.set(key, next);
-      else if (ownerLabelCache.current.has(key))
-        next = ownerLabelCache.current.get(key);
+      // Bare name -> "ID - Name"
+      if (!hasPersonName(next)) {
+        const pid = idByName.get(normalizeOwnerKey(next));
+        if (pid && next) next = pid + " - " + next;
+      }
+      // Still incomplete: use the last good label (found by id or by name).
+      if (!hasPersonName(next)) {
+        const cached =
+          labelCache.get(key) || labelCache.get(normalizeOwnerKey(next));
+        if (cached) next = cached;
+      }
+      if (hasPersonName(next)) {
+        const m = next.match(/^(.+?)\s+-\s+(.+)$/);
+        [key, normalizeOwnerKey(next), m && normalizeOwnerKey(m[1]), m && normalizeOwnerKey(m[2])]
+          .filter(Boolean)
+          .forEach((k) => labelCache.set(k, next));
+      }
       ownerValues.set(key, next);
     });
     const resolveTechOwnerKey = (raw) => {
