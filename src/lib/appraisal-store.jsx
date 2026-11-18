@@ -4479,6 +4479,7 @@ export function AppraisalProvider({ children }) {
         },
         body: JSON.stringify({
           emp_id: String(empId),
+          cycle_id: APPRAISAL_CYCLE_ID,
           status: normalizedStatus,
         }),
       });
