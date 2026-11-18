@@ -1216,7 +1216,7 @@ const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 export function DetailScreenPage({
   onViewBudget,
 } = {}) {
-  const { rows: liveRows, audit, updateCell, updateLinkedCells } = useAppraisal();
+  const { rows: liveRows, audit, updateCell, updateLinkedCells, readOnlyCycle } = useAppraisal();
   const cachedAudit = useDeferredValue(audit);
   const budgetContext = useBudget();
 
@@ -1238,7 +1238,7 @@ export function DetailScreenPage({
   // Access rules (permissive when accessapi is unavailable): Access -> Fields tab,
   // "Detailed Screen". Hidden = not drawn, Read = grey and not editable.
   const access = useAccess();
-  const detailEditable = access.canScreen("detailScreen", "edit");
+  const detailEditable = access.canScreen("detailScreen", "edit") && !readOnlyCycle;
   const hid = (key) => access.isHidden(key);
   const canEditF = (key) => detailEditable && access.canEditField(key);
   const hikeEditable = canEditF("hikeAmount") && canEditF("hikePct");
