@@ -1784,17 +1784,14 @@ async function enrichPreviousAppraisalValues(
     )
       .trim()
       .toLowerCase();
-  // Payroll history for the Previous Appraisal Cycle includes the latest
-  // Closed OR Archived cycle. Closing a cycle makes it read-only operationally,
-  // but its Payroll_Data snapshot is still valid historical appraisal data.
+  // A cycle is historical only after HR explicitly archives it.
+  // Closed cycles remain closed operational records, never prior-appraisal data.
   const isArchivedCycle = (cycle) =>
     cycle?.archived === true ||
     ["true", "1", "yes", "archived"].includes(
       String(cycle?.archived ?? "").trim().toLowerCase(),
     ) ||
     cycleStatusOf(cycle) === "archived";
-  const isClosedOrArchivedPayrollCycle = (cycle) =>
-    isArchivedCycle(cycle) || cycleStatusOf(cycle) === "closed";
   const cycleById = new Map(
     cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id),
   );
@@ -2374,7 +2371,7 @@ async function enrichPreviousAppraisalValues(
             cycleYearOf(item.cycle) === currentYear &&
             // New Joiner process=None cycles may remain Active; otherwise
             // their payroll is reusable only after explicit archival.
-            (isClosedOrArchivedPayrollCycle(item.cycle) ||
+            (isArchivedCycle(item.cycle) ||
               cycleStatusOf(item.cycle) === "active") &&
             !["cancelled", "canceled"].includes(cycleStatusOf(item.cycle)),
         )
@@ -2390,7 +2387,7 @@ async function enrichPreviousAppraisalValues(
             item.locationMatches &&
             isAnnualCycle(item.cycle) &&
             (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
-            isClosedOrArchivedPayrollCycle(item.cycle),
+            isArchivedCycle(item.cycle),
         )
         .sort(
           (a, b) =>
