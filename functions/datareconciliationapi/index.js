@@ -59,12 +59,12 @@ async function buildPlan(t){
   const employee=employeeFor(row?.[empCol]).person,cycle=cycleFor(row?.[cycleCol]);
   return !!employee&&isLoadTestId(employee.emp_id)&&rid(employee)===employeeRowId&&!!cycle&&rid(cycle)===cycleRowId;
  };
- const indexEmployeeCycle=(rows,empCol,cycleCol,requireValidFeedback=false)=>{
+ const indexEmployeeCycle=(rows,empCol,cycleCol,requireValidFeedback=false,includeAllEmployees=false)=>{
   const index=new Map();
   for(const row of rows){
    if(requireValidFeedback&&!validFeedback(row))continue;
    const employee=employeeFor(row?.[empCol]).person,cycle=cycleFor(row?.[cycleCol]);
-   if(!employee||!isLoadTestId(employee.emp_id)||!cycle)continue;
+   if(!employee||(!includeAllEmployees&&!isLoadTestId(employee.emp_id))||!cycle)continue;
    const key=rid(employee)+"|"+rid(cycle);
    if(!index.has(key))index.set(key,[]);
    index.get(key).push(row);
@@ -73,6 +73,24 @@ async function buildPlan(t){
  };
  const payrollByEmployeeCycle=indexEmployeeCycle(data.payroll,"emp_id","appraisal_cycle_name");
  const feedbackByEmployeeCycle=indexEmployeeCycle(data.feedback,"emp_ID","appraisal_cycle_name",true);
+ // Australia has manually maintained employees as well as LT test employees.
+ // Build a separate full-employee index only for the Australia repair path.
+ const australiaPayrollByEmployeeCycle=indexEmployeeCycle(data.payroll,"emp_id","appraisal_cycle_name",false,true);
+ const australiaFeedbackByEmployeeCycle=indexEmployeeCycle(data.feedback,"emp_ID","appraisal_cycle_name",true,true);
+ const cycleLocation=c=>norm(c?.location||c?.cycle_location||c?.cycleLocation);
+ const isAustraliaCycle=c=>{
+  const location=cycleLocation(c);
+  const name=norm(c?.cycle_name||c?.name||"");
+  return ["australia","au","aus"].includes(location) ||
+    /^(australia|au|aus)\s*[-–:]\s*/i.test(String(c?.cycle_name||c?.name||""));
+ };
+ const australiaHistoryCycles=cycle=>[...data.cycles]
+  .filter(closed)
+  .filter(candidate=>{
+   const location=cycleLocation(candidate);
+   return !location || ["australia","au","aus"].includes(location);
+  })
+  .sort((a,b)=>cycleDate(b).localeCompare(cycleDate(a)));
  const isTargetRow=(key,row)=>{
   if(key==="sheet"||key==="eligibility")return isLoadTestId(row?.emp_id);
   const cols=key==="payroll"?["emp_id"]:key==="feedback"?["emp_ID","emp_name"]:[];
@@ -131,13 +149,53 @@ async function buildPlan(t){
    }else if(fNow.length>1)issue(issues,"duplicate_active_feedback","feedback",fNow[1],"Multiple Feedback rows exist in the Active cycle.");
   }
  }
+ // Australia active cycles also need missing historical Payroll and Feedback
+ // rows restored for real employees. This path is strictly Australia-only,
+ // inserts only when exactly one valid closed-cycle source exists, and never
+ // updates/deletes the four manually maintained Australia records (or any
+ // existing active-cycle record).
+ for(const cycle of data.cycles.filter(c=>active(c)&&!newJoiner(c)&&isAustraliaCycle(c))){
+  const cid=rid(cycle);
+  const rows=data.sheet.filter(r=>!isLoadTestId(r.emp_id)&&!blank(r.emp_id)&&cycleFor(r.cycle_id)&&rid(cycleFor(r.cycle_id))===cid);
+  const ids=[...new Set(rows.map(r=>norm(r.emp_id)).filter(Boolean))];
+  const historyCycles=australiaHistoryCycles(cycle);
+  for(const empId of ids){
+   const matches=byId.get(empId)||[];
+   if(matches.length!==1){
+    issue(issues,matches.length?"ambiguous_employee_id":"missing_employee_master","sheet",rows.find(r=>norm(r.emp_id)===empId),"Australia active Appraisal Sheet employee ID does not resolve to exactly one Employee_Master row.");
+    continue;
+   }
+   const employee=matches[0],eid=rid(employee);
+   const pNow=australiaPayrollByEmployeeCycle.get(eid+"|"+cid)||[];
+   if(!pNow.length){
+    const sourceGroup=historyCycles.map(c=>({cycle:c,rows:australiaPayrollByEmployeeCycle.get(eid+"|"+rid(c))||[]})).find(x=>x.rows.length);
+    if(sourceGroup&&sourceGroup.rows.length===1){
+     const source=sourceGroup.rows[0],values={...business(source),emp_id:eid,emp_name:employee.emp_name||source.emp_name,appraisal_cycle_name:cid};
+     ops.push({kind:"insert",table:"payroll",values,reason:"Restore Australia active-cycle Payroll from the latest unique Australia/shared Closed-cycle source",undo:{table:"payroll",rowId:"",values}});
+     stats.safeInserts++;
+    }else if(sourceGroup)issue(issues,"ambiguous_australia_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"Latest eligible Australia/shared Closed cycle has multiple Payroll rows; no source was selected.");
+    else issue(issues,"missing_australia_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"No Australia/shared Closed-cycle Payroll source exists; no values were fabricated.");
+   }else if(pNow.length>1)issue(issues,"duplicate_australia_active_payroll","payroll",pNow[1],"Multiple Payroll rows already exist in this Australia Active cycle.");
+   const fNow=australiaFeedbackByEmployeeCycle.get(eid+"|"+cid)||[];
+   if(!fNow.length){
+    const sourceGroup=historyCycles.map(c=>({cycle:c,rows:australiaFeedbackByEmployeeCycle.get(eid+"|"+rid(c))||[]})).find(x=>x.rows.length);
+    if(sourceGroup&&sourceGroup.rows.length===1){
+     const source=sourceGroup.rows[0],values={...business(source),emp_ID:eid,emp_name:eid,appraisal_cycle_name:cid,Effective_Date:cycle.effective_date||cycle.start_date||source.Effective_Date};
+     ops.push({kind:"insert",table:"feedback",values,reason:"Restore Australia active-cycle valid Feedback/Rating from the latest unique Australia/shared Closed-cycle source",undo:{table:"feedback",rowId:"",values}});
+     stats.safeInserts++;
+    }else if(sourceGroup)issue(issues,"ambiguous_australia_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"Latest eligible Australia/shared Closed cycle has multiple valid Feedback rows; no source was selected.");
+    else issue(issues,"missing_australia_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"No valid Australia/shared Closed-cycle Feedback/Rating source exists; no values were invented.");
+   }else if(fNow.length>1)issue(issues,"duplicate_australia_active_feedback","feedback",fNow[1],"Multiple Feedback rows already exist in this Australia Active cycle.");
+  }
+ }
  // Budget tables are aggregate allocation records, not employee-level data.
- // This LT-only cleanup deliberately leaves all budget records untouched.
+ // This reconciliation still deliberately leaves all budget allocation rows untouched.
  stats.scanned.ltEmployees=data.employees.filter(e=>isLoadTestId(e.emp_id)).length;
  stats.scanned.ltPayroll=data.payroll.filter(r=>isTargetRow("payroll",r)).length;
  stats.scanned.ltFeedback=data.feedback.filter(r=>isTargetRow("feedback",r)).length;
  stats.scanned.ltEligibility=data.eligibility.filter(r=>isTargetRow("eligibility",r)).length;
  stats.scanned.ltSheet=data.sheet.filter(r=>isTargetRow("sheet",r)).length;
+ stats.scanned.australiaActiveSheetRows=data.sheet.filter(r=>cycleFor(r.cycle_id)&&active(cycleFor(r.cycle_id))&&isAustraliaCycle(cycleFor(r))).length;
  stats.unresolved=issues.filter(x=>!x.safe).length;
  return {ops,issues,stats};
 }
