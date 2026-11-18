@@ -100,22 +100,28 @@ function view(p){return {planToken:hash({ops:p.ops,issues:p.issues,stats:p.stats
 async function auditWrite(t,rows){for(let i=0;i<rows.length;i+=WRITE)await t.audit.insertRows(rows.slice(i,i+WRITE));}
 async function apply(t,p,actor){
  const batchId=crypto.randomUUID().replace(/-/g,"").slice(0,24);
- for(const key of Object.keys(TABLES).filter(k=>k!=="audit")){
-  const ops=p.ops.filter(o=>o.table===key);
-  const updates=ops.filter(o=>o.kind==="update"),inserts=ops.filter(o=>o.kind==="insert");
-  for(let i=0;i<updates.length;i+=WRITE){
-   const part=updates.slice(i,i+WRITE),packs=packUndo(part.map(o=>({kind:"update",undo:o.undo})));
-   await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
-   await t[key].updateRows(part.map(o=>({ROWID:o.rowId,...o.patch})));
+ await auditWrite(t,[auditRow(actor,SOURCE.summary,batchId,{kind:"data-reconciliation",action:"Applying",updates:p.stats.safeUpdates,inserts:p.stats.safeInserts})]);
+ try{
+  for(const key of Object.keys(TABLES).filter(k=>k!=="audit")){
+   const ops=p.ops.filter(o=>o.table===key);
+   const updates=ops.filter(o=>o.kind==="update"),inserts=ops.filter(o=>o.kind==="insert");
+   for(let i=0;i<updates.length;i+=WRITE){
+    const part=updates.slice(i,i+WRITE),packs=packUndo(part.map(o=>({kind:"update",undo:o.undo})));
+    await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
+    await t[key].updateRows(part.map(o=>({ROWID:o.rowId,...o.patch})));
+   }
+   for(let i=0;i<inserts.length;i+=WRITE){
+    const part=inserts.slice(i,i+WRITE),created=await t[key].insertRows(part.map(o=>o.values));
+    const inserted=part.map((o,j)=>{const id=rid(created?.[j]);if(!id)throw new Error("Inserted "+key+" row did not return ROWID.");return {kind:"insert",undo:{table:key,rowId:id,values:o.values}};});
+    const packs=packUndo(inserted);await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
+   }
   }
-  for(let i=0;i<inserts.length;i+=WRITE){
-   const part=inserts.slice(i,i+WRITE),created=await t[key].insertRows(part.map(o=>o.values));
-   const inserted=part.map((o,j)=>{const id=rid(created?.[j]);if(!id)throw new Error("Inserted "+key+" row did not return ROWID.");return {kind:"insert",undo:{table:key,rowId:id,values:o.values}};});
-   const packs=packUndo(inserted);await auditWrite(t,packs.map(d=>auditRow(actor,SOURCE.undo,batchId,d)));
-  }
+  await auditWrite(t,[auditRow(actor,SOURCE.summary,batchId,{kind:"data-reconciliation",action:"Applied",updates:p.stats.safeUpdates,inserts:p.stats.safeInserts})]);
+  return {batchId,updates:p.stats.safeUpdates,inserts:p.stats.safeInserts};
+ }catch(error){
+  try{await revert(t,batchId,actor);throw new ApiError("Apply failed; all recorded changes were rolled back. "+error.message,500);}
+  catch(rollbackError){if(rollbackError instanceof ApiError&&rollbackError.message.startsWith("Apply failed;"))throw rollbackError;throw new ApiError("Apply failed and automatic rollback was incomplete. Batch "+batchId+". Original error: "+error.message+"; rollback error: "+rollbackError.message,500);}
  }
- await auditWrite(t,[auditRow(actor,SOURCE.summary,batchId,{kind:"data-reconciliation",action:"Applied",updates:p.stats.safeUpdates,inserts:p.stats.safeInserts})]);
- return {batchId,updates:p.stats.safeUpdates,inserts:p.stats.safeInserts};
 }
 async function revert(t,batchId,actor){
  if(!/^[a-f0-9]{24}$/.test(batchId))throw new ApiError("Invalid reconciliation batch ID.");
@@ -123,12 +129,13 @@ async function revert(t,batchId,actor){
  if(!logs.some(r=>r.source===SOURCE.summary&&r.batch_id===batchId))throw new ApiError("Reconciliation batch not found.",404);
  if(logs.some(r=>r.source===SOURCE.undone&&r.batch_id===batchId))throw new ApiError("Batch already reverted.",409);
  const packs=logs.filter(r=>r.source===SOURCE.undo&&r.batch_id===batchId).map(r=>{try{return JSON.parse(r.details||"{}");}catch{return {};}}),updates=packs.flatMap(p=>p.updates||[]),inserts=packs.flatMap(p=>p.inserts||[]);
- for(const item of updates){const row=(await all(t[item.table])).find(r=>rid(r)===item.rowId);if(!row)throw new ApiError("Cannot revert: updated row no longer exists.",409);for(const [k,v] of Object.entries(item.after||{}))if(!same(ref(row[k]),ref(v)))throw new ApiError("Cannot revert: "+item.table+" row "+item.rowId+" changed after Apply ("+k+").",409);}
+ const toRestore=[];
+ for(const item of updates){const row=(await all(t[item.table])).find(r=>rid(r)===item.rowId);if(!row)throw new ApiError("Cannot revert: updated row no longer exists.",409);const beforeState=Object.entries(item.before||{}).every(([k,v])=>same(ref(row[k]),ref(v)));if(beforeState)continue;for(const [k,v] of Object.entries(item.after||{}))if(!same(ref(row[k]),ref(v)))throw new ApiError("Cannot revert: "+item.table+" row "+item.rowId+" changed after Apply ("+k+").",409);toRestore.push(item);}
  for(const item of inserts){const row=(await all(t[item.table])).find(r=>rid(r)===item.rowId);if(row)for(const [k,v] of Object.entries(item.values||{}))if(!same(ref(row[k]),ref(v)))throw new ApiError("Cannot revert: inserted row was changed after Apply.",409);}
- for(const item of updates)await t[item.table].updateRows([{ROWID:item.rowId,...item.before}]);
+ for(const item of toRestore)await t[item.table].updateRows([{ROWID:item.rowId,...item.before}]);
  const grouped={};inserts.forEach(x=>((grouped[x.table]||=[]).push(x.rowId)));for(const [key,ids] of Object.entries(grouped))for(let i=0;i<ids.length;i+=WRITE)await t[key].deleteRows(ids.slice(i,i+WRITE));
- await auditWrite(t,[auditRow(actor,SOURCE.undone,batchId,{kind:"data-reconciliation",action:"Reverted",restored:updates.length,deleted:inserts.length})]);
- return {restored:updates.length,deleted:inserts.length};
+ await auditWrite(t,[auditRow(actor,SOURCE.undone,batchId,{kind:"data-reconciliation",action:"Reverted",restored:toRestore.length,deleted:inserts.length})]);
+ return {restored:toRestore.length,deleted:inserts.length};
 }
 module.exports=async function(req,res){
  if(req.method==="OPTIONS"){res.writeHead(204);return res.end();}
