@@ -64,28 +64,29 @@ function call(api,method,resource,body){return new Promise((resolve,reject)=>{co
 let passed=0,failed=0;
 async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",name);}catch(e){failed++;console.error("FAIL",name,e.stack||e);}}
 (async()=>{
- await test("Preview is read-only and proposes exact prior-cycle copies plus budget base correction",async()=>{
+ await test("Preview is read-only and proposes only LT historical copies; budget aggregates remain untouched",async()=>{
   const api=load(),before=JSON.stringify(DB),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
   assert.strictEqual(JSON.stringify(DB),before);
   assert.strictEqual(p.stats.safeInserts,2);
-  assert.strictEqual(p.stats.safeUpdates,1);
+  assert.strictEqual(p.stats.safeUpdates,0);
   assert(p.ops.some(o=>o.table==="feedback"&&o.values.Effective_Date==="2026-04-01"));
-  assert(p.ops.some(o=>o.table==="budgetMaster"&&o.patch.org_budget_base===150000));
+  assert(!p.ops.some(o=>["budgetMaster","distribution","distributionComp"].includes(o.table)));
  });
  await test("Apply writes proposed changes and Revert restores the exact before-state",async()=>{
   const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
   const p=await api._internals.buildPlan(tables),applied=await api._internals.apply(tables,p,"HR");
   assert.strictEqual(DB[T.payroll].filter(r=>r.appraisal_cycle_name==="C2").length,1);
   assert.strictEqual(DB[T.feedback].find(r=>r.appraisal_cycle_name==="C2").Effective_Date,"2026-04-01");
-  assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,150000);
+  assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
   const reverted=await api._internals.revert(tables,applied.batchId,"HR");
-  assert.strictEqual(reverted.restored,1);assert.strictEqual(reverted.deleted,2);
+  assert.strictEqual(reverted.restored,0);assert.strictEqual(reverted.deleted,2);
   assert.strictEqual(DB[T.payroll].length,1);assert.strictEqual(DB[T.feedback].length,1);
   assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
  });
  await test("A failed partial Apply automatically rolls back earlier inserts",async()=>{
   const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
-  const p=await api._internals.buildPlan(tables);failUpdateTable=T.budgetMaster;
+  DB[T.sheet][0].emp_master_row_id="WRONG";
+  const p=await api._internals.buildPlan(tables);failUpdateTable=T.sheet;
   await assert.rejects(()=>api._internals.apply(tables,p,"HR"),/all recorded changes were rolled back/);
   assert.strictEqual(DB[T.payroll].length,1);
   assert.strictEqual(DB[T.feedback].length,1);
@@ -94,12 +95,13 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
  });
  await test("Revert refuses to overwrite a row changed after Apply",async()=>{
   const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  DB[T.sheet][0].emp_master_row_id="WRONG";
   const p=await api._internals.buildPlan(tables),applied=await api._internals.apply(tables,p,"HR");
-  DB[T.budgetMaster][0].org_budget_base=777;
+  DB[T.sheet][0].emp_master_row_id="CHANGED_AFTER_APPLY";
   await assert.rejects(()=>api._internals.revert(tables,applied.batchId,"HR"),/changed after Apply/);
  });
  await test("Orphan references are reported and never deleted or guessed",async()=>{
-  DB[T.payroll].push({ROWID:"PX",emp_id:"NO_MASTER",appraisal_cycle_name:"C1"});
+  DB[T.payroll].push({ROWID:"PX",emp_id:"LT99999",appraisal_cycle_name:"C1"});
   const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
   assert(p.issues.some(x=>x.type==="orphan_employee_reference"&&x.rowId==="PX"));
   assert(!p.ops.some(x=>x.rowId==="PX"));
@@ -123,10 +125,10 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
   assert(p.ops.some(o=>o.table==="sheet"&&o.rowId==="S1"&&o.patch.emp_master_row_id==="E1"));
  });
- await test("Duplicate Budget_Master cycle rows are report-only",async()=>{
+ await test("Budget aggregate tables are excluded from LT-only cleanup",async()=>{
   DB[T.budgetMaster].push({ROWID:"B2",appraisal_cycle_id:"C2",org_budget_base:1});
   const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
-  assert(p.issues.some(x=>x.type==="duplicate_budget_master_cycle"));
+  assert(!p.issues.some(x=>x.table==="budgetMaster"));
   assert(!p.ops.some(o=>o.table==="budgetMaster"));
  });
  await test("Tech-ED role is refused by the API",async()=>{
