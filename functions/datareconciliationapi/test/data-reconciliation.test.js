@@ -8,14 +8,14 @@ const T={
  budgetMaster:"74008000000034565",distribution:"74008000000033809",
  distributionComp:"74008000000023149",audit:"74008000000034940"
 };
-let DB,seq,user,accessEnforced=false;
+let DB,seq,user,accessEnforced=false,failUpdateTable="";
 function makeTable(id){
  const rows=DB[id]||(DB[id]=[]);
  const add=r=>{const v={...r,ROWID:String(++seq)};rows.push(v);return {...v};};
  return {
   getPagedRows:async()=>({data:rows.map(r=>({...r})),more_records:false}),
   insertRows:async batch=>batch.map(add),
-  updateRows:async batch=>batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};}),
+  updateRows:async batch=>{if(failUpdateTable===id)throw Error("simulated update failure");return batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};}),
   deleteRows:async ids=>{ids.forEach(id=>{const i=rows.findIndex(r=>r.ROWID===String(id));if(i>=0)rows.splice(i,1);});return true;}
  };
 }
@@ -28,7 +28,7 @@ function load(){
  try{return require("../index.js");}finally{Module._load=orig;}
 }
 function reset(){
- DB={};seq=100;user={user_id:"1",email_id:"hr@test",role:"hr"};
+ DB={};seq=100;failUpdateTable="";user={user_id:"1",email_id:"hr@test",role:"hr"};
  DB[T.employees]=[{ROWID:"E1",emp_id:"EMP001",emp_name:"Employee One",emp_status:"Active"}];
  DB[T.cycles]=[
   {ROWID:"C1",cycle_name:"Annual 2025",status:"Closed",effective_date:"2025-04-01"},
@@ -64,6 +64,15 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   assert.strictEqual(reverted.restored,1);assert.strictEqual(reverted.deleted,2);
   assert.strictEqual(DB[T.payroll].length,1);assert.strictEqual(DB[T.feedback].length,1);
   assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
+ });
+ await test("A failed partial Apply automatically rolls back earlier inserts",async()=>{
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const p=await api._internals.buildPlan(tables);failUpdateTable=T.budgetMaster;
+  await assert.rejects(()=>api._internals.apply(tables,p,"HR"),/all recorded changes were rolled back/);
+  assert.strictEqual(DB[T.payroll].length,1);
+  assert.strictEqual(DB[T.feedback].length,1);
+  assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
+  assert(DB[T.audit].some(r=>r.source==="data_reconciliation_undone"));
  });
  await test("Revert refuses to overwrite a row changed after Apply",async()=>{
   const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
