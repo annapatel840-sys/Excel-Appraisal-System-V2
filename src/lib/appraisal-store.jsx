@@ -1253,8 +1253,7 @@
 //         updateRows(() => []);
 //         setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
 //         setAudit([]);
-//         setCycleStatus("");
-        setError("No active or closed appraisal cycle is available for this location.");
+//         setError("No active appraisal cycle. The current Appraisal Sheet is empty.");
 //         return;
 //       }
 //       setAudit((previous) => currentCycleAudit(previous));
@@ -3647,10 +3646,11 @@ export function AppraisalProvider({ children }) {
       APPRAISAL_LOCATION = String(activeCycle?.location || selectedLocation || "").trim();
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
       if (!activeCycle || !APPRAISAL_YEAR) {
+        setCycleStatus("");
         updateRows(() => []);
         setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
         setAudit([]);
-        setError("No active appraisal cycle. The current Appraisal Sheet is empty.");
+        setError("No active or closed appraisal cycle is available for this location.");
         return;
       }
       setAudit((previous) => currentCycleAudit(previous));
