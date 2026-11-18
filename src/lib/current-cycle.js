@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { matchesCycleLocation, useSelectedLocation } from "@/lib/location-store";
@@ -82,6 +82,7 @@ function load(selectedLocation) {
     })
     .catch(() => {
       cycleNames.set(key, "");
+      cycleInfos.set(key, null);
       listeners.forEach((listener) => listener());
     })
     .finally(() => {
@@ -111,6 +112,7 @@ export function useCurrentCycleName() {
     const refresh = () => {
       fetchedAt.delete(key);
       cycleNames.set(key, "");
+      cycleInfos.set(key, null);
       listeners.forEach((listener) => listener());
       load(selectedLocation);
     };
@@ -118,4 +120,30 @@ export function useCurrentCycleName() {
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [key, selectedLocation]);
   return name;
+}
+
+// The picked cycle itself (Active, or the latest Closed one when none is
+// Active) for the selected location, or null. `name` and `isClosed` are added
+// for convenience; every other column of the cycle row is passed through.
+export function useCurrentCycleInfo() {
+  const [selectedLocation] = useSelectedLocation();
+  const key = locationKey(selectedLocation);
+  const info = useSyncExternalStore(
+    subscribe,
+    () => cycleInfos.get(key) || null,
+    () => null,
+  );
+  // Loads through the same cache as useCurrentCycleName.
+  useCurrentCycleName();
+  return useMemo(
+    () =>
+      info
+        ? {
+            ...info,
+            name: String(info.name || info.cycle_name || info.appraisal_cycle_name || "").trim(),
+            isClosed: String(info.status ?? info.cycle_status ?? "").trim().toLowerCase() === "closed",
+          }
+        : null,
+    [info],
+  );
 }
