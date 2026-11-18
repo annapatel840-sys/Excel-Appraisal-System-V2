@@ -1135,6 +1135,8 @@
 
 //   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
 //   const [rows, setRows] = useState([]);
+  const [cycleStatus, setCycleStatus] = useState("");
+  const readOnlyCycle = cycleStatus.toLowerCase() === "closed" && !isHRUser;
 
 //   // While the rows on screen come from the browser's saved copy (see
 //   // roster-snapshot.js) and the fresh roster has not arrived yet, edits are
@@ -1251,7 +1253,8 @@
 //         updateRows(() => []);
 //         setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
 //         setAudit([]);
-//         setError("No active appraisal cycle. The current Appraisal Sheet is empty.");
+//         setCycleStatus("");
+        setError("No active or closed appraisal cycle is available for this location.");
 //         return;
 //       }
 //       setAudit((previous) => currentCycleAudit(previous));
@@ -2101,7 +2104,7 @@
 
 //       return currentEmployee;
 //     },
-//     [rows, currentUserName, updateRows],
+//     [rows, currentUserName, updateRows, rejectWhileShowingSaved],
 //   );
 
 //   /* ==========================================================
@@ -3503,6 +3506,7 @@ PROVIDER
 
 export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
+  const access = useAccess();
   const [selectedLocation] = useSelectedLocation();
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
@@ -3512,9 +3516,8 @@ export function AppraisalProvider({ children }) {
   // HR users have universal appraisal visibility:
   // no status/eligibility restriction is applied to their employee data.
   const isHRUser =
-    String(authenticatedUser?.role || "")
-      .trim()
-      .toLowerCase() === "hr";
+    access.role === "hr" ||
+    String(authenticatedUser?.role || "").trim().toLowerCase() === "hr";
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
@@ -3639,6 +3642,7 @@ export function AppraisalProvider({ children }) {
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
+      setCycleStatus(String(activeCycle?.status || ""));
       APPRAISAL_CYCLE_ID = String(activeCycle?.id || activeCycle?.ROWID || activeCycle?.rowid || "").trim();
       APPRAISAL_LOCATION = String(activeCycle?.location || selectedLocation || "").trim();
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
@@ -3903,7 +3907,6 @@ export function AppraisalProvider({ children }) {
   // saved, whichever screen asks (Appraisal Sheet, Detailed Screen, Bulk Edit,
   // Import). Second safeguard: the screens already lock these fields, and the
   // server refuses them too. Keys that are not access-controlled stay allowed.
-  const access = useAccess();
   const accessRef = useRef(access);
   accessRef.current = access;
   const rejectLockedFields = useCallback((keys) => {
@@ -3935,10 +3938,14 @@ export function AppraisalProvider({ children }) {
   // active-cycle and expected-value checks to decide whether this edit is safe;
   // otherwise one failed refresh would leave the sheet permanently uneditable.
   const rejectWhileShowingSaved = useCallback(() => {
+    if (readOnlyCycle) {
+      setSaveError("This appraisal cycle is Closed. Tech-ED and Comp Manager access is read-only.");
+      return true;
+    }
     if (!showingSavedRef.current || !loadingRef.current) return false;
     setSaveError("The latest Appraisal Sheet data is still loading. Try again in a moment.");
     return true;
-  }, []);
+  }, [readOnlyCycle]);
 
   /* ==========================================================
   SAVE FAILURE HANDLING
@@ -4449,6 +4456,7 @@ export function AppraisalProvider({ children }) {
 
   const updateEmployeeStatus = useCallback(
     async (empId, status) => {
+      if (rejectWhileShowingSaved()) return null;
       const normalizedStatus =
         String(status).toLowerCase() === "inactive" ? "Inactive" : "Active";
 
@@ -4470,6 +4478,7 @@ export function AppraisalProvider({ children }) {
         },
         body: JSON.stringify({
           emp_id: String(empId),
+          cycle_id: APPRAISAL_CYCLE_ID,
           status: normalizedStatus,
         }),
       });
@@ -4739,6 +4748,8 @@ export function AppraisalProvider({ children }) {
       rows: locationRows,
       allRows: rows,
       selectedLocation,
+      cycleStatus,
+      readOnlyCycle,
       audit,
       modified,
       loading,
@@ -4762,6 +4773,8 @@ export function AppraisalProvider({ children }) {
       locationRows,
       rows,
       selectedLocation,
+      cycleStatus,
+      readOnlyCycle,
       audit,
       modified,
       loading,
