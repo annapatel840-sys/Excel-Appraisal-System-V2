@@ -35,7 +35,7 @@ export function SettingsPage() {
   };
   const previewReconciliation = async () => {
     const data = await runReconciliation("preview");
-    if (data) { setReconPreview(data); setReconBatchId(""); setReconMessage("Preview completed. No Catalyst records were changed."); }
+    if (data) { setReconPreview(data); setReconMessage("Preview completed. No Catalyst records were changed."); }
   };
   const applyReconciliation = async () => {
     if (!reconPreview?.planToken || !window.confirm("Apply the exact changes shown in Preview? A rollback record will be saved.")) return;
@@ -92,7 +92,7 @@ export function SettingsPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" disabled={reconLoading} onClick={previewReconciliation}>Preview Data</Button>
-              <Button type="button" disabled={reconLoading || !reconPreview?.planToken || !reconPreview?.summary?.operations} onClick={applyReconciliation}>Apply Preview</Button>
+              <Button type="button" disabled={reconLoading || !reconPreview?.planToken || (reconPreview?.summary?.safeUpdates || 0) + (reconPreview?.summary?.safeInserts || 0) === 0} onClick={applyReconciliation}>Apply Preview</Button>
               <Button type="button" variant="destructive" disabled={reconLoading || !reconBatchId} onClick={revertReconciliation}>Revert Last Apply</Button>
             </div>
             {reconLoading && <p className="text-xs text-muted-foreground">Processing…</p>}
