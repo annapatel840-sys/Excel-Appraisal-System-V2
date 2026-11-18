@@ -15,7 +15,7 @@ function makeTable(id){
  return {
   getPagedRows:async()=>({data:rows.map(r=>({...r})),more_records:false}),
   insertRows:async batch=>batch.map(add),
-  updateRows:async batch=>{if(failUpdateTable===id)throw Error("simulated update failure");return batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};}),
+  updateRows:async batch=>{if(failUpdateTable===id)throw Error("simulated update failure");return batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};});},
   deleteRows:async ids=>{ids.forEach(id=>{const i=rows.findIndex(r=>r.ROWID===String(id));if(i>=0)rows.splice(i,1);});return true;}
  };
 }
