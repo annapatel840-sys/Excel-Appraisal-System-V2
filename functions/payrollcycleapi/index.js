@@ -4845,6 +4845,8 @@ async function routeRequest(req, res, identity, resource, a) {
       const moved = archived ? await moveSheetToPayroll(tables, existing, actor, copyDelegation) : null;
       // A cycle with no sheet rows skips the move, so copy here.
       if (archived && !delegationCopied) await copyDelegation();
+      // Keep eligibility visible while Closed; clear it only during Archive.
+      const eligibilityArchived = archived ? await clearEligibilityRows(tables, id) : 0;
       if (moved && moved.moved) remarks = appendRemark(remarks, `${SHEET_ARCHIVE_MARK} (${moved.moved} row(s))`);
       const row = { ROWID: id, archived, changed_by: actor, changed_at: now };
       if (remark || (moved && moved.moved)) row.remarks = remarks;
@@ -4857,7 +4859,7 @@ async function routeRequest(req, res, identity, resource, a) {
           ? ` ${delegationCopied.copied} Delegation row(s) saved to Previous Delegation.`
           : "");
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archiveMessage, cycleName: updated.name, ...(moved ? { sheetMoved: moved } : {}), ...(delegationCopied ? { delegationCopied } : {}), ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: { ...updated, sheetMoved: moved, delegationCopied } });
+      return sendJson(res, 200, { success: true, data: { ...updated, sheetMoved: moved, delegationCopied, eligibilityArchived } });
     }
 
     if (action === "cancel") {
