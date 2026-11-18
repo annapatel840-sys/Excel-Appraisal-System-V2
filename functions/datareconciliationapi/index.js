@@ -104,14 +104,14 @@ async function buildPlan(t){
    const pNow=data.payroll.filter(r=>employeeCycleMatch(r,"emp_id","appraisal_cycle_name",eid,cid));
    if(!pNow.length){
     const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.payroll.filter(r=>employeeCycleMatch(r,"emp_id","appraisal_cycle_name",eid,rid(c)))})).find(x=>x.rows.length);
-    if(sourceGroup&&sourceGroup.rows.length===1)issue(issues,"payroll_copy_requires_review","payroll",{emp_id:empId,cycle_id:cid},"A historical Payroll source exists, but automatic copying is disabled. Review the employee and cycle before creating an Active-cycle row.");
+    if(sourceGroup&&sourceGroup.rows.length===1){const source=sourceGroup.rows[0],values={...business(source),emp_id:eid,emp_name:employee.emp_name||source.emp_name,appraisal_cycle_name:cid};ops.push({kind:"insert",table:"payroll",values,reason:"Copy latest unique Closed-cycle Payroll into Active generated cycle",undo:{table:"payroll",rowId:"",values}});stats.safeInserts++;}
     else if(sourceGroup)issue(issues,"ambiguous_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"Latest Closed cycle has multiple Payroll rows for this employee; no source row was selected.");
     else issue(issues,"missing_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"No Closed-cycle Payroll source exists; no values were fabricated.");
    }else if(pNow.length>1)issue(issues,"duplicate_active_payroll","payroll",pNow[1],"Multiple Payroll rows exist in the Active cycle.");
    const fNow=data.feedback.filter(r=>employeeCycleMatch(r,"emp_ID","appraisal_cycle_name",eid,cid));
    if(!fNow.length){
     const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.feedback.filter(r=>employeeCycleMatch(r,"emp_ID","appraisal_cycle_name",eid,rid(c))&&validFeedback(r))})).find(x=>x.rows.length);
-    if(sourceGroup&&sourceGroup.rows.length===1)issue(issues,"feedback_copy_requires_review","feedback",{emp_id:empId,cycle_id:cid},"A historical Feedback source exists, but automatic copying is disabled. Review the employee and cycle before creating an Active-cycle row.");
+    if(sourceGroup&&sourceGroup.rows.length===1){const source=sourceGroup.rows[0],values={...business(source),emp_ID:eid,emp_name:eid,appraisal_cycle_name:cid,Effective_Date:cycle.effective_date||cycle.start_date||source.Effective_Date};ops.push({kind:"insert",table:"feedback",values,reason:"Copy latest unique valid Closed-cycle Feedback into Active generated cycle",undo:{table:"feedback",rowId:"",values}});stats.safeInserts++;}
     else if(sourceGroup)issue(issues,"ambiguous_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"Latest Closed cycle has multiple valid Feedback rows for this employee; no source row was selected.");
     else issue(issues,"missing_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"No valid Closed-cycle Feedback source exists; no rating or comment was invented.");
    }else if(fNow.length>1)issue(issues,"duplicate_active_feedback","feedback",fNow[1],"Multiple Feedback rows exist in the Active cycle.");
