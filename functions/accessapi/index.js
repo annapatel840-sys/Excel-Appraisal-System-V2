@@ -1741,8 +1741,17 @@ app.post(
       selectAll(zcql, SETTINGS.appraisalSheet.table, "cycle_id = '" + q(cycleId) + "'"),
       selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
     ]);
-    if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") {
-      throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
+    const cycleStatus = String(cycles[0]?.[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
+    if (!cycles.length) {
+      throw new HttpError(404, "Appraisal cycle not found.");
+    }
+    // Closed cycles remain fully manageable by HR. Tech-Ed and Comp Manager
+    // are restricted to viewing them; only HR may save closed-cycle delegation.
+    if (cycleStatus !== "active" && me.role !== "hr") {
+      throw new HttpError(403, "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.");
+    }
+    if (["archived", "hidden"].includes(cycleStatus) || cycles[0]?.archived === true || cycles[0]?.hidden === true) {
+      throw new HttpError(409, "Archived appraisal cycles cannot be changed.");
     }
 
     const masterByEmployeeId = new Map(
