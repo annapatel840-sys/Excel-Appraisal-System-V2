@@ -4891,6 +4891,19 @@ async function updateEmployee(req, res) {
       body.location,
     ),
   ]);
+  const selectedCycleStatus = String(
+    currentCycle?.status ?? currentCycle?.cycle_status ?? currentCycle?.appraisal_status ?? "",
+  ).trim().toLowerCase();
+  if (selectedCycleStatus === "closed" && a?.role !== "hr") {
+    throw new access.HttpError(403, "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.");
+  }
+  if (
+    selectedCycleStatus === "archived" ||
+    ["true", "1", "yes"].includes(String(currentCycle?.archived ?? "").trim().toLowerCase()) ||
+    ["true", "1", "yes"].includes(String(currentCycle?.hidden ?? "").trim().toLowerCase())
+  ) {
+    throw new access.HttpError(409, "Archived appraisal cycles cannot be edited.");
+  }
   const currentCycleId = currentCycle
     ? String(currentCycle.ROWID ?? currentCycle.rowid ?? currentCycle.id ?? currentCycle.ID ?? "").trim()
     : "";
