@@ -1196,9 +1196,14 @@ export function AppraisalCycleMasterPage({
         // People come from the Appraisal Sheet already loaded in the browser.
         sheetRowsForLetters(sheetRows, c.id, c.location),
       );
+      const why =
+        result.total === 0
+          ? ` ${result.people ?? 0} employees checked: ${result.noRule ?? 0} matched no Letter Rule (no hike / PB / RB / target PB value on their row), ${result.noTemplate ?? 0} have no active template for their location.`
+          : "";
       showBanner(
         "Letters generated",
-        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${LETTERS_DEMO ? " Sample data." : ""}`,
+        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}`,
+        result.total === 0,
       );
     } catch (error) {
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
@@ -1377,14 +1382,14 @@ export function AppraisalCycleMasterPage({
         "Letters",
         !lettersOpen
           ? "Available after Generate"
-          : !L.gen
-            ? "Annual letters not generated yet"
+          : !L.gen || (L.total === 0 && canMakeLetters)
+            ? `Letters not generated yet${loadedSheet ? ` · ${sheetRows.length} employees in the Appraisal Sheet` : ""}`
             : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped${L.outOfDate ? ` · ${L.outOfDate} Out of date` : ""}${L.missing ? ` · ${L.missing} still to generate` : ""}`,
-        !lettersOpen ? "lk" : L.gen && L.toSend === 0 && !letterTodo ? "ok" : "wn",
+        !lettersOpen ? "lk" : L.gen && L.total > 0 && L.toSend === 0 && !letterTodo ? "ok" : "wn",
         lettersOpen
           ? [
-              ...(canMakeLetters && (!L.gen || letterTodo)
-                ? [{ l: L.gen ? "Regenerate" : "Generate", id: "gen-lt" }]
+              ...(canMakeLetters && (!L.gen || L.total === 0 || letterTodo)
+                ? [{ l: L.gen && L.total > 0 ? "Regenerate" : "Generate", id: "gen-lt" }]
                 : []),
               { l: "Open ›", id: "go-lt" },
             ]

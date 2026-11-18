@@ -243,6 +243,17 @@ export async function generateLettersForCycle(cycle, actor, sheetRows) {
       st.sheet = st.sheet.filter((r) => r.cycle !== id).concat(sheetRows.map((r) => ({ ...r, cycle: id })));
     }
     const result = core.generateLetters(st, String(cycle.id));
+    // Why people got no letter: no Letter Rule matched their numbers, or the
+    // rule's template has no active version for their location.
+    const mine = st.sheet.filter((r) => r.cycle === String(cycle.id) && r.status === "Active");
+    result.people = mine.length;
+    result.noRule = 0;
+    result.noTemplate = 0;
+    mine.forEach((r) => {
+      const rules = core.pick(st, r);
+      if (!rules.length) result.noRule += 1;
+      else if (rules.every((rule) => !core.resolveTemplate(st, rule.tpl, r))) result.noTemplate += 1;
+    });
     core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged`);
     return result;
   });
