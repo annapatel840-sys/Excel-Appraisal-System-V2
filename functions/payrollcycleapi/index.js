@@ -1613,20 +1613,30 @@ async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, elig
       master,
     ]),
   );
+  const masterByRowId = new Map(
+    masterRows.map((master) => [String(master.ROWID || master.rowid || ""), master]),
+  );
   const sheetRows = await getAllRows(tables.appraisalSheet);
   const exactCycleRows = sheetRows.filter((sheet) => {
+    const raw = sheet.cycle_id ?? sheet.appraisal_cycle_id ?? sheet.appraisal_cycle_name ?? "";
     const reference = String(
-      sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
+      raw && typeof raw === "object" ? raw.ROWID ?? raw.rowid ?? raw.id ?? raw.value ?? "" : raw,
     ).trim();
     return reference === cycleId ||
       reference.toLowerCase() === String(cycle.name || "").trim().toLowerCase();
   });
   const restored = [];
   for (const sheet of exactCycleRows) {
-    const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
+    const rawEmployee = sheet.emp_id ?? sheet.employee_id ?? "";
+    const employeeRef = String(
+      rawEmployee && typeof rawEmployee === "object"
+        ? rawEmployee.ROWID ?? rawEmployee.rowid ?? rawEmployee.id ?? rawEmployee.value ?? ""
+        : rawEmployee,
+    ).trim();
+    const master = masterByEmpId.get(employeeRef.toLowerCase()) || masterByRowId.get(employeeRef);
+    const empId = String(master?.emp_id || employeeRef).trim();
     const key = empId.toLowerCase();
     if (!key || existingEmpIds.has(key)) continue;
-    const master = masterByEmpId.get(key);
     if (!master || !inCycleLocation(cycle, master, locations)) continue;
     const statusRaw = String(
       sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
