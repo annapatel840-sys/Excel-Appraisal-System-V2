@@ -75,7 +75,7 @@ async function buildPlan(t){
    }else if(pNow.length>1)issue(issues,"duplicate_active_payroll","payroll",pNow[1],"Multiple Payroll rows exist in the Active cycle.");
    const fNow=data.feedback.filter(r=>ref(r.emp_ID)===eid&&ref(r.appraisal_cycle_name)===cid);
    if(!fNow.length){const source=closedCycles.map(c=>data.feedback.find(r=>ref(r.emp_ID)===eid&&ref(r.appraisal_cycle_name)===rid(c)&&validFeedback(r))).find(Boolean);
-    if(source){const values={...business(source),emp_ID:eid,emp_name:eid,appraisal_cycle_name:cid};ops.push({kind:"insert",table:"feedback",values,reason:"Copy latest valid Closed-cycle Feedback into Active generated cycle"});stats.safeInserts++;}
+    if(source){const values={...business(source),emp_ID:eid,emp_name:eid,appraisal_cycle_name:cid,Effective_Date:cycle.effective_date||cycle.start_date||source.Effective_Date};ops.push({kind:"insert",table:"feedback",values,reason:"Copy latest valid Closed-cycle Feedback into Active generated cycle"});stats.safeInserts++;}
     else issue(issues,"missing_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"No valid Closed-cycle Feedback source exists; no rating or comment was invented.");
    }else if(fNow.length>1)issue(issues,"duplicate_active_feedback","feedback",fNow[1],"Multiple Feedback rows exist in the Active cycle.");
   }
@@ -123,4 +123,4 @@ module.exports=async function(req,res){
   return send(res,404,{success:false,message:"Operation not found."});
  }catch(e){if(e instanceof access.HttpError)return send(res,e.status||403,{success:false,message:e.message});const status=e instanceof ApiError?e.status:500;if(status>=500)console.error(JSON.stringify({function:"datareconciliationapi",error:e.message,stack:e.stack}));return send(res,status,{success:false,message:e.message||"Data reconciliation failed."});}
 };
-module.exports._internals={buildPlan,view,hash,packUndo,validFeedback,TABLES,SOURCE};
+module.exports._internals={buildPlan,view,hash,packUndo,validFeedback,apply,revert,TABLES,SOURCE};
