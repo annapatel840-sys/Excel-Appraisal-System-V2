@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LETTERS_DEMO, generateLettersForCycle, sheetRowsForLetters, syncLetterState, useLettersStats } from "@/lib/letters-store";
+import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
@@ -1198,8 +1198,7 @@ export function AppraisalCycleMasterPage({
       const result = await generateLettersForCycle(
         { id: c.id, name: c.name, effective: c.effective, start: c.start, location: c.location },
         user?.name || "HR",
-        // People come from the Appraisal Sheet already loaded in the browser.
-        sheetRowsForLetters(sheetRows, c.id, c.location),
+        // No rows passed: the people are read from the Appraisal_Sheet table for this cycle's location.
       );
       const why =
         result.total === 0
@@ -1207,8 +1206,8 @@ export function AppraisalCycleMasterPage({
           : "";
       showBanner(
         "Letters generated",
-        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}${result.saved === false ? ` NOT SAVED TO THE SERVER: ${result.saveError}` : ""}`,
-        result.total === 0 || result.saved === false,
+        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}`,
+        result.total === 0,
       );
     } catch (error) {
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
@@ -2921,6 +2920,8 @@ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);
 .acx-swt .sw:after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
 .acx-swt.on .sw{background:#22A06B}.acx-swt.on .sw:after{left:16px}
 .acx-seln{color:var(--muted);font-weight:600;font-size:11.5px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* System Location menu: light hover instead of the dark --muted colour used by this screen */
+.acx .em-location-menu button:hover,.acx .em-location-menu button:focus-visible{background:#EEF4FB;color:#102A43;outline:none}
 .acx-ttabs{display:flex;border-bottom:1px solid var(--line);margin:0 0 10px;overflow:auto}
 .acx-ttabs .ty{--c:#2F6FED;--t:#E8F0FE;--x:#1D4FA8;border:none;background:none;padding:9px 16px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:7px;font-size:13px}
 .acx-ttabs .ty:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}

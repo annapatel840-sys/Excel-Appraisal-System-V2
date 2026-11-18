@@ -673,10 +673,11 @@ export function LocationMasterControl({
   const tf = useTableFilters(locations, LOC_COLS);
   const rz = useColumnResize(LOC_WIDTHS);
 
-  const load = useCallback(async () => {
+  // fresh = true (Refresh button) skips the 60-second shared read copy, so the list is read from the server again.
+  const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
-      const data = await payrollCycleRequest("locations");
+      const data = await payrollCycleRequest("locations", { fresh: fresh === true });
       const list = (Array.isArray(data) ? data : []).map(normalize);
       setLocations(list);
       // Share Location Master with every screen's location filter. Only
@@ -921,7 +922,7 @@ export function LocationMasterControl({
             <button
               type="button"
               className="em-btn"
-              onClick={load}
+              onClick={() => load(true)}
               disabled={loading}
             >
               Refresh
