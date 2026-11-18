@@ -9,15 +9,33 @@ const T={
  distributionComp:"74008000000023149",audit:"74008000000034940"
 };
 let DB,seq,user,accessEnforced=false,failUpdateTable="";
-function makeTable(id){
- const rows=DB[id]||(DB[id]=[]);
- const add=r=>{const v={...r,ROWID:String(++seq)};rows.push(v);return {...v};};
- return {
-  getPagedRows:async()=>({data:rows.map(r=>({...r})),more_records:false}),
-  insertRows:async batch=>batch.map(add),
-  updateRows:async batch=>{if(failUpdateTable===id)throw Error("simulated update failure");return batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};});},
-  deleteRows:async ids=>{ids.forEach(id=>{const i=rows.findIndex(r=>r.ROWID===String(id));if(i>=0)rows.splice(i,1);});return true;}
- };
+function makeTable(id) {
+  const rows = DB[id] || (DB[id] = []);
+  const add = (row) => {
+    const saved = { ...row, ROWID: String(++seq) };
+    rows.push(saved);
+    return { ...saved };
+  };
+  return {
+    getPagedRows: async () => ({ data: rows.map((row) => ({ ...row })), more_records: false }),
+    insertRows: async (batch) => batch.map(add),
+    updateRows: async (batch) => {
+      if (failUpdateTable === id) throw new Error("simulated update failure");
+      return batch.map((patch) => {
+        const row = rows.find((item) => item.ROWID === String(patch.ROWID));
+        if (!row) throw new Error("missing row " + patch.ROWID);
+        Object.assign(row, patch);
+        return { ...row };
+      });
+    },
+    deleteRows: async (ids) => {
+      ids.forEach((rowId) => {
+        const index = rows.findIndex((row) => row.ROWID === String(rowId));
+        if (index >= 0) rows.splice(index, 1);
+      });
+      return true;
+    },
+  };
 }
 function load(){
  const dir=path.resolve(__dirname,"..");
