@@ -1953,8 +1953,8 @@ async function calculateBudgetBases(
     });
     addLocationAliases(matchedLocation);
   }
-  const activeSheetCycle = cycleRows.find((cycle) => {
-    if (!isActiveCycle(cycle) || !hasBudgetMaster(cycle)) return false;
+  const matchesBudgetLocation = (cycle) => {
+    if (!hasBudgetMaster(cycle)) return false;
     const cycleLocation = String(
       firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
     ).trim().toLowerCase();
@@ -1965,7 +1965,26 @@ async function calculateBudgetBases(
     if (!hasLocationSelection) return true;
     if (allLocationsSelected) return normalizedCycleLocation === "all";
     return locationAliases.has(normalizedCycleLocation);
-  }) || null;
+  };
+  const activeSheetCycle = cycleRows.find(
+    (cycle) => isActiveCycle(cycle) && matchesBudgetLocation(cycle),
+  ) || cycleRows
+    .filter((cycle) =>
+      String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
+        .trim().toLowerCase() === "closed" &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof firstValue(cycle, ["archived", "is_archived", "isArchived"]) === "string"
+          ? String(firstValue(cycle, ["archived", "is_archived", "isArchived"])).trim().toLowerCase()
+          : firstValue(cycle, ["archived", "is_archived", "isArchived"]),
+      ) &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof firstValue(cycle, ["hidden", "is_hidden"]) === "string"
+          ? String(firstValue(cycle, ["hidden", "is_hidden"])).trim().toLowerCase()
+          : firstValue(cycle, ["hidden", "is_hidden"]),
+      ) &&
+      matchesBudgetLocation(cycle),
+    )
+    .sort((a, b) => cycleRank(b) - cycleRank(a))[0] || null;
   const activeCycleLocation = String(
     firstValue(activeSheetCycle, ["location", "cycle_location", "cycleLocation"]) || "",
   ).trim();
@@ -3109,31 +3128,25 @@ async function calculateBudgetBases(
   };
   // The UI headcount roster must use the same cycle-scoped Eligibility_List
   // decision as budget aggregation, not stale Employee_Master eligibility aliases.
-  const activeRosterCycles = cycleRows.filter(
-    (cycle) =>
-      String(
-        firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
-      )
-        .trim()
-        .toLowerCase() === "active" &&
-      ![true, 1, "true", "1", "yes"].includes(
-        typeof cycle.archived === "string"
-          ? cycle.archived.trim().toLowerCase()
-          : cycle.archived,
-      ) &&
-      ![true, 1, "true", "1", "yes"].includes(
-        typeof cycle.hidden === "string"
-          ? cycle.hidden.trim().toLowerCase()
-          : cycle.hidden,
-      ),
-  );
-  const activeRosterCycle =
-    activeRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
+  const availableRosterCycles = cycleRows.filter((cycle) => {
+    const status = String(
+      firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+    ).trim().toLowerCase();
+    const archived = [true, 1, "true", "1", "yes"].includes(
+      typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+    );
+    const hidden = [true, 1, "true", "1", "yes"].includes(
+      typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+    );
+    return ["active", "closed"].includes(status) && !archived && !hidden;
+  });
+  const selectedRosterCycle =
+    availableRosterCycles.find((cycle) => cycleIdOf(cycle) === activeSheetCycleId) ||
     null;
-  // Only an explicitly Active cycle may drive current budget screens.
-  // Never infer the current cycle from the newest/first historical Budget_Master
-  // row: when all cycles are closed, current working data must be empty.
-  const rosterCycleId = cycleIdOf(activeRosterCycle);
+  // Keep the selected Closed cycle's existing roster visible until Archive.
+  // Closed allocations are never recalculated: the write loop below still
+  // recalculates only explicitly Active cycles.
+  const rosterCycleId = cycleIdOf(selectedRosterCycle);
   bundle.active_appraisal_cycle_id = rosterCycleId;
   const rosterForCycle = rosterCycleId
     ? employeesForBudgetCycle(rosterCycleId)
