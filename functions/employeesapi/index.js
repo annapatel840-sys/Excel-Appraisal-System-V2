@@ -242,7 +242,14 @@ async function checkAccess(req) {
   const adminApp = catalyst.initialize(req, { scope: "admin" });
 
   try {
-    return await access.check(userApp, adminApp);
+    const params = req.queryParams || req.query || {};
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const urlParams = new URL(String(req.url || "/"), "http://local").searchParams;
+    const context = {
+      cycleId: body.cycle_id || body.appraisal_cycle_id || body.cycleId ||
+        params.cycleId || params.cycle_id || urlParams.get("cycleId") || urlParams.get("cycle_id") || "",
+    };
+    return await access.check(userApp, adminApp, context);
   } catch (error) {
     if (access.isEnforced()) throw error;
     // Dry run must never change legacy behaviour, even if access data is unreadable.
@@ -518,7 +525,7 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
       .toLowerCase();
     const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
     const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
-    return status === "active" && !archived && !hidden;
+    return ["active", "closed"].includes(status) && !archived && !hidden;
   });
   const aliasesFor = function (cycle) {
     const name = String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? "").trim();
@@ -535,13 +542,24 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
     return String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "")
       .trim().toLowerCase();
   };
-  const active = requested
-    ? available.find(function (cycle) { return aliasesFor(cycle).includes(requested); })
-    : available.find(function (cycle) {
-        const cycleLocation = locationOf(cycle);
-        return !location || !cycleLocation || ["all", "all locations", "alllocations"].includes(cycleLocation) || cycleLocation === location;
-      });
-  return active || null;
+  const matchesRequestedLocation = (cycle) => {
+    const cycleLocation = locationOf(cycle);
+    return !location || !cycleLocation || ["all", "all locations", "alllocations"].includes(cycleLocation) || cycleLocation === location;
+  };
+  const rank = (cycle) => String(cycle?.end_date || cycle?.effective_date || cycle?.start_date || "");
+  const activeCycles = available.filter((cycle) =>
+    String(cycle?.status || "").trim().toLowerCase() === "active"
+  );
+  const closedCycles = available.filter((cycle) =>
+    String(cycle?.status || "").trim().toLowerCase() === "closed"
+  ).sort((a, b) => rank(b).localeCompare(rank(a)));
+  if (requested) {
+    const exact = available.find((cycle) => aliasesFor(cycle).includes(requested));
+    return exact || null;
+  }
+  return activeCycles.find(matchesRequestedLocation) ||
+    closedCycles.find(matchesRequestedLocation) ||
+    null;
 }
 
 // ROWIDs of every Active cycle (one per location).
