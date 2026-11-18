@@ -134,6 +134,14 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   const r=await call(load(),"GET","preview");
   assert.strictEqual(r.status,403);
  });
+ await test("Duplicate latest Closed-cycle sources are not copied arbitrarily",async()=>{
+  DB[T.payroll].push({ROWID:"P2",emp_id:"E1",appraisal_cycle_name:"C1",current_annual_base_pay:120000});
+  DB[T.feedback].push({ROWID:"F2",emp_ID:"E1",emp_name:"E1",appraisal_cycle_name:"C1",manager_feedback:"Other",manager_rating:3});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.issues.some(x=>x.type==="ambiguous_payroll_source"));
+  assert(p.issues.some(x=>x.type==="ambiguous_feedback_source"));
+  assert.strictEqual(p.ops.filter(x=>x.kind==="insert").length,0);
+ });
  await test("Missing historical payroll or feedback sources are reported without fabricated inserts",async()=>{
   DB[T.payroll]=[];DB[T.feedback]=[];
   const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
