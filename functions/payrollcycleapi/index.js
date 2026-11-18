@@ -87,6 +87,37 @@ const inCycleLocation = (cycle, master, locations = []) => {
   return !key || locationAliases(key, locations).has(employeeLocationKey(master));
 };
 
+function lookupReferenceValues(value) {
+  if (value === null || value === undefined || value === "") return [];
+  if (typeof value !== "object") return [String(value).trim()].filter(Boolean);
+  const keys = ["ROWID", "rowid", "id", "ID", "value", "display_value", "displayValue", "name"];
+  return [...new Set(keys.map((key) => value[key])
+    .filter((item) => item !== null && item !== undefined && typeof item !== "object")
+    .map((item) => String(item).trim()).filter(Boolean))];
+}
+function sheetBelongsToCycle(sheet, cycle) {
+  const values = [
+    ...lookupReferenceValues(sheet.cycle_id),
+    ...lookupReferenceValues(sheet.appraisal_cycle_id),
+    ...lookupReferenceValues(sheet.appraisal_cycle_name),
+  ].map((value) => value.toLowerCase());
+  const expected = [cycle?.id, cycle?.sourceRowId, cycle?.name]
+    .map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  return values.some((value) => expected.includes(value));
+}
+function sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId) {
+  const values = [
+    ...lookupReferenceValues(sheet.emp_id),
+    ...lookupReferenceValues(sheet.employee_id),
+    ...lookupReferenceValues(sheet.employee_master_id),
+  ];
+  for (const value of values) {
+    const master = masterByEmpId.get(value.toLowerCase()) || masterByRowId.get(value);
+    if (master) return master;
+  }
+  return null;
+}
+
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
 function nowLocal(date = new Date()) {
   const p = Object.fromEntries(
@@ -1069,17 +1100,12 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   // the unscoped source cycle or another location's rows, and never overwrite
   // an existing/manual Eligibility_List decision.
   let restoredFromSheet = 0;
-  // Appraisal Sheet rows are evidence of a generated roster, but they must
-  // never initialize Eligibility_List before HR explicitly applies criteria.
-  // Recovery is safe only after this cycle has a persisted Apply Criteria marker.
-  if (criteriaAlreadyApplied && tables.appraisalSheet && (!cycleRows.length || unqualifiedSeedRows.length)) {
+  // The Appraisal Sheet roster is created from the approved eligibility list.
+  // If Eligibility_List rows were deleted, use that exact-cycle roster as the
+  // recovery source even when an older cycle has no audit marker.
+  if (tables.appraisalSheet && (!cycleRows.length || unqualifiedSeedRows.length)) {
     const sheetRows = await getAllRows(tables.appraisalSheet);
-    const exactCycleRows = sheetRows.filter((sheet) => {
-      const reference = String(
-        sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
-      ).trim();
-      return reference === String(cycle.id) || reference.toLowerCase() === String(cycle.name || "").trim().toLowerCase();
-    });
+    const exactCycleRows = sheetRows.filter((sheet) => sheetBelongsToCycle(sheet, cycle));
     const existingEmpIds = new Set(
       cycleRows
         .filter((row) => !unqualifiedSeedRows.some((seed) => rowId(seed) === rowId(row)))
@@ -1092,12 +1118,15 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
         master,
       ]),
     );
+    const masterByRowId = new Map(
+      masterRows.map((master) => [String(master.ROWID || master.rowid || ""), master]),
+    );
     const restored = [];
     for (const sheet of exactCycleRows) {
-      const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
+      const master = sheetEmployeeMaster(sheet, masterByEmployeeId, masterByRowId);
+      const empId = String(master?.emp_id || master?.employee_id || "").trim();
       const key = empId.toLowerCase();
       if (!key || existingEmpIds.has(key)) continue;
-      const master = masterByEmployeeId.get(key);
       if (!master || !inCycleLocation(cycle, master, locations)) continue;
       const statusRaw = String(
         sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
@@ -1598,9 +1627,6 @@ function shapeEligibilityRow(row, master) {
 async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations) {
   const cycleId = String(cycle?.id || "");
   if (!cycleId || !tables.appraisalSheet) return eligibilityRows;
-  const alreadyApplied = await eligibilityCriteriaWasApplied(tables, cycleId, eligibilityRows);
-  if (!alreadyApplied) return eligibilityRows;
-
   const existingEmpIds = new Set(
     eligibilityRows
       .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
@@ -1617,24 +1643,11 @@ async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, elig
     masterRows.map((master) => [String(master.ROWID || master.rowid || ""), master]),
   );
   const sheetRows = await getAllRows(tables.appraisalSheet);
-  const exactCycleRows = sheetRows.filter((sheet) => {
-    const raw = sheet.cycle_id ?? sheet.appraisal_cycle_id ?? sheet.appraisal_cycle_name ?? "";
-    const reference = String(
-      raw && typeof raw === "object" ? raw.ROWID ?? raw.rowid ?? raw.id ?? raw.value ?? "" : raw,
-    ).trim();
-    return reference === cycleId ||
-      reference.toLowerCase() === String(cycle.name || "").trim().toLowerCase();
-  });
+  const exactCycleRows = sheetRows.filter((sheet) => sheetBelongsToCycle(sheet, cycle));
   const restored = [];
   for (const sheet of exactCycleRows) {
-    const rawEmployee = sheet.emp_id ?? sheet.employee_id ?? "";
-    const employeeRef = String(
-      rawEmployee && typeof rawEmployee === "object"
-        ? rawEmployee.ROWID ?? rawEmployee.rowid ?? rawEmployee.id ?? rawEmployee.value ?? ""
-        : rawEmployee,
-    ).trim();
-    const master = masterByEmpId.get(employeeRef.toLowerCase()) || masterByRowId.get(employeeRef);
-    const empId = String(master?.emp_id || employeeRef).trim();
+    const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
+    const empId = String(master?.emp_id || master?.employee_id || "").trim();
     const key = empId.toLowerCase();
     if (!key || existingEmpIds.has(key)) continue;
     if (!master || !inCycleLocation(cycle, master, locations)) continue;
@@ -1704,7 +1717,8 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     // Closed cycles do not run the Active-cycle sync. Read the persisted
     // Apply marker / Criteria-sourced rows instead of reporting false and
     // prompting HR to generate a list that already exists.
-    criteriaApplied: await eligibilityCriteriaWasApplied(tables, cycle.id, rowsForDisplay),
+    criteriaApplied: records.length > 0 ||
+      await eligibilityCriteriaWasApplied(tables, cycle.id, rowsForDisplay),
   };
 }
 
