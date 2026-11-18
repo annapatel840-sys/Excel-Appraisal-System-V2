@@ -264,30 +264,44 @@ async function syncCatalystRoles(adm, roles, users, by) {
 }
 
 /* Shared Appraisal Sheet column order (set by HR, seen by every login, view and location).
-   Kept in the existing AccessLog table, like the delegation request queue above, so no new
-   table is needed. One row per save; the newest row wins and older ones are removed.
-   The order (JSON list of column keys) is stored in the Text column `reason`. */
+   Kept in the existing AccessLog table, like the delegation request queue below, so no new
+   table is needed. AccessLog.reason may be a short column, so one save is written as several
+   small rows (same batch_id "CO-<time>", piece number in `target`, piece of the JSON list of
+   column keys in `reason`). The newest batch that reads back complete wins; older ones are removed. */
 const SHEET_ORDER_KIND = "sheet-order:appraisalSheet";
-const newestRow = (rows) =>
-  rows.reduce((best, row) => {
-    if (!best) return row;
-    const byTime = String(row.changed_at || "").localeCompare(String(best.changed_at || ""));
-    if (byTime) return byTime > 0 ? row : best;
-    return String(row.ROWID || "").localeCompare(String(best.ROWID || ""), undefined, { numeric: true }) > 0 ? row : best;
-  }, null);
-const decodeSheetOrder = (row) => {
-  try {
-    const list = JSON.parse((row && row.reason) || "[]");
-    return Array.isArray(list) ? list.filter((key) => typeof key === "string" && key) : [];
-  } catch (_) {
-    return [];
-  }
-};
+const SHEET_ORDER_PIECE = 80;
 
 const sheetOrderRows = async (ap) =>
   (await selectAll(ap.admin.zcql(), T.log)).filter(
     (row) => String(row.kind || "").trim() === SHEET_ORDER_KIND,
   );
+
+// Batches, newest first, each rebuilt to { batch, rows, order } (order is [] when incomplete).
+const sheetOrderBatches = (rows) => {
+  const byBatch = new Map();
+  rows.forEach((row) => {
+    const id = String(row.batch_id || "");
+    if (!byBatch.has(id)) byBatch.set(id, []);
+    byBatch.get(id).push(row);
+  });
+  const stamp = (id) => Number(String(id).replace(/\D/g, "")) || 0;
+  return Array.from(byBatch.entries())
+    .sort((x, y) => stamp(y[0]) - stamp(x[0]))
+    .map(([batch, list]) => {
+      const text = list
+        .slice()
+        .sort((x, y) => Number(x.target) - Number(y.target))
+        .map((row) => String(row.reason || ""))
+        .join("");
+      let order = [];
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed))
+          order = parsed.filter((key) => typeof key === "string" && key);
+      } catch (_) {}
+      return { batch, rows: list, order };
+    });
+};
 
 app.get(
   "/sheet-layout",
@@ -296,12 +310,12 @@ app.get(
     const a = await A.check(ap.user, ap.admin);
     if (a.denied) throw a.denied;
     const rows = await sheetOrderRows(ap);
-    const row = newestRow(rows);
+    const good = sheetOrderBatches(rows).find((entry) => entry.order.length);
     send(res, {
       found: rows.length,
-      order: decodeSheetOrder(row),
-      updatedBy: row ? row.changed_by || "" : "",
-      updatedAt: row ? row.changed_at || "" : "",
+      order: good ? good.order : [],
+      updatedBy: good ? good.rows[0].changed_by || "" : "",
+      updatedAt: good ? good.rows[0].changed_at || "" : "",
     });
   }),
 );
@@ -325,32 +339,39 @@ app.post(
       throw new HttpError(422, "Send the full list of column keys.");
     const unique = order.filter((key, index) => order.indexOf(key) === index);
     const table = ap.admin.datastore().table(T.log);
-    await table.insertRow({
-      changed_at: nowDT(),
-      changed_by: a.user.email || "",
-      kind: SHEET_ORDER_KIND,
-      target: "appraisalSheet",
-      role: "hr",
-      old_value: "",
-      new_value: "",
-      reason: JSON.stringify(unique),
-      batch_id: "CO-" + Date.now(),
-    });
-    // Read it back: if the table cut the text short or did not keep the row,
-    // say so now instead of letting the order silently revert on refresh.
+    const text = JSON.stringify(unique);
+    const batch = "CO-" + Date.now();
+    const at = nowDT();
+    const pieces = [];
+    for (let i = 0; i < text.length; i += SHEET_ORDER_PIECE)
+      pieces.push(text.slice(i, i + SHEET_ORDER_PIECE));
+    await insertMany(
+      table,
+      pieces.map((piece, index) => ({
+        changed_at: at,
+        changed_by: a.user.email || "",
+        kind: SHEET_ORDER_KIND,
+        target: String(index),
+        role: "hr",
+        old_value: "",
+        new_value: "",
+        reason: piece,
+        batch_id: batch,
+      })),
+    );
+    // Read it back: if a piece was cut short or not kept, say so now instead of
+    // letting the order silently revert on refresh.
     const saved = await sheetOrderRows(ap);
-    const newest = newestRow(saved);
-    if (JSON.stringify(decodeSheetOrder(newest)) !== JSON.stringify(unique))
+    const mine = sheetOrderBatches(saved).find((entry) => entry.batch === batch);
+    if (!mine || JSON.stringify(mine.order) !== JSON.stringify(unique))
       throw new HttpError(
         500,
-        "The column order was not saved correctly (AccessLog.reason may be too short for " +
-          unique.length +
-          " columns). Please tell the developer.",
+        "The column order was not saved correctly. Please tell the developer.",
       );
-    // Keep only the newest row (best effort: a failed clean-up never fails the save).
+    // Keep only the newest batch (best effort: a failed clean-up never fails the save).
     try {
       const ids = saved
-        .filter((row) => row.ROWID !== newest.ROWID)
+        .filter((row) => String(row.batch_id || "") !== batch)
         .map((row) => row.ROWID)
         .filter(Boolean);
       if (ids.length) await deleteMany(table, ids);
