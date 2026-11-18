@@ -114,6 +114,36 @@ function Grid({ cols, rows, numCols = [], foot }) {
   const [filt, setFilt] = useState({});
   const [fp, setFp] = useState(null); // { col, x, y }
   const popRef = useRef(null);
+  const btnRef = useRef(null); // the filter button the open popup belongs to
+
+  // The popup is position:fixed, so it has to follow its button while the page (or the table's own
+  // scroll box) scrolls, and close once the button is no longer on screen.
+  const col = fp ? fp.col : null;
+  useEffect(() => {
+    if (col === null) return undefined;
+    const follow = () => {
+      const b = btnRef.current;
+      if (!b || !b.isConnected) { setFp(null); return; }
+      const r = b.getBoundingClientRect();
+      if (r.bottom < 64 || r.top > window.innerHeight - 8) { setFp(null); return; } // button left the screen
+      const x = Math.max(8, Math.min(r.left, window.innerWidth - 232));
+      const y = r.bottom + 4;
+      setFp((cur) => (cur && (cur.x !== x || cur.y !== y) ? { ...cur, x, y } : cur));
+    };
+    window.addEventListener("scroll", follow, true); // capture: also fires for inner scroll boxes
+    window.addEventListener("resize", follow);
+    return () => {
+      window.removeEventListener("scroll", follow, true);
+      window.removeEventListener("resize", follow);
+    };
+  }, [col]);
+
+  // Touching a table that is only partly on screen (header down in the lower part of the view) brings it up.
+  const bringIntoView = (e) => {
+    const th = e.currentTarget.querySelector("th");
+    if (!th) return;
+    if (th.getBoundingClientRect().top > window.innerHeight * 0.55) revealTableHeader(th);
+  };
 
   useEffect(() => {
     if (!fp) return undefined;
@@ -138,7 +168,7 @@ function Grid({ cols, rows, numCols = [], foot }) {
 
   return (
     <>
-      <table className="hrd-t">
+      <table className="hrd-t" onPointerDownCapture={bringIntoView}>
         <thead>
           <tr>
             {cols.map((c, i) => (
@@ -151,6 +181,7 @@ function Grid({ cols, rows, numCols = [], foot }) {
                     aria-label={`Filter ${c}`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      btnRef.current = e.currentTarget;
                       // bring this table's header into view first (instant, so the popup lines up with the icon)
                       if (fp?.col !== i) revealTableHeader(e.currentTarget, true);
                       const r = e.currentTarget.getBoundingClientRect();
