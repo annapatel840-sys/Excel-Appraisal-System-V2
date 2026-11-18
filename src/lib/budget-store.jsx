@@ -177,7 +177,7 @@ export function BudgetProvider({ children }) {
     [budgetSnapshotScope],
   );
   const initialCycleId = String(
-    initialBudget?.active_appraisal_cycle_id || "",
+    initialBudget?.display_appraisal_cycle_id || initialBudget?.active_appraisal_cycle_id || "",
   ).trim();
   const initialTechEd = (
     Array.isArray(initialBudget?.techEd)
@@ -291,7 +291,7 @@ export function BudgetProvider({ children }) {
       return;
     }
     const cycleId = String(
-      initialBudget.active_appraisal_cycle_id || "",
+      initialBudget.display_appraisal_cycle_id || initialBudget.active_appraisal_cycle_id || "",
     ).trim();
     const techEd = (
       Array.isArray(initialBudget.techEd)
@@ -435,7 +435,7 @@ export function BudgetProvider({ children }) {
         ? budgetJson.compManager
         : [];
       const activeCycleId = String(
-        budgetJson?.active_appraisal_cycle_id || "",
+        budgetJson?.display_appraisal_cycle_id || budgetJson?.active_appraisal_cycle_id || "",
       ).trim();
       setActiveBudgetCycleId(activeCycleId);
       const normalizedTechEd = techEdRows
