@@ -384,12 +384,32 @@ async function activeCycleIds(zcql) {
     [true, 1, "true", "1", "yes"].includes(
       typeof value === "string" ? value.trim().toLowerCase() : value,
     );
-  return rows
-    .filter((row) =>
-      String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
-      !isTruthyFlag(row.archived) &&
-      !isTruthyFlag(row.hidden)
-    )
+  const available = rows.filter((row) => !isTruthyFlag(row.archived) && !isTruthyFlag(row.hidden));
+  const locationOf = (row) => {
+    const value = String(row.location || row.cycle_location || row.cycleLocation || "").trim().toLowerCase();
+    return !value || ["all", "all locations", "alllocations"].includes(value) ? "*" : value;
+  };
+  const active = available.filter((row) =>
+    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase()
+  );
+  // While any location remains Active, keep its normal delegation. For a
+  // location whose cycle has been Closed, use only that location's latest
+  // Closed cycle so its Tech-ED / Comp Manager can still read the saved sheet.
+  const activeLocations = new Set(active.map(locationOf));
+  const globalActive = activeLocations.has("*");
+  const latestClosedByLocation = new Map();
+  if (!globalActive) {
+    available.filter((row) => String(row[c.statusColumn] || "").trim().toLowerCase() === "closed")
+      .forEach((row) => {
+        const location = locationOf(row);
+        if (activeLocations.has(location)) return;
+        const current = latestClosedByLocation.get(location);
+        const rank = String(row.end_date || row.effective_date || row.start_date || row[c.nameColumn] || "");
+        const currentRank = current ? String(current.end_date || current.effective_date || current.start_date || current[c.nameColumn] || "") : "";
+        if (!current || rank > currentRank) latestClosedByLocation.set(location, row);
+      });
+  }
+  return [...active, ...latestClosedByLocation.values()]
     .map((row) => String(row[c.idColumn] || "").trim())
     .filter(Boolean);
 }
