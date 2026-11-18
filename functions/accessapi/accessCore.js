@@ -704,7 +704,7 @@ function scopeOf(base, ro, a, person) {
   });
   return { all: false, cycleId: base.cycleId, cycleIds: base.cycleIds || [], empIds, rowIds };
 }
-async function get(cat, opts) {
+async function get(cat, opts, context) {
   // getCurrentUser() throws when the request carries no user credentials.
   let u = null;
   try { u = await cat.userManagement().getCurrentUser(); } catch (e) { u = null; }
@@ -725,8 +725,23 @@ async function get(cat, opts) {
   const a = accessOf(base.C, base.roles, base.m, person, b.role, ovs);
   if (!a.role) throw fail(403, 'You have no access to the Compensation tool. Please contact HR.');
   const ro = base.roles.find((r) => r.key === a.role);
+  const requestedCycleId = String(context?.cycleId || context?.cycle_id || "").trim();
+  let cycleStatus = "";
+  let cycleArchived = false;
+  if (requestedCycleId) {
+    const cycleRows = await selectAll(z, SETTINGS.cycle.table);
+    const selectedCycle = cycleRows.find((row) =>
+      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId
+    );
+    if (selectedCycle) {
+      cycleStatus = String(selectedCycle[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
+      cycleArchived = bool(selectedCycle.archived);
+    }
+  }
   return {
     version: base.version,
+    cycleStatus,
+    cycleArchived,
     user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
     screens: a.screens, locationScreens: a.locScreens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
@@ -737,10 +752,10 @@ async function get(cat, opts) {
    Enforced (ACCESS_ENFORCE='true'): returns access with enforced:true, dryRun:false; rethrows HttpError.
    Dry run: never throws an HttpError. Returns the access with enforced:false, dryRun:true, or
    { dryRun:true, enforced:false, denied:HttpError } when the person would be refused (logged). */
-async function check(cat, opts) {
+async function check(cat, opts, context) {
   const enforced = isEnforced();
   try {
-    const a = await get(cat, opts);
+    const a = await get(cat, opts, context);
     return Object.assign(a, { enforced, dryRun: !enforced });
   } catch (err) {
     if (enforced) throw err;
@@ -763,7 +778,17 @@ function guard(a, fn) {
 }
 
 const RANK = { none: 0, view: 1, edit: 2 };
-function requireScreen(a, key, level) { if (RANK[a.screens[key] || 'none'] < RANK[level || 'view']) throw new HttpError(403, 'You do not have access to this screen.'); }
+function requireScreen(a, key, level) {
+  if (RANK[a.screens[key] || 'none'] < RANK[level || 'view'])
+    throw new HttpError(403, 'You do not have access to this screen.');
+  if (
+    level === 'edit' &&
+    ['techEd', 'compMgr'].includes(a.role) &&
+    (String(a.cycleStatus || '').toLowerCase() === 'closed' || a.cycleArchived)
+  ) {
+    throw new HttpError(403, 'This appraisal cycle is Closed. Tech-ED and Comp Manager access is read-only.');
+  }
+}
 function requireAction(a, key) { if (!a.actions[key]) throw new HttpError(403, 'You are not allowed to do this.'); }
 /* canEdit(a, fieldKey) — also accepts an Appraisal_Sheet column name. */
 function canEdit(a, fieldKey) {
