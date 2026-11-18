@@ -4174,6 +4174,51 @@ module.exports = async function (req, res) {
             ),
         });
       }
+      // Resolve every Comp Manager allocation label from Employee_Master,
+      // not only managers present in the current Appraisal_Sheet roster.
+      // This applies uniformly to every location and keeps the stable Employee
+      // ID visible alongside the name (names alone are not unique).
+      const managerMasterRows = sourceRows.masterEmployeeRows || [];
+      const managerByEmployeeId = new Map();
+      const managerByRowId = new Map();
+      const managerByName = new Map();
+      managerMasterRows.forEach((employee) => {
+        const employeeId = String(
+          firstValue(employee, ["emp_id", "empId", "employee_id"]) || "",
+        ).trim();
+        const employeeName = String(
+          firstValue(employee, ["emp_name", "employee_name", "name"]) || "",
+        ).trim();
+        const rowId = idOf(employee);
+        if (employeeId) managerByEmployeeId.set(employeeId.toLowerCase(), employee);
+        if (rowId) managerByRowId.set(String(rowId), employee);
+        if (employeeName) managerByName.set(employeeName.toLowerCase(), employee);
+      });
+      calculatedBundle.compManager = (calculatedBundle.compManager || []).map(
+        (row) => {
+          const rawManager = String(row.comp_manager || "").trim();
+          if (!rawManager) return row;
+          const parts = rawManager.split(/\\s+-\\s+/);
+          const managerKey = parts[0].trim().toLowerCase();
+          const manager = managerByEmployeeId.get(managerKey) ||
+            managerByRowId.get(parts[0].trim()) ||
+            managerByName.get(rawManager.toLowerCase()) ||
+            (parts.length > 1
+              ? managerByName.get(parts.slice(1).join(" - ").toLowerCase())
+              : null);
+          if (!manager) return row;
+          const employeeId = String(
+            firstValue(manager, ["emp_id", "empId", "employee_id"]) || "",
+          ).trim();
+          const employeeName = String(
+            firstValue(manager, ["emp_name", "employee_name", "name"]) || "",
+          ).trim();
+          return employeeId && employeeName
+            ? { ...row, comp_manager_display: employeeId + " - " + employeeName }
+            : row;
+        },
+      );
+
       const bundle = filterOwn(
         calculatedBundle,
         a,
