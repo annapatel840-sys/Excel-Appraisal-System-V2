@@ -54,6 +54,10 @@ async function buildPlan(t){
  data.cycles.forEach(c=>{const n=norm(c.cycle_name);if(n){if(!cyclesByName.has(n))cyclesByName.set(n,[]);cyclesByName.get(n).push(c);}});
  const employeeFor=v=>{const raw=ref(v);if(byRow.has(raw))return {person:byRow.get(raw),amb:false};const a=byId.get(norm(raw))||[];return {person:a.length===1?a[0]:null,amb:a.length>1};};
  const cycleFor=v=>{const raw=ref(v);if(cyclesById.has(raw))return cyclesById.get(raw);const a=cyclesByName.get(norm(raw))||[];return a.length===1?a[0]:null;};
+ const employeeCycleMatch=(row,empCol,cycleCol,employeeRowId,cycleRowId)=>{
+  const employee=employeeFor(row?.[empCol]).person,cycle=cycleFor(row?.[cycleCol]);
+  return !!employee&&rid(employee)===employeeRowId&&!!cycle&&rid(cycle)===cycleRowId;
+ };
  const update=(key,row,patch,reason)=>{if(!Object.keys(patch).some(k=>!same(ref(row[k]),ref(patch[k]))))return;ops.push({kind:"update",table:key,rowId:rid(row),patch,reason,undo:{table:key,rowId:rid(row),before:business(row),after:{...business(row),...patch}}});stats.safeUpdates++;};
  const fixEmployee=(key,col)=>data[key].forEach(r=>{if(blank(r[col]))return;let found=employeeFor(r[col]);if(!found.person&&!found.amb&&!blank(r.emp_id)){const a=byId.get(norm(r.emp_id))||[];if(a.length===1)found={person:a[0],amb:false};}if(found.person&&ref(r[col])!==rid(found.person))update(key,r,{[col]:rid(found.person)},"Resolve exact Employee_Master reference");else if(!found.person)issue(issues,found.amb?"ambiguous_employee_reference":"orphan_employee_reference",key,r,"Cannot resolve "+col+" to exactly one Employee_Master row.");});
  const fixCycle=(key,col)=>data[key].forEach(r=>{if(blank(r[col]))return;const c=cycleFor(r[col]);if(c&&ref(r[col])!==rid(c))update(key,r,{[col]:rid(c)},"Resolve exact appraisal cycle reference");else if(!c)issue(issues,"unresolved_cycle_reference",key,r,"Cannot resolve "+col+" to exactly one cycle.");});
@@ -66,38 +70,53 @@ async function buildPlan(t){
  });
  fixEmployeePair("eligibility","employee_master_id","emp_id");fixEmployeePair("sheet","emp_master_row_id","emp_id");
  fixCycle("payroll","appraisal_cycle_name");fixCycle("feedback","appraisal_cycle_name");fixCycle("eligibility","appraisal_cycle_id");fixCycle("sheet","cycle_id");fixCycle("budgetMaster","appraisal_cycle_id");fixCycle("distribution","appraisal_cycle_id");fixCycle("distributionComp","appraisal_cycle_id");
- const dup=(key,empCol,cycleCol)=>{const seen=new Map();data[key].forEach(r=>{const e=ref(r[empCol])||norm(r.emp_id),c=ref(r[cycleCol]);if(!e||!c)return;const k=e+"|"+c;if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row; existing row "+rid(seen.get(k))+".");}else seen.set(k,r);});};
+ const dup=(key,empCol,cycleCol)=>{const seen=new Map();data[key].forEach(r=>{
+  let employee=null;
+  if((key==="sheet"||key==="eligibility")&&!blank(r.emp_id)){
+   const matches=byId.get(norm(r.emp_id))||[];
+   if(matches.length===1)employee=matches[0];
+  }else{
+   const found=employeeFor(r[empCol]);
+   if(found.person)employee=found.person;
+  }
+  // Do not infer duplicate identity from an unresolved/stale lookup value.
+  if(!employee)return;
+  const cycle=cycleFor(r[cycleCol]);if(!cycle)return;
+  const k=rid(employee)+"|"+rid(cycle);
+  if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row for "+String(employee.emp_id||rid(employee))+"; existing row "+rid(seen.get(k))+".");}
+  else seen.set(k,r);
+ });};
  dup("payroll","emp_id","appraisal_cycle_name");dup("feedback","emp_ID","appraisal_cycle_name");dup("eligibility","employee_master_id","appraisal_cycle_id");dup("sheet","emp_master_row_id","cycle_id");
  const closedCycles=[...data.cycles].filter(closed).sort((a,b)=>cycleDate(b).localeCompare(cycleDate(a)));
  for(const cycle of data.cycles.filter(c=>active(c)&&!newJoiner(c))){
-  const cid=rid(cycle),rows=data.sheet.filter(r=>ref(r.cycle_id)===cid),ids=[...new Set(rows.map(r=>norm(r.emp_id)).filter(Boolean))];
+  const cid=rid(cycle),rows=data.sheet.filter(r=>{const c=cycleFor(r.cycle_id);return c&&rid(c)===cid;}),ids=[...new Set(rows.map(r=>norm(r.emp_id)).filter(Boolean))];
   for(const empId of ids){
    const matches=byId.get(empId)||[];
    if(matches.length!==1){issue(issues,matches.length?"ambiguous_employee_id":"missing_employee_master","sheet",rows.find(r=>norm(r.emp_id)===empId),"Active Appraisal Sheet employee ID does not resolve to one Employee_Master row.");continue;}
    const employee=matches[0],eid=rid(employee);
-   const pNow=data.payroll.filter(r=>ref(r.emp_id)===eid&&ref(r.appraisal_cycle_name)===cid);
+   const pNow=data.payroll.filter(r=>employeeCycleMatch(r,"emp_id","appraisal_cycle_name",eid,cid));
    if(!pNow.length){
-    const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.payroll.filter(r=>ref(r.emp_id)===eid&&ref(r.appraisal_cycle_name)===rid(c))})).find(x=>x.rows.length);
+    const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.payroll.filter(r=>employeeCycleMatch(r,"emp_id","appraisal_cycle_name",eid,rid(c)))})).find(x=>x.rows.length);
     if(sourceGroup&&sourceGroup.rows.length===1){const source=sourceGroup.rows[0],values={...business(source),emp_id:eid,emp_name:employee.emp_name||source.emp_name,appraisal_cycle_name:cid};ops.push({kind:"insert",table:"payroll",values,reason:"Copy latest unique Closed-cycle Payroll into Active generated cycle",undo:{table:"payroll",rowId:"",values}});stats.safeInserts++;}
     else if(sourceGroup)issue(issues,"ambiguous_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"Latest Closed cycle has multiple Payroll rows for this employee; no source row was selected.");
     else issue(issues,"missing_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"No Closed-cycle Payroll source exists; no values were fabricated.");
    }else if(pNow.length>1)issue(issues,"duplicate_active_payroll","payroll",pNow[1],"Multiple Payroll rows exist in the Active cycle.");
-   const fNow=data.feedback.filter(r=>ref(r.emp_ID)===eid&&ref(r.appraisal_cycle_name)===cid);
+   const fNow=data.feedback.filter(r=>employeeCycleMatch(r,"emp_ID","appraisal_cycle_name",eid,cid));
    if(!fNow.length){
-    const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.feedback.filter(r=>ref(r.emp_ID)===eid&&ref(r.appraisal_cycle_name)===rid(c)&&validFeedback(r))})).find(x=>x.rows.length);
+    const sourceGroup=closedCycles.map(c=>({cycle:c,rows:data.feedback.filter(r=>employeeCycleMatch(r,"emp_ID","appraisal_cycle_name",eid,rid(c))&&validFeedback(r))})).find(x=>x.rows.length);
     if(sourceGroup&&sourceGroup.rows.length===1){const source=sourceGroup.rows[0],values={...business(source),emp_ID:eid,emp_name:eid,appraisal_cycle_name:cid,Effective_Date:cycle.effective_date||cycle.start_date||source.Effective_Date};ops.push({kind:"insert",table:"feedback",values,reason:"Copy latest unique valid Closed-cycle Feedback into Active generated cycle"});stats.safeInserts++;}
     else if(sourceGroup)issue(issues,"ambiguous_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"Latest Closed cycle has multiple valid Feedback rows for this employee; no source row was selected.");
     else issue(issues,"missing_feedback_source","feedback",{emp_id:empId,cycle_id:cid},"No valid Closed-cycle Feedback source exists; no rating or comment was invented.");
    }else if(fNow.length>1)issue(issues,"duplicate_active_feedback","feedback",fNow[1],"Multiple Feedback rows exist in the Active cycle.");
   }
  }
- const budgetCycles=new Map();data.budgetMaster.forEach(r=>{const cid=ref(r.appraisal_cycle_id);if(cid){if(!budgetCycles.has(cid))budgetCycles.set(cid,[]);budgetCycles.get(cid).push(r);}});
- for(const budget of data.budgetMaster){const cid=ref(budget.appraisal_cycle_id);if(!cid)continue;if((budgetCycles.get(cid)||[]).length>1){issue(issues,"duplicate_budget_master_cycle","budgetMaster",budget,"Multiple Budget_Master rows exist for this cycle; org_budget_base was not changed.");continue;}const sheet=data.sheet.filter(r=>ref(r.cycle_id)===cid);if(!sheet.length){issue(issues,"budget_base_no_sheet","budgetMaster",budget,"No Appraisal Sheet rows for this cycle; org_budget_base not changed.");continue;}const ids=sheet.map(r=>norm(r.emp_id)).filter(Boolean);if(new Set(ids).size!==ids.length){issue(issues,"budget_base_duplicate_sheet","budgetMaster",budget,"Duplicate employee IDs in Appraisal Sheet; org_budget_base not changed.");continue;}const total=sheet.reduce((s,r)=>s+num(r.previous_year_CTC_with_rewards),0);if(Math.abs(num(budget.org_budget_base)-total)>0.005){update("budgetMaster",budget,{org_budget_base:total},"Sum previous rewards from current generated Appraisal Sheet");issue(issues,"budget_base_mismatch","budgetMaster",budget,"org_budget_base "+num(budget.org_budget_base)+" differs from Appraisal Sheet total "+total+".",true);}}
- const distKeys=new Map();data.distribution.forEach(r=>{const k=ref(r.appraisal_cycle_id)+"|"+norm(r.appraiser_tech_ed_id);if(k!=="|"){if(!distKeys.has(k))distKeys.set(k,[]);distKeys.get(k).push(r);}});
- data.distribution.forEach(r=>{const k=ref(r.appraisal_cycle_id)+"|"+norm(r.appraiser_tech_ed_id);if((distKeys.get(k)||[]).length>1)issue(issues,"duplicate_teched_budget","distribution",r,"Duplicate Tech-Ed budget rows exist for this cycle and appraiser.");});
- const compKeys=new Map();data.distributionComp.forEach(r=>{const k=ref(r.budget_distribution_id)+"|"+ref(r.appraisal_cycle_id)+"|"+norm(r.comp_manager);if(k!=="||"){if(!compKeys.has(k))compKeys.set(k,[]);compKeys.get(k).push(r);}});
- data.distributionComp.forEach(r=>{const k=ref(r.budget_distribution_id)+"|"+ref(r.appraisal_cycle_id)+"|"+norm(r.comp_manager);if((compKeys.get(k)||[]).length>1)issue(issues,"duplicate_comp_budget","distributionComp",r,"Duplicate Comp Manager budget rows exist for this parent, cycle and manager.");});
- data.distributionComp.forEach(child=>{const parent=data.distribution.find(p=>rid(p)===ref(child.budget_distribution_id));if(!parent)issue(issues,"orphan_comp_budget","distributionComp",child,"Comp Manager budget has no matching Tech-Ed parent.");else if(ref(parent.appraisal_cycle_id)!==ref(child.appraisal_cycle_id))issue(issues,"budget_parent_cycle_mismatch","distributionComp",child,"Comp Manager and parent Tech-Ed budget belong to different cycles.");});
+ const budgetCycles=new Map();data.budgetMaster.forEach(r=>{const c=cycleFor(r.appraisal_cycle_id),cid=c?rid(c):"";if(cid){if(!budgetCycles.has(cid))budgetCycles.set(cid,[]);budgetCycles.get(cid).push(r);}});
+ for(const budget of data.budgetMaster){const budgetCycle=cycleFor(budget.appraisal_cycle_id),cid=budgetCycle?rid(budgetCycle):"";if(!cid)continue;if((budgetCycles.get(cid)||[]).length>1){issue(issues,"duplicate_budget_master_cycle","budgetMaster",budget,"Multiple Budget_Master rows exist for this cycle; org_budget_base was not changed.");continue;}const sheet=data.sheet.filter(r=>{const c=cycleFor(r.cycle_id);return c&&rid(c)===cid;});if(!sheet.length){issue(issues,"budget_base_no_sheet","budgetMaster",budget,"No Appraisal Sheet rows for this cycle; org_budget_base not changed.");continue;}const ids=sheet.map(r=>norm(r.emp_id)).filter(Boolean);if(new Set(ids).size!==ids.length){issue(issues,"budget_base_duplicate_sheet","budgetMaster",budget,"Duplicate employee IDs in Appraisal Sheet; org_budget_base not changed.");continue;}const total=sheet.reduce((s,r)=>s+num(r.previous_year_CTC_with_rewards),0);if(Math.abs(num(budget.org_budget_base)-total)>0.005){update("budgetMaster",budget,{org_budget_base:total},"Sum previous rewards from current generated Appraisal Sheet");issue(issues,"budget_base_mismatch","budgetMaster",budget,"org_budget_base "+num(budget.org_budget_base)+" differs from Appraisal Sheet total "+total+".",true);}}
+ const distKeys=new Map();data.distribution.forEach(r=>{const c=cycleFor(r.appraisal_cycle_id),k=(c?rid(c):"")+"|"+norm(r.appraiser_tech_ed_id);if(k!=="|"){if(!distKeys.has(k))distKeys.set(k,[]);distKeys.get(k).push(r);}});
+ data.distribution.forEach(r=>{const c=cycleFor(r.appraisal_cycle_id),k=(c?rid(c):"")+"|"+norm(r.appraiser_tech_ed_id);if((distKeys.get(k)||[]).length>1)issue(issues,"duplicate_teched_budget","distribution",r,"Duplicate Tech-Ed budget rows exist for this cycle and appraiser.");});
+ const compKeys=new Map();data.distributionComp.forEach(r=>{const c=cycleFor(r.appraisal_cycle_id),k=ref(r.budget_distribution_id)+"|"+(c?rid(c):"")+"|"+norm(r.comp_manager);if(k!=="||"){if(!compKeys.has(k))compKeys.set(k,[]);compKeys.get(k).push(r);}});
+ data.distributionComp.forEach(r=>{const c=cycleFor(r.appraisal_cycle_id),k=ref(r.budget_distribution_id)+"|"+(c?rid(c):"")+"|"+norm(r.comp_manager);if((compKeys.get(k)||[]).length>1)issue(issues,"duplicate_comp_budget","distributionComp",r,"Duplicate Comp Manager budget rows exist for this parent, cycle and manager.");});
+ data.distributionComp.forEach(child=>{const parent=data.distribution.find(p=>rid(p)===ref(child.budget_distribution_id));if(!parent)issue(issues,"orphan_comp_budget","distributionComp",child,"Comp Manager budget has no matching Tech-Ed parent.");else {const pc=cycleFor(parent.appraisal_cycle_id),cc=cycleFor(child.appraisal_cycle_id);if(!pc||!cc||rid(pc)!==rid(cc))issue(issues,"budget_parent_cycle_mismatch","distributionComp",child,"Comp Manager and parent Tech-Ed budget belong to different cycles.");}});
  stats.unresolved=issues.filter(x=>!x.safe).length;
  return {ops,issues,stats};
 }

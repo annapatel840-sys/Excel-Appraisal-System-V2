@@ -149,6 +149,19 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   assert(p.issues.some(x=>x.type==="missing_feedback_source"));
   assert.strictEqual(p.ops.filter(x=>x.kind==="insert").length,0);
  });
+ await test("Canonical employee and cycle matching prevents false missing Payroll inserts",async()=>{
+  DB[T.payroll].push({ROWID:"P2",emp_id:"EMP001",emp_name:"Employee One",appraisal_cycle_name:"Annual 2026",fy_year:"2026",current_annual_base_pay:110000});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert.strictEqual(p.ops.filter(o=>o.table==="payroll"&&o.kind==="insert").length,0);
+  assert(!p.issues.some(x=>x.type==="missing_payroll_source"));
+ });
+ await test("Appraisal Sheet duplicate detection uses exact emp_id rather than stale lookup IDs",async()=>{
+  DB[T.employees].push({ROWID:"E2",emp_id:"EMP002",emp_name:"Employee Two",emp_status:"Active"});
+  DB[T.sheet].push({ROWID:"S2",emp_id:"EMP002",emp_master_row_id:"E1",cycle_id:"Annual 2026",previous_year_CTC_with_rewards:200000});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(!p.issues.some(x=>x.type==="duplicate_employee_cycle"&&x.table==="sheet"));
+  assert(p.ops.some(o=>o.table==="sheet"&&o.rowId==="S2"&&o.patch.emp_master_row_id==="E2"));
+ });
  console.log("RESULT",passed,"passed,",failed,"failed");
  if(failed)process.exitCode=1;
 })();

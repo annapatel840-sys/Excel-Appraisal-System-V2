@@ -107,6 +107,18 @@ export function SettingsPage() {
                   <div className="rounded-md bg-muted p-2"><p className="text-xs text-muted-foreground">Duplicates</p><p className="text-lg font-semibold">{reconPreview.summary.duplicates}</p></div>
                 </div>
                 <p className="text-xs text-muted-foreground">Scanned records: {Object.entries(reconPreview.summary.scanned || {}).map(([k,v]) => k + ": " + v).join(" · ")}</p>
+                {Object.keys(reconPreview.summary.issueTypes || {}).length > 0 && (
+                  <div className="rounded-md border border-border p-2">
+                    <p className="mb-2 text-xs font-semibold">Issues by type</p>
+                    <div className="grid gap-1 sm:grid-cols-2 md:grid-cols-3">
+                      {Object.entries(reconPreview.summary.issueTypes).sort((a,b) => b[1]-a[1]).map(([type,count]) => (
+                        <div key={type} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="break-all text-muted-foreground">{type}</span><span className="font-semibold tabular-nums">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {reconPreview.issues?.length > 0 && (
                   <div className="max-h-72 overflow-auto rounded-md border border-border">
                     <div className="grid grid-cols-[minmax(100px,0.7fr)_minmax(90px,0.5fr)_minmax(180px,2fr)] gap-2 border-b bg-muted p-2 text-xs font-semibold"><span>Issue</span><span>Table / Row</span><span>Details</span></div>
