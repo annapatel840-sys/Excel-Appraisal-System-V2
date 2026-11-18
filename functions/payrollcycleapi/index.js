@@ -1542,8 +1542,8 @@ async function deleteEligibilityRowsById(tables, ids) {
   return clean.length;
 }
 
-// Eligibility_List is only kept while a cycle is Active. Closing (or
-// cancelling) a cycle empties that cycle's rows.
+// Explicit deletion is reserved for workflows that intentionally discard
+// eligibility data. Closing a cycle must never clear its Eligibility_List rows.
 async function clearEligibilityRows(tables, cycleId) {
   const rows = await getAllRows(tables.eligibility);
   const mine = rows.filter(
@@ -1595,6 +1595,65 @@ function shapeEligibilityRow(row, master) {
   };
 }
 
+async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations) {
+  const cycleId = String(cycle?.id || "");
+  if (!cycleId || !tables.appraisalSheet) return eligibilityRows;
+  const alreadyApplied = await eligibilityCriteriaWasApplied(tables, cycleId, eligibilityRows);
+  if (!alreadyApplied) return eligibilityRows;
+
+  const existingEmpIds = new Set(
+    eligibilityRows
+      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
+      .map((row) => String(row.emp_id || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const masterByEmpId = new Map(
+    masterRows.map((master) => [
+      String(master.emp_id || master.employee_id || "").trim().toLowerCase(),
+      master,
+    ]),
+  );
+  const sheetRows = await getAllRows(tables.appraisalSheet);
+  const exactCycleRows = sheetRows.filter((sheet) => {
+    const reference = String(
+      sheet.cycle_id || sheet.appraisal_cycle_id || sheet.appraisal_cycle_name || "",
+    ).trim();
+    return reference === cycleId ||
+      reference.toLowerCase() === String(cycle.name || "").trim().toLowerCase();
+  });
+  const restored = [];
+  for (const sheet of exactCycleRows) {
+    const empId = String(sheet.emp_id || sheet.employee_id || "").trim();
+    const key = empId.toLowerCase();
+    if (!key || existingEmpIds.has(key)) continue;
+    const master = masterByEmpId.get(key);
+    if (!master || !inCycleLocation(cycle, master, locations)) continue;
+    const statusRaw = String(
+      sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
+    ).trim().toLowerCase().replace(/[ _-]+/g, "");
+    const status = ["noteligible", "no", "false"].includes(statusRaw)
+      ? "Not Eligible"
+      : "Eligible";
+    restored.push({
+      appraisal_cycle_id: cycleId,
+      employee_master_id: String(master.ROWID || master.rowid || ""),
+      emp_id: empId,
+      eligibility_status: status,
+      eligibility_reason: "Recovered from existing Appraisal Sheet roster",
+      eligibility_source: "System",
+      change_tag: "Recovered",
+      evaluated_at: nowLocal(),
+      updated_by: "Closed-cycle recovery",
+      eligibility_updated_at: nowLocal(),
+    });
+    existingEmpIds.add(key);
+  }
+  for (let index = 0; index < restored.length; index += 100) {
+    await tables.eligibility.insertRows(restored.slice(index, index + 100));
+  }
+  return restored.length ? [...eligibilityRows, ...restored] : eligibilityRows;
+}
+
 async function getEligibilityRows(tables, cycle, actor = "") {
   const synced = {};
   if (String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived) {
@@ -1616,7 +1675,10 @@ async function getEligibilityRows(tables, cycle, actor = "") {
       .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
       .filter(([empId]) => empId),
   );
-  const records = eligibilityRows
+  const rowsForDisplay = String(cycle.status || "").trim().toLowerCase() === "closed"
+    ? await restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations)
+    : eligibilityRows;
+  const records = rowsForDisplay
     .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
     .map((row) => {
       const master = masterById.get(String(row.employee_master_id || "")) ||
@@ -1632,7 +1694,7 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     // Closed cycles do not run the Active-cycle sync. Read the persisted
     // Apply marker / Criteria-sourced rows instead of reporting false and
     // prompting HR to generate a list that already exists.
-    criteriaApplied: await eligibilityCriteriaWasApplied(tables, cycle.id, eligibilityRows),
+    criteriaApplied: await eligibilityCriteriaWasApplied(tables, cycle.id, rowsForDisplay),
   };
 }
 
@@ -4749,7 +4811,9 @@ async function routeRequest(req, res, identity, resource, a) {
       if (status === "Active") {
         eligibilitySync = await syncEligibilityRows(tables, updated, actor);
       } else if (status === "Closed") {
-        eligibilityCleared = await clearEligibilityRows(tables, id);
+        // Closing changes permissions only. Keep every Eligibility_List row
+        // attached to this cycle; the existing archive workflow remains separate.
+        eligibilityCleared = 0;
       }
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(eligibilityCleared !== null ? { eligibilityCleared } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
       return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync, eligibilityCleared } });
