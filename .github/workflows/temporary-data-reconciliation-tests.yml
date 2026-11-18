@@ -5,6 +5,7 @@ on:
       - fix/temporary-data-reconciliation-utility-v2
     paths:
       - "functions/datareconciliationapi/**"
+      - "src/pages/SettingsPage.jsx"
       - ".github/workflows/temporary-data-reconciliation-tests.yml"
 jobs:
   test:
@@ -14,5 +15,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Run safety and rollback tests
+          cache: npm
+      - name: Run reconciliation safety and rollback tests
         run: node functions/datareconciliationapi/test/data-reconciliation.test.js
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build React application
+        run: npm run build
