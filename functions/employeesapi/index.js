@@ -3942,7 +3942,7 @@ async function getEmployees(req, res) {
     const allLocationsSelected =
       !selectedLocation ||
       ["all", "all locations"].includes(selectedLocation.toLowerCase());
-    const isAvailableActiveCycle = (cycle) => {
+    const isAvailableAppraisalCycle = (cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
       ).trim().toLowerCase();
@@ -3952,29 +3952,41 @@ async function getEmployees(req, res) {
       const hidden = ["true", "1", "yes"].includes(
         String(cycle?.hidden ?? "").trim().toLowerCase(),
       );
-      return status === "active" && !archived && !hidden;
+      return ["active", "closed"].includes(status) && !archived && !hidden;
     };
+    const cycleRank = (cycle) => String(
+      cycle?.end_date || cycle?.effective_date || cycle?.start_date || ""
+    );
     // A location switch selects that location's Active cycle. It never
     // changes cycle status and never falls back to another location.
     const requestedCycleId = String(
       params.cycleId || params.cycle_id || params.appraisal_cycle_id || "",
     ).trim();
-    const activeCycle =
-      (requestedCycleId &&
-        cycleRows.find((cycle) =>
-          isAvailableActiveCycle(cycle) &&
+    const matchesSelectedLocation = (cycle) => {
+      const cycleLocation = String(cycle?.location || "").trim().toLowerCase();
+      return allLocationsSelected
+        ? (!cycleLocation || ["all", "all locations"].includes(cycleLocation))
+        : cycleLocation === selectedLocation.toLowerCase();
+    };
+    const requestedCycle = requestedCycleId
+      ? cycleRows.find((cycle) =>
+          isAvailableAppraisalCycle(cycle) &&
           String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requestedCycleId
-        )) ||
-      (allLocationsSelected
-        ? cycleRows.find((cycle) =>
-            isAvailableActiveCycle(cycle) &&
-            (!String(cycle?.location || "").trim() ||
-              ["all", "all locations"].includes(String(cycle.location).trim().toLowerCase()))
-          )
-        : cycleRows.find((cycle) =>
-            isAvailableActiveCycle(cycle) &&
-            String(cycle?.location || "").trim().toLowerCase() === selectedLocation.toLowerCase()
-          ));
+        )
+      : null;
+    const activeCycle =
+      requestedCycle ||
+      cycleRows.find((cycle) =>
+        isAvailableAppraisalCycle(cycle) &&
+        String(cycle.status || "").trim().toLowerCase() === "active" &&
+        matchesSelectedLocation(cycle)
+      ) ||
+      cycleRows.filter((cycle) =>
+        isAvailableAppraisalCycle(cycle) &&
+        String(cycle.status || "").trim().toLowerCase() === "closed" &&
+        matchesSelectedLocation(cycle)
+      ).sort((a, b) => cycleRank(b).localeCompare(cycleRank(a)))[0] ||
+      null;
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
