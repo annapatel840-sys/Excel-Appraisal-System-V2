@@ -123,26 +123,18 @@ export const inr = (v) => Math.round(num(v)).toLocaleString("en-IN");
    Helpers added for the new Overview layout
    ------------------------------------------------------------------ */
 
-// "₹ 1.25 Cr" / "₹ 82.5 L" / "₹ 48,000". Exact whole numbers stay in tooltips.
+// Full value, Indian grouping: "₹ 3,92,45,000". No L / Cr shortening anywhere.
 export const fmMoney = (v) => {
   const x = num(v);
-  const a = Math.abs(x);
   const s = x < 0 ? "−" : "";
-  if (a >= 1e7) return `${s}₹ ${(a / 1e7).toFixed(2)} Cr`;
-  if (a >= 1e5) return `${s}₹ ${(a / 1e5).toFixed(1)} L`;
-  return `${s}₹ ${Math.round(a).toLocaleString("en-IN")}`;
+  return `${s}₹ ${Math.round(Math.abs(x)).toLocaleString("en-IN")}`;
 };
 
 // Same, without the rupee sign, for table cells.
 export const fmAmt = (v) => fmMoney(v).replace("₹ ", "");
 
-// Bar label: crores with two decimals for big amounts, otherwise the amount.
-export const barNum = (v) => {
-  const x = num(v);
-  return Math.abs(x) >= 1e5
-    ? (x / 1e7).toFixed(2)
-    : String(Math.round(x * 100) / 100);
-};
+// Bar label: the full whole-number value ("3,92,45,000").
+export const barNum = (v) => Math.round(num(v)).toLocaleString("en-IN");
 
 // "31-Oct-2026" from an ISO-like date; "" when the date cannot be read.
 export const fmtDate = (value) => {

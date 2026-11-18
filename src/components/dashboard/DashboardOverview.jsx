@@ -52,7 +52,7 @@ const go = (to) => {
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
 
-const tipMoney = (v) => (Math.abs(num(v)) >= 1e5 ? fmMoney(v) : String(Math.round(num(v) * 100) / 100));
+const tipMoney = (v) => Math.round(num(v)).toLocaleString("en-IN");
 
 /* ---------------- small building blocks ---------------- */
 
@@ -81,11 +81,11 @@ function Seg({ parts, total, unit }) {
         return (
           <i
             key={i}
-            className={LIGHT.has(p.color) ? "lt" : undefined}
+            className={LIGHT.has(p.color) ? "ovw-lt" : undefined}
             data-tip={p.tip || `${p.label.split(" · ")[0]}: ${tipMoney(p.value)} (${w.toFixed(1)}%)`}
             style={{ width: `${w}%`, background: p.color }}
           >
-            {w >= 9 ? lab : ""}
+            {w >= Math.max(9, String(lab).length * 1.5 + 3) ? lab : ""}
           </i>
         );
       })}
