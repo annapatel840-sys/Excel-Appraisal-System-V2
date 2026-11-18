@@ -18,9 +18,11 @@ import * as api from "./letters-api";
  * only talk to this file, so they do not change. See docs/LETTERS.md.
  */
 
-export const LETTERS_DEMO = true;
+/* Live mode: Letters are made from the real Appraisal Sheet and the templates
+   come from the location Stratus buckets. No sample employees or letters. */
+export const LETTERS_DEMO = false;
 
-const STORE_KEY = "letters_demo_v2";
+const STORE_KEY = "letters_live_v1";
 
 function loadSaved() {
   try {
@@ -39,7 +41,7 @@ function loadSaved() {
   }
 }
 
-let S = loadSaved() || core.createState();
+let S = loadSaved() || core.createState({ sample: LETTERS_DEMO });
 let version = 0;
 const listeners = new Set();
 
@@ -68,6 +70,8 @@ function commit() {
   listeners.forEach((l) => l());
 }
 
+const isAll = (v) => ["", "all", "all locations", "alllocations"].includes(String(v || "").trim().toLowerCase());
+
 const subscribe = (l) => {
   listeners.add(l);
   return () => listeners.delete(l);
@@ -90,6 +94,7 @@ function run(actor, fn) {
 // { status: "idle" | "loading" | "ok" | "error", message }
 let sync = { status: "idle", message: "" };
 let syncing = null;
+let syncedFor = null; // the location the loaded templates belong to
 
 function setSync(next) {
   sync = next;
@@ -99,14 +104,21 @@ function setSync(next) {
 
 // Load the templates held on the server into the state. Call it when the
 // Letters screen opens; {force:true} is the Retry button.
-export function syncTemplates({ force = false } = {}) {
+export function syncTemplates({ force = false, location = "" } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  if (syncing && !force) return syncing;
+  const loc = isAll(location) ? "" : String(location).trim();
+  if (syncing && !force && syncedFor === loc) return syncing;
+  syncedFor = loc;
   setSync({ status: "loading", message: "" });
   syncing = api
-    .loadServerTemplates()
+    .loadServerTemplates(loc)
     .then(({ templates, problems }) => {
-      run("HR", (st) => core.applyServerTemplates(st, templates));
+      run("HR", (st) => {
+        // Only this location's templates are kept: drop the server templates of
+        // another location that an earlier load left in the state.
+        if (loc) st.tpls = st.tpls.filter((t) => !t.fromServer || String(t.location || "").toLowerCase() === loc.toLowerCase());
+        core.applyServerTemplates(st, templates);
+      });
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });
       else setSync({ status: "ok", message: "" });
     })
@@ -185,6 +197,26 @@ export function useLettersStats() {
 // Appraisal Cycle screen -> Letters step -> Generate / Regenerate.
 // cycle = { id, name, effective, start } from the Appraisal Cycle Master.
 export async function generateLettersForCycle(cycle, actor) {
+  if (!LETTERS_DEMO) {
+    // Live: read the cycle's real Appraisal Sheet rows (and make sure this
+    // location's templates are loaded) before making any letter.
+    const location = cycle.location || "";
+    await syncTemplates({ force: true, location });
+    if (sync.status === "error") throw new Error(sync.message || "The templates could not be loaded.");
+    const { cycle: srv, rows, skipped } = await api.loadServerSheet(cycle.id, location);
+    if (!rows.length) {
+      throw new Error(
+        `No Appraisal Sheet rows were found for ${cycle.name}${location ? " (" + location + ")" : ""}. Generate the Appraisal Sheet first.` +
+          (skipped.otherLocation ? ` ${skipped.otherLocation} row(s) belong to another location.` : ""),
+      );
+    }
+    return run(actor, (st) => {
+      core.applyServerSheet(st, { ...cycle, type: cycle.type || srv.type, location: location || srv.location, effective: cycle.effective || srv.effective }, rows);
+      const result = core.generateLetters(st, String(cycle.id));
+      core.audit(st, "Cycle", String(cycle.id), "Letters generated", "", `${rows.length} Appraisal Sheet rows read; ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged`);
+      return { ...result, rows: rows.length };
+    });
+  }
   return run(actor, (st) => {
     core.bindAnnualCycle(st, cycle);
     const result = core.generateLetters(st, String(cycle.id));
@@ -211,7 +243,7 @@ export const saveFields = (draft, reason, actor) => run(actor, (st) => core.save
 // Demo helpers (shown only while LETTERS_DEMO is true).
 export const loadSampleLetters = (actor) => run(actor, (st) => core.loadSampleLetters(st));
 export function resetSampleData() {
-  S = core.createState();
+  S = core.createState({ sample: LETTERS_DEMO });
   commit();
   syncTemplates({ force: true }); // templates on the server come straight back
 }

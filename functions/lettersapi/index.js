@@ -48,7 +48,14 @@
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-const TBL = { templates: "Letter_Templates", versions: "Letter_Template_Versions", locations: "Location_Master" };
+const TBL = {
+  templates: "Letter_Templates",
+  versions: "Letter_Template_Versions",
+  locations: "Location_Master",
+  cycles: "Appraisal_Cycle_Master",
+  sheet: "Appraisal_Sheet",
+  employees: "Employee_Master",
+};
 const SCREEN_KEY = "employeeMaster";
 const BUCKET_PREFIX = () => process.env.LETTERS_BUCKET_PREFIX || "letter-templates";
 const MAX_BODY_BYTES = 12 * 1024 * 1024; // whole request (JSON with base64)
@@ -253,8 +260,14 @@ function shape(row, cfg, history) {
   };
 }
 
-async function loadTemplates(app) {
-  const [rows, vers] = await Promise.all([readAll(app, TBL.templates), readAll(app, TBL.versions)]);
+const isAllLoc = (v) => ["", "all", "all locations", "alllocations"].includes(text(v).toLowerCase());
+
+// `location` (optional): only the templates stored for that location. Each
+// location has its own bucket, so only that bucket is read.
+async function loadTemplates(app, location) {
+  const onlyLoc = isAllLoc(location) ? "" : text(location).toLowerCase();
+  const [allRows, vers] = await Promise.all([readAll(app, TBL.templates), readAll(app, TBL.versions)]);
+  const rows = onlyLoc ? allRows.filter((r) => text(r.location).toLowerCase() === onlyLoc) : allRows;
   const templates = [];
   const problems = [];
   // Read the config files two at a time (this project's Catalyst concurrency limit).
@@ -394,6 +407,165 @@ async function setActive(app, payload) {
   return { id, active: !!payload.active };
 }
 
+/* ---------- Appraisal Sheet -> the rows the Letters engine works on ----------
+   GET /?view=sheet&cycleId=<Appraisal_Cycle_Master ROWID>[&location=<name>]
+   Reads the REAL Appraisal Sheet rows of one cycle and joins Employee Master
+   (location, manager, department, date of joining, grade). Only employees of
+   the cycle's location come back (the cycle is per location). Nothing here is
+   sample data. */
+const pick1 = (r, keys) => {
+  for (const k of keys) {
+    const v = r && r[k];
+    if (v !== undefined && v !== null && text(typeof v === "object" ? "" : v) !== "") return text(v);
+  }
+  return "";
+};
+const lookupText = (v) => {
+  if (v == null) return "";
+  if (typeof v === "object") return lookupText(v.ROWID ?? v.rowid ?? v.emp_id ?? v.id ?? v.value ?? v.name ?? "");
+  return text(v);
+};
+const amt = (v) => {
+  const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+// "May-26", "May 2026", "2026-05", "2026-05-01", "01-May-2026" -> { m: 0-11, y: 2026 } or null
+function parseMonth(v) {
+  const t = text(v);
+  if (!t) return null;
+  let m = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?/.exec(t);
+  if (m) return { m: Number(m[2]) - 1, y: Number(m[1]) };
+  m = /([A-Za-z]{3})[A-Za-z]*[\s\-\/,]*(?:\d{1,2}[\s\-\/,]+)?(\d{2,4})/.exec(t);
+  if (m && MONTHS.includes(m[1].toLowerCase())) {
+    const y = Number(m[2]);
+    return { m: MONTHS.indexOf(m[1].toLowerCase()), y: y < 100 ? 2000 + y : y };
+  }
+  m = /(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})/.exec(t);
+  if (m) return { m: Number(m[2]) - 1, y: Number(m[3]) };
+  return null;
+}
+const monthLabel = (d) => `${MONTHS[d.m][0].toUpperCase()}${MONTHS[d.m].slice(1)}-${String(d.y).slice(-2)}`;
+function addMonths(d, n) {
+  const idx = d.y * 12 + d.m + n;
+  return { y: Math.floor(idx / 12), m: idx % 12 };
+}
+// "2026-04-01" / "01-Apr-2026" -> "01-Apr-2026"
+function fmtDate(v) {
+  const t = text(v);
+  if (!t) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  if (iso) return `${iso[3]}-${MON[Number(iso[2]) - 1]}-${iso[1]}`;
+  const d = new Date(t);
+  if (!Number.isNaN(d.getTime())) return `${String(d.getDate()).padStart(2, "0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;
+  return t;
+}
+// PB paid in N instalments, N evenly spread across a year, from the first pay month.
+function pbSchedule(total, count, firstMonth) {
+  const start = parseMonth(firstMonth);
+  const n = Math.max(1, Math.min(12, Math.round(Number(count) || 1)));
+  if (!(total > 0) || !start) return [];
+  const step = Math.max(1, Math.floor(12 / n));
+  const each = Math.round((total / n) * 100) / 100;
+  return Array.from({ length: n }, (_x, i) => [monthLabel(addMonths(start, i * step)), each]);
+}
+const cycleKeyOf = (r) => lookupText(r.cycle_id ?? r.appraisal_cycle_id ?? r.appraisalCycleId ?? r.cycleId ?? "");
+
+async function loadSheet(app, cycleId, requestedLocation) {
+  if (!/^\d{5,25}$/.test(cycleId)) throw fail(400, "Choose an Appraisal Cycle first.");
+  const cycleRows = await readAll(app, TBL.cycles, `ROWID = ${cycleId}`);
+  const cycle = cycleRows[0];
+  if (!cycle) throw fail(404, "This Appraisal Cycle was not found.");
+  const cycleName = pick1(cycle, ["cycle_name", "name"]);
+  const cycleLocation = pick1(cycle, ["location", "cycle_location", "location_name"]);
+  const wanted = isAllLoc(requestedLocation) ? cycleLocation : text(requestedLocation);
+  const typeText = pick1(cycle, ["cycle_type", "type"]) || cycleName;
+  const type = /exceptional/i.test(typeText) ? "Exceptional" : "Annual";
+  const effective = fmtDate(pick1(cycle, ["effective_date", "start_date"]));
+
+  const [sheetRows, emRows] = await Promise.all([readAll(app, TBL.sheet), readAll(app, TBL.employees)]);
+
+  const byId = new Map();
+  const byRowId = new Map();
+  emRows.forEach((r) => {
+    const id = text(r.emp_id);
+    if (id) byId.set(id.toLowerCase(), r);
+    if (rowId(r)) byRowId.set(rowId(r), r);
+  });
+  const emOf = (v) => {
+    const k = lookupText(v);
+    return byId.get(k.toLowerCase()) || byRowId.get(k) || null;
+  };
+
+  const rows = [];
+  let withoutEmployee = 0;
+  let otherLocation = 0;
+  sheetRows
+    .filter((r) => cycleKeyOf(r) === cycleId)
+    .forEach((r) => {
+      const em = emOf(r.emp_id);
+      if (!em) {
+        withoutEmployee += 1;
+        return;
+      }
+      const location = pick1(em, ["location", "location_name", "work_location"]);
+      if (!isAllLoc(wanted) && location.toLowerCase() !== wanted.toLowerCase()) {
+        otherLocation += 1;
+        return;
+      }
+      const empId = text(em.emp_id);
+      const basePay = amt(r.current_annual_base_pay ?? em.current_salary);
+      const hikeAmt = amt(r.hike_amount);
+      const hikePct = amt(r.hike_pct) || (basePay > 0 ? Math.round((hikeAmt / basePay) * 10000) / 100 : 0);
+      const newPB = amt(r.new_pb_to_be_offered);
+      const newRB = amt(r.new_rb);
+      const tpbNext = amt(r.target_pb_next_year);
+      const instalments = amt(r.new_pb_installment) || amt(r.pb_installment) || (newPB > 0 ? 1 : 0);
+      const monthPB = pick1(r, ["month_pb"]);
+      const monthRB = pick1(r, ["month_rb"]);
+      rows.push({
+        id: empId,
+        name: pick1(em, ["emp_name", "name"]) || empId,
+        tech: lookupText(emOf(r.appraiser_tech_ed)?.emp_name) || pick1(r, ["appraiser_tech_ed"]) || pick1(em, ["appraiser_tech_ed"]),
+        org: pick1(em, ["organization", "org", "entity", "company"]),
+        cycle: cycleId,
+        status: pick1(em, ["emp_status"]) || "Active",
+        email: pick1(em, ["email_id", "email"]).toLowerCase(),
+        v: {
+          promo: /^(yes|true|1|y)$/i.test(text(r.eligible_for_promotion)) ? "Yes" : "No",
+          basePay,
+          newBase: basePay + hikeAmt,
+          hikeAmt,
+          hikePct,
+          newPB,
+          newRB,
+          tpbNext,
+          newTitle: pick1(r, ["new_title"]),
+          designation: pick1(r, ["designation"]) || pick1(em, ["designation"]),
+          effDate: effective,
+          pbInst: instalments > 0 ? `${instalments} instalment${instalments > 1 ? "s" : ""}` : "",
+          band: pick1(em, ["band", "grade"]),
+          rating: pick1(r, ["manager_rating"]),
+          compRemarks: pick1(r, ["comp_manager_remarks"]),
+          pbMonths: pbSchedule(newPB, instalments, monthPB),
+          rbMonth: newRB > 0 ? (parseMonth(monthRB) ? monthLabel(parseMonth(monthRB)) : monthRB) : "",
+          tpbMonth: "",
+          emLocation: location,
+          emDoj: fmtDate(pick1(em, ["date_of_joining", "doj", "joining_date"])),
+          emGrade: pick1(em, ["grade", "band"]),
+          emManager: pick1(em, ["reporting_manager", "manager_name", "reporting_manager_name"]),
+          emDept: pick1(em, ["department"]),
+        },
+      });
+    });
+
+  return {
+    cycle: { id: cycleId, name: cycleName, type, location: cycleLocation, effective },
+    rows,
+    skipped: { withoutEmployee, otherLocation },
+  };
+}
+
 /* ---------- request ---------- */
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -455,7 +627,10 @@ module.exports = async function lettersApi(req, res) {
       const view = q.get("view") || "templates";
       if (view === "docx") return await sendDocx(adminApp, res, text(q.get("id")), q.get("ver"));
       if (view === "templates") {
-        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp) });
+        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp, q.get("location")) });
+      }
+      if (view === "sheet") {
+        return sendJson(res, 200, { success: true, data: await loadSheet(adminApp, text(q.get("cycleId")), q.get("location")) });
       }
       throw fail(400, "Unknown view.");
     }
@@ -475,4 +650,4 @@ module.exports = async function lettersApi(req, res) {
   }
 };
 
-module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor };
+module.exports._test = { safeFileName, decodeDocx, cleanTemplate, stamp, toBuffer, bucketNameFor, parseMonth, pbSchedule, fmtDate };

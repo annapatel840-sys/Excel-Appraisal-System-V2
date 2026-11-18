@@ -22,6 +22,7 @@ import {
   tplOf,
 } from "@/lib/letters-core";
 import * as store from "@/lib/letters-store";
+import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import "./employee-master-ui.css";
 import "./letters-page.css";
@@ -134,9 +135,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   useDismiss(notesOpen, () => setNotesOpen(false), notesRef);
 
   // Templates live on the server: load them when the screen opens.
+  // The templates shown are the ones of the location chosen in the top bar.
+  const [selectedLocation] = useSelectedLocation();
   useEffect(() => {
-    store.syncTemplates();
-  }, []);
+    store.syncTemplates({ location: selectedLocation });
+  }, [selectedLocation]);
 
   // Escape closes the letter preview.
   useEffect(() => {
@@ -152,9 +155,16 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   /* ---------------- rows ---------------- */
 
   const secRows = useMemo(
-    () => S.letters.filter((l) => (cyOf(S, l.cycle) || {}).type === sec),
+    () =>
+      S.letters.filter((l) => {
+        if ((cyOf(S, l.cycle) || {}).type !== sec) return false;
+        if (isAllLocations(selectedLocation)) return true;
+        // location-wise: only the employees of the location chosen in the top bar
+        const r = empOf(S, l);
+        return !!r && String((r.v && r.v.emLocation) || "").toLowerCase() === String(selectedLocation).toLowerCase();
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [S, version, sec],
+    [S, version, sec, selectedLocation],
   );
   const selected = useMemo(
     () => S.letters.filter((l) => sel.has(l.id)),

@@ -6,7 +6,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { matchesLocation } from "@/lib/location-store";
+import { isAllLocations, matchesLocation } from "@/lib/location-store";
 import {
   FilterStatus,
   FilterTh,
@@ -1180,7 +1180,14 @@ export function AppraisalCycleMasterPage({
     setSaving(true);
     try {
       const result = await generateLettersForCycle(
-        { id: c.id, name: c.name, effective: c.effective, start: c.start },
+        {
+          id: c.id,
+          name: c.name,
+          effective: c.effective,
+          start: c.start,
+          type: c.type,
+          location: isAllLocations(c.location) ? "" : c.location,
+        },
         user?.name || "HR",
       );
       showBanner(

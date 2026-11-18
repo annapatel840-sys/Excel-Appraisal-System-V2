@@ -173,7 +173,7 @@ export const cyOf = (S, id) => S.cycles.filter((c) => c.id === id)[0];
 export const tplOf = (S, id) => S.tpls.filter((t) => t.id === id)[0];
 export const rowOf = (S, id) => S.sheet.filter((r) => r.id === id)[0];
 export const lOf = (S, id) => S.letters.filter((l) => l.id === id)[0];
-export const empOf = (S, l) => rowOf(S, l.emp);
+export const empOf = (S, l) => S.sheet.filter((r) => r.id === l.emp && (!l.cycle || r.cycle === l.cycle))[0] || rowOf(S, l.emp);
 
 export function hasVal(row, col) {
   const c = catOf(col);
@@ -311,6 +311,7 @@ export function refreshStale(S) {
       return;
     }
     const r = empOf(S, l);
+    if (!r) return; // the employee is not on the loaded Appraisal Sheet
     const rule = S.rules.filter((x) => x.id === l.rule)[0];
     const t = tplOf(S, l.tpl);
     const want = rule ? resolveTemplate(S, rule.tpl, r) : null;
@@ -355,7 +356,7 @@ export function needLetters(S, scope) {
     if (scope && !scope(r)) return;
     if (r.status !== "Active") return;
     pick(S, r).forEach((x) => {
-      if (!S.letters.some((l) => l.emp === r.id && l.family === x.family && GONE_STATUSES.indexOf(l.status) < 0)) {
+      if (!S.letters.some((l) => l.emp === r.id && l.cycle === r.cycle && l.family === x.family && GONE_STATUSES.indexOf(l.status) < 0)) {
         out.push([r.name, x.family + " - " + x.type]);
       }
     });
@@ -380,7 +381,7 @@ export function generateLetters(S, cycleId) {
     pick(S, r).forEach((rule) => {
       const t = resolveTemplate(S, rule.tpl, r); // the variant for this employee's location
       if (!t) return; // no active template for this location: no new letter
-      const cur = S.letters.filter((l) => l.emp === r.id && l.family === rule.family && GONE_STATUSES.indexOf(l.status) < 0)[0];
+      const cur = S.letters.filter((l) => l.emp === r.id && l.cycle === r.cycle && l.family === rule.family && GONE_STATUSES.indexOf(l.status) < 0)[0];
       if (!cur) {
         const n = mkLetter(S, r, rule, t);
         S.letters.push(n);
@@ -1020,13 +1021,15 @@ function addDefaultConfig(S) {
 
 /* A new state: config + a sample Appraisal Sheet, and NO letters. Letters
    appear when HR presses Generate on the Letters step of the cycle. */
-export function createState() {
+export function createState({ sample = true } = {}) {
   const S = {
     orgs: ["Wissen India", "Wissen UK"],
-    cycles: [
-      { id: SAMPLE_ANNUAL, name: "Annual (sample)", type: "Annual", fy: "2026-27", sample: true },
-      { id: SAMPLE_EXCEPTIONAL, name: "Exceptional (sample)", type: "Exceptional", fy: "2026-27", sample: true },
-    ],
+    cycles: sample
+      ? [
+          { id: SAMPLE_ANNUAL, name: "Annual (sample)", type: "Annual", fy: "2026-27", sample: true },
+          { id: SAMPLE_EXCEPTIONAL, name: "Exceptional (sample)", type: "Exceptional", fy: "2026-27", sample: true },
+        ]
+      : [],
     sheet: [],
     letters: [],
     audit: [],
@@ -1034,8 +1037,17 @@ export function createState() {
     actor: "HR",
     t: null,
   };
-  addSampleSheet(S);
+  if (sample) addSampleSheet(S);
   addDefaultConfig(S);
+  if (!sample) {
+    // The built-in templates only anchor the rules (a rule points at a template
+    // name). They never make a letter: real templates come from the location's
+    // Stratus bucket, and a location without one gets no letter.
+    S.tpls.forEach((t) => {
+      t.active = false;
+      t.builtIn = true;
+    });
+  }
   return S;
 }
 
@@ -1110,6 +1122,27 @@ export function loadSampleLetters(S) {
     v.hikePct = +((350000 / 2300000) * 100).toFixed(2);
   });
   refreshStale(S);
+}
+
+/* LIVE MODE. Put the real Appraisal Sheet rows of one cycle (read by lettersapi,
+   already limited to the cycle's location) into the state, replacing whatever
+   rows this cycle had. Other cycles and every existing letter are left alone. */
+export function applyServerSheet(S, cycle, rows) {
+  const id = String(cycle.id);
+  const fy = fyOf(cycle.effective) || fyOf(cycle.start) || "";
+  let cy = cyOf(S, id);
+  if (!cy) {
+    cy = { id, name: cycle.name, type: cycle.type || "Annual", fy, sample: false, location: cycle.location || "" };
+    S.cycles.unshift(cy);
+  } else {
+    cy.name = cycle.name || cy.name;
+    cy.type = cycle.type || cy.type;
+    cy.location = cycle.location || cy.location || "";
+    if (fy) cy.fy = fy;
+  }
+  S.sheet = S.sheet.filter((r) => r.cycle !== id).concat((rows || []).map((r) => ({ ...r, cycle: id })));
+  refreshStale(S);
+  return cy;
 }
 
 /* Point the sample Annual rows (and any sample letters) at a real cycle from

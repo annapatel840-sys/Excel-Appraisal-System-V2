@@ -23,6 +23,7 @@ import {
 import { MAX_DOCX_BYTES } from "@/lib/letters-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import * as store from "@/lib/letters-store";
+import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { importDocxDocument, readImageDataUrl } from "@/lib/letters-docx";
 
 /*
@@ -909,7 +910,13 @@ export function TemplatesTab({ S, actor, ui, toast, selectedId, setSelectedId })
     },
   ];
   const grid = useLtGrid(defs, null);
-  const filtered = S.tpls.filter((t) => !query || `${t.name} ${t.family}`.toLowerCase().includes(query.toLowerCase()));
+  // Only templates stored on the server, and only those of the location chosen in
+  // the top bar (each location has its own Stratus bucket).
+  const [selectedLocation] = useSelectedLocation();
+  const inLocation = (t) => isAllLocations(selectedLocation) || String(t.location || "").toLowerCase() === String(selectedLocation).toLowerCase();
+  const filtered = S.tpls
+    .filter((t) => !t.builtIn && inLocation(t))
+    .filter((t) => !query || `${t.name} ${t.family}`.toLowerCase().includes(query.toLowerCase()));
   const view = useGridView(filtered, defs, grid);
 
   function open(t, d) {
@@ -920,7 +927,11 @@ export function TemplatesTab({ S, actor, ui, toast, selectedId, setSelectedId })
     setMode("edit");
   }
   const startEdit = (t) => open(t, makeTemplateDraft(t, S));
-  const createNew = () => open(null, makeTemplateDraft(null, S));
+  const createNew = () => {
+    const d = makeTemplateDraft(null, S);
+    if (!isAllLocations(selectedLocation)) d.location = selectedLocation; // saves to this location's bucket
+    open(null, d);
+  };
   const clone = (t) => {
     const d = makeTemplateDraft(t, S);
     // Same name: a clone is normally the same letter for another location.

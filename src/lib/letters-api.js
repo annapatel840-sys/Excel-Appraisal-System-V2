@@ -42,9 +42,21 @@ function fileToBase64(file) {
 
 /* All templates held on the server (content included), plus `problems`: templates
    whose location bucket could not be read. */
-export async function loadServerTemplates() {
-  const data = await request({ params: { view: "templates" } });
+export async function loadServerTemplates(location) {
+  const params = { view: "templates" };
+  if (location) params.location = location; // only that location's bucket
+  const data = await request({ params });
   return { templates: data.templates || [], problems: data.problems || [] };
+}
+
+/* The REAL Appraisal Sheet rows of one cycle (Employee Master joined), already
+   limited to the cycle's location. Used when Generate runs on the Appraisal
+   Cycle Master. */
+export async function loadServerSheet(cycleId, location) {
+  const params = { view: "sheet", cycleId: String(cycleId) };
+  if (location) params.location = location;
+  const data = await request({ params });
+  return { cycle: data.cycle || {}, rows: data.rows || [], skipped: data.skipped || {} };
 }
 
 /* Publish a new version. `docxFile` is the File picked with "Import from Word"
