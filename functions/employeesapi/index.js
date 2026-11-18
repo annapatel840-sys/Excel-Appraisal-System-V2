@@ -518,7 +518,14 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
   const requested = String(requestedCycleId || "").trim().toLowerCase();
-  const location = String(requestedLocation || "").trim().toLowerCase();
+  const locationKey = (value) => {
+    const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (["australia", "au", "aus"].includes(key)) return "australia";
+    if (["india", "in"].includes(key)) return "india";
+    if (["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(key)) return "unitedstates";
+    return key;
+  };
+  const location = locationKey(requestedLocation);
   const available = cycles.filter(function (cycle) {
     const status = String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "")
       .trim()
@@ -539,8 +546,7 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
     ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
   };
   const locationOf = function (cycle) {
-    return String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "")
-      .trim().toLowerCase();
+    return locationKey(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "");
   };
   const matchesRequestedLocation = (cycle) => {
     const cycleLocation = locationOf(cycle);
@@ -3939,9 +3945,17 @@ async function getEmployees(req, res) {
   // an otherwise valid generated row from the active sheet.
   if (isCycleView) {
     const selectedLocation = String(params.location || "All").trim();
+    const selectedLocationKey = selectedLocation.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const normalizedSelectedLocation = ["australia", "au", "aus"].includes(selectedLocationKey)
+      ? "australia"
+      : ["india", "in"].includes(selectedLocationKey)
+        ? "india"
+        : ["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(selectedLocationKey)
+          ? "unitedstates"
+          : selectedLocationKey;
     const allLocationsSelected =
       !selectedLocation ||
-      ["all", "all locations"].includes(selectedLocation.toLowerCase());
+      ["all", "alllocations"].includes(normalizedSelectedLocation);
     const isAvailableAppraisalCycle = (cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
@@ -3963,10 +3977,17 @@ async function getEmployees(req, res) {
       params.cycleId || params.cycle_id || params.appraisal_cycle_id || "",
     ).trim();
     const matchesSelectedLocation = (cycle) => {
-      const cycleLocation = String(cycle?.location || "").trim().toLowerCase();
+      const cycleLocation = String(cycle?.location || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normalizedCycleLocation = ["australia", "au", "aus"].includes(cycleLocation)
+        ? "australia"
+        : ["india", "in"].includes(cycleLocation)
+          ? "india"
+          : ["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(cycleLocation)
+            ? "unitedstates"
+            : cycleLocation;
       return allLocationsSelected
-        ? (!cycleLocation || ["all", "all locations"].includes(cycleLocation))
-        : cycleLocation === selectedLocation.toLowerCase();
+        ? (!cycleLocation || ["all", "alllocations"].includes(normalizedCycleLocation))
+        : normalizedCycleLocation === normalizedSelectedLocation;
     };
     const requestedCycle = requestedCycleId
       ? cycleRows.find((cycle) =>
