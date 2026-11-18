@@ -10,6 +10,8 @@ import { matchesCycleLocation, useSelectedLocation } from "@/lib/location-store"
 const STALE_MS = 60_000;
 const listeners = new Set();
 const cycleNames = new Map();
+// The picked Active cycle itself (name, status, start / end dates) per location.
+const cycleInfos = new Map();
 const fetchedAt = new Map();
 const inflight = new Map();
 
@@ -45,10 +47,22 @@ function load(selectedLocation) {
         key,
         String(picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "").trim(),
       );
+      cycleInfos.set(
+        key,
+        picked
+          ? {
+              status: String(picked.status ?? picked.cycle_status ?? "Active").trim(),
+              start: String(picked.start ?? picked.start_date ?? "").trim(),
+              end: String(picked.end ?? picked.end_date ?? picked.close_date ?? "").trim(),
+              effective: String(picked.effective ?? picked.effective_date ?? "").trim(),
+            }
+          : null,
+      );
       listeners.forEach((listener) => listener());
     })
     .catch(() => {
       cycleNames.set(key, "");
+      cycleInfos.set(key, null);
       listeners.forEach((listener) => listener());
     })
     .finally(() => {
@@ -78,6 +92,7 @@ export function useCurrentCycleName() {
     const refresh = () => {
       fetchedAt.delete(key);
       cycleNames.set(key, "");
+      cycleInfos.delete(key);
       listeners.forEach((listener) => listener());
       load(selectedLocation);
     };
@@ -85,4 +100,17 @@ export function useCurrentCycleName() {
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [key, selectedLocation]);
   return name;
+}
+
+// Name plus the Active cycle's status and dates, for the Overview title.
+export function useCurrentCycleInfo() {
+  const name = useCurrentCycleName();
+  const [selectedLocation] = useSelectedLocation();
+  const key = locationKey(selectedLocation);
+  const info = useSyncExternalStore(
+    subscribe,
+    () => cycleInfos.get(key) || null,
+    () => null,
+  );
+  return { name, info };
 }

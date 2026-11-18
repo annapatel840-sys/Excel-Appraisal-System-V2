@@ -118,3 +118,85 @@ export const money = (v) => {
   return `${s}${Math.round(Math.abs(v)).toLocaleString("en-IN")}`;
 };
 export const inr = (v) => Math.round(num(v)).toLocaleString("en-IN");
+
+/* ------------------------------------------------------------------
+   Helpers added for the new Overview layout
+   ------------------------------------------------------------------ */
+
+// "₹ 1.25 Cr" / "₹ 82.5 L" / "₹ 48,000". Exact whole numbers stay in tooltips.
+export const fmMoney = (v) => {
+  const x = num(v);
+  const a = Math.abs(x);
+  const s = x < 0 ? "−" : "";
+  if (a >= 1e7) return `${s}₹ ${(a / 1e7).toFixed(2)} Cr`;
+  if (a >= 1e5) return `${s}₹ ${(a / 1e5).toFixed(1)} L`;
+  return `${s}₹ ${Math.round(a).toLocaleString("en-IN")}`;
+};
+
+// Same, without the rupee sign, for table cells.
+export const fmAmt = (v) => fmMoney(v).replace("₹ ", "");
+
+// Bar label: crores with two decimals for big amounts, otherwise the amount.
+export const barNum = (v) => {
+  const x = num(v);
+  return Math.abs(x) >= 1e5
+    ? (x / 1e7).toFixed(2)
+    : String(Math.round(x * 100) / 100);
+};
+
+// "31-Oct-2026" from an ISO-like date; "" when the date cannot be read.
+export const fmtDate = (value) => {
+  const d = value instanceof Date ? value : new Date(String(value || "").slice(0, 10) + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d.getDate()}-${m[d.getMonth()]}-${d.getFullYear()}`;
+};
+
+// Whole days from today until the date (negative once it has passed); null if unreadable.
+export const daysUntil = (value, now = new Date()) => {
+  const d = new Date(String(value || "").slice(0, 10) + "T23:59:59");
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - now.getTime()) / 864e5);
+};
+
+// Split n items into balanced rows of at most `max` (6 tiles -> 3 + 3, not 5 + 1).
+export const balanceRows = (items, max = 5) => {
+  const n = items.length;
+  if (!n) return [];
+  const rows = Math.ceil(n / max);
+  const base = Math.floor(n / rows);
+  const extra = n % rows;
+  const out = [];
+  let i = 0;
+  for (let r = 0; r < rows; r += 1) {
+    const k = base + (r < extra ? 1 : 0);
+    out.push(items.slice(i, i + k));
+    i += k;
+  }
+  return out;
+};
+
+// PB / RB as a % of base pay, for the people table.
+export const pctOfBase = (amount, base) => (num(base) > 0 ? (num(amount) / num(base)) * 100 : 0);
+
+// Previous-cycle hike % from one history record (hike amount over base pay).
+export const recordHikePct = (rec) => {
+  const base = num(rec?.basePay);
+  return base > 0 ? (num(rec?.hikeAmount) / base) * 100 : null;
+};
+
+// Where an audit entry was made -> screen name and path (for the Recent activity table).
+export const screenOfSource = (source) => {
+  const s = String(source ?? "manual").trim().toLowerCase();
+  if (s.includes("detail")) return { label: "Detailed Screen", to: "/detail-screen" };
+  if (s.includes("bulk")) return { label: "Bulk Edit", to: "/bulk-edit" };
+  return { label: "Appraisal Sheet", to: "/sheet" };
+};
+
+// "Annual 2025" from "Dubai - Annual 2025".
+export const bareCycleName = (name) =>
+  String(name || "")
+    .replace(/^(.+?)\s+-\s+((?:annual|mid-year|exceptional|new joiner)\b.*)$/i, "$2")
+    .trim();
+
+export const cycleKeyOf = (name) => bareCycleName(name).toLowerCase();

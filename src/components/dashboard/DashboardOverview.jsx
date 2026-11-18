@@ -3,80 +3,64 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useViewAs } from "@/lib/view-as-store";
-import { useCurrentCycleName } from "@/lib/current-cycle";
+import { useCurrentCycleInfo } from "@/lib/current-cycle";
+import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { resolveBudgetAllocated } from "@/components/appraisal/BudgetStatsBar";
 import { MANAGER_RATING_LABELS } from "@/lib/appraisal-data";
-import { budgetTotals } from "@/lib/dashboard-metrics";
-import { cn } from "@/lib/utils";
+import { useCompareCycles, usePreviousCycleData } from "@/lib/overview-compare";
 import {
   MIN_GROUP,
   allocationFor,
+  avgBy,
   avgHikePct,
+  balanceRows,
+  barNum,
   calcHikePct,
-  manualEditedRowIds,
+  cycleKeyOf,
+  daysUntil,
+  fmAmt,
+  fmMoney,
+  fmtDate,
   groupRows,
-  hasAtRisk,
   inr,
   isPromoted,
+  manualEditedRowIds,
   money,
   num,
   partsOf,
+  pctOfBase,
   ratingOf,
-  sumBy,
+  recordHikePct,
+  screenOfSource,
   targetPair,
 } from "@/lib/dashboard-overview";
 
-const C = { hike: "#1D3B5E", pb: "#4F7FB8", rb: "#A9C4E4", left: "#DCE1E7", warn: "#C98A1B" };
+import "./overview.css";
+
+/* The Overview shows the rows the Appraisal store already narrowed to the
+   selected location and the signed-in (or "View as") login; the budget comes
+   from the Budget store for the same login and location. Nothing here widens
+   that scope. */
+
+const C = { hike: "#1D3B5E", pb: "#4F7FB8", rb: "#A9C4E4", left: "#DCE1E7", warn: "#C98A1B", track: "#EEF1F4", target: "#B8C0CC" };
 const RATING_COLORS = ["#DCE1E7", "#A9C4E4", "#6F9BD0", "#3E6FA8", "#1D3B5E"];
 const LIGHT = new Set(["#DCE1E7", "#A9C4E4", "#EEF1F4", "#B8C0CC"]);
-const MONO = "font-mono";
+const MAX_PEOPLE_SHOWN = 500;
+
+const go = (to) => {
+  window.history.pushState({}, "", to);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+};
+
+const tipMoney = (v) => (Math.abs(num(v)) >= 1e5 ? fmMoney(v) : String(Math.round(num(v) * 100) / 100));
 
 /* ---------------- small building blocks ---------------- */
 
-function Tile({ className, children, ...rest }) {
-  return (
-    <div
-      className={cn(
-        "min-w-0 rounded-[10px] bg-white p-4 shadow-[0_1px_2px_rgba(16,42,67,.08),0_6px_18px_rgba(16,42,67,.07)]",
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </div>
-  );
-}
-
-const Cap = ({ children }) => (
-  <span className={cn(MONO, "text-[10px] font-extrabold capitalize tracking-[.08em] text-[#6B7280]")}>
-    {children}
-  </span>
-);
-
-const Big = ({ value, unit, color }) => (
-  <div className="mt-1 text-[26px] font-semibold leading-tight tracking-tight tabular-nums text-[#102A43]" style={{ color }}>
-    {value}
-    {unit ? <span className="ml-1.5 text-xs font-semibold tracking-normal text-[#6B7280]">{unit}</span> : null}
-  </div>
-);
-
-const Sub = ({ children }) => <div className="mt-0.5 text-[11.5px] text-[#6B7280]">{children}</div>;
-
 function Toggle({ value, options, onChange }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-[7px] border border-[#D5DBE2]">
+    <div className="ctog">
       {options.map(([k, label]) => (
-        <button
-          key={k}
-          type="button"
-          onClick={() => onChange(k)}
-          className={cn(
-            MONO,
-            "cursor-pointer px-2 py-[3px] text-[10px] font-semibold transition-colors",
-            value !== k && "hover:bg-[#F3F5F8]",
-            value === k ? "bg-[#1D3B5E] text-white" : "bg-white text-[#6B7280]",
-          )}
-        >
+        <button key={k} type="button" className={value === k ? "on" : ""} onClick={() => onChange(k)}>
           {label}
         </button>
       ))}
@@ -84,36 +68,25 @@ function Toggle({ value, options, onChange }) {
   );
 }
 
-function SectionTitle({ children }) {
-  return (
-    <div className="mb-3 mt-6 flex items-center gap-3">
-      <Cap>{children}</Cap>
-      <span className="h-px flex-1 bg-[#E5E7EB]" />
-    </div>
-  );
-}
-
-// parts: [{ label, value, color, tip? }]
-function SegBar({ parts, total, height = 20, showPct = false }) {
+// parts: [{ label, value, color, tip?, pText?, nText?, blank? }]
+function Seg({ parts, total, unit }) {
   const t = total || parts.reduce((s, p) => s + p.value, 0) || 1;
   return (
-    <div className="flex gap-[2px] overflow-hidden rounded-[5px] bg-[#E3E7EC]" style={{ height }}>
+    <div className="seg">
       {parts.map((p, i) => {
         const w = Math.max(0, (p.value / t) * 100);
         if (w <= 0) return null;
+        if (p.blank) return <i key={i} style={{ width: `${w}%`, background: p.color }} />;
+        const lab = unit === "p" ? (p.pText ?? `${w.toFixed(0)}%`) : (p.nText ?? barNum(p.value));
         return (
-          <div
+          <i
             key={i}
-            title={p.tip || `${p.label}: ${money(p.value)} (${w.toFixed(1)}%)`}
-            className="flex items-center justify-center overflow-hidden whitespace-nowrap text-[10.5px] font-semibold"
-            style={{
-              width: `${w}%`,
-              background: p.color,
-              color: LIGHT.has(p.color) ? "#1D3B5E" : "#fff",
-            }}
+            className={LIGHT.has(p.color) ? "lt" : undefined}
+            data-tip={p.tip || `${p.label.split(" · ")[0]}: ${tipMoney(p.value)} (${w.toFixed(1)}%)`}
+            style={{ width: `${w}%`, background: p.color }}
           >
-            {w >= 9 ? (showPct ? `${w.toFixed(0)}%` : p.text ?? "") : ""}
-          </div>
+            {w >= 9 ? lab : ""}
+          </i>
         );
       })}
     </div>
@@ -122,56 +95,12 @@ function SegBar({ parts, total, height = 20, showPct = false }) {
 
 function Legend({ items }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#374151]">
+    <div className="sleg">
       {items.map(([label, color]) => (
-        <span key={label} className="inline-flex items-center">
-          <i className="mr-1.5 inline-block size-[11px] rounded-[3px]" style={{ background: color }} />
+        <span key={label}>
+          <i style={{ background: color }} />
           {label}
         </span>
-      ))}
-    </div>
-  );
-}
-
-// groups: [{ label, bars: [{ cap, parts:[{label,value,color,text,tip}] }] }]
-function ColChart({ groups, pct }) {
-  const H = 130;
-  let mx = 1;
-  if (!pct) groups.forEach((g) => g.bars.forEach((b) => { mx = Math.max(mx, b.parts.reduce((s, p) => s + p.value, 0)); }));
-  return (
-    <div className="flex items-end gap-3.5 overflow-x-auto pt-1.5">
-      {groups.map((g) => (
-        <div key={g.label} className="flex min-w-[56px] flex-1 flex-col items-center">
-          <div className="flex items-end gap-1">
-            {g.bars.map((b) => {
-              const t = b.parts.reduce((s, p) => s + p.value, 0) || 1;
-              const sc = pct ? H / t : H / mx;
-              const one = b.parts.length === 1;
-              return (
-                <div key={b.cap} className="flex w-[34px] flex-col items-center">
-                  {one ? <em className={cn(MONO, "mb-0.5 text-[10.5px] not-italic font-semibold text-[#1D3B5E]")}>{b.parts[0].text}</em> : null}
-                  <div className="flex w-full flex-col-reverse gap-px overflow-hidden rounded-t-[3px]">
-                    {b.parts.map((p) => {
-                      const h = Math.max(p.value * sc, 0);
-                      return (
-                        <i
-                          key={p.label}
-                          title={p.tip || p.label}
-                          className={cn(MONO, "flex items-center justify-center overflow-hidden text-[10px] font-semibold not-italic")}
-                          style={{ height: h, background: p.color, color: LIGHT.has(p.color) ? "#1D3B5E" : "#fff" }}
-                        >
-                          {!one && h >= 15 ? p.text : ""}
-                        </i>
-                      );
-                    })}
-                  </div>
-                  <span className={cn(MONO, "mt-[3px] text-[9.5px] text-[#6B7280]")}>{b.cap}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-1 text-center text-[11.5px] font-semibold text-[#102A43]">{g.label}</div>
-        </div>
       ))}
     </div>
   );
@@ -182,13 +111,14 @@ function Donut({ parts, total }) {
   const CIRC = 2 * Math.PI * R;
   let off = 0;
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-4">
+    <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", marginTop: 6 }}>
       <svg width="120" height="120" viewBox="0 0 120 120">
         {parts.map((p) => {
           const len = (p.value / (total || 1)) * CIRC;
           const el = (
             <circle
               key={p.label}
+              data-tip={`${p.label.split(" · ").slice(0, 2).join(" · ")}: ${p.value} (${((p.value / (total || 1)) * 100).toFixed(1)}%)`}
               r={R}
               cx="60"
               cy="60"
@@ -198,20 +128,20 @@ function Donut({ parts, total }) {
               strokeDasharray={`${len.toFixed(2)} ${(CIRC - len).toFixed(2)}`}
               strokeDashoffset={(-off).toFixed(2)}
               transform="rotate(-90 60 60)"
-            >
-              <title>{`${p.label}: ${p.value} (${((p.value / (total || 1)) * 100).toFixed(1)}%)`}</title>
-            </circle>
+            />
           );
           off += len;
           return el;
         })}
-        <text x="60" y="64" textAnchor="middle" className="fill-[#1D3B5E] text-[16px] font-semibold">{total}</text>
+        <text x="60" y="64" textAnchor="middle" style={{ font: "600 16px Inter, Segoe UI, Arial, sans-serif", fill: "#1D3B5E" }}>
+          {total}
+        </text>
       </svg>
-      <div className="flex flex-col gap-1 text-xs text-[#374151]">
+      <div className="sleg" style={{ flexDirection: "column", margin: 0 }}>
         {parts.map((p) => (
-          <span key={p.label} className="inline-flex items-center">
-            <i className="mr-1.5 inline-block size-[11px] rounded-[3px]" style={{ background: p.color }} />
-            {p.label} ({((p.value / (total || 1)) * 100).toFixed(1)}%)
+          <span key={p.label}>
+            <i style={{ background: p.color }} />
+            {p.label.split(" · ").slice(0, 2).join(" · ")} ({((p.value / (total || 1)) * 100).toFixed(1)}%)
           </span>
         ))}
       </div>
@@ -219,49 +149,280 @@ function Donut({ parts, total }) {
   );
 }
 
-/* ---------------- people list ---------------- */
+function Arrow({ d, txt, good = true }) {
+  if (Math.abs(d) < 0.0005) return <span>no change</span>;
+  const up = d > 0;
+  return <span className={up === good ? "up" : "dn"}>{up ? "▲ " : "▼ "}{txt}</span>;
+}
 
-function PeopleList({ list, onClose }) {
-  const shown = list.rows.slice(0, 50);
+/* ---------------- "Compare with" years ---------------- */
+
+function YearMenu({ cycles, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const chosen = cycles.filter((c) => selected.includes(c.key));
+  const label = chosen.length
+    ? `${chosen.length === 1 ? "1 year" : `${chosen.length} years`} · ${chosen.map((c) => c.name.replace("Annual ", "")).join(", ")}`
+    : "Pick years";
+  const toggle = (k) => onChange(selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k]);
   return (
-    <Tile className="mt-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Cap>People</Cap>
-        <b className="text-sm text-[#102A43]">{list.title}</b>
-        <span className="text-[11.5px] text-[#6B7280]">
-          {inr(list.rows.length)} people{list.rows.length > 50 ? " · showing first 50" : ""}
-        </span>
-        <button type="button" onClick={onClose} className="ml-auto cursor-pointer rounded-md border border-[#D1D5DB] bg-white px-3 py-1 text-xs font-bold hover:bg-[#F3F5F8]">
-          Close
+    <div className="ymenu" ref={ref}>
+      <button type="button" onClick={() => setOpen((o) => !o)}>{label} ▾</button>
+      {open ? (
+        <div className="ypop">
+          {cycles.length === 0 ? <div className="mut" style={{ padding: "4px 0" }}>No closed Annual cycles yet</div> : null}
+          {cycles.map((c) => (
+            <label key={c.key}>
+              <input type="checkbox" checked={selected.includes(c.key)} onChange={() => toggle(c.key)} />
+              {c.name}
+            </label>
+          ))}
+          <div className="yb">
+            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All years</button>
+            <button type="button" className="btn" onClick={() => onChange([])}>Clear</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ---------------- people list (sort + filter per column) ---------------- */
+
+const PEOPLE_COLS = [
+  {
+    k: "name", l: "Employee", t: "t",
+    g: (r) => `${r.name || ""} ${r.empId || ""}`,
+    cell: (r) => (
+      <td className="rl">
+        {r.name}
+        <div className="mut" style={{ fontWeight: 600, fontSize: 11 }}>{r.empId} · {r.designation}</div>
+      </td>
+    ),
+  },
+  { k: "cm", l: "Comp Manager", t: "t", cl: true, g: (r) => r.compManager || "", cell: (r) => <td>{r.compManager}</td> },
+  { k: "mr", l: "Rating", t: "n", cl: true, g: (r) => ratingOf(r), cell: (r) => <td className="n">{ratingOf(r) || "–"}</td> },
+  { k: "hk", l: "Hike %", t: "n", g: (r) => calcHikePct(r), cell: (r) => <td className="n">{calcHikePct(r).toFixed(2)}</td> },
+  {
+    k: "pb", l: "PB %", t: "n", g: (r) => pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay),
+    cell: (r) => <td className="n" data-tip={`PB ${money(r.allocatedPBAmount)}`}>{pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay).toFixed(1)}</td>,
+  },
+  {
+    k: "rb", l: "RB %", t: "n", g: (r) => pctOfBase(r.newRB, r.currentAnnualBasePay),
+    cell: (r) => <td className="n" data-tip={`RB ${money(r.newRB)}`}>{pctOfBase(r.newRB, r.currentAnnualBasePay).toFixed(1)}</td>,
+  },
+];
+
+const NUM_OPS = [["=", "="], [">", "greater than"], [">=", "at least"], ["<", "less than"], ["<=", "at most"]];
+
+function FilterMenu({ col, items, initial, style, onApply, onClear, onSort }) {
+  const num_ = col.t === "n";
+  const ops = num_ ? NUM_OPS : [["has", "contains"]];
+  const [op, setOp] = useState(initial.op || ops[0][0]);
+  const [val, setVal] = useState(initial.val || "");
+  const values = useMemo(() => {
+    if (!col.cl) return [];
+    const seen = new Set(items.map((it) => String(col.g(it))));
+    return Array.from(seen).sort((a, b) => (num_ ? a - b : a.localeCompare(b))).slice(0, 300);
+  }, [col, items, num_]);
+  const [checked, setChecked] = useState(() => new Set(initial.set || values));
+  const [q, setQ] = useState("");
+  const allOn = values.every((v) => checked.has(v));
+  return (
+    <div className="pm" style={style} onMouseDown={(e) => e.stopPropagation()}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#102a43", marginBottom: 6 }}>{col.l}</div>
+      <div className="r">
+        <button className="btn" type="button" onClick={() => onSort("a")}>{num_ ? "Lowest → highest" : "A → Z"}</button>
+        <button className="btn" type="button" onClick={() => onSort("d")}>{num_ ? "Highest → lowest" : "Z → A"}</button>
+      </div>
+      <div className="r">
+        <select className="sel" style={{ minWidth: 0, flex: "0 0 auto" }} value={op} onChange={(e) => setOp(e.target.value)}>
+          {ops.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input className="inp" type="text" value={val} placeholder="value" onChange={(e) => setVal(e.target.value)} />
+      </div>
+      {col.cl ? (
+        <>
+          <input className="inp" type="text" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%", marginBottom: 6, border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px" }} />
+          <label style={{ marginBottom: 4 }}>
+            <input type="checkbox" checked={allOn} onChange={(e) => setChecked(new Set(e.target.checked ? values : []))} /> Select all
+          </label>
+          <div className="list">
+            {values.filter((v) => v.toLowerCase().includes(q.toLowerCase())).map((v) => (
+              <label key={v}>
+                <input
+                  type="checkbox"
+                  checked={checked.has(v)}
+                  onChange={(e) => {
+                    const next = new Set(checked);
+                    if (e.target.checked) next.add(v); else next.delete(v);
+                    setChecked(next);
+                  }}
+                />{" "}
+                {v}
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 }}>
+        <button className="btn" type="button" onClick={onClear}>Clear</button>
+        <button
+          className="btn pri"
+          type="button"
+          onClick={() => {
+            const f = {};
+            if (val.trim() !== "") { f.op = op; f.val = val.trim(); }
+            if (col.cl && checked.size < values.length) f.set = Array.from(checked);
+            onApply(f.op || f.set ? f : null);
+          }}
+        >
+          Apply
         </button>
       </div>
-      <div className="mt-2.5 overflow-auto rounded-lg border border-[#E5E7EB]">
-        <table className="w-full border-collapse text-xs">
+    </div>
+  );
+}
+
+function passes(col, item, f) {
+  if (!f) return true;
+  const v = col.g(item);
+  if (f.set && !f.set.includes(String(v))) return false;
+  if (f.op && f.val !== "") {
+    if (col.t === "t") return String(v).toLowerCase().includes(String(f.val).toLowerCase());
+    const x = Number(f.val);
+    const y = Number(v);
+    if (f.op === ">" && !(y > x)) return false;
+    if (f.op === "<" && !(y < x)) return false;
+    if (f.op === ">=" && !(y >= x)) return false;
+    if (f.op === "<=" && !(y <= x)) return false;
+    if (f.op === "=" && Math.abs(y - x) > 1e-9) return false;
+  }
+  return true;
+}
+
+function PeopleList({ list, onClose, canOpenSheet }) {
+  const [sort, setSort] = useState(null);
+  const [filters, setFilters] = useState({});
+  const [menu, setMenu] = useState(null); // { k, left, top }
+  const box = useRef(null);
+
+  // A different list starts with a clean sort and filters.
+  useEffect(() => {
+    setSort(null);
+    setFilters({});
+    setMenu(null);
+  }, [list.title]);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = () => setMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menu]);
+
+  const shown = useMemo(() => {
+    let r = list.rows.filter((it) => PEOPLE_COLS.every((c) => passes(c, it, filters[c.k])));
+    if (sort) {
+      const c = PEOPLE_COLS.find((x) => x.k === sort.k);
+      const d = sort.d === "a" ? 1 : -1;
+      if (c) {
+        r = r.slice().sort((a, b) => {
+          const x = c.g(a);
+          const y = c.g(b);
+          return (c.t === "t" ? String(x).localeCompare(String(y)) : x - y) * d;
+        });
+      }
+    }
+    return r;
+  }, [list.rows, filters, sort]);
+
+  const active = Object.keys(filters).length > 0;
+  const total = list.rows.length;
+  const openMenu = (e, k) => {
+    e.stopPropagation();
+    if (menu?.k === k) { setMenu(null); return; }
+    const tr = box.current.getBoundingClientRect();
+    const br = e.currentTarget.getBoundingClientRect();
+    setMenu({ k, left: Math.max(8, Math.min(br.left - tr.left, tr.width - 268)), top: br.bottom - tr.top + 4 });
+  };
+  const menuCol = menu ? PEOPLE_COLS.find((c) => c.k === menu.k) : null;
+
+  return (
+    <div className="tile pl" id="ov-people" ref={box}>
+      <div className="hd">
+        <span className="cap" style={{ display: "inline" }}>People</span>
+        <span style={{ fontWeight: 700, color: "var(--navy)", fontSize: 14 }}>{list.title}</span>
+        <span className="mut" style={{ fontSize: 11.5 }}>
+          {shown.length === total ? `${inr(total)} people` : `${inr(shown.length)} of ${inr(total)} people`}
+          {shown.length > MAX_PEOPLE_SHOWN ? ` · showing first ${MAX_PEOPLE_SHOWN}` : ""}
+          {active ? (
+            <>
+              {" · "}
+              <button className="lnk" type="button" style={{ padding: 0 }} onClick={() => { setFilters({}); setSort(null); }}>Clear filters</button>
+            </>
+          ) : null}
+        </span>
+        <span className="acts">
+          {canOpenSheet ? <button className="btn pri" type="button" onClick={() => go("/sheet")}>Open Appraisal Sheet ›</button> : null}
+          <button className="btn" type="button" onClick={onClose}>Close</button>
+        </span>
+      </div>
+      <div className="tw">
+        <table>
           <thead>
-            <tr className="bg-[#F3F4F6] text-left text-[10.5px] font-bold text-[#374151]">
-              {["Employee", "Designation", "Comp Manager", "Rating", "Hike %", "PB", "RB"].map((h, i) => (
-                <th key={h} className={cn("px-2.5 py-2", i >= 3 && "text-right")}>{h}</th>
+            <tr>
+              {PEOPLE_COLS.map((c) => (
+                <th key={c.k} className={c.t === "n" ? "n" : undefined}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    {c.l}
+                    <button type="button" className="fb" title="Sort and filter" onClick={(e) => openMenu(e, c.k)}>
+                      ▾{filters[c.k] || sort?.k === c.k ? <i /> : null}
+                    </button>
+                  </span>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {shown.map((r, i) => (
-              <tr key={r.id} className={i % 2 ? "bg-[#F6F8FA]" : "bg-white"}>
-                <td className="px-2.5 py-1.5 font-bold text-[#102A43]">{r.empId} - {r.name}</td>
-                <td className="px-2.5 py-1.5">{r.designation}</td>
-                <td className="px-2.5 py-1.5">{r.compManager}</td>
-                <td className="px-2.5 py-1.5 text-right tabular-nums">{r.managerRating || "–"}</td>
-                <td className="px-2.5 py-1.5 text-right tabular-nums">{calcHikePct(r).toFixed(2)}</td>
-                <td className="px-2.5 py-1.5 text-right tabular-nums">{inr(r.allocatedPBAmount)}</td>
-                <td className="px-2.5 py-1.5 text-right tabular-nums">{inr(r.newRB)}</td>
-              </tr>
+            {shown.length === 0 ? (
+              <tr><td colSpan={PEOPLE_COLS.length} className="mut" style={{ padding: 14 }}>No one matches the filters.</td></tr>
+            ) : shown.slice(0, MAX_PEOPLE_SHOWN).map((r) => (
+              <tr key={r.id} className="data">{PEOPLE_COLS.map((c) => <Cell key={c.k} col={c} row={r} />)}</tr>
             ))}
           </tbody>
         </table>
       </div>
-    </Tile>
+      {menu && menuCol ? (
+        <FilterMenu
+          key={menu.k}
+          col={menuCol}
+          items={list.rows}
+          initial={filters[menu.k] || {}}
+          style={{ left: menu.left, top: menu.top }}
+          onSort={(d) => { setSort({ k: menu.k, d }); setMenu(null); }}
+          onClear={() => {
+            setFilters((p) => { const n = { ...p }; delete n[menu.k]; return n; });
+            if (sort?.k === menu.k) setSort(null);
+            setMenu(null);
+          }}
+          onApply={(f) => {
+            setFilters((p) => { const n = { ...p }; if (f) n[menu.k] = f; else delete n[menu.k]; return n; });
+            setMenu(null);
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
+
+const Cell = ({ col, row }) => col.cell(row);
 
 /* ---------------- main ---------------- */
 
@@ -269,7 +430,8 @@ export function DashboardOverview() {
   const { rows: allRows, audit } = useAppraisal();
   const budgetCtx = useBudget();
   const { effectiveId } = useViewAs();
-  const cycleName = useCurrentCycleName();
+  const { name: cycleName, info: cycleInfo } = useCurrentCycleInfo();
+  const access = useAccess();
 
   // Same reporting scope as before: Active + Eligible employees only.
   const rows = useMemo(
@@ -283,22 +445,32 @@ export function DashboardOverview() {
   );
 
   const [unit, setUnit] = useState("n"); // n = numbers, p = percent
-  const [view, setView] = useState("b"); // b = bars, c = columns
+  const [tab, setTab] = useState("s"); // s = summary, a = recent activity
   const [ratingView, setRatingView] = useState("s");
-  const [levelKey, setLevelKey] = useState("");
-  const [expanded, setExpanded] = useState({});
-  const [list, setList] = useState(null); // { title, rows, from: "level" | "action" }
-  const actionListRef = useRef(null);
+  const [budgetView, setBudgetView] = useState("t"); // t table, b bars, c columns
+  const [open, setOpen] = useState({}); // expanded budget rows
+  const [list, setList] = useState(null); // { title, rows }
+  const [cmp, setCmp] = useState([]); // compared cycle keys
 
-  const { allocated, isEstimate } = resolveBudgetAllocated({
+  const tipRef = useRef(null);
+  const onMove = (e) => {
+    const t = tipRef.current;
+    if (!t) return;
+    const el = e.target.closest ? e.target.closest("[data-tip]") : null;
+    if (!el) { t.style.display = "none"; return; }
+    t.textContent = el.getAttribute("data-tip");
+    t.style.display = "block";
+    let x = e.clientX + 12;
+    if (x + 270 > window.innerWidth) x = window.innerWidth - 275;
+    t.style.left = `${x}px`;
+    t.style.top = `${e.clientY + 14}px`;
+  };
+
+  const { allocated } = resolveBudgetAllocated({
     totals: budgetCtx.totals,
     loading: budgetCtx.loading,
     error: budgetCtx.error,
   });
-  const budget = useMemo(
-    () => budgetTotals(rows, allocated, !isEstimate),
-    [rows, allocated, isEstimate],
-  );
 
   const edited = useMemo(() => manualEditedRowIds(rows, audit), [rows, audit]);
   const n = rows.length;
@@ -310,12 +482,10 @@ export function DashboardOverview() {
   const avgHike = avgHikePct(rows);
   const tgt = targetPair(rows);
   const gapPct = tgt.target ? ((tgt.paid - tgt.target) / tgt.target) * 100 : 0;
-  const rbTotal = parts.rb;
-  const rbPeople = rows.filter((r) => num(r.newRB) > 0).length;
-  const baseTotal = sumBy(rows, (r) => r.currentAnnualBasePay);
   const promos = rows.filter(isPromoted).length;
 
-  // levels this login may look at
+  // The levels this login may look at: HR sees Tech-ED then Comp Manager,
+  // Tech-ED sees its Comp Managers, a Comp Manager sees none.
   const levels = useMemo(() => {
     const all = [
       { k: "te", n: "Tech-ED", of: (r) => r.appraiserTechED },
@@ -324,221 +494,316 @@ export function DashboardOverview() {
     if (effectiveId === "compmanager") return [];
     return effectiveId === "teched" ? all.slice(1) : all;
   }, [effectiveId]);
-  const level = levels.find((l) => l.k === levelKey) || levels[0];
-  const groups = useMemo(() => (level ? groupRows(rows, level.of) : []), [rows, level]);
+  const L0 = levels[0];
+  const L1 = levels[1];
 
+  /* ---- budget rows (level 1, optionally opened into level 2) ---- */
+  const mkBudgetRow = (lvl, g, d, kids, key) => {
+    const pt = partsOf(g.rows);
+    const al = allocationFor(lvl.k, g.key, budgetCtx);
+    return { key, k: g.key, rows: g.rows, n: g.rows.length, pt, al, hasAl: al > 0, u: al > 0 ? (pt.total / al) * 100 : null, rem: al > 0 ? al - pt.total : null, d, kids, lvl };
+  };
+  const budRows = useMemo(() => {
+    if (!L0) return [];
+    const out = [];
+    groupRows(rows, L0.of).forEach((g) => {
+      const key = `${L0.k}:${g.key}`;
+      out.push(mkBudgetRow(L0, g, 0, Boolean(L1), key));
+      if (L1 && open[key]) {
+        groupRows(g.rows, L1.of).forEach((c) => out.push(mkBudgetRow(L1, c, 1, false, `${L1.k}:${key}:${c.key}`)));
+      }
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, L0, L1, open, budgetCtx]);
+  const overCount = budRows.filter((r) => r.d === 0 && r.hasAl && r.pt.total > r.al).length;
+
+  /* ---- ratings ---- */
   const ratingCounts = [1, 2, 3, 4, 5].map((r) => rows.filter((x) => ratingOf(x) === r).length);
   const ratingParts = ratingCounts.map((c, i) => ({
     label: `${i + 1} · ${MANAGER_RATING_LABELS[i + 1]}`,
     value: c,
     color: RATING_COLORS[i],
-    text: unit === "p" ? `${n ? ((c / n) * 100).toFixed(0) : 0}%` : String(c),
   }));
 
-  const atRisk = rows.filter((r) => hasAtRisk(r) && !(num(r.newRB) > 0));
-  const outliers = rows.filter((r) => {
-    const rt = ratingOf(r);
-    return (rt >= 4 && calcHikePct(r) < avgHike - 2) || (isPromoted(r) && rt > 0 && rt <= 2);
-  });
-
-  // `from` decides where the people table opens: level cards open it right under
-  // the level section; "Needs your action" cards open it below those cards.
-  const openList = (title, list_, from = "level") => setList({ title, rows: list_, from });
-
-  // Bring the table into view when it opens under the action cards.
-  useEffect(() => {
-    if (list?.from === "action") {
-      actionListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [list]);
-  const lim = (arr, key, d) => (expanded[key] ? arr : arr.slice(0, d));
-  const showAll = (key) => (
-    <button
-      type="button"
-      onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}
-      className="ml-auto cursor-pointer text-[11.5px] font-semibold text-[#1559A6] hover:underline"
-    >
-      {expanded[key] ? "Show less" : "See all"} ›
-    </button>
+  /* ---- outliers (same rule as before) ---- */
+  const outliers = useMemo(
+    () =>
+      rows.filter((r) => {
+        const rt = ratingOf(r);
+        return (rt >= 4 && calcHikePct(r) < avgHike - 2) || (isPromoted(r) && rt > 0 && rt <= 2);
+      }),
+    [rows, avgHike],
   );
 
-  /* ---- per-level card data ---- */
-  const completion = groups
-    .map((g) => {
-      const ed = g.rows.filter((r) => edited.has(String(r.id))).length;
-      return { ...g, ed, f: g.rows.length ? ed / g.rows.length : 0 };
-    })
-    .sort((a, b) => a.f - b.f);
+  /* ---- compare with previous Annual cycles (same people only) ---- */
+  const compareCycles = useCompareCycles();
+  const prev = usePreviousCycleData(rows, cmp.length > 0);
+  const hikeLines = cmp.map((key) => {
+    const c = compareCycles.find((x) => x.key === key);
+    if (!c) return null;
+    const pairs = [];
+    rows.forEach((r) => {
+      const rec = (prev.historyOf(r.empId) || []).find((h) => cycleKeyOf(h.cycleName) === key);
+      const p = rec ? recordHikePct(rec) : null;
+      if (p !== null) pairs.push([calcHikePct(r), p]);
+    });
+    if (pairs.length < MIN_GROUP) return { key, c, few: true };
+    const cur = avgBy(pairs, (x) => x[0]);
+    const old = avgBy(pairs, (x) => x[1]);
+    return { key, c, cur, old };
+  }).filter(Boolean);
 
-  const util = groups
-    .map((g) => {
-      const p = partsOf(g.rows);
-      const al = level ? allocationFor(level.k, g.key, budgetCtx) : 0;
-      return { ...g, p, al, u: al ? (p.total / al) * 100 : null };
-    })
-    .sort((a, b) => (b.u ?? -1) - (a.u ?? -1));
+  const openList = (title, list_) => {
+    setList({ title, rows: list_ });
+    setTimeout(() => {
+      const el = document.getElementById("ov-people");
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 0);
+  };
 
-  const mix = groups.map((g) => ({ ...g, p: partsOf(g.rows) }));
+  /* ---- title row ---- */
+  const isHR = effectiveId === "hr";
+  const dl = cycleInfo?.end ? daysUntil(cycleInfo.end) : null;
+  const canOpenCycle = isHR && access.canScreen(HR_TAB_SCREENS["appraisal-cycle"]);
+  const canOpenSheet = access.canScreen("appraisalSheet");
 
-  const pbt = groups
-    .map((g) => ({ ...g, t: targetPair(g.rows) }))
-    .filter((g) => g.t.n >= MIN_GROUP)
-    .map((g) => ({ ...g, gap: g.t.target ? ((g.t.paid - g.t.target) / g.t.target) * 100 : 0 }))
-    .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
-
-  const short = (v) => inr(v);
-
-  const Row = ({ label, mid, right, onClick }) => (
-    <div
-      onClick={onClick}
-      className={cn(
-        "grid grid-cols-[minmax(86px,34%)_1fr_auto] items-center gap-2 border-t border-[#E5E7EB] py-1.5 text-xs first:border-t-0",
-        onClick && "cursor-pointer hover:bg-[#F7F9FB]",
-      )}
-    >
-      <span className="truncate font-semibold text-[#102A43]" title={label}>{label}</span>
-      <div className="space-y-1">{mid}</div>
-      <span className="whitespace-nowrap text-right text-[#6B7280]">{right}</span>
-    </div>
+  /* ---- KPI tiles ---- */
+  const tiles = [];
+  tiles.push(
+    <div className="tile" key="edited">
+      <small>Edited vs remaining to edit</small>
+      <b className="big">{n ? ((editedCount / n) * 100).toFixed(1) : "0.0"}<span className="un">%</span></b>
+      <div className="sub gap">{inr(editedCount)} edited · {inr(remaining)} remaining</div>
+      <Seg unit={unit} total={n} parts={[{ label: "Edited", value: editedCount, color: C.pb }, { label: "Remaining", value: remaining, color: C.left }]} />
+      <Legend items={[["Edited", C.pb], ["Remaining", C.left]]} />
+    </div>,
   );
-
-  const CardHead = ({ id, title, sub }) => (
-    <>
-      <div className="flex items-baseline gap-2">
-        <Cap>{title}</Cap>
-        {showAll(id)}
+  tiles.push(
+    <div className="tile" key="budget">
+      <small>Budget used</small>
+      <b className="big" style={usedPct > 100 ? { color: "var(--err)" } : undefined}>{usedPct.toFixed(1)}<span className="un">%</span></b>
+      <div className="sub gap">
+        {allocated
+          ? `${fmMoney(used)} of ${fmMoney(allocated)} · ${used > allocated ? `over by ${fmMoney(used - allocated)}` : `${fmMoney(allocated - used)} left`}`
+          : `${fmMoney(used)} used · no allocation found`}
       </div>
-      <div className="mb-1.5 mt-0.5 text-[11px] text-[#6B7280]">{sub}</div>
-    </>
+      <Seg unit={unit} total={Math.max(allocated, used)} parts={[{ label: "Hike", value: parts.hike, color: C.hike }, { label: "PB", value: parts.pb, color: C.pb }, { label: "RB", value: parts.rb, color: C.rb }, { label: "Left", value: Math.max(allocated - used, 0), color: C.left }]} />
+      <Legend items={[["Hike", C.hike], ["PB", C.pb], ["RB", C.rb], ["Left", C.left]]} />
+    </div>,
   );
-
-  const levelCards = level ? (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Tile>
-        <CardHead id="comp" title={`Completion by ${level.n}`} sub="Edited vs Remaining, least complete first" />
-        {view === "c" ? (
-          <ColChart
-            pct={unit === "p"}
-            groups={lim(completion, "comp", 4).map((c) => ({
-              label: c.key,
-              bars: [{ cap: "edited", parts: [{ label: "Edited", value: unit === "p" ? c.f * 100 : c.ed, color: C.pb, text: unit === "p" ? `${(c.f * 100).toFixed(0)}%` : String(c.ed), tip: `Edited: ${c.ed} of ${c.rows.length}` }] }],
-            }))}
-          />
+  tiles.push(
+    <div className="tile" key="hike">
+      <small>Average hike %</small>
+      <b className="big">{avgHike.toFixed(2)}<span className="un">%</span></b>
+      <div className="sub gap" style={{ marginBottom: hikeLines.length || prev.loading ? 10 : 0 }}>Across {inr(n)} people · hike amount {fmMoney(parts.hike)}</div>
+      {prev.loading ? <div className="dl mut">Loading previous cycles… {inr(prev.progress.done)} / {inr(prev.progress.total)}</div> : null}
+      {hikeLines.map((l) =>
+        l.few ? (
+          <div className="dl mut" key={l.key}>vs {l.c.name}: not enough people</div>
         ) : (
-          lim(completion, "comp", 4).map((c) => (
-            <Row
-              key={c.key}
-              label={c.key}
-              onClick={() => openList(`${c.key} · people`, c.rows)}
-              mid={<SegBar height={20} total={c.rows.length} parts={[{ label: "Edited", value: c.ed, color: C.pb, text: String(c.ed) }, { label: "Remaining", value: c.rows.length - c.ed, color: C.left, text: String(c.rows.length - c.ed) }]} />}
-              right={unit === "p" ? `${(c.f * 100).toFixed(0)}%` : `${c.ed} / ${c.rows.length}`}
-            />
-          ))
-        )}
-      </Tile>
+          <div className="dl" key={l.key}>
+            vs {l.c.name} <b>{l.old.toFixed(2)}%</b> <Arrow d={l.cur - l.old} txt={`${Math.abs(l.cur - l.old).toFixed(2)} pts`} />
+          </div>
+        ),
+      )}
+    </div>,
+  );
+  tiles.push(
+    <div className="tile" key="pbt">
+      <small>PB vs Target PB</small>
+      <b className="big" style={gapPct > 0 ? { color: "var(--amber)" } : undefined}>
+        {gapPct > 0 ? "+" : gapPct < 0 ? "−" : ""}{Math.abs(gapPct).toFixed(1)}<span className="un">%</span>
+      </b>
+      <div className="sub gap">{gapPct > 0 ? "Over" : "Under"} target · {inr(tgt.n)} people with a last-year target</div>
+      <div className="dl">PB paid <b data-tip={money(tgt.paid)}>{fmMoney(tgt.paid)}</b></div>
+      <div className="dl">Target PB <b data-tip={money(tgt.target)}>{fmMoney(tgt.target)}</b></div>
+    </div>,
+  );
+  if (L0) {
+    tiles.push(
+      <div className="tile" key="over">
+        <small>{L0.n}s over allocation</small>
+        <b className="big" style={overCount ? { color: "var(--amber)" } : undefined}>{overCount}</b>
+        <div className="sub">Warning only, nothing is blocked</div>
+      </div>,
+    );
+  }
+  tiles.push(
+    <div
+      className={`tile click${list?.title === "Outliers to review" ? " sel" : ""}`}
+      key="outliers"
+      onClick={() => (list?.title === "Outliers to review" ? setList(null) : openList("Outliers to review", outliers))}
+    >
+      <small>Outliers to review</small>
+      <b className="big">{inr(outliers.length)}</b>
+      <div className="sub">High rating with low hike, or promoted with a low rating</div>
+      <button className="lnk" type="button" style={{ padding: "6px 0 0" }}>Show the people ›</button>
+    </div>,
+  );
+  const tileRows = balanceRows(tiles, 5);
 
-      <Tile>
-        <CardHead id="util" title={`Utilisation by ${level.n}`} sub="Hike + Bonus used vs Allocated (Budget Master)" />
-        {view === "c" ? (
-          <ColChart
-            pct={unit === "p"}
-            groups={lim(util, "util", 4).map((c) => ({
-              label: c.key,
-              bars: [{ cap: "used", parts: [{ label: "Used", value: unit === "p" ? (c.u ?? 0) : c.p.total, color: C.hike, text: unit === "p" ? `${(c.u ?? 0).toFixed(0)}%` : short(c.p.total), tip: `Used ${money(c.p.total)}${c.al ? ` of ${money(c.al)}` : " (no allocation found)"}` }] }],
-            }))}
-          />
-        ) : (
-          lim(util, "util", 4).map((c) => {
-            const over = c.al && c.p.total > c.al;
-            return (
-              <Row
-                key={c.key}
-                label={c.key}
-                onClick={() => openList(`${c.key} · people`, c.rows)}
-                mid={
-                  c.al ? (
-                    <SegBar
-                      height={20}
-                      total={Math.max(c.al, c.p.total)}
-                      parts={over ? [{ label: "Utilised", value: c.p.total, color: C.warn, text: `${c.u.toFixed(0)}%` }] : [{ label: "Utilised", value: c.p.total, color: C.hike, text: `${c.u.toFixed(0)}%` }, { label: "Left", value: c.al - c.p.total, color: C.left }]}
-                    />
-                  ) : (
-                    <span className="text-[11px] text-[#6B7280]">No allocation found for this {level.n}</span>
-                  )
-                }
-                right={c.al ? (unit === "p" ? `${c.u.toFixed(0)}%` : `${money(c.p.total)} of ${money(c.al)}`) : money(c.p.total)}
-              />
-            );
-          })
-        )}
-      </Tile>
-
-      <Tile>
-        <CardHead id="mix" title={`Composition by ${level.n}`} sub="Hike, PB and RB share of what each one used" />
-        {(() => {
-          const mk = (p) => [
-            { label: "Hike", value: p.hike, color: C.hike, text: unit === "p" ? `${p.total ? ((p.hike / p.total) * 100).toFixed(0) : 0}%` : short(p.hike) },
-            { label: "PB", value: p.pb, color: C.pb, text: unit === "p" ? `${p.total ? ((p.pb / p.total) * 100).toFixed(0) : 0}%` : short(p.pb) },
-            { label: "RB", value: p.rb, color: C.rb, text: unit === "p" ? `${p.total ? ((p.rb / p.total) * 100).toFixed(0) : 0}%` : short(p.rb) },
-          ];
-          const all = [{ key: "All", rows, p: parts }, ...lim(mix, "mix", 3)];
-          return view === "c" ? (
-            <ColChart pct={unit === "p"} groups={all.map((g) => ({ label: g.key, bars: [{ cap: "mix", parts: mk(g.p) }] }))} />
-          ) : (
-            all.map((g) => (
-              <Row key={g.key} label={g.key} onClick={g.key === "All" ? undefined : () => openList(`${g.key} · people`, g.rows)} mid={<SegBar height={20} total={g.p.total} parts={mk(g.p)} showPct={unit === "p"} />} right="" />
-            ))
+  /* ---- ratings tile ---- */
+  const ratingsBody =
+    ratingView === "d" ? (
+      <Donut parts={ratingParts} total={n} />
+    ) : ratingView === "c" ? (
+      <div className="vcol">
+        {ratingParts.map((p, i) => {
+          const mx = Math.max(...ratingCounts, 1);
+          return (
+            <div key={p.label} data-tip={`${p.label}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)`}>
+              <b>{unit === "p" ? `${n ? ((p.value / n) * 100).toFixed(0) : 0}%` : p.value}</b>
+              <i style={{ height: Math.max(2, (p.value / mx) * 100), background: RATING_COLORS[i] }} />
+              <span>{p.label}</span>
+            </div>
           );
-        })()}
-        <Legend items={[["Hike", C.hike], ["PB", C.pb], ["RB", C.rb]]} />
-      </Tile>
+        })}
+      </div>
+    ) : (
+      <>
+        <Seg unit={unit} total={n} parts={ratingParts.map((p) => ({ ...p, label: p.label, tip: `${p.label.split(" · ").slice(0, 2).join(" · ")}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)` }))} />
+        <Legend items={ratingParts.map((p) => [`${p.label} · ${p.value}`, p.color])} />
+      </>
+    );
 
-      <Tile>
-        <CardHead id="pbt" title={`PB vs Target PB by ${level.n}`} sub={`PB paid vs Target Agreed last year · groups under ${MIN_GROUP} people with a target are left out`} />
-        {pbt.length === 0 ? (
-          <div className="py-3 text-xs text-[#6B7280]">Not enough people with a target to compare.</div>
-        ) : view === "c" ? (
-          <ColChart
-            pct={unit === "p"}
-            groups={lim(pbt, "pbt", 4).map((c) => {
-              const m = Math.max(c.t.paid, c.t.target) || 1;
-              return {
-                label: c.key,
-                bars: [
-                  { cap: "paid", parts: [{ label: "PB paid", value: unit === "p" ? (c.t.paid / m) * 100 : c.t.paid, color: C.pb, text: unit === "p" ? `${Math.round((c.t.paid / m) * 100)}%` : short(c.t.paid), tip: `PB paid ${money(c.t.paid)}` }] },
-                  { cap: "target", parts: [{ label: "Target PB", value: unit === "p" ? (c.t.target / m) * 100 : c.t.target, color: "#B8C0CC", text: unit === "p" ? `${Math.round((c.t.target / m) * 100)}%` : short(c.t.target), tip: `Target PB ${money(c.t.target)}` }] },
-                ],
-              };
-            })}
-          />
-        ) : (
-          lim(pbt, "pbt", 4).map((c) => {
-            const m = Math.max(c.t.paid, c.t.target) || 1;
-            return (
-              <Row
-                key={c.key}
-                label={c.key}
-                onClick={() => openList(`${c.key} · people`, c.rows)}
-                mid={
-                  <>
-                    <SegBar height={20} total={m} parts={[{ label: "PB paid", value: c.t.paid, color: C.pb, text: `${Math.round((c.t.paid / m) * 100)}%` }, { label: "", value: m - c.t.paid, color: "#EEF1F4" }]} />
-                    <SegBar height={20} total={m} parts={[{ label: "Target PB", value: c.t.target, color: "#B8C0CC", text: `${Math.round((c.t.target / m) * 100)}%` }, { label: "", value: m - c.t.target, color: "#EEF1F4" }]} />
-                  </>
-                }
-                right={<b className="text-[#102A43]">{c.gap > 0 ? "Over " : "Under "}{Math.abs(c.gap).toFixed(1)}%</b>}
-              />
-            );
-          })
-        )}
-        <Legend items={[["PB paid", C.pb], ["Target PB", "#B8C0CC"]]} />
-      </Tile>
+  /* ---- budget by level ---- */
+  const mx = Math.max(1, ...budRows.map((r) => Math.max(r.al, r.pt.total))) * 1.08;
+  const remText = (r) =>
+    !r.hasAl ? <span className="mut">–</span> : r.rem < 0 ? <span style={{ color: "var(--err)", fontWeight: 700 }}>Over by {fmAmt(-r.rem)}</span> : fmAmt(r.rem);
+  const utilText = (u) =>
+    u === null ? <span className="mut">–</span> : <span style={{ fontWeight: 700, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u.toFixed(1)}%</span>;
+  const rowName = (r) => (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: r.d * 22 }}>
+      {r.kids ? (
+        <button type="button" className="ex" onClick={(e) => { e.stopPropagation(); setOpen((p) => ({ ...p, [r.key]: !p[r.key] })); }}>{open[r.key] ? "▾" : "▸"}</button>
+      ) : <span style={{ width: 14 }} />}
+      <span style={{ fontWeight: r.d ? 500 : 700 }}>{r.k}</span>
+    </span>
+  );
+  const peopleLink = (r) => (
+    <button className="lnk" type="button" style={{ padding: 0 }} onClick={(e) => { e.stopPropagation(); openList(`${r.k} · people`, r.rows); }}>People ›</button>
+  );
+  const allRow = { n, pt: parts, al: allocated, hasAl: allocated > 0, u: allocated > 0 ? (used / allocated) * 100 : null, rem: allocated > 0 ? allocated - used : null };
+  const BudgetLegend = ({ line }) => (
+    <div className="sleg" style={{ marginTop: 8 }}>
+      <span><i style={{ background: C.hike }} />Hike</span>
+      <span><i style={{ background: C.pb }} />PB</span>
+      <span><i style={{ background: C.rb }} />RB</span>
+      <span>
+        <i style={line === "v" ? { width: 2, height: 12, background: "#111827", borderRadius: 0 } : { width: 12, height: 2, background: "#111827", borderRadius: 0 }} />
+        Allocated
+      </span>
     </div>
-  ) : null;
+  );
+  let budgetBody = null;
+  if (L0) {
+    if (budgetView === "t") {
+      budgetBody = (
+        <div className="tw">
+          <table>
+            <thead>
+              <tr>
+                <th>{L0.n} / team</th><th className="n">Team size</th><th className="n">Budget allocated</th><th className="n">Budget utilised</th>
+                <th className="n">Utilised %</th><th className="n">Remaining budget</th><th />
+              </tr>
+            </thead>
+            <tbody>
+              {budRows.map((r) => (
+                <tr key={r.key} className={`data${r.kids ? " click" : ""}`} onClick={r.kids ? () => setOpen((p) => ({ ...p, [r.key]: !p[r.key] })) : undefined}>
+                  <td className="rl">{rowName(r)}</td>
+                  <td className="n">{inr(r.n)}</td>
+                  <td className="n" data-tip={r.hasAl ? money(r.al) : "No allocation found in Budget Master"}>{r.hasAl ? fmAmt(r.al) : <span className="mut">–</span>}</td>
+                  <td className="n" data-tip={money(r.pt.total)}>{fmAmt(r.pt.total)}</td>
+                  <td className="n">{utilText(r.u)}</td>
+                  <td className="n">{remText(r)}</td>
+                  <td className="n">{peopleLink(r)}</td>
+                </tr>
+              ))}
+              <tr className="tot">
+                <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{allRow.hasAl ? fmAmt(allRow.al) : "–"}</td>
+                <td className="n">{fmAmt(allRow.pt.total)}</td><td className="n">{utilText(allRow.u)}</td><td className="n">{remText(allRow)}</td><td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      );
+    } else if (budgetView === "b") {
+      const pw = (v) => `${(v / mx) * 100}%`;
+      budgetBody = (
+        <>
+          {budRows.map((r) => (
+            <div className="brow" key={r.key} style={{ paddingLeft: r.d * 22 }}>
+              <div className="h">{rowName({ ...r, d: 0 })}<span className="mut" style={{ fontSize: 11 }}>{inr(r.n)} people</span>{peopleLink(r)}</div>
+              <div className="t">
+                <div className="track">
+                  <div className="trk">
+                    <div data-tip={`Hike ${fmMoney(r.pt.hike)}`} style={{ width: pw(r.pt.hike), background: C.hike }} />
+                    <div data-tip={`PB ${fmMoney(r.pt.pb)}`} style={{ width: pw(r.pt.pb), background: C.pb }} />
+                    <div data-tip={`RB ${fmMoney(r.pt.rb)}`} style={{ width: pw(r.pt.rb), background: C.rb }} />
+                  </div>
+                  {r.hasAl ? <div className="mk" data-tip={`Allocated ${fmMoney(r.al)}`} style={{ left: `calc(${pw(r.al)} - 1px)` }} /> : null}
+                </div>
+                <div className="nums">
+                  <span>{utilText(r.u)} <span className="mut">{r.hasAl ? `of ${fmAmt(r.al)}` : "no allocation"}</span></span>
+                  <span>{remText(r)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          <BudgetLegend line="v" />
+        </>
+      );
+    } else {
+      const H = 170;
+      const ph = (v) => (v / mx) * H;
+      budgetBody = (
+        <>
+          <div className="bcols">
+            <div>
+              {budRows.map((r) => (
+                <div className="bcol" key={r.key}>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>{utilText(r.u)}</div>
+                  <div className="stk" style={{ height: H, opacity: r.d ? 0.8 : 1 }}>
+                    <div data-tip={`Hike ${fmMoney(r.pt.hike)}`} style={{ height: ph(r.pt.hike), background: C.hike }} />
+                    <div data-tip={`PB ${fmMoney(r.pt.pb)}`} style={{ height: ph(r.pt.pb), background: C.pb }} />
+                    <div data-tip={`RB ${fmMoney(r.pt.rb)}`} style={{ height: ph(r.pt.rb), background: C.rb, borderRadius: "4px 4px 0 0" }} />
+                    {r.hasAl ? <div className="ln" data-tip={`Allocated ${fmMoney(r.al)}`} style={{ bottom: ph(r.al) }} /> : null}
+                  </div>
+                  <div className="nm">
+                    {r.kids ? <button type="button" className="lnk" style={{ padding: 0 }} onClick={() => setOpen((p) => ({ ...p, [r.key]: !p[r.key] }))}>{open[r.key] ? "▾ " : "▸ "}{r.k}</button> : r.k}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <BudgetLegend line="h" />
+        </>
+      );
+    }
+  }
 
+  const cell = (v, al) => (
+    <td className="n">
+      <span style={{ fontWeight: 800, color: "var(--navy)" }}>{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "–"}</span>
+      <div className="sub2">{fmAmt(v)}</div>
+    </td>
+  );
+  const totCell = (pt, al) => {
+    const u = al > 0 ? (pt.total / al) * 100 : null;
+    return (
+      <td className="n">
+        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{u === null ? "–" : `${u.toFixed(1)}%`}</span>
+        <div className="sub2">{fmAmt(pt.total)}</div>
+      </td>
+    );
+  };
+
+  /* ---- recent activity ---- */
   const recent = (Array.isArray(audit) ? audit : [])
     .slice()
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-    .slice(0, 5);
+    .slice(0, 10);
   // The audit "field" column keeps only 20 characters, so a longer stored label
   // arrives cut off ("Appraisal Sheet upda", "Apply Criteria compl"). Give the
   // full label back when the stored text is the start of exactly one known label.
@@ -566,161 +831,124 @@ export function DashboardOverview() {
       : d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   };
 
-  const actionCards = [
-    { t: "Remaining to edit", v: inr(remaining), s: "Employees with no edited cell yet", rows: rows.filter((r) => !edited.has(String(r.id))) },
-    { t: "At-risk without retention", v: inr(atRisk.length), s: "Flagged At Risk, no RB", rows: atRisk },
-    { t: "Outliers to review", v: inr(outliers.length), s: "High rating low hike, or promoted with low rating", rows: outliers },
-  ];
-
   return (
-    <div className="rounded-xl bg-[#EDF2F7] p-4">
-      {/* cycle title */}
-      <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[17px] font-extrabold text-[#102A43]">
-          Appraisal Cycle: {cycleName || "—"}
-        </span>
-        {cycleName ? (
-          <span className="rounded-xl bg-[#ECFDF3] px-2.5 py-[3px] text-[11px] font-bold text-[#15803D]">Active</span>
-        ) : null}
-        <span className="text-xs text-[#6B7280]">{inr(n)} employees in scope</span>
-        <span className="ml-auto inline-flex gap-2">
-          <Toggle value={unit} onChange={setUnit} options={[["n", "Numbers"], ["p", "%"]]} />
+    <div className="ovw" onMouseMove={onMove} onMouseLeave={() => { if (tipRef.current) tipRef.current.style.display = "none"; }}>
+      <div className="ovw-tip" ref={tipRef} />
+
+      <div className="ttl">
+        <h2>Appraisal Cycle: {cycleName || "—"}</h2>
+        {cycleName ? <span className="badge">{cycleInfo?.status || "Active"}</span> : null}
+        <span className="meta">
+          {inr(n)} employees in scope
+          {cycleInfo?.end && fmtDate(cycleInfo.end) ? (
+            <>
+              {" · "}Closes <b>{fmtDate(cycleInfo.end)}</b>
+              {dl !== null ? ` · ${dl > 0 ? `${dl} day${dl > 1 ? "s" : ""} left` : dl === 0 ? "closes today" : "close date passed"}` : ""}
+            </>
+          ) : null}
+          {canOpenCycle ? (
+            <>
+              {" · "}
+              <button className="lnk" type="button" style={{ padding: 0 }} onClick={() => go("/employee-master?tab=appraisal-cycle")}>Open ›</button>
+            </>
+          ) : null}
         </span>
       </div>
 
-      {/* KPI tiles */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Tile>
-          <Cap>Edited vs Remaining to edit</Cap>
-          <Big value={n ? ((editedCount / n) * 100).toFixed(1) : "0.0"} unit="%" />
-          <Sub>{inr(editedCount)} edited · {inr(remaining)} remaining</Sub>
-          <div className="mt-2.5"><SegBar parts={[{ label: "Edited", value: editedCount, color: C.pb, text: String(editedCount) }, { label: "Remaining", value: remaining, color: C.left, text: String(remaining) }]} total={n} /></div>
-          <Legend items={[["Edited", C.pb], ["Remaining", C.left]]} />
-        </Tile>
-
-        <Tile>
-          <Cap>Budget Used</Cap>
-          <Big value={usedPct.toFixed(1)} unit="%" color={usedPct > 100 ? "#C0392B" : undefined} />
-          <Sub>
-            {money(used)} of {money(allocated)} ·{" "}
-            {allocated ? (used > allocated ? `over by ${money(used - allocated)}` : `${money(allocated - used)} left`) : "no allocation found"}
-          </Sub>
-          <div className="mt-2.5">
-            <SegBar total={Math.max(allocated, used)} parts={[{ label: "Hike", value: parts.hike, color: C.hike }, { label: "PB", value: parts.pb, color: C.pb }, { label: "RB", value: parts.rb, color: C.rb }, { label: "Left", value: Math.max(allocated - used, 0), color: C.left }]} />
-          </div>
-          <Legend items={[["Hike", C.hike], ["PB", C.pb], ["RB", C.rb], ["Left", C.left]]} />
-        </Tile>
-
-        <Tile>
-          <Cap>Average Hike %</Cap>
-          <Big value={avgHike.toFixed(2)} unit="%" />
-          <Sub>Across {inr(n)} people</Sub>
-          <Sub>Hike Amount {money(parts.hike)}</Sub>
-        </Tile>
-
-        <Tile>
-          <Cap>PB vs Target PB</Cap>
-          <Big value={`${gapPct > 0 ? "+" : gapPct < 0 ? "−" : ""}${Math.abs(gapPct).toFixed(1)}`} unit="%" color={gapPct > 0 ? "#B7791F" : undefined} />
-          <Sub>{gapPct > 0 ? "Over" : "Under"} target · {inr(tgt.n)} people with a target</Sub>
-          <div className="mt-1 text-[11.5px]">PB paid <b>{money(tgt.paid)}</b></div>
-          <div className="text-[11.5px]">Target PB <b>{money(tgt.target)}</b></div>
-        </Tile>
-
-        <Tile>
-          <Cap>Retention Bonus (RB)</Cap>
-          <Big value={money(rbTotal)} />
-          <Sub>{baseTotal ? ((rbTotal / baseTotal) * 100).toFixed(2) : "0.00"}% of base · {inr(rbPeople ? rbTotal / rbPeople : 0)} per person ({inr(rbPeople)} people)</Sub>
-        </Tile>
+      <div className="cmp">
+        <span className="mut">Compare with</span>
+        <YearMenu cycles={compareCycles} selected={cmp} onChange={(v) => setCmp(v)} />
+        <span className="mut" style={{ fontSize: 11 }}>Annual cycles, same people only</span>
+        <span className="sp"><Toggle value={unit} onChange={setUnit} options={[["n", "Numbers"], ["p", "%"]]} /></span>
       </div>
 
-      {/* ratings */}
-      <Tile className="mt-3">
-        <div className="float-right">
-          <Toggle value={ratingView} onChange={setRatingView} options={[["s", "Bar"], ["c", "Columns"], ["d", "Donut"]]} />
-        </div>
-        <Cap>Ratings Summary</Cap>
-        <div className="h-2" />
-        {ratingView === "d" ? (
-          <Donut parts={ratingParts} total={n} />
-        ) : ratingView === "c" ? (
-          <ColChart pct={false} groups={ratingParts.map((p) => ({ label: p.label.split(" · ")[0], bars: [{ cap: "", parts: [{ label: p.label, value: p.value, color: p.color, text: p.text }] }] }))} />
-        ) : (
-          <>
-            <SegBar parts={ratingParts} total={n} showPct={unit === "p"} />
-            <Legend items={ratingParts.map((p) => [`${p.label} · ${p.value}`, p.color])} />
-          </>
-        )}
-        <div className="mt-2 text-[11.5px]"><b>{promos}</b> promotions <span className="text-[#6B7280]">({n ? ((promos / n) * 100).toFixed(1) : 0}% of {inr(n)} people)</span></div>
-      </Tile>
+      <div className="stabs">
+        <button type="button" className={`stab${tab === "s" ? " on" : ""}`} onClick={() => setTab("s")}>Summary</button>
+        <button type="button" className={`stab${tab === "a" ? " on" : ""}`} onClick={() => setTab("a")}>Recent activity</button>
+      </div>
 
-      {/* by level */}
-      {level ? (
+      {tab === "s" ? (
         <>
-          <SectionTitle>{level.n}s</SectionTitle>
-          <div className="mb-2.5 flex flex-wrap items-center gap-3 text-xs">
-            <span className="text-[#6B7280]">By level</span>
-            {levels.length > 1 ? (
-              <select
-                className="cursor-pointer rounded-md border border-[#D1D5DB] bg-white px-2 py-1 text-xs"
-                value={level.k}
-                onChange={(e) => { setLevelKey(e.target.value); setExpanded({}); setList(null); }}
-              >
-                {levels.map((l) => <option key={l.k} value={l.k} className="cursor-pointer">{l.n}</option>)}
-              </select>
-            ) : <b>{level.n}</b>}
-            <Toggle value={view} onChange={setView} options={[["b", "Bars"], ["c", "Columns"]]} />
+          {tileRows.map((r, i) => (
+            <div className="balrow" key={i} style={{ gridTemplateColumns: `repeat(${r.length}, minmax(0, 1fr))` }}>{r}</div>
+          ))}
+
+          <div className="tile" style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <small>Ratings summary</small>
+              <Toggle value={ratingView} onChange={setRatingView} options={[["s", "Bar"], ["c", "Columns"], ["d", "Donut"]]} />
+            </div>
+            {ratingsBody}
+            <div className="dl" style={{ marginTop: 8 }}>
+              <b>{promos}</b> promotions <span className="mut">({n ? ((promos / n) * 100).toFixed(1) : 0}% of {inr(n)} people)</span>
+            </div>
           </div>
-          {levelCards}
+
+          {L0 ? (
+            <>
+              <div className="tile" style={{ marginTop: 12 }}>
+                <div className="cmsel">
+                  <span style={{ fontWeight: 700, color: "var(--navy)" }}>Budget by {L0.n}</span>
+                  {L1 ? <span className="mut" style={{ fontSize: 11.5 }}>Click a row to open its {L1.n}s</span> : null}
+                  <span style={{ marginLeft: "auto" }}>
+                    <Toggle value={budgetView} onChange={setBudgetView} options={[["b", "Bars"], ["c", "Columns"], ["t", "Table"]]} />
+                  </span>
+                </div>
+                {budgetBody}
+              </div>
+            </>
+          ) : null}
+
+          {list ? <PeopleList list={list} onClose={() => setList(null)} canOpenSheet={canOpenSheet} /> : null}
+
+          {L0 ? (
+            <div className="tile" style={{ marginTop: 12 }}>
+              <small>Utilisation breakdown · % of budget allocated</small>
+              <div className="tw" style={{ marginTop: 12 }}>
+                <table>
+                  <thead>
+                    <tr><th>{L0.n} / team</th><th className="n">Budget allocated</th><th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th><th className="n">Total utilised</th></tr>
+                  </thead>
+                  <tbody>
+                    {budRows.map((r) => (
+                      <tr className="data" key={r.key}>
+                        <td className="rl"><span style={{ paddingLeft: r.d * 22 }}>{r.k}</span></td>
+                        <td className="n">{r.hasAl ? fmAmt(r.al) : <span className="mut">–</span>}</td>
+                        {cell(r.pt.hike, r.al)}{cell(r.pt.pb, r.al)}{cell(r.pt.rb, r.al)}{totCell(r.pt, r.al)}
+                      </tr>
+                    ))}
+                    <tr className="tot">
+                      <td className="rl">Total</td><td className="n">{allRow.hasAl ? fmAmt(allRow.al) : "–"}</td>
+                      {cell(parts.hike, allocated)}{cell(parts.pb, allocated)}{cell(parts.rb, allocated)}{totCell(parts, allocated)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </>
-      ) : null}
-
-      {list && list.from !== "action" ? <PeopleList list={list} onClose={() => setList(null)} /> : null}
-
-      {/* needs your action */}
-      <SectionTitle>Needs your action</SectionTitle>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {actionCards.map((c) => (
-          <Tile
-            key={c.t}
-            className={cn("cursor-pointer", list?.from === "action" && list.title === c.t && "ring-2 ring-[#1D3B5E]")}
-            onClick={() => (list?.from === "action" && list.title === c.t ? setList(null) : openList(c.t, c.rows, "action"))}
-          >
-            <Cap>{c.t}</Cap>
-            <Big value={c.v} />
-            <div className="mt-1 min-h-[30px] text-[11.5px] text-[#6B7280]">{c.s}</div>
-            <span className="text-[11px] font-semibold text-[#1559A6]">Show the people ›</span>
-          </Tile>
-        ))}
-      </div>
-
-      {list?.from === "action" ? (
-        <div ref={actionListRef}>
-          <PeopleList list={list} onClose={() => setList(null)} />
+      ) : (
+        <div className="tw">
+          <table>
+            <thead><tr><th>When</th><th>Who</th><th>What</th><th>Screen</th></tr></thead>
+            <tbody>
+              {recent.length === 0 ? (
+                <tr><td colSpan={4} className="mut" style={{ padding: 14 }}>No activity yet.</td></tr>
+              ) : recent.map((a, i) => {
+                const scr = screenOfSource(a.source);
+                return (
+                  <tr className="data" key={a.id || i}>
+                    <td className="rl">{fmtWhen(a.at)}</td>
+                    <td>{a.user}</td>
+                    <td>{fieldLabel(a.field)} edited for {a.employeeName || a.empId}{a.to !== "" && a.to != null ? ` (${a.from || "–"} → ${a.to})` : ""}</td>
+                    <td><button className="lnk" type="button" style={{ padding: 0 }} onClick={() => go(scr.to)}>{scr.label} ›</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      ) : null}
-
-      {/* recent activity */}
-      <SectionTitle>Recent activity</SectionTitle>
-      <div className="overflow-auto rounded-lg border border-[#E5E7EB] bg-white">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr className="bg-[#F3F4F6] text-left text-[10.5px] font-bold text-[#374151]">
-              <th className="px-3 py-2">When</th><th className="px-3 py-2">Who</th><th className="px-3 py-2">What</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent.length === 0 ? (
-              <tr><td colSpan={3} className="px-3 py-3 text-[#6B7280]">No activity yet.</td></tr>
-            ) : recent.map((a, i) => (
-              <tr key={a.id || i} className={i % 2 ? "bg-[#F6F8FA]" : "bg-white"}>
-                <td className="whitespace-nowrap px-3 py-2 font-bold text-[#102A43]">{fmtWhen(a.at)}</td>
-                <td className="px-3 py-2">{a.user}</td>
-                <td className="px-3 py-2">{fieldLabel(a.field)} edited for {a.employeeName || a.empId}{a.to !== "" ? ` (${a.from || "–"} → ${a.to})` : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }
