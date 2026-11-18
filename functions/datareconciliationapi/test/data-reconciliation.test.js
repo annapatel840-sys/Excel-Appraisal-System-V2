@@ -111,6 +111,12 @@ async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",
   assert(p.issues.some(x=>x.type==="duplicate_employee_cycle"&&x.rowId==="P2"));
   assert(!p.ops.some(x=>x.rowId==="P2"));
  });
+ await test("Feedback emp_ID and emp_name lookups must reference the same employee",async()=>{
+  DB[T.employees].push({ROWID:"E2",emp_id:"EMP002",emp_name:"Employee Two",emp_status:"Active"});
+  DB[T.feedback][0].emp_name="E2";
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.ops.some(o=>o.table==="feedback"&&o.rowId==="F1"&&o.patch.emp_name==="E1"));
+ });
  await test("Mismatched Appraisal Sheet employee lookup is aligned only by exact emp_id",async()=>{
   DB[T.employees].push({ROWID:"E2",emp_id:"EMP002",emp_name:"Employee Two",emp_status:"Active"});
   DB[T.sheet][0].emp_master_row_id="E2";
