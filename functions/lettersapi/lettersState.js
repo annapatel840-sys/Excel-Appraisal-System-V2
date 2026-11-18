@@ -14,20 +14,19 @@
  * here (the browser sends the people it already has when HR presses Generate),
  * so nothing can time out on a big table.
  *
- *   GET  ?view=state&location=<name|All>   -> { cycles: [ { cycleId, rev, ... } ] }
+ *   GET  ?view=state&cycles=[{"id":"<cycleId>","location":"<name>"}]  -> { cycles: [ { cycleId, rev, ... } ] }
  *   POST { action: "saveState", cycleId, location, baseRev, state }
  *        -> { rev }   (409 when someone else saved a newer copy first)
  */
 
-const CYCLE_TABLE = "Appraisal_Cycle_Master";
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const MAX_STATE_BYTES = 11 * 1024 * 1024;
-const ALL = new Set(["", "all", "all locations", "alllocations"]);
+const MAX_CYCLES = 40;
+const NOT_FOUND = /not\s*found|no\s*such|404|does not exist/i;
 const key = (cycleId) => `state/${cycleId}.json`;
-const flag = (v) => ["true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
 
 module.exports = function makeLettersState(h) {
-  const { readAll, locationMap, putObject, getObjectBuffer, fail, text, rowId } = h;
+  const { locationMap, putObject, getObjectBuffer, fail, text } = h;
 
   async function readState(app, bucket, cycleId) {
     let buf;
@@ -43,34 +42,33 @@ module.exports = function makeLettersState(h) {
     }
   }
 
-  async function loadState(app, location) {
-    const want = text(location).toLowerCase();
-    const [cycleRows, locations] = await Promise.all([readAll(app, CYCLE_TABLE), locationMap(app)]);
+  // cycles = [{ id, location }]: exactly the cycles the screen needs. Nothing
+  // is scanned: Location_Master (a handful of rows) gives the bucket, then one
+  // object read per cycle. Appraisal_Sheet and Appraisal_Cycle_Master are not read.
+  async function loadState(app, cycles) {
+    const asked = (Array.isArray(cycles) ? cycles : []).slice(0, MAX_CYCLES);
+    if (!asked.length) return { cycles: [], problems: [] };
+    const locations = await locationMap(app);
     const todo = [];
-    cycleRows.forEach((r) => {
-      if (flag(r.archived) || flag(r.hidden)) return;
-      const loc = text(r.location ?? r.cycle_location ?? r.cycleLocation);
-      if (ALL.has(loc.toLowerCase())) return; // state needs a location bucket
-      if (!ALL.has(want) && loc.toLowerCase() !== want) return;
-      const entry = locations.get(loc.toLowerCase());
-      if (!entry) return;
-      todo.push({ cycleId: rowId(r), loc: entry.name, bucket: entry.bucket });
+    asked.forEach((c) => {
+      const id = text(c && c.id);
+      const entry = locations.get(text(c && c.location).toLowerCase());
+      if (ID_RE.test(id) && entry) todo.push({ cycleId: id, loc: entry.name, bucket: entry.bucket });
     });
-    const cycles = [];
+    const out = [];
     const problems = [];
-    for (let i = 0; i < todo.length; i += 8) {
-      const part = await Promise.all(
-        todo.slice(i, i + 8).map(async (t) => {
+    for (let i = 0; i < todo.length; i += 6) {
+      await Promise.all(
+        todo.slice(i, i + 6).map(async (t) => {
           const got = await readState(app, t.bucket, t.cycleId);
-          if (got.data) cycles.push({ ...got.data, cycleId: t.cycleId, location: t.loc });
-          else if (got.error && !/not\s*found|no\s*such|404|does not exist/i.test(String(got.error.message || ""))) {
+          if (got.data) out.push({ ...got.data, cycleId: t.cycleId, location: t.loc });
+          else if (got.error && !NOT_FOUND.test(String(got.error.message || ""))) {
             problems.push({ cycleId: t.cycleId, message: String(got.error.message || got.error) });
           }
         }),
       );
-      void part;
     }
-    return { cycles, problems };
+    return { cycles: out, problems };
   }
 
   async function saveState(app, actor, payload) {

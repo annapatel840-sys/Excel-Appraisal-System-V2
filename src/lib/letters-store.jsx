@@ -80,6 +80,7 @@ stateSync.attach({
   },
 });
 export const syncLetterState = stateSync.syncLetterState;
+export const syncLettersForLocation = stateSync.syncForLocation;
 
 const subscribe = (l) => {
   listeners.add(l);
@@ -250,7 +251,7 @@ export function sheetRowsForLetters(rows, cycleId, location) {
 
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
-  await stateSync.syncLetterState({ location: cycle.location || "All" });
+  await stateSync.syncLetterState({ cycles: [{ id: cycle.id, location: cycle.location }] });
   const result = run(actor, (st) => {
     const cy = core.bindAnnualCycle(st, cycle);
     if (cycle.location && !/^all/i.test(String(cycle.location))) cy.loc = cycle.location;

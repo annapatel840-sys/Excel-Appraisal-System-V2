@@ -368,10 +368,6 @@ export function AppraisalCycleMasterPage({
   const [modalError, setModalError] = useState("");
   const [generatedByCycle, setGeneratedByCycle] = useState({});
   const { rows: sheetRows } = useAppraisal();
-  // Letters already generated (by anyone) are kept on the server: load them.
-  useEffect(() => {
-    syncLetterState({ location: selectedCycleLocation });
-  }, [selectedCycleLocation]);
 
   const showBanner = (title, body, error = false) =>
     setBanner({ title, body, error });
@@ -435,6 +431,11 @@ export function AppraisalCycleMasterPage({
     () => cycles.find((c) => c.id === sel) || null,
     [cycles, sel],
   );
+  // Letters already generated (by anyone) are kept on the server. Only the
+  // selected cycle's copy is loaded (one small file), never every location's.
+  useEffect(() => {
+    if (current && current.status === "Active") syncLetterState({ cycles: [{ id: current.id, location: current.location }] });
+  }, [current?.id, current?.status, current?.location]);
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
   // Letters step: live counts from the shared Letters store (the same state the
   // Letters screen under Operation shows). A cycleStats prop still wins if given.

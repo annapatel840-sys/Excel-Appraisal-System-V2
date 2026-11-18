@@ -140,7 +140,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   useEffect(() => {
     store.syncTemplates({ location: selectedLocation });
     // Letters generated on any computer are kept on the server: load them.
-    store.syncLetterState({ location: selectedLocation });
+    store.syncLettersForLocation(selectedLocation);
   }, [selectedLocation]);
 
   // Escape closes the letter preview.

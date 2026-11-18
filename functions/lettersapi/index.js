@@ -439,7 +439,16 @@ async function authorize(req, level) {
   return { adminApp, actor: text(actor) || "unknown" };
 }
 
-const lettersState = require("./lettersState")({ readAll, locationMap, putObject, getObjectBuffer, fail, text, rowId });
+const lettersState = require("./lettersState")({ locationMap, putObject, getObjectBuffer, fail, text });
+
+function parseCycles(raw) {
+  try {
+    const list = JSON.parse(raw || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    throw fail(400, "cycles must be a JSON list.");
+  }
+}
 
 module.exports = async function lettersApi(req, res) {
   if (req.method === "OPTIONS") {
@@ -457,7 +466,7 @@ module.exports = async function lettersApi(req, res) {
       const view = q.get("view") || "templates";
       if (view === "docx") return await sendDocx(adminApp, res, text(q.get("id")), q.get("ver"));
       if (view === "state") {
-        return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, q.get("location")) });
+        return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, parseCycles(q.get("cycles"))) });
       }
       if (view === "templates") {
         return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp) });
