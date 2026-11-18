@@ -66,8 +66,22 @@ async function buildPlan(t){
  });
  fixEmployeePair("eligibility","employee_master_id","emp_id");fixEmployeePair("sheet","emp_master_row_id","emp_id");
  fixCycle("payroll","appraisal_cycle_name");fixCycle("feedback","appraisal_cycle_name");fixCycle("eligibility","appraisal_cycle_id");fixCycle("sheet","cycle_id");fixCycle("budgetMaster","appraisal_cycle_id");fixCycle("distribution","appraisal_cycle_id");fixCycle("distributionComp","appraisal_cycle_id");
- const dup=(key,empCol,cycleCol)=>{const seen=new Map();data[key].forEach(r=>{const e=ref(r[empCol])||norm(r.emp_id),c=ref(r[cycleCol]);if(!e||!c)return;const k=e+"|"+c;if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row; existing row "+rid(seen.get(k))+".");}else seen.set(k,r);});};
- dup("payroll","emp_id","appraisal_cycle_name");dup("feedback","emp_ID","appraisal_cycle_name");dup("eligibility","employee_master_id","appraisal_cycle_id");dup("sheet","emp_master_row_id","cycle_id");
+ const canonicalEmployee=(row,lookupCol,idCol)=>{
+  if(idCol&&!blank(row[idCol])){
+   const matches=byId.get(norm(row[idCol]))||[];
+   return matches.length===1?rid(matches[0]):"";
+  }
+  const found=employeeFor(row[lookupCol]);
+  return found.person?rid(found.person):"";
+ };
+ const dup=(key,empCol,cycleCol,idCol)=>{const seen=new Map();data[key].forEach(r=>{
+  const employeeKey=canonicalEmployee(r,empCol,idCol),cycle=cycleFor(r[cycleCol]),cycleKey=cycle?rid(cycle):"";
+  if(!employeeKey||!cycleKey)return;
+  const k=employeeKey+"|"+cycleKey;
+  if(seen.has(k)){stats.duplicates++;issue(issues,"duplicate_employee_cycle",key,r,"Duplicate employee/cycle row after resolving the exact Employee_Master identity and cycle; existing row "+rid(seen.get(k))+".");}
+  else seen.set(k,r);
+ });};
+ dup("payroll","emp_id","appraisal_cycle_name");dup("feedback","emp_ID","appraisal_cycle_name");dup("eligibility","employee_master_id","appraisal_cycle_id","emp_id");dup("sheet","emp_master_row_id","cycle_id","emp_id");
  const closedCycles=[...data.cycles].filter(closed).sort((a,b)=>cycleDate(b).localeCompare(cycleDate(a)));
  for(const cycle of data.cycles.filter(c=>active(c)&&!newJoiner(c))){
   const cid=rid(cycle),rows=data.sheet.filter(r=>ref(r.cycle_id)===cid),ids=[...new Set(rows.map(r=>norm(r.emp_id)).filter(Boolean))];
@@ -101,7 +115,15 @@ async function buildPlan(t){
  stats.unresolved=issues.filter(x=>!x.safe).length;
  return {ops,issues,stats};
 }
-function view(p){return {planToken:hash({ops:p.ops,issues:p.issues,stats:p.stats}),summary:{...p.stats,issueCount:p.issues.length,issueTypes:p.issues.reduce((o,x)=>(o[x.type]=(o[x.type]||0)+1,o),{})},issues:p.issues.slice(0,2000),issuesTruncated:p.issues.length>2000,operations:p.ops.map(o=>({action:o.kind,table:o.table,rowId:o.rowId||"",reason:o.reason}))};}
+function view(p){
+ const issueTypes={},issueCountsByTable={};
+ for(const item of p.issues){
+  issueTypes[item.type]=(issueTypes[item.type]||0)+1;
+  if(!issueCountsByTable[item.table])issueCountsByTable[item.table]={total:0,types:{}};
+  const group=issueCountsByTable[item.table];group.total++;group.types[item.type]=(group.types[item.type]||0)+1;
+ }
+ return {planToken:hash({ops:p.ops,issues:p.issues,stats:p.stats}),summary:{...p.stats,issueCount:p.issues.length,issueTypes,issueCountsByTable},issues:p.issues.slice(0,2000),issuesTruncated:p.issues.length>2000,operations:p.ops.map(o=>({action:o.kind,table:o.table,rowId:o.rowId||"",reason:o.reason}))};
+}
 async function auditWrite(t,rows){for(let i=0;i<rows.length;i+=WRITE)await t.audit.insertRows(rows.slice(i,i+WRITE));}
 async function apply(t,p,actor){
  const batchId=crypto.randomUUID().replace(/-/g,"").slice(0,24);
