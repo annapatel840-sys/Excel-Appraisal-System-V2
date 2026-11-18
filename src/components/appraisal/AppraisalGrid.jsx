@@ -121,7 +121,7 @@ const WIDTHS = {
   wissenExperience: 100,
   totalExperience: 96,
   lastAppraisalDate: 140,
-  prevAppraisalCycle: 170,
+  prevAppraisalCycle: 190,
   previousAppraisalTotalCtcWithRewards: 170,
   setTargetCriteria: 190,
   managerRating: 210,
@@ -213,7 +213,7 @@ const DEFAULT_COLUMN_ORDER = (() => {
   );
   const ratingAt = rest.indexOf("managerRating");
   rest.splice(ratingAt >= 0 ? ratingAt + 1 : rest.length, 0, "clientRating");
-  // "Prev. Appraisal Cycle" is always the very last column.
+  // "Previous Appraisal Cycle" is always the very last column.
   rest.push("lastAppraisalDate", "sourceOfHire", "location", "prevAppraisalCycle");
   return rest;
 })();
@@ -2270,10 +2270,10 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  // Column order is set by HR for everyone (saved by accessapi); until it loads,
+  // Column order is set by HR per location (saved by accessapi); until it loads,
   // or when HR never changed it, the default order is used.
   const { order: sharedColumnOrder, save: saveSharedColumnOrder } =
-    useSharedColumnOrder();
+    useSharedColumnOrder(isAllLocations(selectedLocation) ? "All" : selectedLocation);
   const columnOrder = useMemo(
     () => mergeColumnOrder(sharedColumnOrder, DEFAULT_COLUMN_ORDER),
     [sharedColumnOrder],

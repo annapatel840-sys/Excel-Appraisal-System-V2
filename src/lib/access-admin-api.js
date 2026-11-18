@@ -88,12 +88,12 @@ export function fillDelegation(cycleId) {
   return request("delegation/fill", { method: "POST", body: { cycleId, replace: true } });
 }
 
-/** GET /sheet-layout -> { ok, order:[column keys], updatedBy, updatedAt, enforced } (any signed-in login) */
-export function getSheetLayout() {
-  return request("sheet-layout");
+/** GET /sheet-layout?location= -> { ok, order:[column keys], updatedBy, updatedAt, enforced } (any signed-in login) */
+export function getSheetLayout(location) {
+  return request("sheet-layout", { params: { location } });
 }
 
-/** POST /sheet-layout { order } -> { ok, order, enforced } (HR Admin only) */
-export function saveSheetLayout(order) {
-  return request("sheet-layout", { method: "POST", body: { order } });
+/** POST /sheet-layout { order, location } -> { ok, order, enforced } (HR Admin only) */
+export function saveSheetLayout(order, location) {
+  return request("sheet-layout", { method: "POST", body: { order, location } });
 }

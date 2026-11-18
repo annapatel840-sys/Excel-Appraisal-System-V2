@@ -25,6 +25,8 @@
 .ovw *::before,
 .ovw *::after { box-sizing: border-box; }
 .ovw button, .ovw select, .ovw input { font: inherit; color: inherit; }
+/* Inter everywhere on this screen (pop-ups, buttons, tables and chart text included). */
+.ovw, .ovw * { font-family: Inter, "Segoe UI", Arial, sans-serif !important; }
 .ovw .mut { color: var(--muted); }
 .ovw .up { color: var(--ok); font-weight: 700; }
 .ovw .dn { color: var(--err); font-weight: 700; }

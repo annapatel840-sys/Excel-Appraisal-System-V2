@@ -2,54 +2,65 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { getSheetLayout, saveSheetLayout } from "@/lib/access-admin-api";
 
-// Appraisal Sheet column order that HR sets once for everyone (every login,
-// every view, every location). The order is saved by accessapi (/sheet-layout)
-// and cached in this browser so the sheet does not flash the default order.
+// Appraisal Sheet column order that HR sets for one location. It is saved by
+// accessapi (/sheet-layout) and seen by every login and view of that location;
+// other locations keep their own order. "All" is the All Locations view.
+// The order is also cached in this browser so the sheet does not flash the
+// default order while it loads.
 
-const CACHE_KEY = "appraisal-sheet-shared-order";
+const CACHE_PREFIX = "appraisal-sheet-order:";
 const STALE_MS = 60_000;
 const listeners = new Set();
+const orders = new Map(); // location key -> saved order
+const fetchedAt = new Map();
+const inflight = new Map();
 
-function readCache() {
+const nameOf = (location) => String(location || "").trim() || "All";
+const keyOf = (location) => nameOf(location).toLowerCase();
+
+function readCache(key) {
   try {
-    const list = JSON.parse(window.localStorage.getItem(CACHE_KEY) || "[]");
-    return Array.isArray(list) ? list.filter((key) => typeof key === "string") : [];
+    const list = JSON.parse(window.localStorage.getItem(CACHE_PREFIX + key) || "[]");
+    return Array.isArray(list) ? list.filter((item) => typeof item === "string") : [];
   } catch {
     return [];
   }
 }
 
-let sharedOrder = typeof window === "undefined" ? [] : readCache();
-let fetchedAt = 0;
-let inflight = null;
+function orderOf(key) {
+  if (!orders.has(key)) orders.set(key, typeof window === "undefined" ? [] : readCache(key));
+  return orders.get(key);
+}
 
-function setShared(next) {
-  const clean = Array.isArray(next) ? next.filter((key) => typeof key === "string" && key) : [];
-  if (JSON.stringify(clean) === JSON.stringify(sharedOrder)) return;
-  sharedOrder = clean;
+function setShared(key, next) {
+  const clean = Array.isArray(next) ? next.filter((item) => typeof item === "string" && item) : [];
+  if (JSON.stringify(clean) === JSON.stringify(orderOf(key))) return;
+  orders.set(key, clean);
   try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(clean));
+    window.localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(clean));
   } catch {
     // storage full or blocked: the order still works for this session
   }
   listeners.forEach((listener) => listener());
 }
 
-function load(force) {
-  if (inflight) return inflight;
-  if (!force && Date.now() - fetchedAt < STALE_MS) return Promise.resolve();
-  inflight = getSheetLayout()
+function load(location, force) {
+  const key = keyOf(location);
+  if (inflight.has(key)) return inflight.get(key);
+  if (!force && Date.now() - (fetchedAt.get(key) || 0) < STALE_MS) return Promise.resolve();
+  const promise = getSheetLayout(nameOf(location))
     .then((data) => {
-      fetchedAt = Date.now();
-      setShared(data?.order);
+      fetchedAt.set(key, Date.now());
+      setShared(key, data?.order);
     })
     .catch(() => {
       // accessapi unavailable: keep the cached / default order
     })
     .finally(() => {
-      inflight = null;
+      inflight.delete(key);
     });
-  return inflight;
+  inflight.set(key, promise);
+  return promise;
 }
 
 const subscribe = (listener) => {
@@ -92,26 +103,31 @@ export function moveColumn(order, key, targetKey, side) {
   return rest;
 }
 
-export function useSharedColumnOrder() {
+// `location` is the selected location ("All" for All Locations).
+export function useSharedColumnOrder(location) {
+  const key = keyOf(location);
   const order = useSyncExternalStore(
     subscribe,
-    () => sharedOrder,
+    () => orderOf(key),
     () => [],
   );
 
   useEffect(() => {
-    load(false);
-    const refresh = () => load(false);
+    load(location, false);
+    const refresh = () => load(location, false);
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, []);
+  }, [key, location]);
 
   // Throws when the server refuses (not HR, accessapi down) so the caller can show why.
-  const save = useCallback(async (next) => {
-    const data = await saveSheetLayout(next);
-    fetchedAt = Date.now();
-    setShared(data?.order || next);
-  }, []);
+  const save = useCallback(
+    async (next) => {
+      const data = await saveSheetLayout(next, nameOf(location));
+      fetchedAt.set(key, Date.now());
+      setShared(key, data?.order || next);
+    },
+    [key, location],
+  );
 
   return { order, save };
 }

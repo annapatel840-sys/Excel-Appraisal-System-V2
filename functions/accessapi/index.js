@@ -267,7 +267,8 @@ async function syncCatalystRoles(adm, roles, users, by) {
    Kept in the existing AccessLog table, like the delegation request queue below, so no new
    table is needed. AccessLog.reason may be a short column, so one save is written as several
    small rows (same batch_id "CO-<time>", piece number in `target`, piece of the JSON list of
-   column keys in `reason`). The newest batch that reads back complete wins; older ones are removed. */
+   column keys in `reason`, the location in `role`). The newest batch of a location that reads back
+   complete wins; older ones are removed. */
 // Short on purpose: AccessLog.kind is a short column (about 20 characters), so a long
 // label is cut off and the rows can no longer be found. Rows whose kind starts with
 // this text (including cut-off ones from earlier tries) all count as ours.
@@ -278,6 +279,13 @@ const sheetOrderRows = async (ap) =>
   (await selectAll(ap.admin.zcql(), T.log)).filter(
     (row) => String(row.kind || "").trim().startsWith(SHEET_ORDER_KIND),
   );
+
+// The order is kept per location: the location name ("All" = All Locations) is saved
+// in the row's `role` column. Rows saved before locations existed have role "hr".
+const sheetLocation = (value) => String(value || "").trim().slice(0, 60) || "All";
+const rowLocation = (row) => String(row.role || "").trim().toLowerCase();
+const rowsOfLocation = (rows, location) =>
+  rows.filter((row) => rowLocation(row) === sheetLocation(location).toLowerCase());
 
 // Batches, newest first, each rebuilt to { batch, rows, order } (order is [] when incomplete).
 const sheetOrderBatches = (rows) => {
@@ -312,7 +320,7 @@ app.get(
     const ap = apps(req);
     const a = await A.check(ap.user, ap.admin);
     if (a.denied) throw a.denied;
-    const rows = await sheetOrderRows(ap);
+    const rows = rowsOfLocation(await sheetOrderRows(ap), req.query && req.query.location);
     const good = sheetOrderBatches(rows).find((entry) => entry.order.length);
     send(res, {
       found: rows.length,
@@ -341,6 +349,7 @@ app.post(
     )
       throw new HttpError(422, "Send the full list of column keys.");
     const unique = order.filter((key, index) => order.indexOf(key) === index);
+    const location = sheetLocation(body.location);
     const table = ap.admin.datastore().table(T.log);
     const text = JSON.stringify(unique);
     const batch = "CO-" + Date.now();
@@ -355,7 +364,7 @@ app.post(
         changed_by: a.user.email || "",
         kind: SHEET_ORDER_KIND,
         target: String(index),
-        role: "hr",
+        role: location,
         old_value: "",
         new_value: "",
         reason: piece,
@@ -364,7 +373,8 @@ app.post(
     );
     // Read it back: if a piece was cut short or not kept, say so now instead of
     // letting the order silently revert on refresh.
-    const saved = await sheetOrderRows(ap);
+    const allRows = await sheetOrderRows(ap);
+    const saved = rowsOfLocation(allRows, location);
     const mine = sheetOrderBatches(saved).find((entry) => entry.batch === batch);
     if (!mine || JSON.stringify(mine.order) !== JSON.stringify(unique))
       throw new HttpError(
@@ -374,12 +384,15 @@ app.post(
           (mine ? " with " + mine.rows.reduce((n, row) => n + String(row.reason || "").length, 0) : "") +
           " of " + text.length + " characters). Please tell the developer.",
       );
-    // Keep only the newest batch (best effort: a failed clean-up never fails the save).
+    // Keep only the newest batch of this location, and drop rows saved before
+    // locations existed (best effort: a failed clean-up never fails the save).
     try {
-      const ids = saved
-        .filter((row) => String(row.batch_id || "") !== batch)
+      const ids = [
+        ...saved.filter((row) => String(row.batch_id || "") !== batch),
+        ...allRows.filter((row) => rowLocation(row) === "hr"),
+      ]
         .map((row) => row.ROWID)
-        .filter(Boolean);
+        .filter((id, index, list) => id && list.indexOf(id) === index);
       if (ids.length) await deleteMany(table, ids);
     } catch (err) {
       console.error(err);

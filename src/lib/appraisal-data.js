@@ -354,12 +354,12 @@ export const COLUMNS = [
   },
   {
     key: "prevAppraisalCycle",
-    label: "Prev. Appraisal Cycle",
+    label: "Previous Appraisal Cycle",
     type: "text",
     // Display-only: the closed cycle of the last appraisal; a new joiner shows
     // the current cycle name (worked out by employeesapi from Payroll_Data).
     editable: false,
-    width: 170,
+    width: 190,
   },
   {
     key: "managerRating",

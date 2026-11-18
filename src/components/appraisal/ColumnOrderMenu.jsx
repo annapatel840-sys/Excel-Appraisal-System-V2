@@ -127,7 +127,7 @@ export function ColumnOrderMenu({ target, columns, onClose, onConfirm }) {
             ))}
           </div>
           <div className="mb-2 text-[11px] text-[#52667a]">
-            This changes the column order for every login, view and location.
+            This changes the column order for every login and view of this location.
           </div>
           {error && <div className="mb-2 text-[11px] text-[#b42318]">{error}</div>}
           <div className="flex justify-end gap-2">

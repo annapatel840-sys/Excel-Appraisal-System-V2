@@ -168,8 +168,8 @@ function YearMenu({ cycles, selected, onChange }) {
   }, [open]);
   const chosen = cycles.filter((c) => selected.includes(c.key));
   const label = chosen.length
-    ? `${chosen.length === 1 ? "1 year" : `${chosen.length} years`} · ${chosen.map((c) => c.name.replace("Annual ", "")).join(", ")}`
-    : "Pick years";
+    ? `${chosen.length === 1 ? "1 Year" : `${chosen.length} Years`} · ${chosen.map((c) => c.name.replace("Annual ", "")).join(", ")}`
+    : "Pick Years";
   const toggle = (k) => onChange(selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k]);
   return (
     <div className="ymenu" ref={ref}>
@@ -184,7 +184,7 @@ function YearMenu({ cycles, selected, onChange }) {
             </label>
           ))}
           <div className="yb">
-            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All years</button>
+            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All Years</button>
             <button type="button" className="btn" onClick={() => onChange([])}>Clear</button>
           </div>
         </div>
@@ -704,8 +704,8 @@ export function DashboardOverview() {
           <table>
             <thead>
               <tr>
-                <th>{L0.n} / team</th><th className="n">Team size</th><th className="n">Budget allocated</th><th className="n">Budget utilised</th>
-                <th className="n">Utilised %</th><th className="n">Remaining budget</th><th />
+                <th>{L0.n} / Team</th><th className="n">Team Size</th><th className="n">Budget Allocated</th><th className="n">Budget Utilised</th>
+                <th className="n">Utilised %</th><th className="n">Remaining Budget</th><th />
               </tr>
             </thead>
             <tbody>
@@ -856,7 +856,7 @@ export function DashboardOverview() {
       </div>
 
       <div className="cmp">
-        <span className="mut">Compare with</span>
+        <span className="mut">Compare With</span>
         <YearMenu cycles={compareCycles} selected={cmp} onChange={(v) => setCmp(v)} />
         <span className="mut" style={{ fontSize: 11 }}>Annual cycles, same people only</span>
         <span className="sp"><Toggle value={unit} onChange={setUnit} options={[["n", "Numbers"], ["p", "%"]]} /></span>
@@ -864,7 +864,7 @@ export function DashboardOverview() {
 
       <div className="stabs">
         <button type="button" className={`stab${tab === "s" ? " on" : ""}`} onClick={() => setTab("s")}>Summary</button>
-        <button type="button" className={`stab${tab === "a" ? " on" : ""}`} onClick={() => setTab("a")}>Recent activity</button>
+        <button type="button" className={`stab${tab === "a" ? " on" : ""}`} onClick={() => setTab("a")}>Recent Activity</button>
       </div>
 
       {tab === "s" ? (
@@ -907,7 +907,7 @@ export function DashboardOverview() {
               <div className="tw" style={{ marginTop: 12 }}>
                 <table>
                   <thead>
-                    <tr><th>{L0.n} / team</th><th className="n">Budget allocated</th><th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th><th className="n">Total utilised</th></tr>
+                    <tr><th>{L0.n} / Team</th><th className="n">Budget Allocated</th><th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th><th className="n">Total Utilised</th></tr>
                   </thead>
                   <tbody>
                     {budRows.map((r) => (
