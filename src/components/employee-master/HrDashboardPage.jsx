@@ -10,7 +10,6 @@ import { filterByLocation, isAllLocations, useSelectedLocation } from "@/lib/loc
 import { isActionNeededStatus, isInactiveStatus, statusOf } from "@/lib/eligibility-rules";
 import { useBudget } from "@/lib/budget-store";
 import { useLetters } from "@/lib/letters-store";
-import { revealTableHeader } from "@/components/appraisal/ColumnFilter";
 
 /*
  * HR Operations -> HR Dashboard.
@@ -138,11 +137,20 @@ function Grid({ cols, rows, numCols = [], foot }) {
     };
   }, [col]);
 
-  // Touching a table that is only partly on screen (header down in the lower part of the view) brings it up.
+  // Clicking in a table whose card only peeks in from the bottom of the screen brings the whole card
+  // (title and header row included) up under the app's top bar. Runs on click (capture), before the
+  // filter button's own handler, so the popup is placed after the page has moved.
   const bringIntoView = (e) => {
-    const th = e.currentTarget.querySelector("th");
-    if (!th) return;
-    if (th.getBoundingClientRect().top > window.innerHeight * 0.55) revealTableHeader(th);
+    try {
+      const card = e.currentTarget.closest(".hrd-card") || e.currentTarget;
+      if (card.getBoundingClientRect().top <= window.innerHeight * 0.4) return; // already well on screen
+      const prev = card.style.scrollMarginTop;
+      card.style.scrollMarginTop = "72px"; // clear the app's top bar
+      card.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+      setTimeout(() => { card.style.scrollMarginTop = prev; }, 700);
+    } catch (_) {
+      /* scrolling is a convenience only */
+    }
   };
 
   useEffect(() => {
@@ -168,7 +176,7 @@ function Grid({ cols, rows, numCols = [], foot }) {
 
   return (
     <>
-      <table className="hrd-t" onPointerDownCapture={bringIntoView}>
+      <table className="hrd-t" onClickCapture={bringIntoView}>
         <thead>
           <tr>
             {cols.map((c, i) => (
@@ -182,8 +190,6 @@ function Grid({ cols, rows, numCols = [], foot }) {
                     onClick={(e) => {
                       e.stopPropagation();
                       btnRef.current = e.currentTarget;
-                      // bring this table's header into view first (instant, so the popup lines up with the icon)
-                      if (fp?.col !== i) revealTableHeader(e.currentTarget, true);
                       const r = e.currentTarget.getBoundingClientRect();
                       setFp(fp?.col === i ? null : { col: i, x: Math.max(8, Math.min(r.left, window.innerWidth - 232)), y: r.bottom + 4 });
                     }}

@@ -238,6 +238,16 @@
   color: var(--muted-foreground, #64748b); font-size: 12px;
 }
 .em-location-master-summary button { margin-left: auto; }
+.em-location-master-summary .em-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 16px; min-height: 30px;
+  border: 1px solid #b8c4d6; border-radius: 6px; background: #fff; color: #17365d;
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, .08);
+}
+.em-location-master-summary .em-btn:hover:not(:disabled) { background: #eaf2ff; border-color: #2f6fed; color: #1d4fa8; }
+.em-location-master-summary .em-btn:active:not(:disabled) { background: #dcebff; }
+.em-location-master-summary .em-btn:disabled { opacity: .55; cursor: not-allowed; }
 .em-location-master-table-wrap { width: 100%; max-height: none; overflow: auto; }
 .em-location-master-table-wrap .em-location-table { width: 100%; min-width: 780px; }
 .em-location-master-table-wrap .em-location-table td input { width: 100%; min-width: 90px; box-sizing: border-box; }
