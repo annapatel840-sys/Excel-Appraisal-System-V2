@@ -794,7 +794,11 @@ export function BudgetDistributionPage() {
                                   );
                                   // "EMP004 - Name": the ID in its real (upper) case plus the name, looked up in the cycle
                                   // roster, the Tech-ED list, the Appraisal Sheet and finally the full Employee Master.
-                                  const managerLabel = (raw) => {
+                                  const managerLabel = (raw, display) => {
+                                    // The server resolves "EMP004 - Name" into comp_manager_display; use it when it
+                                    // already carries a name (comp_manager itself only stores the ID).
+                                    const shown = String(display || "").trim();
+                                    if (/\s+-\s+\S/.test(shown)) return shown;
                                     const text = String(raw || "").trim();
                                     if (!text) return "";
                                     const parts = text.split(/\s+-\s+/);
@@ -803,7 +807,7 @@ export function BudgetDistributionPage() {
                                     const idOf = (e) => String(e.emp_id || e.employee_id || e.empId || "").trim();
                                     const nameOf = (e) => String(e.name || e.emp_name || e.employee_name || "").trim();
                                     const sameRow = (e) => [e.row_id, e.ROWID].filter(Boolean).some((v) => String(v).trim() === text);
-                                    const lookups = [employeeRows || [], masterEmployees || []];
+                                    const lookups = [employeeRows || [], locationEmployeeRows || [], masterEmployees || []];
                                     let eid = "";
                                     let ename = parts.length > 1 ? parts.slice(1).join(" - ").trim() : "";
                                     for (const list of lookups) {
@@ -832,7 +836,7 @@ export function BudgetDistributionPage() {
                                           <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilised</th></tr></thead>
                                           <tbody>{managerRows.map((manager) => (
                                             <tr key={manager.id || manager.comp_manager}>
-                                              <td>{managerLabel(manager.comp_manager)}</td>
+                                              <td>{managerLabel(manager.comp_manager, manager.comp_manager_display)}</td>
                                               <td align="right">{pct(manager.percentage)}</td>
                                               <td align="right">{money(manager.budget_base)}</td>
                                               <td align="right">{money(manager.calculated_budget)}</td>
