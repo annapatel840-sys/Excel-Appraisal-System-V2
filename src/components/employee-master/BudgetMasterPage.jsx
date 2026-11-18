@@ -3672,7 +3672,7 @@ function HRApplyBudget() {
   );
   const [selectedCycle, setSelectedCycle] = useState("");
   const activeCycleForLocation = (cycles) => {
-    const activeCycles = (Array.isArray(cycles) ? cycles : []).filter((cycle) => {
+    const availableCycles = (Array.isArray(cycles) ? cycles : []).filter((cycle) => {
       const status = String(cycle.status ?? cycle.cycle_status ?? "")
         .trim().toLowerCase();
       const archived = [true, 1, "true", "1", "yes"].includes(
@@ -3680,8 +3680,16 @@ function HRApplyBudget() {
           ? cycle.archived.trim().toLowerCase()
           : cycle.archived,
       );
-      return status === "active" && !archived && !cycle.hidden;
+      const hidden = [true, 1, "true", "1", "yes"].includes(
+        typeof cycle.hidden === "string"
+          ? cycle.hidden.trim().toLowerCase()
+          : cycle.hidden,
+      );
+      return ["active", "closed"].includes(status) && !archived && !hidden;
     });
+    const activeCycles = availableCycles.filter((cycle) =>
+      String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase() === "active",
+    );
     const exactCycle = activeCycles.find((cycle) =>
       String(
         cycle.id ??
@@ -3691,11 +3699,26 @@ function HRApplyBudget() {
           "",
       ) === String(activeBudgetCycleId || ""),
     );
-    return (
+    const activeForLocation =
       exactCycle ||
-      activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation)) ||
-      null
-    );
+      activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation));
+    if (activeForLocation) return activeForLocation;
+    // Closing a cycle must not hide its Budget Distribution. If no Active
+    // cycle exists for this location, HR continues on the latest Closed cycle.
+    return availableCycles
+      .filter((cycle) =>
+        String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase() === "closed" &&
+        matchesCycleLocation(cycle, selectedLocation) &&
+        budgetMasterRows.some((row) =>
+          String(row.appraisal_cycle_id || "") === String(
+            cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID ?? "",
+          ),
+        ),
+      )
+      .sort((left, right) =>
+        String(right.updated_at || right.modified_time || right.created_at || right.ROWID || "")
+          .localeCompare(String(left.updated_at || left.modified_time || left.created_at || left.ROWID || "")),
+      )[0] || null;
   };
   const selectedMaster =
     budgetMasterRows.find(
