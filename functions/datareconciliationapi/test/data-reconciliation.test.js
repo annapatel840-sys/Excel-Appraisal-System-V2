@@ -1,0 +1,101 @@
+"use strict";
+const assert=require("assert");
+const Module=require("module");
+const path=require("path");
+const T={
+ employees:"74008000000035727",cycles:"74008000000034190",payroll:"74008000000035326",
+ feedback:"74008000000022041",eligibility:"74008000000057046",sheet:"74008000000039094",
+ budgetMaster:"74008000000034565",distribution:"74008000000033809",
+ distributionComp:"74008000000023149",audit:"74008000000034940"
+};
+let DB,seq,user,accessEnforced=false;
+function makeTable(id){
+ const rows=DB[id]||(DB[id]=[]);
+ const add=r=>{const v={...r,ROWID:String(++seq)};rows.push(v);return {...v};};
+ return {
+  getPagedRows:async()=>({data:rows.map(r=>({...r})),more_records:false}),
+  insertRows:async batch=>batch.map(add),
+  updateRows:async batch=>batch.map(p=>{const r=rows.find(x=>x.ROWID===String(p.ROWID));if(!r)throw Error("missing row "+p.ROWID);Object.assign(r,p);return {...r};}),
+  deleteRows:async ids=>{ids.forEach(id=>{const i=rows.findIndex(r=>r.ROWID===String(id));if(i>=0)rows.splice(i,1);});return true;}
+ };
+}
+function load(){
+ const dir=path.resolve(__dirname,"..");
+ Object.keys(require.cache).forEach(k=>{if(k.startsWith(dir)&&!k.includes("node_modules"))delete require.cache[k];});
+ const accessStub={HttpError:class HttpError extends Error{constructor(status,message){super(message);this.status=status;}},isEnforced:()=>accessEnforced,check:async()=>({role:user?.role||"hr"})};
+ const catalystStub={initialize:()=>({datastore:()=>({table:makeTable}),userManagement:()=>({getCurrentUser:async()=>user})})};
+ const orig=Module._load;Module._load=function(req,...rest){if(req==="zcatalyst-sdk-node")return catalystStub;if(req==="./accessCore")return accessStub;return orig.call(this,req,...rest);};
+ try{return require("../index.js");}finally{Module._load=orig;}
+}
+function reset(){
+ DB={};seq=100;user={user_id:"1",email_id:"hr@test",role:"hr"};
+ DB[T.employees]=[{ROWID:"E1",emp_id:"EMP001",emp_name:"Employee One",emp_status:"Active"}];
+ DB[T.cycles]=[
+  {ROWID:"C1",cycle_name:"Annual 2025",status:"Closed",effective_date:"2025-04-01"},
+  {ROWID:"C2",cycle_name:"Annual 2026",status:"Active",effective_date:"2026-04-01",location:"India"}
+ ];
+ DB[T.payroll]=[{ROWID:"P1",emp_id:"E1",emp_name:"Employee One",appraisal_cycle_name:"C1",fy_year:"2025",current_annual_base_pay:100000}];
+ DB[T.feedback]=[{ROWID:"F1",emp_ID:"E1",emp_name:"E1",appraisal_cycle_name:"C1",manager_feedback:"Good",manager_rating:4,Effective_Date:"2025-04-01"}];
+ DB[T.sheet]=[{ROWID:"S1",emp_id:"EMP001",emp_master_row_id:"E1",cycle_id:"C2",previous_year_CTC_with_rewards:150000}];
+ DB[T.budgetMaster]=[{ROWID:"B1",appraisal_cycle_id:"C2",org_budget_base:90000,original_headcount:1}];
+ DB[T.distribution]=[{ROWID:"D1",appraisal_cycle_id:"C2",appraiser_tech_ed_id:"TE001",original_headcount:1,claculated_budget:100}];
+ DB[T.distributionComp]=[{ROWID:"DC1",budget_distribution_id:"D1",appraisal_cycle_id:"C2",comp_manager:"CM001",original_headcount:1,calculated_budget:100}];
+ DB[T.eligibility]=[];DB[T.audit]=[];
+}
+function call(api,method,resource,body){return new Promise((resolve,reject)=>{const req={method,url:"/?resource="+resource,body,on(){}};const res={status:0,writeHead(s){this.status=s;},end(raw){resolve({status:this.status,json:JSON.parse(raw||"{}")});}};api(req,res).catch(reject);});}
+let passed=0,failed=0;
+async function test(name,fn){try{reset();await fn();passed++;console.log("PASS",name);}catch(e){failed++;console.error("FAIL",name,e.stack||e);}}
+(async()=>{
+ await test("Preview is read-only and proposes exact prior-cycle copies plus budget base correction",async()=>{
+  const api=load(),before=JSON.stringify(DB),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert.strictEqual(JSON.stringify(DB),before);
+  assert.strictEqual(p.stats.safeInserts,2);
+  assert.strictEqual(p.stats.safeUpdates,1);
+  assert(p.ops.some(o=>o.table==="feedback"&&o.values.Effective_Date==="2026-04-01"));
+  assert(p.ops.some(o=>o.table==="budgetMaster"&&o.patch.org_budget_base===150000));
+ });
+ await test("Apply writes proposed changes and Revert restores the exact before-state",async()=>{
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const p=await api._internals.buildPlan(tables),applied=await api._internals.apply(tables,p,"HR");
+  assert.strictEqual(DB[T.payroll].filter(r=>r.appraisal_cycle_name==="C2").length,1);
+  assert.strictEqual(DB[T.feedback].find(r=>r.appraisal_cycle_name==="C2").Effective_Date,"2026-04-01");
+  assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,150000);
+  const reverted=await api._internals.revert(tables,applied.batchId,"HR");
+  assert.strictEqual(reverted.restored,1);assert.strictEqual(reverted.deleted,2);
+  assert.strictEqual(DB[T.payroll].length,1);assert.strictEqual(DB[T.feedback].length,1);
+  assert.strictEqual(DB[T.budgetMaster][0].org_budget_base,90000);
+ });
+ await test("Revert refuses to overwrite a row changed after Apply",async()=>{
+  const api=load(),tables=Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)]));
+  const p=await api._internals.buildPlan(tables),applied=await api._internals.apply(tables,p,"HR");
+  DB[T.budgetMaster][0].org_budget_base=777;
+  await assert.rejects(()=>api._internals.revert(tables,applied.batchId,"HR"),/changed after Apply/);
+ });
+ await test("Orphan references are reported and never deleted or guessed",async()=>{
+  DB[T.payroll].push({ROWID:"PX",emp_id:"NO_MASTER",appraisal_cycle_name:"C1"});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.issues.some(x=>x.type==="orphan_employee_reference"&&x.rowId==="PX"));
+  assert(!p.ops.some(x=>x.rowId==="PX"));
+  assert(DB[T.payroll].some(x=>x.ROWID==="PX"));
+ });
+ await test("Duplicate employee-cycle rows are reported, not auto-deleted",async()=>{
+  DB[T.payroll].push({ROWID:"P2",emp_id:"E1",appraisal_cycle_name:"C1"});
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.issues.some(x=>x.type==="duplicate_employee_cycle"&&x.rowId==="P2"));
+  assert(!p.ops.some(x=>x.rowId==="P2"));
+ });
+ await test("Tech-ED role is refused by the API",async()=>{
+  user={user_id:"2",email_id:"te@test",role:"techEd"};
+  const r=await call(load(),"GET","preview");
+  assert.strictEqual(r.status,403);
+ });
+ await test("Missing historical payroll or feedback sources are reported without fabricated inserts",async()=>{
+  DB[T.payroll]=[];DB[T.feedback]=[];
+  const api=load(),p=await api._internals.buildPlan(Object.fromEntries(Object.entries(T).map(([k,id])=>[k,makeTable(id)])));
+  assert(p.issues.some(x=>x.type==="missing_payroll_source"));
+  assert(p.issues.some(x=>x.type==="missing_feedback_source"));
+  assert.strictEqual(p.ops.filter(x=>x.kind==="insert").length,0);
+ });
+ console.log("RESULT",passed,"passed,",failed,"failed");
+ if(failed)process.exitCode=1;
+})();
