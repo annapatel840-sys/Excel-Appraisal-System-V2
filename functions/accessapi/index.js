@@ -1475,7 +1475,8 @@ app.get(
     if (!cycleId)
       throw new HttpError(422, "No cycle given and no Active cycle.");
     if (!ID_RE.test(cycleId)) throw new HttpError(422, "Invalid cycle id.");
-    const d = SETTINGS.delegation,
+    const c = SETTINGS.cycle,
+      d = SETTINGS.delegation,
       e = SETTINGS.employeeMaster;
     const [cycleRows, emRows] = await Promise.all([
       selectAll(zcql, c.table, c.idColumn + " = " + cycleId),
