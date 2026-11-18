@@ -192,12 +192,14 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* ---------- data the app already holds ---------- */
   let sheetRows = [];
   let sheetAudit = [];
+  let cycleReadOnly = false;
   let storeBulkUpdate = null;
   let storeFetchBulkHistory = null;
   try {
     const ctx = useAppraisal();
     sheetRows = ctx.rows || [];
     sheetAudit = ctx.audit || [];
+    cycleReadOnly = Boolean(ctx.readOnlyCycle);
     storeBulkUpdate = ctx.bulkUpdate || null;
     storeFetchBulkHistory = ctx.fetchBulkHistory || null;
   } catch (x) {
@@ -242,6 +244,7 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* The Appraisal Sheet's own rows, in the screen's row shape (Active + Eligible, by Employee ID). */
   // Access -> Fields tab ("Bulk Edit"): the engine asks this for every field it draws or changes.
   const access = useAccess();
+  const effectiveReadOnly = readOnly || cycleReadOnly;
 
   const sheetEmp = useMemo(() => {
     const edited = new Set(
@@ -289,7 +292,7 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
   live.current = {
-    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, offlineApi, sheetRows, storeBulkUpdate, access,
+    sheetEmp, sheetHdr, readOnly: effectiveReadOnly, onApplied, cycle, apiUrl, offlineApi, sheetRows, storeBulkUpdate, access,
     sheetAudit, storeFetchBulkHistory,
   };
   /* Bulk history read from the server (kept so a screen refresh does not re-download it). */
@@ -312,7 +315,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       get canApply() {
         return APPLY_ENABLED && !live.current.readOnly;
       },
-      applyNote: readOnly
+      applyNote: effectiveReadOnly
         ? "View only — you can preview but not apply."
         : "Apply is not enabled yet — preview only.",
       /* Apply / Restore: write the changes through the Appraisal Sheet store. */
