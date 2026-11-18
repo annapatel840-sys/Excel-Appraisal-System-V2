@@ -960,18 +960,11 @@ export function EligibilityList({
     [search, tab],
   );
 
-  const locationFilteredEmployees = useMemo(() => {
-    if (isAllLocations(locationFilter)) return employees;
-    return employees.filter((employee) =>
-      matchesLocation(
-        employee.location ||
-          employee.rawEmployee?.location ||
-          employee.rawEmployee?.work_location ||
-          "",
-        locationFilter,
-      ),
-    );
-  }, [employees, locationFilter]);
+  // The parent loads Eligibility_List for the selected location's cycle.
+  // Do not apply a second client-side location filter here: Employee Master
+  // location values may be lookup objects / codes while the dropdown displays
+  // the Location Master name, which can incorrectly hide valid cycle rows.
+  const locationFilteredEmployees = employees;
 
   const view = useGridView(locationFilteredEmployees, defs, grid, searchPre);
 
