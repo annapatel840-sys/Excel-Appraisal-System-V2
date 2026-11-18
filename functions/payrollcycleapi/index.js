@@ -1624,6 +1624,70 @@ function shapeEligibilityRow(row, master) {
   };
 }
 
+async function restoreEligibilityFromAppliedCriteria(tables, cycle, masterRows, eligibilityRows, locations) {
+  const cycleId = String(cycle?.id || "");
+  if (!cycleId) return eligibilityRows;
+  const meta = await readEligibilityCriteriaMeta(tables, cycle);
+  const criteria = meta?.criteria;
+  if (!criteria || typeof criteria !== "object") return eligibilityRows;
+
+  const lowerList = (value) => (Array.isArray(value) ? value : [])
+    .map((item) => String(item ?? "").trim().toLowerCase()).filter(Boolean);
+  const departments = lowerList(criteria.departments);
+  const designations = lowerList(criteria.designations);
+  const excludedEmployees = lowerList(criteria.excludedEmployees);
+  const statuses = lowerList(criteria.statuses);
+  const cutoff = isoDateOf(criteria.cutoffDate);
+  const extraParameters = Array.isArray(criteria.extraParameters) ? criteria.extraParameters : [];
+  const existingByEmpId = new Map(
+    eligibilityRows
+      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
+      .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+  );
+  const inserts = [];
+  for (const master of masterRows) {
+    const empId = String(master.emp_id || master.employee_id || "").trim();
+    const key = empId.toLowerCase();
+    const masterId = String(master.ROWID || master.rowid || "");
+    if (!empId || !masterId || existingByEmpId.has(key) || !inCycleLocation(cycle, master, locations)) continue;
+    if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") continue;
+
+    const reasons = [];
+    if (departments.includes(String(master.department || master.organization || "").trim().toLowerCase())) reasons.push("Department excluded");
+    if (designations.includes(String(master.designation || "").trim().toLowerCase())) reasons.push("Designation excluded");
+    if (excludedEmployees.includes(key)) reasons.push("Employee excluded");
+    if (statuses.includes(String(master.emp_status || master.status || "Active").trim().toLowerCase())) reasons.push("Status excluded");
+    for (const param of extraParameters) {
+      if (failsCriteriaParam(param, master)) {
+        reasons.push(`${param.label || param.field} excluded`);
+        break;
+      }
+    }
+    if (cutoff) {
+      const doj = isoDateOf(master.joining_date || master.date_of_join);
+      if (!doj || doj > cutoff) reasons.push(!doj ? "Missing DOJ" : "Joined after cutoff date");
+    }
+    if (reasons.length) continue;
+    inserts.push({
+      appraisal_cycle_id: cycleId,
+      employee_master_id: masterId,
+      emp_id: empId,
+      eligibility_status: "Eligible",
+      eligibility_reason: "",
+      eligibility_source: "Criteria",
+      change_tag: "Recovered",
+      evaluated_at: nowLocal(),
+      updated_by: "Applied-criteria recovery",
+      eligibility_updated_at: nowLocal(),
+    });
+    existingByEmpId.set(key, true);
+  }
+  for (let index = 0; index < inserts.length; index += 100) {
+    await tables.eligibility.insertRows(inserts.slice(index, index + 100));
+  }
+  return inserts.length ? [...eligibilityRows, ...inserts] : eligibilityRows;
+}
+
 async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations) {
   const cycleId = String(cycle?.id || "");
   if (!cycleId || !tables.appraisalSheet) return eligibilityRows;
@@ -1698,9 +1762,18 @@ async function getEligibilityRows(tables, cycle, actor = "") {
       .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
       .filter(([empId]) => empId),
   );
-  const rowsForDisplay = String(cycle.status || "").trim().toLowerCase() === "closed"
-    ? await restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations)
-    : eligibilityRows;
+  // Apply Criteria stores its exact rules in Appraisal_Audit. If the
+  // Eligibility_List rows are missing, reconstruct the same qualified roster
+  // from those saved rules for Active and Closed cycles alike. Existing/manual
+  // decisions are retained; archived cycles never reach this screen.
+  let rowsForDisplay = await restoreEligibilityFromAppliedCriteria(
+    tables, cycle, masterRows, eligibilityRows, locations,
+  );
+  if (rowsForDisplay.length === eligibilityRows.length) {
+    rowsForDisplay = await restoreClosedEligibilityFromSheet(
+      tables, cycle, masterRows, rowsForDisplay, locations,
+    );
+  }
   const records = rowsForDisplay
     .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
     .map((row) => {
