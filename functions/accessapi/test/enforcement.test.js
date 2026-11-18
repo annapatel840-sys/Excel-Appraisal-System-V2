@@ -501,6 +501,14 @@ async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
     cAct.status = 'Closed';
     resetCaches();
     try {
+      const closedRoster = await EMP(
+        'GET',
+        '/?view=appraisal&page=1&limit=100&status=all&eligible=all&location=All',
+        U.ashok,
+      );
+      assert.strictEqual(closedRoster.status, 200, JSON.stringify(closedRoster.body));
+      assert.strictEqual(closedRoster.body.activeCycle?.status, 'Closed');
+      assert.ok(closedRoster.body.data.some((employee) => employee.emp_id === 'EMP0100'));
       const techEd = await EMP('PATCH', '/', U.ashok, {
         emp_id: 'EMP0100', cycle_id: cAct.ROWID, hike_amount: 999,
       });
