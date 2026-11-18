@@ -22,7 +22,9 @@ import {
   tplOf,
 } from "@/lib/letters-core";
 import * as store from "@/lib/letters-store";
-import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
+import { isAllLocations, matchesLocation, useSelectedLocation } from "@/lib/location-store";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { loadServerSheet } from "@/lib/letters-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import "./employee-master-ui.css";
 import "./letters-page.css";
@@ -126,6 +128,17 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(() => readText(NOTES_KEY));
 
+  // Real Appraisal_Sheet records shown in the Letters module. These are read
+  // from lettersapi; they are not copied from the browser's demo store.
+  const [sheetCycles, setSheetCycles] = useState([]);
+  const [sheetCyclesLoading, setSheetCyclesLoading] = useState(false);
+  const [sheetCycleId, setSheetCycleId] = useState("");
+  const [appraisalRows, setAppraisalRows] = useState([]);
+  const [appraisalLoading, setAppraisalLoading] = useState(false);
+  const [appraisalError, setAppraisalError] = useState("");
+  const [appraisalCycleInfo, setAppraisalCycleInfo] = useState(null);
+  const [sheetRefreshToken, setSheetRefreshToken] = useState(0);
+
   const moreRef = useRef(null);
   const menuRef = useRef(null);
   const notesRef = useRef(null);
@@ -150,7 +163,84 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   }, [pv]);
 
   // A user without Edit access never sees the HR-only tabs.
-  const visibleTab = !canEdit && tab !== "letters" ? "letters" : tab;
+  const visibleTab = !canEdit && !["letters", "sheet"].includes(tab) ? "letters" : tab;
+
+  // Cycle names and ROWIDs come from Appraisal_Cycle_Master via the existing
+  // payrollcycleapi. A location-specific cycle and an All Locations cycle
+  // can both be used for the selected header location.
+  useEffect(() => {
+    let alive = true;
+    setSheetCyclesLoading(true);
+    payrollCycleRequest("cycles")
+      .then((rows) => {
+        if (alive) setSheetCycles(Array.isArray(rows) ? rows : []);
+      })
+      .catch((error) => {
+        if (alive) setAppraisalError(error?.message || "Could not load appraisal cycles.");
+      })
+      .finally(() => {
+        if (alive) setSheetCyclesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const sheetCycleOptions = useMemo(() => {
+    return sheetCycles
+      .filter((cycle) =>
+        isAllLocations(selectedLocation) ||
+        isAllLocations(cycle.location) ||
+        matchesLocation(cycle.location, selectedLocation),
+      )
+      .slice()
+      .sort((a, b) => {
+        const dateOf = (cycle) => new Date(cycle.start || cycle.effective || 0).getTime() || 0;
+        return dateOf(b) - dateOf(a);
+      });
+  }, [sheetCycles, selectedLocation]);
+
+  useEffect(() => {
+    if (!sheetCycleOptions.length) {
+      setSheetCycleId("");
+      setAppraisalRows([]);
+      setAppraisalCycleInfo(null);
+      return;
+    }
+    setSheetCycleId((current) =>
+      sheetCycleOptions.some((cycle) => String(cycle.id) === String(current))
+        ? current
+        : String(sheetCycleOptions[0].id),
+    );
+  }, [sheetCycleOptions]);
+
+  // Fetch the selected cycle from the real Appraisal_Sheet table whenever
+  // the cycle or the shared header location changes.
+  useEffect(() => {
+    if (visibleTab !== "sheet" || !sheetCycleId) return undefined;
+    let alive = true;
+    setAppraisalLoading(true);
+    setAppraisalError("");
+    setAppraisalRows([]);
+    loadServerSheet(sheetCycleId, isAllLocations(selectedLocation) ? "" : selectedLocation)
+      .then((result) => {
+        if (!alive) return;
+        setAppraisalRows(Array.isArray(result.rows) ? result.rows : []);
+        setAppraisalCycleInfo(result.cycle || null);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setAppraisalRows([]);
+        setAppraisalCycleInfo(null);
+        setAppraisalError(error?.message || "Could not fetch Appraisal_Sheet records.");
+      })
+      .finally(() => {
+        if (alive) setAppraisalLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [visibleTab, sheetCycleId, selectedLocation, sheetRefreshToken]);
 
   /* ---------------- rows ---------------- */
 
@@ -710,10 +800,93 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     </>
   );
 
+  const appraisalSheetPane = (
+    <>
+      <div className="lt-toolbar">
+        <select
+          className="lt-txt"
+          value={sheetCycleId}
+          onChange={(event) => setSheetCycleId(event.target.value)}
+          disabled={sheetCyclesLoading || !sheetCycleOptions.length}
+          aria-label="Appraisal cycle"
+        >
+          {!sheetCycleOptions.length && <option value="">No appraisal cycles available</option>}
+          {sheetCycleOptions.map((cycle) => (
+            <option key={cycle.id} value={cycle.id}>
+              {cycle.name}{cycle.location && !isAllLocations(cycle.location) ? ` - ${cycle.location}` : ""}
+            </option>
+          ))}
+        </select>
+        <span className="lt-sp" />
+        <button
+          type="button"
+          className="lt-btn"
+          disabled={!sheetCycleId || appraisalLoading}
+          onClick={() => setSheetRefreshToken((current) => current + 1)}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {appraisalError && <div className="lt-note warn lt-in-note">{appraisalError}</div>}
+      {appraisalCycleInfo && (
+        <div className="lt-foot2">
+          <span><b>Cycle:</b> {appraisalCycleInfo.name || "—"}</span>
+          <span><b>Location:</b> {isAllLocations(selectedLocation) ? (appraisalCycleInfo.location || "All Locations") : selectedLocation}</span>
+          <span><b>Employees:</b> {appraisalRows.length}</span>
+        </div>
+      )}
+      <div className="lt-content" style={{ padding: "10px 12px", overflow: "auto" }}>
+        {appraisalLoading ? (
+          <div className="lt-mut">Loading Appraisal_Sheet records…</div>
+        ) : !sheetCycleId ? (
+          <div className="lt-mut">Select an appraisal cycle to view its generated sheet.</div>
+        ) : appraisalRows.length === 0 ? (
+          <div className="lt-mut">
+            No Appraisal_Sheet records found for this cycle and location. Make sure Generate Appraisal Sheet has completed successfully.
+          </div>
+        ) : (
+          <table className="emx-table" style={{ width: "max-content", minWidth: "100%" }}>
+            <thead>
+              <tr>
+                {["Employee ID", "Employee Name", "Location", "Designation", "Current Annual Base Pay", "Hike Amount", "Hike %", "Promotion", "Performance Bonus", "Retention Bonus", "Target PB Next Year", "Status"].map((label) => (
+                  <th key={label}><div style={{ padding: "8px" }}>{label}</div></th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {appraisalRows.map((row) => {
+                const values = row.v || {};
+                const money = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+                return (
+                  <tr key={`${row.id}-${row.cycle}`}>
+                    <td>{row.id || "—"}</td>
+                    <td>{row.name || "—"}</td>
+                    <td>{values.emLocation || "—"}</td>
+                    <td>{values.designation || "—"}</td>
+                    <td style={{ textAlign: "right" }}>{money(values.basePay)}</td>
+                    <td style={{ textAlign: "right" }}>{money(values.hikeAmt)}</td>
+                    <td style={{ textAlign: "right" }}>{Number(values.hikePct || 0).toFixed(2)}%</td>
+                    <td>{values.promo || "No"}</td>
+                    <td style={{ textAlign: "right" }}>{money(values.newPB)}</td>
+                    <td style={{ textAlign: "right" }}>{money(values.newRB)}</td>
+                    <td style={{ textAlign: "right" }}>{money(values.tpbNext)}</td>
+                    <td><span className={`lt-chip ${row.status === "Active" ? "so" : "sg"}`}>{row.status || "Active"}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="lt">
       <div className="lt-tabrow">
         <button type="button" className={"lt-tab" + (visibleTab === "letters" ? " on" : "")} onClick={() => changeTab("letters")}>Letters</button>
+        <button type="button" className={"lt-tab" + (visibleTab === "sheet" ? " on" : "")} onClick={() => changeTab("sheet")}>Appraisal Sheet</button>
         {canEdit &&
           CONFIG_TABS.map(([k, label]) => (
             <button key={k} type="button" className={"lt-tab" + (visibleTab === k ? " on" : "")} onClick={() => changeTab(k)}>
@@ -780,6 +953,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       <div className="lt-body">
         <div className="lt-pane">
           {visibleTab === "letters" && lettersPane}
+          {visibleTab === "sheet" && appraisalSheetPane}
           {visibleTab === "audit" && canEdit && (
             <AuditTab S={S} onBack={() => changeTab("letters")} onExport={(rows) => exportGrid(AUDIT_DEFS, rows, "Letters_Audit_Trail", "Audit")} />
           )}

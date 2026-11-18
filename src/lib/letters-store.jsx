@@ -18,7 +18,7 @@ import * as api from "./letters-api";
  * only talk to this file, so they do not change. See docs/LETTERS.md.
  */
 
-export const LETTERS_DEMO = true;
+export const LETTERS_DEMO = false;
 
 const STORE_KEY = "letters_demo_v2";
 
@@ -33,13 +33,26 @@ function loadSaved() {
       ["cycles", "sheet", "letters", "audit", "rules", "fields", "tpls"].every((k) => Array.isArray(s[k])) &&
       s.sign &&
       s.generated;
-    return ok ? s : null;
+    if (!ok) return null;
+
+    // Remove demo/sample cycles and their dependent rows from older browser
+    // storage. Real Appraisal_Sheet records are fetched from lettersapi and
+    // must not be mixed with the locally seeded demo sheet or sample letters.
+    const sampleCycleIds = new Set(
+      s.cycles.filter((cycle) => cycle?.sample).map((cycle) => String(cycle.id)),
+    );
+    s.cycles = s.cycles.filter((cycle) => !cycle?.sample);
+    s.sheet = s.sheet.filter((row) => !sampleCycleIds.has(String(row?.cycle)));
+    s.letters = s.letters.filter((letter) => !sampleCycleIds.has(String(letter?.cycle)));
+    sampleCycleIds.forEach((id) => delete s.generated[id]);
+
+    return s;
   } catch {
     return null;
   }
 }
 
-let S = loadSaved() || core.createState();
+let S = loadSaved() || core.createState({ sample: false });
 let version = 0;
 const listeners = new Set();
 
@@ -90,6 +103,7 @@ function run(actor, fn) {
 // { status: "idle" | "loading" | "ok" | "error", message }
 let sync = { status: "idle", message: "" };
 let syncing = null;
+let syncRequestId = 0;
 
 function setSync(next) {
   sync = next;
@@ -99,22 +113,35 @@ function setSync(next) {
 
 // Load the templates held on the server into the state. Call it when the
 // Letters screen opens; {force:true} is the Retry button.
-export function syncTemplates({ force = false } = {}) {
+export function syncTemplates({ force = false, location = "" } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  if (syncing && !force) return syncing;
+  const requestedLocation = ["", "all", "all locations"].includes(String(location || "").trim().toLowerCase())
+    ? ""
+    : String(location).trim();
+  if (syncing && !force && syncing.location === requestedLocation) return syncing.promise;
+
+  const requestId = ++syncRequestId;
   setSync({ status: "loading", message: "" });
-  syncing = api
-    .loadServerTemplates()
+  const promise = api
+    .loadServerTemplates(requestedLocation)
     .then(({ templates, problems }) => {
+      // A slower response for a previous location must not overwrite the
+      // templates requested for the location currently selected in the UI.
+      if (requestId !== syncRequestId) return;
       run("HR", (st) => core.applyServerTemplates(st, templates));
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });
       else setSync({ status: "ok", message: "" });
     })
-    .catch((error) => setSync({ status: "error", message: error?.message || "The templates could not be loaded." }))
+    .catch((error) => {
+      if (requestId === syncRequestId) {
+        setSync({ status: "error", message: error?.message || "The templates could not be loaded." });
+      }
+    })
     .finally(() => {
-      syncing = null;
+      if (syncing && syncing.id === requestId) syncing = null;
     });
-  return syncing;
+  syncing = { id: requestId, location: requestedLocation, promise };
+  return promise;
 }
 
 /* Publish a template: the server first (Word file, content, index row), then
