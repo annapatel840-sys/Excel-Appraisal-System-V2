@@ -2744,6 +2744,7 @@ export default function DelegationScreen({
   const resolveName = useMemo(() => makeResolver(resolverRows), [resolverRows]);
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
+  const [activeCycleStatus, setActiveCycleStatus] = useState("");
   // The employee whose row was edited last. Kept in this browser's storage
   // (per cycle) so the highlight survives refresh and re-login, and moves
   // to the next employee that is edited.
@@ -2955,6 +2956,7 @@ export default function DelegationScreen({
   const editLocked =
     locked ||
     showingSaved ||
+    (!isHR && activeCycleStatus.trim().toLowerCase() === "closed") ||
     (!isHR && !isTechEdUser && !access.canScreen("delegation", "edit")) ||
     (!isHR && !isTechEdUser && !access.canAction("delegateRequest"));
 
@@ -3007,11 +3009,22 @@ export default function DelegationScreen({
         const cycleLocation = String(cycle.location || "").trim().toLowerCase();
         return status === "active" && !archived && !hidden &&
           (allLocationsSelected || cycleLocation === String(selectedLocation).trim().toLowerCase());
-      });
+      }) || (Array.isArray(cycles) ? cycles : [])
+        .filter((cycle) => {
+          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+          const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
+          const hidden = ["true", "1", "yes"].includes(String(cycle.hidden ?? "").trim().toLowerCase());
+          const cycleLocation = String(cycle.location || "").trim().toLowerCase();
+          return status === "closed" && !archived && !hidden &&
+            (allLocationsSelected || cycleLocation === String(selectedLocation).trim().toLowerCase());
+        })
+        .sort((a, b) => String(b.end_date || b.effective_date || b.start_date || "")
+          .localeCompare(String(a.end_date || a.effective_date || a.start_date || "")))[0] || null;
       if (!active) {
         freshApplied = true;
         setActiveCycleId("");
         setActiveCycleName("");
+        setActiveCycleStatus("");
         setRows([]);
         return;
       }
@@ -3027,6 +3040,7 @@ export default function DelegationScreen({
       );
       setActiveCycleId(cycleId);
       setActiveCycleName(cycleName);
+      setActiveCycleStatus(String(active.status || active.cycle_status || ""));
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
