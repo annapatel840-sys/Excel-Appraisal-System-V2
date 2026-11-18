@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
@@ -118,7 +117,6 @@ const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
   const canAudit = useAccess().canAction("viewAudit");
-  const [selectedLocation] = useSelectedLocation();
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
   const payrollSnapshotKey = masterSnapshotKey(snapshotScope, "payroll");
@@ -272,9 +270,8 @@ export function PayrollDataPage() {
   // Location / search / cycle first, in the default order. The column filters and
   // sorts (the Appraisal Sheet's header filter) then work on top of that.
   const baseRows = useMemo(() => {
-    // Show all years and cycles, but only for employees whose current
-    // Employee Master location matches the selected location.
-    const list = filterByLocation(stored, selectedLocation, (row) => row.location).filter((r) => {
+    // Payroll Master is organization-wide: show every row stored in Payroll_Data.
+    const list = stored.filter((r) => {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
@@ -287,7 +284,7 @@ export function PayrollDataPage() {
       if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
       return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
     });
-  }, [stored, selectedLocation, search, cycleFilter, cycleOrder]);
+  }, [stored, search, cycleFilter, cycleOrder]);
 
   const filterColumns = useMemo(
     () =>
