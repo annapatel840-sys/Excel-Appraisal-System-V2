@@ -1135,9 +1135,6 @@
 
 //   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
 //   const [rows, setRows] = useState([]);
-  const [cycleStatus, setCycleStatus] = useState("");
-  const readOnlyCycle = cycleStatus.toLowerCase() === "closed" && !isHRUser;
-
 //   // While the rows on screen come from the browser's saved copy (see
 //   // roster-snapshot.js) and the fresh roster has not arrived yet, edits are
 //   // refused: they would be made against values that may have changed.
@@ -3520,6 +3517,8 @@ export function AppraisalProvider({ children }) {
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
+  const [cycleStatus, setCycleStatus] = useState("");
+  const readOnlyCycle = cycleStatus.toLowerCase() === "closed" && !isHRUser;
 
   // While the rows on screen come from the browser's saved copy (see
   // roster-snapshot.js) and the fresh roster has not arrived yet, edits are
