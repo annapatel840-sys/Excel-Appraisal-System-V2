@@ -95,6 +95,7 @@ function run(actor, fn) {
 let sync = { status: "idle", message: "" };
 let syncing = null;
 let syncedFor = null; // the location the loaded templates belong to
+let loadedFor = null; // location whose templates are already in the state
 let loadFailed = false; // the last template load failed outright (not just one unreadable template)
 
 function setSync(next) {
@@ -109,12 +110,16 @@ export function syncTemplates({ force = false, location = "" } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
   const loc = isAll(location) ? "" : String(location).trim();
   if (syncing && !force && syncedFor === loc) return syncing;
+  // Already loaded for this location: do not hit the server again (every call is a cold-start risk).
+  if (!force && loadedFor === loc && sync.status === "ok") return Promise.resolve();
   syncedFor = loc;
+  loadedFor = null;
   setSync({ status: "loading", message: "" });
   syncing = api
     .loadServerTemplates(loc)
     .then(({ templates, problems }) => {
       loadFailed = false;
+      loadedFor = problems.length ? null : loc;
       run("HR", (st) => {
         // Only this location's templates are kept: drop the server templates of
         // another location that an earlier load left in the state.
@@ -126,6 +131,7 @@ export function syncTemplates({ force = false, location = "" } = {}) {
     })
     .catch((error) => {
       loadFailed = true;
+      loadedFor = null;
       setSync({ status: "error", message: error?.message || "The templates could not be loaded." });
     })
     .finally(() => {
@@ -206,7 +212,7 @@ export async function generateLettersForCycle(cycle, actor) {
     // Live: read the cycle's real Appraisal Sheet rows (and make sure this
     // location's templates are loaded) before making any letter.
     const location = cycle.location || "";
-    await syncTemplates({ force: true, location });
+    await syncTemplates({ location });
     // Only a failed load stops Generate; one unreadable template just means that template makes no letter.
     if (loadFailed) throw new Error(sync.message || "The templates could not be loaded.");
     const { cycle: srv, rows, skipped } = await api.loadServerSheet(cycle.id, location);

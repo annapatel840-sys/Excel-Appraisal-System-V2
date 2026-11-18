@@ -773,7 +773,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         <div className="lt-note warn">
           <span>Templates could not be loaded from the server: {sync.message} The built-in samples are shown.</span>
           <span className="sp">
-            <button type="button" className="lt-btn sm" onClick={() => store.syncTemplates({ force: true })}>Retry</button>
+            <button type="button" className="lt-btn sm" onClick={() => store.syncTemplates({ force: true, location: selectedLocation })}>Retry</button>
           </span>
         </div>
       )}

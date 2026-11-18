@@ -15,7 +15,12 @@ export const MAX_DOCX_BYTES = 5 * 1024 * 1024;
 
 const API_URL = catalystFunctionUrl("lettersapi");
 
-async function request({ method = "GET", body, params } = {}) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Catalyst ends a slow request (~30 s: "EXECUTION_TIME_EXCEEDED") when the function starts cold.
+// A read is safe to repeat, and the second attempt reaches a warm function, so reads retry once.
+const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+
+async function request({ method = "GET", body, params } = {}, attempt = 0) {
   const url = new URL(API_URL);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
   const response = await catalystFetch(url.toString(), {
@@ -24,6 +29,10 @@ async function request({ method = "GET", body, params } = {}) {
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
   });
+  if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 2) {
+    await sleep(1500);
+    return request({ method, body, params }, attempt + 1);
+  }
   const result = await response.json().catch(() => null);
   if (!response.ok || result?.success !== true) {
     throw new Error(result?.message || `Letters request failed (${response.status}).`);
