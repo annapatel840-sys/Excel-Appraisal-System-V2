@@ -77,6 +77,7 @@ async function buildPlan(t){
  // Build a separate full-employee index only for the Australia repair path.
  const australiaPayrollByEmployeeCycle=indexEmployeeCycle(data.payroll,"emp_id","appraisal_cycle_name",false,true);
  const australiaFeedbackByEmployeeCycle=indexEmployeeCycle(data.feedback,"emp_ID","appraisal_cycle_name",true,true);
+ const australiaFeedbackAnyByEmployeeCycle=indexEmployeeCycle(data.feedback,"emp_ID","appraisal_cycle_name",false,true);
  const cycleLocation=c=>norm(c?.location||c?.cycle_location||c?.cycleLocation);
  const isAustraliaCycle=c=>{
   const location=cycleLocation(c);
@@ -176,7 +177,9 @@ async function buildPlan(t){
     }else if(sourceGroup)issue(issues,"ambiguous_australia_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"Latest eligible Australia/shared Closed cycle has multiple Payroll rows; no source was selected.");
     else issue(issues,"missing_australia_payroll_source","payroll",{emp_id:empId,cycle_id:cid},"No Australia/shared Closed-cycle Payroll source exists; no values were fabricated.");
    }else if(pNow.length>1)issue(issues,"duplicate_australia_active_payroll","payroll",pNow[1],"Multiple Payroll rows already exist in this Australia Active cycle.");
-   const fNow=australiaFeedbackByEmployeeCycle.get(eid+"|"+cid)||[];
+   // Count every existing Australia feedback row, even if its rating fields
+   // are blank. The four manually maintained rows must never be duplicated.
+   const fNow=australiaFeedbackAnyByEmployeeCycle.get(eid+"|"+cid)||[];
    if(!fNow.length){
     const sourceGroup=historyCycles.map(c=>({cycle:c,rows:australiaFeedbackByEmployeeCycle.get(eid+"|"+rid(c))||[]})).find(x=>x.rows.length);
     if(sourceGroup&&sourceGroup.rows.length===1){
