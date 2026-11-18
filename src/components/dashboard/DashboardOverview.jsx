@@ -515,10 +515,22 @@ export function DashboardOverview() {
       u.name || u.display_name || u.displayName || [u.first_name, u.last_name].filter(Boolean).join(" ") || "",
     ).trim();
     if (uid && uname) return uname.toLowerCase().startsWith(uid.toLowerCase()) ? uname : `${uid} - ${uname}`;
+    // The complete employee roster (every location) knows this login's employee ID.
+    const norm = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const roster = Array.isArray(budgetCtx.employeeRows) ? budgetCtx.employeeRows : [];
+    const mail = norm(u.email);
+    const emp =
+      (mail && roster.find((e) => [e.email, e.email_id, e.emailId].some((x) => norm(x) === mail))) ||
+      (uname && roster.find((e) => [e.emp_name, e.employee_name, e.name].some((x) => norm(x) === norm(uname))));
+    if (emp) {
+      const eid = String(emp.emp_id || emp.employee_id || emp.employeeId || "").trim();
+      const ename = String(emp.emp_name || emp.employee_name || emp.name || uname).trim();
+      if (eid) return `${eid} - ${ename}`;
+    }
     let cached = "";
     try { cached = window.sessionStorage.getItem(selfKey) || ""; } catch { /* optional */ }
     return cached || uid || uname;
-  }, [catalystUser, selfKey]);
+  }, [catalystUser, selfKey, budgetCtx.employeeRows]);
 
   const L0 = levels[0];
   const L1 = levels[1];
