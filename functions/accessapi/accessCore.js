@@ -384,12 +384,37 @@ async function activeCycleIds(zcql) {
     [true, 1, "true", "1", "yes"].includes(
       typeof value === "string" ? value.trim().toLowerCase() : value,
     );
-  return rows
-    .filter((row) =>
-      String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
-      !isTruthyFlag(row.archived) &&
-      !isTruthyFlag(row.hidden)
-    )
+  const available = rows.filter((row) => !isTruthyFlag(row.archived) && !isTruthyFlag(row.hidden));
+  const locationOf = (row) => {
+    const value = String(row.location || row.cycle_location || row.cycleLocation || "").trim().toLowerCase();
+    if (!value || ["all", "all locations", "alllocations"].includes(value)) return "*";
+    const key = value.replace(/[^a-z0-9]/g, "");
+    if (["australia", "au", "aus"].includes(key)) return "australia";
+    if (["india", "in"].includes(key)) return "india";
+    if (["unitedstates", "unitedstatesofamerica", "us", "usa"].includes(key)) return "unitedstates";
+    return key;
+  };
+  const active = available.filter((row) =>
+    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase()
+  );
+  // While any location remains Active, keep its normal delegation. For a
+  // location whose cycle has been Closed, use only that location's latest
+  // Closed cycle so its Tech-ED / Comp Manager can still read the saved sheet.
+  const activeLocations = new Set(active.map(locationOf));
+  const globalActive = activeLocations.has("*");
+  const latestClosedByLocation = new Map();
+  if (!globalActive) {
+    available.filter((row) => String(row[c.statusColumn] || "").trim().toLowerCase() === "closed")
+      .forEach((row) => {
+        const location = locationOf(row);
+        if (activeLocations.has(location)) return;
+        const current = latestClosedByLocation.get(location);
+        const rank = String(row.end_date || row.effective_date || row.start_date || row[c.nameColumn] || "");
+        const currentRank = current ? String(current.end_date || current.effective_date || current.start_date || current[c.nameColumn] || "") : "";
+        if (!current || rank > currentRank) latestClosedByLocation.set(location, row);
+      });
+  }
+  return [...active, ...latestClosedByLocation.values()]
     .map((row) => String(row[c.idColumn] || "").trim())
     .filter(Boolean);
 }
@@ -704,7 +729,7 @@ function scopeOf(base, ro, a, person) {
   });
   return { all: false, cycleId: base.cycleId, cycleIds: base.cycleIds || [], empIds, rowIds };
 }
-async function get(cat, opts) {
+async function get(cat, opts, context) {
   // getCurrentUser() throws when the request carries no user credentials.
   let u = null;
   try { u = await cat.userManagement().getCurrentUser(); } catch (e) { u = null; }
@@ -725,8 +750,24 @@ async function get(cat, opts) {
   const a = accessOf(base.C, base.roles, base.m, person, b.role, ovs);
   if (!a.role) throw fail(403, 'You have no access to the Compensation tool. Please contact HR.');
   const ro = base.roles.find((r) => r.key === a.role);
+  const requestedCycleId = String(context?.cycleId || context?.cycle_id || "").trim();
+  let cycleStatus = "";
+  let cycleArchived = false;
+  if (requestedCycleId) {
+    const cycleRows = await selectAll(z, SETTINGS.cycle.table);
+    const selectedCycle = cycleRows.find((row) =>
+      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId ||
+      String(row[SETTINGS.cycle.nameColumn] || "").trim().toLowerCase() === requestedCycleId.toLowerCase()
+    );
+    if (selectedCycle) {
+      cycleStatus = String(selectedCycle[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
+      cycleArchived = bool(selectedCycle.archived);
+    }
+  }
   return {
     version: base.version,
+    cycleStatus,
+    cycleArchived,
     user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
     screens: a.screens, locationScreens: a.locScreens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
@@ -737,10 +778,10 @@ async function get(cat, opts) {
    Enforced (ACCESS_ENFORCE='true'): returns access with enforced:true, dryRun:false; rethrows HttpError.
    Dry run: never throws an HttpError. Returns the access with enforced:false, dryRun:true, or
    { dryRun:true, enforced:false, denied:HttpError } when the person would be refused (logged). */
-async function check(cat, opts) {
+async function check(cat, opts, context) {
   const enforced = isEnforced();
   try {
-    const a = await get(cat, opts);
+    const a = await get(cat, opts, context);
     return Object.assign(a, { enforced, dryRun: !enforced });
   } catch (err) {
     if (enforced) throw err;
@@ -763,7 +804,17 @@ function guard(a, fn) {
 }
 
 const RANK = { none: 0, view: 1, edit: 2 };
-function requireScreen(a, key, level) { if (RANK[a.screens[key] || 'none'] < RANK[level || 'view']) throw new HttpError(403, 'You do not have access to this screen.'); }
+function requireScreen(a, key, level) {
+  if (RANK[a.screens[key] || 'none'] < RANK[level || 'view'])
+    throw new HttpError(403, 'You do not have access to this screen.');
+  if (
+    level === 'edit' &&
+    ['techEd', 'compMgr'].includes(a.role) &&
+    (String(a.cycleStatus || '').toLowerCase() === 'closed' || a.cycleArchived)
+  ) {
+    throw new HttpError(403, 'This appraisal cycle is Closed. Tech-ED and Comp Manager access is read-only.');
+  }
+}
 function requireAction(a, key) { if (!a.actions[key]) throw new HttpError(403, 'You are not allowed to do this.'); }
 /* canEdit(a, fieldKey) — also accepts an Appraisal_Sheet column name. */
 function canEdit(a, fieldKey) {
