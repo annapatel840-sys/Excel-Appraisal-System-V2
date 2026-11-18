@@ -4,6 +4,7 @@ on:
     branches:
       - fix/temporary-data-reconciliation-utility-v2
       - fix/reconciliation-duplicate-identity
+      - fix/lt-only-data-reconciliation
     paths:
       - "functions/datareconciliationapi/**"
       - "src/pages/SettingsPage.jsx"
