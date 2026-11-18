@@ -751,7 +751,8 @@ async function get(cat, opts, context) {
   if (requestedCycleId) {
     const cycleRows = await selectAll(z, SETTINGS.cycle.table);
     const selectedCycle = cycleRows.find((row) =>
-      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId
+      String(row.ROWID || row.rowid || row.id || "").trim() === requestedCycleId ||
+      String(row[SETTINGS.cycle.nameColumn] || "").trim().toLowerCase() === requestedCycleId.toLowerCase()
     );
     if (selectedCycle) {
       cycleStatus = String(selectedCycle[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
