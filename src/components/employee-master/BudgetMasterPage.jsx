@@ -3610,8 +3610,12 @@ function HRApplyBudget() {
   const { rows: dashboardRows = [], readOnlyCycle = false } = useAppraisal();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
+  const isHRBudgetUser =
+    ["hr", "humanresources", "hroperation"].includes(
+      String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, ""),
+    );
   const canConfig =
-    !readOnlyCycle &&
+    (isHRBudgetUser || !readOnlyCycle) &&
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("changeBudgetConfig");
   const canAudit = access.canAction("viewAudit");
