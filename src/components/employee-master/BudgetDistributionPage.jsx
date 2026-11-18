@@ -370,17 +370,32 @@ export function BudgetDistributionPage() {
           );
           return status === "active" && !archived && !hidden;
         });
-        const active =
+        const selectedActive =
           activeCycles.find((cycle) =>
             String(cycle.id || cycle.appraisal_cycle_id || cycle.cycle_id || cycle.ROWID || "") === String(activeBudgetCycleId || ""),
           ) ||
           activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation)) ||
           null;
-        const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
-        setActiveCycleId(activeId);
-        setCycleLabel(active
-          ? String(active.name || active.cycle_name || active.appraisal_year || "Active cycle unavailable")
-          : "No active cycle");
+        const selectedClosed = all
+          .filter((cycle) => {
+            const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+            const archived = [true, 1, "true", "1", "yes"].includes(
+              typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+            );
+            const hidden = [true, 1, "true", "1", "yes"].includes(
+              typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+            );
+            return status === "closed" && !archived && !hidden && matchesCycleLocation(cycle, selectedLocation);
+          })
+          .sort((a, b) => String(b.end_date || b.effective_date || b.start_date || "")
+            .localeCompare(String(a.end_date || a.effective_date || a.start_date || "")))[0] || null;
+        const selected = selectedActive || selectedClosed;
+        const selectedId = String(selected?.id || selected?.appraisal_cycle_id || selected?.cycle_id || selected?.ROWID || "");
+        setActiveCycleId(selectedId);
+        setCycleLabel(selected
+          ? String(selected.name || selected.cycle_name || selected.appraisal_year || "Cycle unavailable") +
+            (String(selected.status || "").toLowerCase() === "closed" ? " · Closed" : "")
+          : "No available cycle");
       }).catch((cycleError) => {
         console.error("Failed to load Budget Distribution cycle:", cycleError);
         if (mounted) {
@@ -400,7 +415,7 @@ export function BudgetDistributionPage() {
         window.removeEventListener("appraisal:cycle-updated", loadCycle);
       }
     };
-  // Cycle refresh is event-driven; budget row changes must not clear the active
+  // Cycle refresh is event-driven; budget row changes must not clear the selected
   // cycle label or trigger redundant cycle requests.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, activeBudgetCycleId]);
