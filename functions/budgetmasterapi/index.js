@@ -4260,75 +4260,58 @@ module.exports = async function (req, res) {
     const resource = String(body.resource || "master").toLowerCase();
     let id = String(body.id || "").trim();
 
-    // Budget writes must always target the Active cycle. Historical budget rows
-    // stay stored for reference, but closed/archived cycles are read-only.
+    // HR may manage any non-archived cycle, including Closed cycles.
+    // Tech-Ed and Comp Manager may edit only an Active cycle.
     const cycleRowsForWrite = await getAllRows(app, "Appraisal_Cycle_Master");
-    const activeCyclesForWrite = cycleRowsForWrite.filter((cycle) => {
-      const status = String(
-        firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
-      )
-        .trim()
-        .toLowerCase();
-      const archived = [true, 1, "true", "1", "yes"].includes(
-        typeof cycle.archived === "string"
-          ? cycle.archived.trim().toLowerCase()
-          : cycle.archived,
-      );
-      const hidden = [true, 1, "true", "1", "yes"].includes(
-        typeof cycle.hidden === "string"
-          ? cycle.hidden.trim().toLowerCase()
-          : cycle.hidden,
-      );
-      return status === "active" && !archived && !hidden;
-    });
-    // Resolve the write target from the cycle explicitly supplied by the
-    // location-scoped Budget screen. Never fall through to another location's
-    // first Active cycle when the requested cycle is missing or inactive.
     const budgetMasterRowsForWrite = await getAllRows(app, "Budget_Master");
     const budgetCycleRefsForWrite = new Set(
       budgetMasterRowsForWrite
         .map((row) => cycleReference(value(row, "appraisal_cycle_id")).toLowerCase())
         .filter(Boolean),
     );
+    const requestedCycleId = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
+    const requestedCycleKey = requestedCycleId.toLowerCase();
     const cycleHasBudgetMasterForWrite = (cycle) =>
       [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
         budgetCycleRefsForWrite.has(String(ref || "").trim().toLowerCase()),
       );
-    const requestedCycleId = String(
-      body.appraisal_cycle_id || body.cycle_id || "",
-    ).trim();
-    const requestedCycleKey = requestedCycleId.toLowerCase();
-    const activeCycleForWrite = requestedCycleId
-      ? activeCyclesForWrite.find((cycle) =>
+    const isArchivedForWrite = (cycle) => {
+      const status = String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase();
+      const archived = firstValue(cycle, ["archived", "is_archived", "isArchived"]);
+      const hidden = firstValue(cycle, ["hidden", "is_hidden"]);
+      return status === "archived" ||
+        [true, 1, "true", "1", "yes"].includes(typeof archived === "string" ? archived.trim().toLowerCase() : archived) ||
+        [true, 1, "true", "1", "yes"].includes(typeof hidden === "string" ? hidden.trim().toLowerCase() : hidden);
+    };
+    const selectedCycleForWrite = requestedCycleId
+      ? cycleRowsForWrite.find((cycle) =>
           [cycleIdOf(cycle), cycleNameOf(cycle)].some(
             (ref) => String(ref || "").trim().toLowerCase() === requestedCycleKey,
           ),
         ) || null
-      : activeCyclesForWrite.find(cycleHasBudgetMasterForWrite) || null;
-    const activeCycleIdForWrite = activeCycleForWrite
-      ? cycleIdOf(activeCycleForWrite)
-      : "";
-    if (
-      !activeCycleIdForWrite ||
-      (!cycleHasBudgetMasterForWrite(activeCycleForWrite) && resource !== "master")
-    ) {
-      throw new access.HttpError(
-        409,
-        "Budget changes require the selected location's Active cycle and Budget_Master allocation.",
-      );
+      : cycleRowsForWrite.find((cycle) =>
+          String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "active" &&
+          cycleHasBudgetMasterForWrite(cycle),
+        ) || null;
+    const selectedCycleIdForWrite = selectedCycleForWrite ? cycleIdOf(selectedCycleForWrite) : "";
+    const selectedCycleStatusForWrite = String(firstValue(selectedCycleForWrite || {}, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase();
+    if (!selectedCycleForWrite || isArchivedForWrite(selectedCycleForWrite)) {
+      throw new access.HttpError(409, "Select a valid, non-archived appraisal cycle.");
     }
-    const activeCycleNameForWrite = cycleNameOf(activeCycleForWrite)
-      .trim()
-      .toLowerCase();
+    if (selectedCycleStatusForWrite !== "active" && !isHR(a.user)) {
+      throw new access.HttpError(403, "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.");
+    }
+    if (!cycleHasBudgetMasterForWrite(selectedCycleForWrite) && resource !== "master") {
+      throw new access.HttpError(409, "The selected cycle has no Budget Master allocation.");
+    }
+    const activeCycleIdForWrite = selectedCycleIdForWrite;
+    const activeCycleNameForWrite = cycleNameOf(selectedCycleForWrite).trim().toLowerCase();
     if (
       requestedCycleId &&
       requestedCycleId !== activeCycleIdForWrite &&
       requestedCycleId.toLowerCase() !== activeCycleNameForWrite
     ) {
-      throw new access.HttpError(
-        409,
-        "Budget changes are allowed only for the Active appraisal cycle.",
-      );
+      throw new access.HttpError(409, "The budget row does not belong to the selected appraisal cycle.");
     }
     if (id) {
       const tableId =
@@ -4364,7 +4347,7 @@ module.exports = async function (req, res) {
         if (!target || !matchesActiveCycle) {
           throw new access.HttpError(
             409,
-            "This budget allocation belongs to a different or closed appraisal cycle.",
+            "This budget allocation belongs to a different appraisal cycle.",
           );
         }
       }
