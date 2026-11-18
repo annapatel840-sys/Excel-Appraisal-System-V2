@@ -2927,7 +2927,9 @@ function ownerName(value, employees = []) {
     ).trim();
     return id && name ? id + " - " + name : name || id || raw;
   }
-  return pair ? pair[2].trim() : raw;
+  // Not in the roster (for example an employee who has left): keep the ID with
+  // the name so the Tech-ED always reads "EMP ID - Name".
+  return pair ? pair[1].trim() + " - " + pair[2].trim() : raw;
 }
 
 function amount(value) {
@@ -5212,7 +5214,7 @@ function HRApplyBudget() {
                         <td className="bm-n">
                           {money(rowOriginal(r))}
                         </td>
-                        <td className="bm-n">
+                        <td className="bm-n bm-calc">
                           {money(r.updated)}
                         </td>
                         <td className="bm-n">
