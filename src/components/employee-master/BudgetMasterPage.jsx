@@ -3282,7 +3282,6 @@ const HR_COLS = [
   ["Tech-ED", false, true],
   ["Budget Base", true, true],
   ["% Applied", false, true],
-  ["Budget", true, true],
   ["Original", true, true],
   ["Updated", true, true],
   ["Original Count", true, true],
@@ -3297,7 +3296,6 @@ const HR_W = {
   name: 210,
   base: 120,
   pct: 130,
-  budget: 120,
   original: 120,
   updated: 120,
   origCount: 120,
@@ -4841,7 +4839,6 @@ function HRApplyBudget() {
     { key: "name", label: "Tech-ED", kind: "text", get: (r) => String(r.name || "") },
     { key: "base", label: "Budget Base", kind: "number", num: true, get: (r) => blankable(r.base) },
     { key: "pct", label: "% Applied", kind: "number", get: (r) => blankable(previewPct(r)) },
-    { key: "budget", label: "Budget", kind: "number", num: true, get: (r) => blankable(previewBudget(r)) },
     { key: "original", label: "Original", kind: "number", num: true, get: (r) => blankable(rowOriginal(r)) },
     { key: "updated", label: "Updated", kind: "number", num: true, get: (r) => blankable(r.updated) },
     { key: "origCount", label: "Original Count", kind: "number", num: true, get: (r) => blankable(r.team0) },
@@ -5208,9 +5205,6 @@ function HRApplyBudget() {
                             </div>
                           ) : null}
                         </td>
-                        <td className="bm-n bm-calc">
-                          {money(previewBudget(r))}
-                        </td>
                         <td className="bm-n">
                           {money(rowOriginal(r))}
                         </td>
@@ -5313,7 +5307,6 @@ function HRApplyBudget() {
                   <td>Total</td>
                   <td className="bm-n">{money(visibleTotal.base)}</td>
                   <td></td>
-                  <td className="bm-n">{money(visibleTotal.budget)}</td>
                   <td className="bm-n">{money(visibleTotal.original)}</td>
                   <td className="bm-n">{money(visibleTotal.updated)}</td>
                   <td className="bm-n">{visibleTotal.team0}</td>
