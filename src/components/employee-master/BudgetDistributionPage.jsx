@@ -741,7 +741,19 @@ export function BudgetDistributionPage() {
                         <tr className="tech">
                           <td><b>Tech-ED</b></td>
                           <td>
-                            <div className="owner" title="Right-click to view Comp Manager details" onContextMenu={(event) => { event.preventDefault(); setOpen((current) => ({ ...current, [key]: !expanded })); }}>{owner || row.tech_ed_id || "—"}</div>
+                            <div
+                              className="owner"
+                              title="Right-click or double-click to view Comp Manager details"
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                setOpen((current) => ({ ...current, [key]: !current[key] }));
+                              }}
+                              onDoubleClick={() => {
+                                setOpen((current) => ({ ...current, [key]: !current[key] }));
+                              }}
+                            >
+                              {owner || row.tech_ed_id || "—"}
+                            </div>
                             {owner && owner !== row.tech_ed_id ? <div className="muted-small">{row.tech_ed_id}</div> : null}
                           </td>
                           <td className="num">{pct(row.budget_percentage)}</td>
@@ -815,7 +827,7 @@ export function BudgetDistributionPage() {
                                       <div className="label" style={{ marginTop: 12, marginBottom: 6 }}>Comp Manager allocations ({managerRows.length})</div>
                                       {managerRows.length ? (
                                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                                          <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilised</th></tr></thead>
+                                          <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilisation %</th></tr></thead>
                                           <tbody>{managerRows.map((manager) => (
                                             <tr key={manager.id || manager.comp_manager}>
                                               <td>{managerLabel(manager.comp_manager, manager.comp_manager_display)}</td>
@@ -823,7 +835,11 @@ export function BudgetDistributionPage() {
                                               <td align="right">{money(manager.budget_base)}</td>
                                               <td align="right">{money(manager.calculated_budget)}</td>
                                               <td align="right">{money(manager.applied_budget)}</td>
-                                              <td align="right">{money(manager.total_utilization)}</td>
+                                              <td align="right">{pct(
+                                                Number(manager.applied_budget) > 0
+                                                  ? (Number(manager.total_utilization) / Number(manager.applied_budget)) * 100
+                                                  : 0
+                                              )}</td>
                                             </tr>
                                           ))}</tbody>
                                         </table>
