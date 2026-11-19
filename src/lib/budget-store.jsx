@@ -1411,12 +1411,12 @@ export function BudgetProvider({ children }) {
 }
 
 // Using budget data starts the provider's load (once).
-export function useBudget() {
+export function useBudget({ requestOnMount = true } = {}) {
   const ctx = useContext(BudgetContext);
   const requestData = ctx?.requestData;
   useEffect(() => {
-    if (requestData) requestData();
-  }, [requestData]);
+    if (requestOnMount && requestData) requestData();
+  }, [requestData, requestOnMount]);
   if (!ctx) throw new Error("useBudget must be used within BudgetProvider");
   return ctx;
 }
