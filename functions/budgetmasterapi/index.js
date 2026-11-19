@@ -4388,9 +4388,18 @@ module.exports = async function (req, res) {
         ownerKey(value(row, "appraiser_tech_ed_id")) === ownerKey(techEdId)
       );
       if (!parent) throw new access.HttpError(404, "The selected Tech-Ed allocation was not found for this cycle.");
+      // A Comp Manager's own access scope is anchored to their employee
+      // team, not to the Tech-Ed identity stored on the parent allocation.
+      // Permit the transfer only when the selected source manager is the
+      // authenticated Comp Manager; source/destination allocation rows are
+      // then validated against this exact parent below. HR/View-As retains
+      // the normal all-scope path.
+      const isOwnCompManagerSource =
+        a.role === "compMgr" && matchesOwner(sourceId, a);
       if (a.enforced && !Boolean(a.scope && a.scope.all) &&
+          !isOwnCompManagerSource &&
           !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
-        throw new access.HttpError(403, "You can only transfer Comp Managers under your own Tech-Ed allocation.");
+        throw new access.HttpError(403, "You can only transfer your own Comp Manager allocation under a Tech-Ed where you have an allocation.");
       }
       access.guard(a, () => access.requireAction(a, "allotNextLevel"));
 
