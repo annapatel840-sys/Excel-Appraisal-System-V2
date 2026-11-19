@@ -156,14 +156,14 @@ export const resizableTableStyle = (rz, keys) => ({
   maxWidth: "none",
 });
 
-export function ResizableCols({ rz, keys }) {
+export function ResizableCols({ rz, keys, flexKey }) {
   return (
     <colgroup>
       {keys.map((key, i) => (
         <col
           key={key}
           data-key={key}
-          style={i === keys.length - 1 ? undefined : { width: rz.widthOf(key) }}
+          style={(flexKey ? key === flexKey : i === keys.length - 1) ? undefined : { width: rz.widthOf(key) }}
         />
       ))}
     </colgroup>

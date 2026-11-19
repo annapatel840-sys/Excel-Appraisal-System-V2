@@ -640,7 +640,7 @@ const LOC_COLS = [
   { key: "currency_code", label: "Currency", kind: "text", get: (l) => l.currency_code || "" },
   { key: "status", label: "Status", kind: "text", get: (l) => l.status || "" },
 ];
-const LOC_WIDTHS = { location_name: 190, location_code: 110, address: 280, currency_code: 110, status: 110, actions: 200 };
+const LOC_WIDTHS = { location_name: 190, location_code: 110, address: 280, currency_code: 110, status: 110, actions: 170 };
 
 export function LocationMasterControl({
   value = "All",
@@ -936,7 +936,7 @@ export function LocationMasterControl({
               className="em-location-table"
               style={resizableTableStyle(rz, [...LOC_COLS.map((c) => c.key), ...(readOnly ? [] : ["actions"])])}
             >
-              <ResizableCols rz={rz} keys={[...LOC_COLS.map((c) => c.key), ...(readOnly ? [] : ["actions"])]} />
+              <ResizableCols rz={rz} flexKey="address" keys={[...LOC_COLS.map((c) => c.key), ...(readOnly ? [] : ["actions"])]} />
               <thead>
                 <tr>
                   {LOC_COLS.map((c) => (

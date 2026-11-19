@@ -37,7 +37,7 @@ const SCREENS = {
   let: { label: "Letters", tab: "letters", open: "Letters" },
   des: { label: "Designation", tab: "designation-master", open: "Designation Master" },
 };
-const ORDER = ["req", "elig", "del", "bud", "let", "des"];
+const ORDER = ["des", "elig", "del", "bud", "let", "req"];
 const DESIGNATION_TYPES = { S: "Single Designation", M: "Multiple Designations", G: "Group", F: "Free Select" };
 // Same rule as the Designation Master screen's "Not Mapped".
 const desUnmappedReason = (d, options) => {
