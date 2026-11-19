@@ -2339,7 +2339,7 @@ async function enrichPreviousAppraisalValues(
     .forEach((row) => {
       let ids = [];
       try { ids = JSON.parse(String(row.employee_ids || "[]")); } catch (_) {}
-      const destination = assignmentDisplay(row.destination_comp_manager_id);
+      const destination = String(row.destination_comp_manager_id || "").trim();
       if (!destination) return;
       (Array.isArray(ids) ? ids : []).forEach((id) => {
         const key = String(id || "").trim().toLowerCase();
