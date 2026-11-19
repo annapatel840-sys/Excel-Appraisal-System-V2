@@ -4371,28 +4371,38 @@ module.exports = async function (req, res) {
       access.guard(a, () => access.requireAction(a, "changeBudgetConfig"));
 
       const compRows = await getAllRows(app, "Budget_Distribution_Comp");
+      const employeeRows = await getAllRows(app, "Employee_Master");
+      const masterByRowId = new Map(employeeRows.map((row) => [idOf(row), String(value(row, "emp_id") || "").trim()]));
+      const masterById = new Map(employeeRows.map((row) => [String(value(row, "emp_id") || "").trim().toLowerCase(), String(value(row, "emp_id") || "").trim()]));
+      const masterByName = new Map(employeeRows.map((row) => [
+        String(value(row, "emp_name") || value(row, "employee_name") || value(row, "name") || "").trim().toLowerCase(),
+        String(value(row, "emp_id") || "").trim(),
+      ]).filter(([name, id]) => name && id));
+      const resolvedOwner = (raw) => {
+        const text = referenceText(raw);
+        if (!text) return "";
+        const first = text.split(/\\s+-\\s+/)[0].trim();
+        return masterByRowId.get(first) ||
+          masterById.get(first.toLowerCase()) ||
+          masterByName.get(text.toLowerCase()) ||
+          masterByName.get(first.toLowerCase()) ||
+          first;
+      };
+      const sourceKey = ownerKey(resolvedOwner(sourceId));
+      const destinationKey = ownerKey(resolvedOwner(destinationId));
       const sourceRow = compRows.find((row) =>
         String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
-        ownerKey(value(row, "comp_manager")) === ownerKey(sourceId)
+        ownerKey(resolvedOwner(value(row, "comp_manager"))) === sourceKey
       );
       const destinationRow = compRows.find((row) =>
         String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
-        ownerKey(value(row, "comp_manager")) === ownerKey(destinationId)
+        ownerKey(resolvedOwner(value(row, "comp_manager"))) === destinationKey
       );
       if (!sourceRow || !destinationRow) {
         throw new access.HttpError(404, "Both Comp Managers must already have an allocation row under the selected Tech-Ed.");
       }
 
       const sheetRows = await getAllRows(app, "Appraisal_Sheet");
-      const employeeRows = await getAllRows(app, "Employee_Master");
-      const masterByRowId = new Map(employeeRows.map((row) => [idOf(row), String(value(row, "emp_id") || "").trim()]));
-      const masterById = new Map(employeeRows.map((row) => [String(value(row, "emp_id") || "").trim().toLowerCase(), String(value(row, "emp_id") || "").trim()]));
-      const resolvedOwner = (raw) => {
-        const text = referenceText(raw);
-        if (!text) return "";
-        const first = text.split(/\s+-\s+/)[0].trim();
-        return masterByRowId.get(first) || masterById.get(first.toLowerCase()) || first;
-      };
       const cycleOfSheet = (row) => referenceText(
         row.appraisal_cycle_id || row.cycle_id || row.appraisalCycleId || row.cycleId
       );
