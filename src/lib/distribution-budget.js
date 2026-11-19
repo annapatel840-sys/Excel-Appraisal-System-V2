@@ -1017,7 +1017,13 @@ export function useDistributionBudget() {
         const rowCycle = String(
           row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
         ).trim();
-        return !activeCycleId || !rowCycle || rowCycle === String(activeCycleId);
+        const belongsToCycle =
+          !activeCycleId || !rowCycle || rowCycle === String(activeCycleId);
+        return belongsToCycle && currentUserMatchesManager(
+          row.comp_manager_display || row.comp_manager || row.comp_manager_id,
+          user,
+          employeeRows,
+        );
       });
     }
 
