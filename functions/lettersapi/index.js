@@ -314,7 +314,33 @@ function shape(row, cfg, history) {
   };
 }
 
+// The template list is read by every open of the Letters screen and changes rarely: keep each
+// answer for 30 s (per location) and forget it whenever a template is published or switched.
+const TEMPLATE_CACHE_MS = 30 * 1000;
+const templateCache = new Map(); // location key -> { at, data, pending }
+const forgetTemplates = () => templateCache.clear();
+
 async function loadTemplates(app, onlyLocation) {
+  const key = text(onlyLocation).toLowerCase();
+  const hit = templateCache.get(key);
+  if (hit && hit.data && Date.now() - hit.at < TEMPLATE_CACHE_MS) return hit.data;
+  if (hit && hit.pending) return hit.pending; // a read for the same location is already running: share it
+  const pending = readTemplates(app, onlyLocation)
+    .then((data) => {
+      // a list with problems is not remembered: the next open tries again
+      if (!data.problems.length) templateCache.set(key, { at: Date.now(), data });
+      else templateCache.delete(key);
+      return data;
+    })
+    .catch((e) => {
+      templateCache.delete(key);
+      throw e;
+    });
+  templateCache.set(key, { at: 0, data: null, pending });
+  return pending;
+}
+
+async function readTemplates(app, onlyLocation) {
   const { lists, problems } = await readIndexes(app, onlyLocation);
   const templates = [];
   const jobs = [];
@@ -457,6 +483,7 @@ async function saveTemplate(app, actor, payload) {
     note,
   });
   await writeIndex(app, loc.bucket, idx);
+  forgetTemplates();
 
   const { templates } = await loadTemplates(app, loc.name);
   return templates.find((t) => t.id === tpl.id);
@@ -472,6 +499,7 @@ async function setActive(app, payload) {
   if (!row) throw fail(404, "This template has not been saved to the server yet. Publish it once first.");
   row.active = !!payload.active;
   await writeIndex(app, found.loc.bucket, idx);
+  forgetTemplates();
   return { id, active: !!payload.active };
 }
 

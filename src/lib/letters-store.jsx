@@ -127,6 +127,7 @@ function setSync(next) {
 // Letters screen opens; {force:true} is the Retry button.
 export function syncTemplates({ force = false, location } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
+  api.warmUp();
   const loc = !location || /^all( locations)?$/i.test(String(location).trim()) ? "" : String(location).trim();
   if (syncing && !force && syncingFor === loc) return syncing;
   syncingFor = loc;
@@ -263,7 +264,25 @@ export function sheetRowsForLetters(rows, cycleId, location) {
     });
 }
 
+// True when letters could be made for this cycle's location: at least one Active template for it
+// (or one for every location). Without a template the heavy Appraisal Sheet read is pointless.
+export function hasActiveTemplateFor(location) {
+  const all = !location || /^all( locations)?$/i.test(String(location).trim());
+  return S.tpls.some((t) => (!api.TEMPLATES_ON_SERVER || t.fromServer) && t.active !== false && (all || !t.location || /^all/i.test(String(t.location)) || String(t.location).trim().toLowerCase() === String(location).trim().toLowerCase()));
+}
+
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
+  // Letters need a template: check the location's templates first (a small, cached read) so a
+  // location without templates does not start the heavy Appraisal Sheet read at all.
+  if (api.TEMPLATES_ON_SERVER) {
+    await syncTemplates({ location: cycle.location });
+    if (sync.status === "error") throw new Error(`The letter templates could not be loaded: ${sync.message}`);
+    if (!hasActiveTemplateFor(cycle.location)) {
+      throw new Error(
+        `There is no active letter template for ${cycle.location || "this location"} yet. Import the templates in Letters > Templates; letters are then made the next time this cycle is opened.`,
+      );
+    }
+  }
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
   // Do not let a slow read of the saved copy hold Generate back: wait for it at most 4 s.
   await Promise.race([

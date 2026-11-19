@@ -57,6 +57,18 @@ async function request({ method = "GET", body, params, noRetry = false } = {}, a
   return result.data;
 }
 
+/* The first call to a function that has been idle takes ~20 s while Catalyst starts it. Ask it to
+   start as soon as a letters screen opens (ping answers at once, with no login or database work),
+   so the real requests that follow reach a warm function. At most once every 4 minutes. */
+let lastWarm = 0;
+export function warmUp() {
+  if (Date.now() - lastWarm < 4 * 60 * 1000) return;
+  lastWarm = Date.now();
+  const url = new URL(API_URL);
+  url.searchParams.set("view", "ping");
+  catalystFetch(url.toString(), { cache: "no-store" }).catch(() => {});
+}
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -94,7 +106,7 @@ export async function loadServerSheet(cycleId, location) {
     let data = await request({ params, noRetry: true });
     while (data && data.pending) {
       if (Date.now() > giveUpAt) throw new Error("The Appraisal Sheet is still being read on the server. Please try again in a minute.");
-      await sleep(800);
+      await sleep(2500); // each ask costs a login check on the server: do not hammer it
       data = await request({ params, noRetry: true });
     }
     cycle = data.cycle || cycle;
