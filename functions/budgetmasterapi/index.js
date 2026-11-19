@@ -4584,7 +4584,10 @@ module.exports = async function (req, res) {
           : (n(value(destinationRow, "budget_base")) * n(value(destinationRow, "percentage"))) / 100;
       const sourceUtilized = n(value(sourceRow, "total_utilization"));
       const destinationUtilized = n(value(destinationRow, "total_utilization"));
-      const availableToTransfer = Math.max(0, sourceApplied - sourceUtilized + selectedUtilization);
+      const availableToTransfer = Math.min(
+        Math.max(0, sourceApplied),
+        Math.max(0, sourceApplied - sourceUtilized + selectedUtilization),
+      );
       if (!(availableToTransfer > 0)) {
         throw new access.HttpError(409, "There is no transferable budget available for this source Comp Manager and selected employees.");
       }
