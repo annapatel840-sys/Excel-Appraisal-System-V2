@@ -272,10 +272,10 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
-  const [genBusy, setGenBusy] = useState(false); // Letters are being generated (automatically, after the Appraisal Sheet)
-  const [genBusyCycle, setGenBusyCycle] = useState(""); // which cycle the letters are being generated for
-  const autoLettersTried = useRef(new Set()); // cycle ids already auto-generated in this visit: never loops
-  const lettersRef = useRef({}); // latest letters stats, read by the auto-generate effect
+  const [genBusy, setGenBusy] = useState(false); // letters are being generated (automatically, when a cycle is closed)
+  const [genBusyCycle, setGenBusyCycle] = useState(""); // the cycle those letters are for
+  const autoLettersTried = useRef(new Set()); // cycles already tried in this visit: never loops
+  const lettersRef = useRef({}); // latest letters stats, read by the effect below
   const bannerRef = useRef(null);
   const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
@@ -446,7 +446,7 @@ export function AppraisalCycleMasterPage({
   // Letters already generated (by anyone) are kept on the server. Only the
   // selected cycle's copy is loaded (one small file), never every location's.
   useEffect(() => {
-    if (current && current.status === "Active") syncLetterState({ cycles: [{ id: current.id, location: current.location }] });
+    if (current && (current.status === "Active" || current.status === "Closed")) syncLetterState({ cycles: [{ id: current.id, location: current.location }] });
   }, [current?.id, current?.status, current?.location]);
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
   // Letters step: live counts from the shared Letters store (the same state the
@@ -509,20 +509,19 @@ export function AppraisalCycleMasterPage({
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [currentSetupCycleId, loadSetupStatus]);
 
-  // Letters are generated automatically once the Appraisal Sheet of the cycle's
-  // location is generated (there is no Generate button any more). This also
-  // covers a sheet that was generated earlier, or an automatic run that failed:
-  // it is tried once each time this screen is opened, and only while the cycle
-  // has no letters. Safe to repeat: generating never touches Reviewed / Sent letters.
+  // Letters are made by themselves when a cycle is CLOSED (there is no Generate
+  // button): the people and their values (PB, RB, hike ...) come from the cycle's
+  // Appraisal Sheet. This covers a cycle closed before this existed, or a run that
+  // failed: a Closed cycle with no letters is tried once each time this screen is
+  // opened. A cycle that never had a sheet is skipped silently.
   useEffect(() => {
     const c = current;
-    if (!c || c.status !== "Active" || c.archived || c.process !== "Annual") return undefined;
-    if (!setupStatus[c.id]?.sheet?.generated) return undefined;
+    if (!c || c.status !== "Closed" || c.archived || c.process !== "Annual") return undefined;
     const id = String(c.id);
     if (autoLettersTried.current.has(id)) return undefined;
     let cancelled = false;
     (async () => {
-      // Let the saved letters of this cycle load first, so existing letters are not mistaken for none.
+      // Load this cycle's saved letters first, so existing letters are not mistaken for none.
       await Promise.race([
         syncLetterState({ cycles: [{ id: c.id, location: c.location }] }),
         new Promise((resolve) => setTimeout(resolve, 4000)),
@@ -538,7 +537,7 @@ export function AppraisalCycleMasterPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, current?.status, current?.process, current?.archived, current?.location, setupStatus[current?.id]?.sheet?.generated]);
+  }, [current?.id, current?.status, current?.process, current?.archived, current?.location]);
 
   // Pending items: use the prop when given, otherwise derive from cycleStats.
   const pendingList = (() => {
@@ -871,11 +870,6 @@ export function AppraisalCycleMasterPage({
           `${cycle.name}: ${result?.data?.eligible ?? result?.eligible ?? "eligible"} eligible employee(s) processed.`,
         );
         setConfirm(null);
-        // The letters of this cycle's location are generated automatically right after its sheet.
-        if (cycle.status === "Active" && cycle.process === "Annual") {
-          autoLettersTried.current.add(String(cycle.id));
-          setTimeout(() => generateLetters(cycle, true), 0);
-        }
       } catch (error) {
         setCanReuseExistingCycleData(error?.code === "EXISTING_CYCLE_DATA_AVAILABLE");
         setModalError(error?.message || "Unable to generate the sheet.");
@@ -894,7 +888,14 @@ export function AppraisalCycleMasterPage({
       confirmRemark.trim(),
       snapshot(items),
     );
-    if (ok) setConfirm(null);
+    if (ok) {
+      setConfirm(null);
+      // The cycle is Closed: its location's letters are made from its Appraisal Sheet.
+      if (kind === "close" && cycle.process === "Annual") {
+        autoLettersTried.current.add(String(cycle.id));
+        setTimeout(() => generateLetters(cycle, true), 0);
+      }
+    }
   };
 
   const onNextClick = () => {
@@ -1238,10 +1239,10 @@ export function AppraisalCycleMasterPage({
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
-  // Runs by itself after the Appraisal Sheet is generated (see the effect above
-  // and submitConfirm). Safe to repeat: it adds letters for employees who have
-  // none and replaces unsent Out-of-date ones; Reviewed and Sent letters are
-  // never touched.
+  // Runs by itself when an Annual cycle is closed (see submitConfirm and the
+  // effect above). Safe to repeat: it adds letters for employees who have none
+  // and replaces unsent Out-of-date ones; Reviewed and Sent letters are never
+  // touched.
   const generateLetters = async (c, auto = false) => {
     if (genBusy) return;
     setSaving(true);
@@ -1268,11 +1269,14 @@ export function AppraisalCycleMasterPage({
         result.total === 0 || result.saved === false,
       );
     } catch (error) {
-      showBanner(
-        auto ? "Letters not generated automatically" : "Letters not generated",
-        `${error?.message || "Unable to generate the letters."}${auto ? " They are tried again the next time this screen is opened." : ""}`,
-        true,
-      );
+      // A closed cycle that never had an Appraisal Sheet simply has no letters: say nothing.
+      if (!(auto && /No Appraisal Sheet rows/i.test(String(error?.message || "")))) {
+        showBanner(
+          auto ? "Letters not generated automatically" : "Letters not generated",
+          `${error?.message || "Unable to generate the letters."}${auto ? " They are tried again the next time this screen is opened." : ""}`,
+          true,
+        );
+      }
     } finally {
       setSaving(false);
       setGenBusy(false);
@@ -1315,7 +1319,7 @@ export function AppraisalCycleMasterPage({
     const canMakeLetters = c.status === "Active" && c.process === "Annual";
     const letterTodo = (L.outOfDate || 0) + (L.missing || 0);
     // Once letters exist the step stays open even if this session has not seen the sheet generated.
-    const lettersOpen = gen || L.gen;
+    const lettersOpen = closed || L.gen; // letters exist once the cycle is closed
     const row = (g, id, title, sub, state, acts = []) => ({
       g,
       id,
@@ -1449,11 +1453,11 @@ export function AppraisalCycleMasterPage({
         "lt",
         "Letters",
         !lettersOpen
-          ? "Available after Generate"
+          ? "Available after Close"
           : genBusy && genBusyCycle === String(c.id)
             ? `Generating the letters for ${c.location || "this cycle"}…`
             : !L.gen || (L.total === 0 && canMakeLetters)
-            ? `Letters are generated automatically after the Appraisal Sheet${loadedSheet ? ` · ${sheetRows.length} employees in the Appraisal Sheet` : ""}`
+            ? "Letters are generated automatically from the Appraisal Sheet when the cycle is closed"
             : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped${L.outOfDate ? ` · ${L.outOfDate} Out of date` : ""}${L.missing ? ` · ${L.missing} still to generate` : ""}`,
         !lettersOpen ? "lk" : L.gen && L.total > 0 && L.toSend === 0 && !letterTodo ? "ok" : "wn",
         lettersOpen ? [{ l: "Open ›", id: "go-lt" }] : [],

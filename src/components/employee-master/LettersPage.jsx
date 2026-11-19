@@ -31,9 +31,9 @@ import "./letters-page.css";
  * HR Operations -> Operation -> Letters.
  *
  * Ported from the "Letters v2" prototype. This screen does not make letters:
- * Annual letters are generated automatically when the Appraisal Sheet is
- * generated for a location (Appraisal Cycle Master), Exceptional letters from
- * the Exceptional grid. Here HR reviews,
+ * Annual letters are made automatically from the Appraisal Sheet when a cycle
+ * is closed (Appraisal Cycle Master), Exceptional letters from the Exceptional
+ * grid. Here HR reviews,
  * sends, resends, voids and replaces them, and (HR only) maintains the
  * Letter Rules, Letter Fields and Templates.
  *
@@ -471,7 +471,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           <h4>Needs a new letter</h4>
           {need.length ? (
             <div className="lt-rp-note">
-              Letters are generated automatically with the Appraisal Sheet; check the Appraisal Cycle Master.{" "}
+              Letters are made automatically when the cycle is closed; check the Appraisal Cycle Master.{" "}
               {onNavigate && (
                 <button type="button" className="lt-btn sm" onClick={openCycleMaster}>Open ›</button>
               )}
@@ -704,7 +704,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             secRows.length
               ? "No Letters Match The Current Filters."
               : sec === "Annual"
-                ? "No letters yet. Annual letters are generated automatically when the Appraisal Sheet is generated for the location."
+                ? "No letters yet. Annual letters appear here when the cycle is closed, for the employees of the Appraisal Sheet."
                 : "No letters yet. Exceptional letters are generated from the Exceptional grid."
           }
         />

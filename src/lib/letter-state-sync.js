@@ -201,27 +201,21 @@ export function syncLetterState({ cycles = [], force = false } = {}) {
   return promise;
 }
 
-/* The Letters screen: the Active cycles of the location chosen in the top bar
-   (every location's Active cycles only when All Locations is chosen). */
+/* The Letters screen: the Active and Closed cycles of the location chosen in the
+   top bar (every location's when All Locations is chosen). Letters are made when a
+   cycle is closed, so a Closed cycle must be loaded too. Archived ones stay out. */
 export async function syncForLocation(selectedLocation, { force = false } = {}) {
   if (!STATE_ON_SERVER || !host) return;
   let list = [];
   try {
-    // lettersapi lists the Active cycles itself (a few rows), so opening the
-    // Letters screen does not wait on payrollcycleapi.
-    const data = await request({ params: { view: "cycles" } });
-    list = Array.isArray(data?.cycles) ? data.cycles : [];
+    const data = await payrollCycleRequest("cycles");
+    list = Array.isArray(data) ? data : [];
   } catch {
-    try {
-      const data = await payrollCycleRequest("cycles");
-      list = Array.isArray(data) ? data : [];
-    } catch {
-      return;
-    }
+    return;
   }
   const flag = (v) => v === true || ["true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
   const cycles = list
-    .filter((c) => String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase() === "active" && !flag(c?.archived) && !flag(c?.hidden))
+    .filter((c) => ["active", "closed"].includes(String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase()) && !flag(c?.archived) && !flag(c?.hidden))
     .filter((c) => !isAll(cycleLocationOf(c)))
     .filter((c) => isAllLocations(selectedLocation) || matchesLocation(cycleLocationOf(c), selectedLocation))
     .map((c) => ({ id: c.id ?? c.ROWID, location: cycleLocationOf(c) }));
