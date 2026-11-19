@@ -52,6 +52,7 @@
 
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
+const { guarded } = require("./guard");
 
 const TBL = { templates: "Letter_Templates", versions: "Letter_Template_Versions", locations: "Location_Master" };
 const SCREEN_KEY = "employeeMaster";
@@ -66,6 +67,7 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 
 /* ---------- small helpers ---------- */
 function sendJson(res, status, body) {
+  if (res.headersSent || res.writableEnded) return; // the time limit may already have answered
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
@@ -100,7 +102,7 @@ async function readAll(app, table, where = "") {
       `SELECT * FROM ${table} WHERE ROWID > ${last}` +
       (where ? ` AND ${where}` : "") +
       " ORDER BY ROWID ASC LIMIT 300";
-    const result = await zcql.executeZCQLQuery(q);
+    const result = await guarded(() => zcql.executeZCQLQuery(q), `Reading ${table}`);
     const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
     rows.push(...page);
     if (page.length < 300) break;
@@ -135,7 +137,7 @@ function bucketOf(app, bucketName) {
 async function putObject(app, bucketName, key, body, contentType) {
   // overwrite: a retry of the same version must not fail halfway
   try {
-    return await bucketOf(app, bucketName).putObject(key, body, { overwrite: "true", contentType });
+    return await guarded(() => bucketOf(app, bucketName).putObject(key, body, { overwrite: "true", contentType }), `Writing to bucket ${bucketName}`, 20000);
   } catch (e) {
     throw fail(500, `Could not write to the Stratus bucket "${bucketName}". Check that it exists in this environment. (${e.message})`);
   }
@@ -164,7 +166,7 @@ async function toBuffer(obj) {
   throw new Error("Unexpected object type returned by Stratus.");
 }
 async function getObjectBuffer(app, bucketName, key) {
-  return toBuffer(await bucketOf(app, bucketName).getObject(key));
+  return guarded(async () => toBuffer(await bucketOf(app, bucketName).getObject(key)), `Reading from bucket ${bucketName}`, 12000);
 }
 
 /* ---------- validation ---------- */
@@ -445,7 +447,7 @@ async function authorize(req, level) {
 }
 
 const lettersState = require("./lettersState")({ locationMap, putObject, getObjectBuffer, fail, text });
-const lettersSheet = require("./lettersSheet")({ fail, text });
+const lettersSheet = require("./lettersSheet")({ fail, text, guarded });
 
 function parseCycles(raw) {
   try {
@@ -456,7 +458,7 @@ function parseCycles(raw) {
   }
 }
 
-module.exports = async function lettersApi(req, res) {
+async function handle(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();
@@ -510,6 +512,22 @@ module.exports = async function lettersApi(req, res) {
     const status = error.status || 500;
     console.error("lettersapi:", error.message, error.stack || "");
     return sendJson(res, status, { success: false, message: error.message || "Letters request failed." });
+  }
+};
+
+/* Whatever happens inside, the browser gets an answer before Catalyst's ~30 s
+   limit ends the request without one (that is the endless "pending" in the
+   Network tab). The browser can then retry or show the message. */
+const REQUEST_LIMIT_MS = 24000;
+module.exports = async function lettersApi(req, res) {
+  const timer = setTimeout(() => {
+    console.error("lettersapi: request exceeded", REQUEST_LIMIT_MS, "ms:", req.method, req.url);
+    sendJson(res, 504, { success: false, message: "The letters server took too long to answer. Please try again." });
+  }, REQUEST_LIMIT_MS);
+  try {
+    await handle(req, res);
+  } finally {
+    clearTimeout(timer);
   }
 };
 

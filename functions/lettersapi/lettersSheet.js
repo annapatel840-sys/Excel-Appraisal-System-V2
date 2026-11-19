@@ -34,8 +34,8 @@ const SHEET_TABLE = "Appraisal_Sheet";
 const MASTER_TABLE = "Employee_Master";
 const CYCLE_TABLE = "Appraisal_Cycle_Master";
 const PAGE = 300; // ZCQL maximum rows per query
-const SHEET_BUDGET_MS = 18000; // leaves ~10 s of Catalyst's 30 s for the reply
-const MASTER_BUDGET_MS = 12000;
+const SHEET_BUDGET_MS = 14000; // the whole request is cut off at 24 s (index.js)
+const MASTER_BUDGET_MS = 10000;
 const MASTER_CACHE_MS = 60 * 1000;
 const SHEET_CACHE_MS = 2 * 60 * 1000;
 const SHEET_CACHE_MAX = 20; // cycles kept per instance
@@ -65,6 +65,9 @@ const flag = (v) => v === true || ["true", "1", "yes", "archived"].includes(Stri
 
 module.exports = function makeLettersSheet(h) {
   const { fail, text } = h;
+  // Every Data Store call goes through the gate (limited at once, retried on a
+  // 429, time-limited). Tests may omit it.
+  const guarded = h.guarded || ((fn) => fn());
   const masterCache = new Map(); // location key -> { at, map }
   const sheetCache = new Map(); // cycleId|location -> { at, fingerprint, result }
   let knownCycleColumn = null; // the Appraisal_Sheet column that holds the cycle, once found
@@ -85,7 +88,7 @@ module.exports = function makeLettersSheet(h) {
   const unwrap = (item, table) => (item && (item[table] || Object.values(item)[0])) || {};
 
   async function run(app, sql) {
-    return app.zcql().executeZCQLQuery(sql);
+    return guarded(() => app.zcql().executeZCQLQuery(sql), "Reading the Appraisal Sheet");
   }
 
   async function page(app, table, where, last, select = "*") {
@@ -177,10 +180,9 @@ module.exports = function makeLettersSheet(h) {
   async function fingerprint(app, col, cycleId) {
     try {
       const where = `${col} = '${q(cycleId)}'`;
-      const [count, latest] = await Promise.all([
-        run(app, `SELECT COUNT(ROWID) FROM ${SHEET_TABLE} WHERE ${where}`),
-        run(app, `SELECT ROWID, MODIFIEDTIME FROM ${SHEET_TABLE} WHERE ${where} ORDER BY MODIFIEDTIME DESC LIMIT 1`),
-      ]);
+      // One after the other: this project's Catalyst limit is hit by parallel queries.
+      const count = await run(app, `SELECT COUNT(ROWID) FROM ${SHEET_TABLE} WHERE ${where}`);
+      const latest = await run(app, `SELECT ROWID, MODIFIEDTIME FROM ${SHEET_TABLE} WHERE ${where} ORDER BY MODIFIEDTIME DESC LIMIT 1`);
       return JSON.stringify([count, latest]);
     } catch (e) {
       return null; // no cache this time: read normally

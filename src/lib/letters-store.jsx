@@ -262,7 +262,11 @@ export function sheetRowsForLetters(rows, cycleId, location) {
 
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
-  await stateSync.syncLetterState({ cycles: [{ id: cycle.id, location: cycle.location }] });
+  // Do not let a slow read of the saved copy hold Generate back: wait for it at most 8 s.
+  await Promise.race([
+    stateSync.syncLetterState({ cycles: [{ id: cycle.id, location: cycle.location }] }),
+    new Promise((resolve) => setTimeout(resolve, 8000)),
+  ]);
   // The people always come from the Appraisal_Sheet table (this cycle, this
   // location), never from what this browser happens to hold. Rows passed in by
   // a caller are used as given.

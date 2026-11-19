@@ -23,12 +23,27 @@ const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
 async function request({ method = "GET", body, params } = {}, attempt = 0) {
   const url = new URL(API_URL);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-  const response = await catalystFetch(url.toString(), {
-    method,
-    headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    cache: "no-store",
-  });
+  // A call that never answers must end with a message, not stay "pending".
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 28000);
+  let response;
+  try {
+    response = await catalystFetch(url.toString(), {
+      method,
+      headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      if (method === "GET" && attempt < 1) return request({ method, body, params }, attempt + 1);
+      throw new Error("The letters server did not answer in time. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 1) {
     await sleep(1500);
     return request({ method, body, params }, attempt + 1);

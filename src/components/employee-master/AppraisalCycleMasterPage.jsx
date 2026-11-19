@@ -272,6 +272,8 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
+  const [genBusy, setGenBusy] = useState(false); // Letters step: Generate is running
+  const bannerRef = useRef(null);
   const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
   // screen state
@@ -371,6 +373,13 @@ export function AppraisalCycleMasterPage({
 
   const showBanner = (title, body, error = false) =>
     setBanner({ title, body, error });
+  // The banner sits at the top of the screen: bring it into view so a result or
+  // error is not missed when the person clicked a button further down.
+  useEffect(() => {
+    if (banner && bannerRef.current && typeof bannerRef.current.scrollIntoView === "function") {
+      bannerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [banner]);
 
   /* ---------------- data ---------------- */
 
@@ -1193,7 +1202,10 @@ export function AppraisalCycleMasterPage({
   // employees who have none and replaces unsent Out-of-date ones; Reviewed and
   // Sent letters are never touched.
   const generateLetters = async (c) => {
+    if (genBusy) return;
     setSaving(true);
+    setGenBusy(true);
+    setBanner(null);
     try {
       const result = await generateLettersForCycle(
         { id: c.id, name: c.name, effective: c.effective, start: c.start, location: c.location },
@@ -1213,6 +1225,7 @@ export function AppraisalCycleMasterPage({
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
     } finally {
       setSaving(false);
+      setGenBusy(false);
     }
   };
 
@@ -1814,10 +1827,10 @@ export function AppraisalCycleMasterPage({
                           key={a.id}
                           type="button"
                           className={a.link ? "acx-btn link" : "acx-btn sm"}
-                          disabled={false}
+                          disabled={a.id === "gen-lt" && genBusy}
                           onClick={() => a.id === "go-ap" ? navTo(a.id, c) : checkAct(a.id, c)}
                         >
-                          {a.l}
+                          {a.id === "gen-lt" && genBusy ? "Generating…" : a.l}
                         </button>
                       ))}
                   </span>
@@ -2330,7 +2343,7 @@ export function AppraisalCycleMasterPage({
         </div>
       )}
       {banner && (
-        <div className={`acx-banner ${banner.error ? "error" : ""}`}>
+        <div ref={bannerRef} className={`acx-banner ${banner.error ? "error" : ""}`}>
           {banner.error ? (
             <AlertCircle size={17} />
           ) : (
