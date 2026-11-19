@@ -315,6 +315,9 @@ export function refreshStale(S) {
       return;
     }
     const r = empOf(S, l);
+    // The Appraisal Sheet row of this employee is not loaded here (a letter of another cycle or
+    // location, restored from the server): there is nothing to compare with, so leave it as it is.
+    if (!r) return;
     const rule = S.rules.filter((x) => x.id === l.rule)[0];
     const t = tplOf(S, l.tpl);
     const want = rule ? resolveTemplate(S, rule.tpl, r) : null;
