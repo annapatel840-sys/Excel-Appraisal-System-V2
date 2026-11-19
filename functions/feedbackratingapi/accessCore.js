@@ -442,6 +442,9 @@ async function loadDelegation(zcql, cycleIds) {
   const z = zq(zcql);
   const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
   const activeCycleSet = new Set((Array.isArray(cycleIds) ? cycleIds : [cycleIds]).map((id) => String(id || "").trim()).filter(Boolean));
+  // COMP_MANAGER_TRANSFER START
+  const transferHistoryRows = await selectAll(z, "Comp_Manager_Transfer_History").catch(() => []);
+  // COMP_MANAGER_TRANSFER END
   const [allDelegationRows, masterRows, sheetRows] = await Promise.all([
     activeCycleSet.size ? selectAll(z, d.table) : Promise.resolve([]),
     selectAll(z, e.table),
@@ -574,6 +577,25 @@ async function loadDelegation(zcql, cycleIds) {
     [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
   ));
 
+  // COMP_MANAGER_TRANSFER START
+  // Keep the original Comp Manager's access to the transferred employees for
+  // this cycle only; unrelated Tech-Ed teams and cycles are not included.
+  transferHistoryRows.forEach((row) => {
+    if (!activeCycleSet.has(lookupText(row.appraisal_cycle_id))) return;
+    const sourceKey = managerKey(row.source_comp_manager_id);
+    if (!sourceKey) return;
+    let ids = [];
+    try { ids = JSON.parse(String(row.employee_ids || "[]")); } catch (_) {}
+    (Array.isArray(ids) ? ids : []).forEach((rawEmpId) => {
+      const empId = employeeOf(rawEmpId);
+      if (!empId) return;
+      const key = norm(empId);
+      const members = out.teamCompMgr[sourceKey] || (out.teamCompMgr[sourceKey] = []);
+      if (!members.some((existing) => norm(existing) === key)) members.push(empId);
+      out.compMgr[sourceKey] = (out.compMgr[sourceKey] || 0) + 1;
+    });
+  });
+  // COMP_MANAGER_TRANSFER END
   Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
     if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
     if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(empId); }
