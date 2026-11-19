@@ -4507,15 +4507,57 @@ module.exports = async function (req, res) {
         row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed ||
         row.appraiser_teched || row.tech_ed_id || row.tech_ed
       );
-      const compOfSheet = (row) => resolvedOwner(
-        row.comp_manager || row.comp_manager_id || row.compManager ||
-        row.comp_manager_name || row.comp_manager_display
-      );
       const employeeIdOfSheet = (row) => {
         const raw = referenceText(row.emp_id || row.employee_id || row.emp_code || row.empId || idOf(row));
         return masterByRowId.get(raw.toLowerCase()) ||
           masterById.get(raw.toLowerCase()) ||
           raw;
+      };
+
+      // The roster API exposes the effective Comp Manager by applying current
+      // cycle Delegation and transfer history. Mirror that same precedence here:
+      // latest transfer wins, then current Delegation, then the sheet's stored
+      // assignment. Comparing only Appraisal_Sheet aliases rejects valid rows
+      // when the effective assignment is stored in Delegation/history.
+      const normalizeEmployeeKey = (raw) => {
+        const text = referenceText(raw);
+        if (!text) return "";
+        const first = text.split(/\\s+-\\s+/)[0].trim();
+        return (masterByRowId.get(first.toLowerCase()) ||
+          masterById.get(first.toLowerCase()) ||
+          first).toLowerCase();
+      };
+      const currentCompManagerByEmployee = new Map();
+      const transferHistoryRows = await getAllRows(app, "Comp_Manager_Transfer_History").catch(() => []);
+      transferHistoryRows
+        .filter((item) => cycleReference(value(item, "appraisal_cycle_id")) === activeCycleIdForWrite)
+        .sort((left, right) => String(value(left, "transferred_at") || idOf(left)).localeCompare(String(value(right, "transferred_at") || idOf(right))))
+        .forEach((item) => {
+          let ids = [];
+          try { ids = JSON.parse(String(value(item, "employee_ids") || "[]")); } catch (_) {}
+          const destination = resolvedOwner(value(item, "destination_comp_manager_id"));
+          if (!destination) return;
+          (Array.isArray(ids) ? ids : []).forEach((employeeId) => {
+            const key = normalizeEmployeeKey(employeeId);
+            if (key) currentCompManagerByEmployee.set(key, destination);
+          });
+        });
+      const delegationRows = await getAllRows(app, "Delegation").catch(() => []);
+      delegationRows.forEach((item) => {
+        const rowCycle = cycleReference(value(item, "cycle_id") || value(item, "appraisal_cycle_id"));
+        if (rowCycle !== activeCycleIdForWrite && rowCycle.toLowerCase() !== activeCycleNameForWrite) return;
+        const employeeKey = normalizeEmployeeKey(value(item, "emp_id") || value(item, "employee_id"));
+        const manager = resolvedOwner(value(item, "comp_manager") || value(item, "comp_manager_id"));
+        if (employeeKey && manager && !currentCompManagerByEmployee.has(employeeKey)) {
+          currentCompManagerByEmployee.set(employeeKey, manager);
+        }
+      });
+      const compOfSheet = (row) => {
+        const employeeKey = normalizeEmployeeKey(employeeIdOfSheet(row));
+        return currentCompManagerByEmployee.get(employeeKey) || resolvedOwner(
+          row.comp_manager || row.comp_manager_id || row.compManager ||
+          row.comp_manager_name || row.comp_manager_display
+        );
       };
       const sourceTeamRows = sheetRows.filter((row) =>
         (cycleOfSheet(row) === activeCycleIdForWrite ||
