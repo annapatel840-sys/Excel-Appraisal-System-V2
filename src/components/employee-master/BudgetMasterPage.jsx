@@ -10,6 +10,7 @@
 // const TEAL = "#2F6FED";
 // const BORDER = "#D5DFEB";
 // const BUDGET_AUDIT_STORAGE_KEY = "excel-appraisal-budget-audit-v1";
+const EMPTY_BUDGET_CYCLE_SNAPSHOT = Object.freeze({});
 
 // function readBudgetAudit() {
 //   if (typeof window === "undefined") return { org: [], techEd: [] };
@@ -3804,7 +3805,7 @@ function HRApplyBudget() {
       return;
     }
 
-    const cycleSnapshot = origSnap[selectedCycle] || {};
+    const cycleSnapshot = origSnap[selectedCycle] || EMPTY_BUDGET_CYCLE_SNAPSHOT;
     const employeeDirectoryByAlias = new Map();
     [...(Array.isArray(employeeRows) ? employeeRows : []), ...(Array.isArray(dashboardRows) ? dashboardRows : [])].forEach((employee) => {
       [
