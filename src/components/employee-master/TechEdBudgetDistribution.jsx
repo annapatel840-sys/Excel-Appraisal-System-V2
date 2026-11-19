@@ -1682,28 +1682,35 @@ export function TechEdBudgetDistribution() {
   const [transferAmount, setTransferAmount] = useState("");
   const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] = useState([]);
   const [transferring, setTransferring] = useState(false);
+
+  // The source must be the authenticated Comp Manager, never a row inferred
+  // from the aggregated My Budget tree or a "view as" preview node.
+  const isSignedInTransferSource = (row) => {
+    const identity = row.comp_manager_display || row.comp_manager || row.comp_manager_id || "";
+    return currentUserMatchesManager(identity, user, employeeRows);
+  };
+
   const transferParentRows = useMemo(() => {
     if (!isCompManagerView || !activeCycleId) return [];
-    const linkedParentIds = new Set(
+    const ownParentIds = new Set(
       budgetCompManagerTransferOptions
+        .filter(isSignedInTransferSource)
         .filter((row) => {
           const parent = budgetDistributionRows.find(
             (item) => String(item.id) === String(row.budget_distribution_id),
           );
-          const rowCycle = String(
-            row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
-          ).trim();
+          const rowCycle = String(row.appraisal_cycle_id || parent?.appraisal_cycle_id || "").trim();
           return !rowCycle || rowCycle === String(activeCycleId);
         })
         .map((row) => String(row.budget_distribution_id || "").trim())
         .filter(Boolean),
     );
     return budgetDistributionRows.filter((parent) =>
-      linkedParentIds.has(String(parent.id || "").trim()) &&
-      (!parent.appraisal_cycle_id ||
-        String(parent.appraisal_cycle_id) === String(activeCycleId)),
+      ownParentIds.has(String(parent.id || "").trim()) &&
+      (!parent.appraisal_cycle_id || String(parent.appraisal_cycle_id) === String(activeCycleId)),
     );
-  }, [isCompManagerView, activeCycleId, budgetCompManagerTransferOptions, budgetDistributionRows]);
+  }, [isCompManagerView, activeCycleId, budgetCompManagerTransferOptions, budgetDistributionRows, user, employeeRows]);
+
   useEffect(() => {
     if (transferParentRows.length === 1) {
       const onlyId = String(transferParentRows[0].id || "");
@@ -1712,8 +1719,11 @@ export function TechEdBudgetDistribution() {
     }
     if (transferParentId && !transferParentRows.some((row) => String(row.id) === String(transferParentId))) {
       setTransferParentId("");
+      setTransferDestination("");
+      setSelectedTransferEmployeeIds([]);
     }
   }, [transferParentRows, transferParentId]);
+
   const selectedTransferParent = transferParentRows.find(
     (parent) => String(parent.id) === String(transferParentId),
   ) || null;
@@ -1725,16 +1735,8 @@ export function TechEdBudgetDistribution() {
         String(row.appraisal_cycle_id) === String(activeCycleId)),
     );
   }, [selectedTransferParent, budgetCompManagerTransferOptions, activeCycleId]);
-  // The signed-in manager's own saved allocation rows are the source
-  // choices. Sibling rows are destinations under this exact parent only.
-  // Resolve the signed-in Comp Manager independently for each selected
-  // Tech-Ed. cmNodes is an aggregated My Budget view and may expose only one
-  // liveId when the same manager has allocations under multiple Tech-Eds.
-  const isSignedInTransferSource = (row) => {
-    const identity = row.comp_manager_display || row.comp_manager || row.comp_manager_id || "";
-    return currentUserMatchesManager(identity, user, locationEmployeeRows) ||
-      cmNodes.some((node) => managerIdentityMatches(identity, node.name));
-  };
+  // Sibling allocations are destinations only; the source is identity-locked
+  // to the signed-in Comp Manager.
   const transferSourceRows = transferManagerRows.filter(isSignedInTransferSource);
   const transferDestinationRows = transferManagerRows.filter((row) =>
     !isSignedInTransferSource(row),
@@ -2379,12 +2381,15 @@ export function TechEdBudgetDistribution() {
 
       {/* COMP_MANAGER_TRANSFER START */}
       {isCompManagerView && (
-        <div className="card">
-          <div className="pane-head" style={{ cursor: "default" }}>
-            <span>Comp Manager Team & Budget Transfer</span>
-            <span className="cnt">Active cycle · {cycleLabel || "—"}</span>
+        <div className="card" style={{ overflow: "hidden", border: "1px solid #d7e2ef", borderRadius: 16, boxShadow: "0 10px 28px rgba(17, 48, 79, .08)", background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)" }}>
+          <div className="pane-head" style={{ cursor: "default", padding: "17px 20px", background: "linear-gradient(110deg, #12304f 0%, #1c496f 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 16, fontWeight: 700 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(255,255,255,.14)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>⇄</span>
+              Comp Manager Team & Budget Transfer
+            </span>
+            <span style={{ color: "#d9e8f7", fontSize: 12, fontWeight: 500 }}>Active cycle · {cycleLabel || "—"}</span>
           </div>
-          <div className="reason" style={{ alignItems: "end", flexWrap: "wrap" }}>
+          <div style={{ padding: "18px 20px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "end" }}>
             <label htmlFor="cmTransferTechEd">Tech-Ed</label>
             <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
               setTransferParentId(event.target.value);
@@ -2418,8 +2423,8 @@ export function TechEdBudgetDistribution() {
               })}
             </select>
           </div>
-          <div className="reason" style={{ alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="cmTransferAmount">Budget amount to transfer</label>
+          <div style={{ padding: "15px 20px", background: "#f2f7fc", borderTop: "1px solid #e1eaf3", borderBottom: "1px solid #e1eaf3", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <label htmlFor="cmTransferAmount" style={{ fontWeight: 650, color: "#183b5b" }}>Budget amount to transfer</label>
             <input
               id="cmTransferAmount"
               type="number"
@@ -2439,8 +2444,11 @@ export function TechEdBudgetDistribution() {
               Selected employees: {selectedTransferEmployees.length}
             </span>
           </div>
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Select employees to transfer</div>
+          <div style={{ padding: "18px 20px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, color: "#183b5b" }}>Choose employees to move</div>
+              <span style={{ fontSize: 12, color: "#52708c", background: "#edf4fb", borderRadius: 20, padding: "5px 10px" }}>{transferEmployeeRows.length} available · {selectedTransferEmployees.length} selected</span>
+            </div>
             {!transferSource ? (
               <div className="mut">Select a Tech-Ed with your Comp Manager allocation first.</div>
             ) : transferEmployeeRows.length === 0 ? (
