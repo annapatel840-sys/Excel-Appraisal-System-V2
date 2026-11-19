@@ -4347,6 +4347,144 @@ module.exports = async function (req, res) {
     ) {
       throw new access.HttpError(409, "The budget row does not belong to the selected appraisal cycle.");
     }
+    // COMP_MANAGER_TRANSFER START
+    // Move one Comp Manager's employees and their allocation only inside the
+    // selected cycle + Tech-Ed parent. The history row preserves the source
+    // manager's edit access without changing Delegation records.
+    if (resource === "comp_manager_transfer") {
+      const techEdId = String(body.tech_ed_id || "").trim().split(/\\s+-\\s+/)[0];
+      const sourceId = String(body.source_comp_manager_id || "").trim().split(/\\s+-\\s+/)[0];
+      const destinationId = String(body.destination_comp_manager_id || "").trim().split(/\\s+-\\s+/)[0];
+      if (!techEdId || !sourceId || !destinationId || sourceId.toLowerCase() === destinationId.toLowerCase()) {
+        throw new access.HttpError(400, "Select a Tech-Ed, source Comp Manager and a different destination Comp Manager.");
+      }
+      const distributionRows = await getAllRows(app, "Budget_Distribution");
+      const parent = distributionRows.find((row) =>
+        String(value(row, "appraisal_cycle_id") || "").trim() === activeCycleIdForWrite &&
+        ownerKey(value(row, "appraiser_tech_ed_id")) === ownerKey(techEdId)
+      );
+      if (!parent) throw new access.HttpError(404, "The selected Tech-Ed allocation was not found for this cycle.");
+      if (a.enforced && !Boolean(a.scope && a.scope.all) &&
+          !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
+        throw new access.HttpError(403, "You can only transfer Comp Managers under your own Tech-Ed allocation.");
+      }
+      access.guard(a, () => access.requireAction(a, "allotNextLevel"));
+
+      const compRows = await getAllRows(app, "Budget_Distribution_Comp");
+      const sourceRow = compRows.find((row) =>
+        String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
+        ownerKey(value(row, "comp_manager")) === ownerKey(sourceId)
+      );
+      const destinationRow = compRows.find((row) =>
+        String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
+        ownerKey(value(row, "comp_manager")) === ownerKey(destinationId)
+      );
+      if (!sourceRow || !destinationRow) {
+        throw new access.HttpError(404, "Both Comp Managers must already have an allocation row under the selected Tech-Ed.");
+      }
+
+      const sheetRows = await getAllRows(app, "Appraisal_Sheet");
+      const employeeRows = await getAllRows(app, "Employee_Master");
+      const masterByRowId = new Map(employeeRows.map((row) => [idOf(row), String(value(row, "emp_id") || "").trim()]));
+      const masterById = new Map(employeeRows.map((row) => [String(value(row, "emp_id") || "").trim().toLowerCase(), String(value(row, "emp_id") || "").trim()]));
+      const resolvedOwner = (raw) => {
+        const text = referenceText(raw);
+        if (!text) return "";
+        const first = text.split(/\\s+-\\s+/)[0].trim();
+        return masterByRowId.get(first) || masterById.get(first.toLowerCase()) || first;
+      };
+      const cycleOfSheet = (row) => referenceText(
+        row.appraisal_cycle_id || row.cycle_id || row.appraisalCycleId || row.cycleId
+      );
+      const techOfSheet = (row) => resolvedOwner(
+        row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed ||
+        row.appraiser_teched || row.tech_ed_id || row.tech_ed
+      );
+      const compOfSheet = (row) => resolvedOwner(
+        row.comp_manager || row.comp_manager_id || row.compManager ||
+        row.comp_manager_name || row.comp_manager_display
+      );
+      const employeeSheetRows = sheetRows.filter((row) =>
+        (cycleOfSheet(row) === activeCycleIdForWrite ||
+          cycleOfSheet(row).toLowerCase() === activeCycleNameForWrite) &&
+        ownerKey(techOfSheet(row)) === ownerKey(techEdId) &&
+        ownerKey(compOfSheet(row)) === ownerKey(sourceId)
+      );
+      if (!employeeSheetRows.length) {
+        throw new access.HttpError(409, "No employees were found under the source Comp Manager for this Tech-Ed and cycle.");
+      }
+
+      const sourceBase = n(value(sourceRow, "budget_base"));
+      const destinationBase = n(value(destinationRow, "budget_base"));
+      const sourceApplied = n(value(sourceRow, "applied_budget")) ||
+        (sourceBase * n(value(sourceRow, "percentage"))) / 100;
+      const destinationApplied = n(value(destinationRow, "applied_budget")) ||
+        (destinationBase * n(value(destinationRow, "percentage"))) / 100;
+      const combinedBase = sourceBase + destinationBase;
+      const combinedApplied = sourceApplied + destinationApplied;
+      if (!(combinedBase > 0) || combinedApplied > n(value(parent, "applied_budget")) + 1) {
+        throw new access.HttpError(409, "The combined Comp Manager allocation is invalid for the selected Tech-Ed budget.");
+      }
+      const destinationPct = combinedApplied > 0 ? (combinedApplied / combinedBase) * 100 : 0;
+      if (destinationPct > 100.0001) {
+        throw new access.HttpError(409, "The transferred allocation would exceed 100% of the destination team's combined budget base.");
+      }
+
+      const sheetTable = app.datastore().table("74008000000039094");
+      for (const row of employeeSheetRows) {
+        const patch = { ROWID: idOf(row) };
+        const assignmentField = ["comp_manager", "comp_manager_id", "compManager", "comp_manager_name", "comp_manager_display"]
+          .find((field) => Object.prototype.hasOwnProperty.call(row, field));
+        if (!assignmentField) throw new Error("Appraisal_Sheet has no Comp Manager assignment field.");
+        patch[assignmentField] = destinationId;
+        await sheetTable.updateRow(patch);
+      }
+
+      const compTable = app.datastore().table(TABLES.comp);
+      const compColumns = await getColumnNames(compTable);
+      const calcField = pickColumn(compColumns, ["calculated_budget", "claculated_budget"], "calculated_budget");
+      await compTable.updateRow({
+        ROWID: idOf(sourceRow),
+        percentage: 0,
+        applied_budget: 0,
+        total_utilization: 0,
+        [calcField]: 0,
+      });
+      await compTable.updateRow({
+        ROWID: idOf(destinationRow),
+        percentage: destinationPct,
+        budget_base: combinedBase,
+        applied_budget: combinedApplied,
+        [calcField]: combinedApplied,
+      });
+
+      const historyTable = app.datastore().table("74008000000462004");
+      const transferredIds = employeeSheetRows.map((row) => {
+        const raw = referenceText(row.emp_id || row.employee_id || row.emp_code);
+        return masterByRowId.get(raw) || masterById.get(raw.toLowerCase()) || raw;
+      }).filter(Boolean);
+      const actor = String(a.user?.email || a.user?.email_id || a.user?.name || "Unknown").slice(0, 100);
+      await historyTable.insertRow({
+        appraisal_cycle_id: activeCycleIdForWrite,
+        tech_ed_id: techEdId,
+        source_comp_manager_id: sourceId,
+        destination_comp_manager_id: destinationId,
+        employee_ids: JSON.stringify(transferredIds),
+        transferred_budget: sourceApplied,
+        transferred_by: actor,
+        transferred_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+      });
+      return sendJson(res, 200, {
+        success: true,
+        resource,
+        transferred_count: transferredIds.length,
+        transferred_budget: sourceApplied,
+        source_comp_manager_id: sourceId,
+        destination_comp_manager_id: destinationId,
+      });
+    }
+    // COMP_MANAGER_TRANSFER END
+
     if (id) {
       const tableId =
         resource === "master"
