@@ -4530,9 +4530,9 @@ module.exports = async function (req, res) {
       const nextDestinationApplied = destinationApplied + requestedAmount;
       const nextSourcePct = (nextSourceApplied / sourceBase) * 100;
       const nextDestinationPct = (nextDestinationApplied / destinationBase) * 100;
-      if (nextSourcePct > 100.0001 || nextDestinationPct > 100.0001) {
-        throw new access.HttpError(409, "The transfer would exceed 100% of a Comp Manager's budget base.");
-      }
+      // A received transfer may take a manager above 100% of their own
+      // employee budget base. The parent pool remains conserved because the
+      // source decreases by exactly the amount the destination receives.
 
       // Update only the selected employees. Other employees remain assigned
       // to the source manager. Original budget and original team-size snapshots
