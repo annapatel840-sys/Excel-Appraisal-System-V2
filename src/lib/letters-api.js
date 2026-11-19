@@ -77,23 +77,21 @@ export async function loadServerTemplates(location) {
    limited to the cycle's location. Used when Generate runs on the Appraisal
    Cycle Master. */
 export async function loadServerSheet(cycleId, location) {
-  // The server reads Appraisal_Sheet in time-budgeted chunks (only this cycle's
-  // rows, only this location) and says where to continue, so one request can
-  // never run into Catalyst's time limit. Ask again until it says it is done.
+  // Same call shape as the roster (employeesapi): page + limit, answered as
+  // { data, pagination }. 5000 rows per page, so one request in practice.
+  const LIMIT = 5000;
   const rows = [];
   let cycle = {};
-  let after = "";
-  for (let guard = 0; guard < 60; guard += 1) {
-    const params = { view: "sheet", cycleId: String(cycleId) };
+  let totalPages = 1;
+  for (let page = 1; page <= totalPages && page <= 20; page += 1) {
+    const params = { view: "sheet", cycleId: String(cycleId), page: String(page), limit: String(LIMIT) };
     if (location) params.location = location;
-    if (after) params.after = after;
     const data = await request({ params });
     cycle = data.cycle || cycle;
-    rows.push(...(data.rows || []));
-    if (data.done || !data.next) return { cycle, rows };
-    after = String(data.next);
+    rows.push(...(Array.isArray(data.data) ? data.data : []));
+    totalPages = Math.max(1, Number(data.pagination?.totalPages || 1));
   }
-  throw new Error("The Appraisal Sheet is too large to load in one go. Please try again.");
+  return { cycle, rows };
 }
 
 /* Publish a new version. `docxFile` is the File picked with "Import from Word"

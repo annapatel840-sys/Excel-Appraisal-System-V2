@@ -15,7 +15,7 @@
                                   -> publishes a NEW VERSION of one template
                                      (creates the template the first time)
    GET  /?view=cycles             -> { cycles:[{id,name,location,status}] } Active cycles
-   GET  /?view=sheet&cycleId=5&location=Dubai[&after=<ROWID>]
+   GET  /?view=sheet&cycleId=5&location=Dubai&page=1&limit=5000
                                   -> the Appraisal_Sheet people of ONE cycle and ONE
                                      location, in time-budgeted chunks (see
                                      lettersSheet.js). Ask again from `next` until done.
@@ -486,7 +486,8 @@ async function handle(req, res) {
           data: await lettersSheet.loadSheet(adminApp, {
             cycleId: q.get("cycleId"),
             location: q.get("location"),
-            after: q.get("after"),
+            page: q.get("page"),
+            limit: q.get("limit"),
           }),
         });
       }

@@ -3,8 +3,9 @@
 /*
  * Letters PEOPLE: the Appraisal_Sheet rows of ONE cycle (and its location).
  *
- *   GET ?view=sheet&cycleId=<ROWID>&location=<name>[&after=<ROWID>]
- *     -> { cycle, location, rows:[...], next, done, cached }
+ *   GET ?view=sheet&cycleId=<ROWID>&location=<name>&page=1&limit=5000
+ *     -> { cycle, location, data:[...], pagination:{ page, limit, totalCount, totalPages, returnedCount } }
+ *     (page / limit work exactly as in employeesapi)
  *   GET ?view=cycles
  *     -> { cycles:[ { id, name, location, status } ] }   (Active, not archived/hidden)
  *
@@ -31,6 +32,8 @@ const SHEET_TABLE = "Appraisal_Sheet";
 const MASTER_TABLE = "Employee_Master";
 const CYCLE_TABLE = "Appraisal_Cycle_Master";
 const PAGE = 300; // ZCQL maximum rows per query
+const DEFAULT_LIMIT = 20; // same as employeesapi
+const MAX_LIMIT = 5000; // same as employeesapi
 const SHEET_BUDGET_MS = 14000; // the whole request is cut off at 24 s (index.js)
 const MASTER_BUDGET_MS = 10000;
 const MASTER_CACHE_MS = 60 * 1000;
@@ -67,6 +70,10 @@ module.exports = function makeLettersSheet(h) {
   let knownCycleColumn = null; // the Appraisal_Sheet column that holds the cycle, once found
   let narrowOk = true; // false once SELECT <columns> was refused: use SELECT *
 
+  const positiveInteger = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
+  };
   const rowId = (r) => String((r && (r.ROWID ?? r.rowid)) ?? "");
   const pick = (r, ...names) => {
     for (const n of names) {
@@ -171,11 +178,12 @@ module.exports = function makeLettersSheet(h) {
   const masterLocation = (m) => text(pick(m, "location", "work_location", "location_name"));
 
   /* ---------- one chunk of sheet rows ---------- */
+  /* Same contract as employeesapi: page + limit in, { data, pagination } out. */
   async function loadSheet(app, params) {
     const cycleId = text(params.cycleId);
     if (!ID_RE.test(cycleId)) throw fail(400, "Appraisal cycle ID is not valid.");
-    const after = text(params.after) || "0";
-    if (!ID_RE.test(after)) throw fail(400, "The paging position is not valid.");
+    const requestedPage = positiveInteger(params.page, 1);
+    const limit = Math.min(positiveInteger(params.limit, DEFAULT_LIMIT), MAX_LIMIT);
 
     const started = Date.now();
     const cycle = await readCycle(app, cycleId);
@@ -188,26 +196,24 @@ module.exports = function makeLettersSheet(h) {
     for (const col of columns) {
       try {
         const where = `${col} = '${q(cycleId)}'`;
-
         const master = await masterFor(app, location, started + MASTER_BUDGET_MS);
         const select = narrowOk ? `ROWID, ${SHEET_COLUMNS.join(", ")}` : "*";
-        const rows = [];
-        let last = after;
-        let done = false;
-        let p;
-        try {
-          p = await page(app, SHEET_TABLE, where, last, select);
-        } catch (e) {
-          if (!narrowOk) throw e;
-          narrowOk = false; // a listed column does not exist: read every column from now on
-          p = await page(app, SHEET_TABLE, where, last, "*");
-        }
-        knownCycleColumn = col;
 
-        for (let guard = 0; guard < 100; guard += 1) {
+        // This cycle's rows only (never the whole table), 300 at a time by ROWID.
+        const rows = [];
+        let last = "0";
+        for (let guard = 0; guard < 200; guard += 1) {
+          let p;
+          try {
+            p = await page(app, SHEET_TABLE, where, last, select);
+          } catch (e) {
+            if (!narrowOk || guard > 0) throw e;
+            narrowOk = false; // a listed column does not exist: read every column from now on
+            p = await page(app, SHEET_TABLE, where, last, "*");
+          }
+          knownCycleColumn = col;
           p.forEach((r) => {
-            const id = text(r.emp_id);
-            const m = master.get(id.toLowerCase());
+            const m = master.get(text(r.emp_id).toLowerCase());
             if (!wantAll) {
               // The person's own location decides (Employee_Master first, then the sheet row).
               const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
@@ -215,30 +221,28 @@ module.exports = function makeLettersSheet(h) {
             }
             rows.push(shape(r, m));
           });
-          if (p.length < PAGE) {
-            done = true;
-            break;
-          }
+          if (p.length < PAGE) break;
           last = rowId(p[p.length - 1]);
-          if (!last) {
-            done = true;
-            break;
+          if (!last) break;
+          if (Date.now() - started > SHEET_BUDGET_MS) {
+            throw fail(504, "The Appraisal Sheet took too long to read. Please try again.");
           }
-          if (Date.now() - started > SHEET_BUDGET_MS) break; // the browser asks again from `last`
-          p = await page(app, SHEET_TABLE, where, last, select);
         }
 
-        const result = {
+        // Pagination, as in employeesapi.
+        const totalCount = rows.length;
+        const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / limit);
+        const safePage = Math.min(requestedPage, totalPages);
+        const offset = (safePage - 1) * limit;
+        const data = rows.slice(offset, offset + limit);
+        return {
           cycle: { id: cycle.id, name: cycle.name, location: cycle.location },
           location: wantAll ? "All" : location,
-          rows,
-          next: done ? null : last,
-          done,
-          cached: false,
+          data,
+          pagination: { page: safePage, limit, totalCount, totalPages, returnedCount: data.length },
         };
-        return result;
       } catch (e) {
-        if (e && (e.status || e.timeout)) throw fail(504, `The Appraisal Sheet read stopped: ${e.message}`); // names the query that stalled
+        if (e && (e.status || e.timeout)) throw fail(e.status || 504, `The Appraisal Sheet read stopped: ${e.message}`); // names the query that stalled
         lastError = e;
       }
     }

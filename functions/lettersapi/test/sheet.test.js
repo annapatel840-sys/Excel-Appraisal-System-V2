@@ -49,12 +49,13 @@ function fakeApp() {
 test("sheet: only the cycle's rows of the location are returned, with the master's details", async () => {
   const { app, queries } = fakeApp();
   const s = make({ fail, text });
-  const d = await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
-  assert.equal(d.done, true);
-  assert.equal(d.rows.length, 500);
-  assert.equal(d.rows[0].name, "N1");
-  assert.equal(d.rows[0].location, "Dubai");
-  assert.equal(d.rows[0].hikeAmount, 100);
+  const d = await s.loadSheet(app, { cycleId: "5", location: "Dubai", page: "1", limit: "5000" });
+  assert.equal(d.pagination.totalCount, 500);
+  assert.equal(d.pagination.totalPages, 1);
+  assert.equal(d.data.length, 500);
+  assert.equal(d.data[0].name, "N1");
+  assert.equal(d.data[0].location, "Dubai");
+  assert.equal(d.data[0].hikeAmount, 100);
   // Appraisal_Sheet is only ever asked for this cycle, never read whole.
   queries.filter((q) => /FROM Appraisal_Sheet/.test(q)).forEach((q) => assert.match(q, /appraisal_cycle_id = '5'/));
 });
@@ -76,12 +77,23 @@ test("cycles: only Active, not hidden, cycles are listed", async () => {
 test("sheet: another location of the same cycle", async () => {
   const { app } = fakeApp();
   const d = await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "India" });
-  assert.equal(d.rows.length, 200);
+  assert.equal(d.pagination.totalCount, 200);
+});
+
+test("sheet: page and limit slice the result like employeesapi", async () => {
+  const { app } = fakeApp();
+  const s = make({ fail, text });
+  const p2 = await s.loadSheet(app, { cycleId: "5", location: "Dubai", page: "2", limit: "200" });
+  assert.equal(p2.pagination.totalPages, 3);
+  assert.equal(p2.data.length, 200);
+  assert.equal(p2.data[0].empId, "E201");
+  const last = await s.loadSheet(app, { cycleId: "5", location: "Dubai", page: "99", limit: "200" });
+  assert.equal(last.pagination.page, 3);
+  assert.equal(last.data.length, 100);
 });
 
 test("sheet: a bad cycle id or paging position is refused", async () => {
   const { app } = fakeApp();
   const s = make({ fail, text });
   await assert.rejects(() => s.loadSheet(app, { cycleId: "5; DROP", location: "Dubai" }), /not valid/);
-  await assert.rejects(() => s.loadSheet(app, { cycleId: "5", location: "Dubai", after: "x'" }), /not valid/);
 });
