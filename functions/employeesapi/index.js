@@ -2910,7 +2910,7 @@ async function enrichPreviousAppraisalValues(
       // Delegation screen asks for a Comp Manager to be set.
       // COMP_MANAGER_TRANSFER START
       delegation_comp_manager:
-        transferredCompManagerByEmployee.get(String(empKey || "").toLowerCase()) ||
+        strictPersonLabel(transferredCompManagerByEmployee.get(String(empKey || "").toLowerCase()), employeeMasterMap) ||
         strictPersonLabel(savedDelegation?.comp_manager, employeeMasterMap) ||
         strictPersonLabel(previousCompManager, employeeMasterMap) ||
         strictPersonLabel(employee.comp_manager, employeeMasterMap) ||
