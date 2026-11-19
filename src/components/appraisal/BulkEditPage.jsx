@@ -322,7 +322,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       saveChanges: (changes, source, meta) => {
         const { sheetRows: rows, storeBulkUpdate: bulkUpdate } = live.current;
         // Every Apply is one batch in the audit trail (source "Bulk edit"); every Restore is
-        // one "Bulk restore" batch pointing back at it. This is what the History tab reads.
+        // one "Bulk restore" batch pointing back at it. This is what the history list in the Scenarios & History tab reads.
         const isRestore = source === "bulk_restore";
         const opts = {
           source: isRestore ? RESTORE_SOURCE : APPLY_SOURCE,
@@ -481,7 +481,7 @@ const BulkOperations = forwardRef(function BulkOperations(
             <strong>{rupees(b0.tpb)}</strong>
           </div>
         </div>
-        {/* Reset sits where the old Menu button was. Scenarios and History are tabs now; Save as Scenario is inside the
+        {/* Reset sits where the old Menu button was. Scenarios and History are one tab now; Save as Scenario is inside the
             Scenarios tab. The hidden stubs below only keep the ids the engine still looks up (nothing is shown). */}
         <div className="more tb-more">
           <button className="btn" id="bReset" type="button" title="Reset the rule, the filters and the preview">

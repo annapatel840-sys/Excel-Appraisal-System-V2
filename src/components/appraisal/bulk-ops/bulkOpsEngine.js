@@ -435,6 +435,16 @@ function budgetOf(list,over){
   }
   return {budget:bud,used:used,util:bud?used/bud*100:0,utilT:bud?(used+tpb)/bud*100:0,tpb:tpb,left:bud-used-(S.incTpb?tpb:0)};
 }
+/* Budget of one group (a Tech ED's or a Comp Manager's people). In the demo it is worked out from the rows. With the
+   Appraisal Sheet header or the server the budget is one figure for the whole screen, so each group gets its share of it
+   by Base pay, and "used" is what the group's own rows consume. */
+function grpBudget(list,over){
+  var H=cfg.getHdr?cfg.getHdr():null;
+  if(!H&&!SB)return budgetOf(list,over);
+  var all=scope(),tb=budgetOf(all,null),ab=sums(all,null).base,gb=sums(list,null).base,
+      sh=ab?gb/ab:(all.length?list.length/all.length:0),bud=tb.budget*sh,u=sums(list,over),t=u.tpb;
+  return {budget:bud,used:u.used,util:bud?u.used/bud*100:0,utilT:bud?(u.used+t)/bud*100:0,tpb:t,left:bud-u.used-(S.incTpb?t:0)};
+}
 /* Distribute a total: the shares are worked out once per preview over the rows that will be processed
    (selected, not skipped). Whole rupees; any rounding left over goes one rupee at a time to the first rows. */
 var SH={};
@@ -829,14 +839,7 @@ function renderScn(){
     h+='</tbody></table>';
   }
   $("scnList").innerHTML=h;
-  var b="";
-  if(!S.batches.length)b='<div class="mini">Nothing applied in this session.</div>';
-  else{
-    b='<table><thead><tr><th>Time</th><th>Rule</th><th class="r">Rows</th><th>Source</th></tr></thead><tbody>';
-    S.batches.slice().reverse().forEach(function(x){b+='<tr><td>'+x.time+'</td><td>'+esc(x.text)+'</td><td class="r">'+x.rows.length+'</td><td>bulk · '+esc(x.id)+'</td></tr>'});
-    b+='</tbody></table>';
-  }
-  $("batchList").innerHTML=b;
+  $("batchList").innerHTML=historyTab();   // History lives in the Scenarios & History tab (with Restore)
 }
 
 /* ---------------- actions ---------------- */
@@ -1491,15 +1494,16 @@ function checksTab(c){
 }
 $("mpTabs").addEventListener("click",function(ev){var t=ev.target.getAttribute&&ev.target.getAttribute("data-t");if(!t)return;PT=t;try{localStorage.setItem(PT_KEY,t)}catch(x){}
   [].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===t)});renderImpact()});
-$("imp").addEventListener("click",function(ev){
+function onPanelClick(ev){
   if(ev.target.closest&&ev.target.closest("#bDlList")){downloadList();return}
   var rb=ev.target.closest&&ev.target.closest("[data-restore]");
   if(rb&&!RESTORE_ENABLED)return;
   if(rb){var id=rb.getAttribute("data-restore");
     if(restoreAt.id===id&&Date.now()-restoreAt.t<6000){restoreAt={id:"",t:0};doRestore(id)}
-    else{restoreAt={id:id,t:Date.now()};renderImpact();setTimeout(function(){if(restoreAt.id===id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderImpact()}},6100)}
+    else{restoreAt={id:id,t:Date.now()};renderImpact();renderScn();setTimeout(function(){if(restoreAt.id===id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderImpact();renderScn()}},6100)}
     return}
-var r=ev.target.closest&&ev.target.closest(".ck[data-ck]");if(!r)return;var k=r.getAttribute("data-ck");S.checkF=S.checkF===k?"":k;S.page=1;renderGrid();renderImpact()});
+var r=ev.target.closest&&ev.target.closest(".ck[data-ck]");if(!r)return;var k=r.getAttribute("data-ck");S.checkF=S.checkF===k?"":k;S.page=1;renderGrid();renderImpact()}
+$("imp").addEventListener("click",onPanelClick);$("scnCard").addEventListener("click",onPanelClick);
 $("imp").addEventListener("change",function(ev){if(ev.target.id==="tpbSel"){S.incTpb=ev.target.value==="1";try{localStorage.setItem(TPB_KEY,S.incTpb?"1":"0")}catch(x){}if(S.pv)refreshPreview();else render();return}
   if(ev.target.id==="gbSel"){GB=ev.target.value;S.wiDr="";try{localStorage.setItem(GB_KEY,GB)}catch(x){}renderImpact()}});
 [].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===PT)});
@@ -1757,11 +1761,10 @@ function smYears(vr,p,K0){
   return '<div class="sm-h">Average Hike % Over the Years</div><div class="wm" style="margin:0 0 4px">Dashed = this proposal. Demo history; the real figures come from the history table.</div>'+lg+o;
 }
 function tedTable(sc,p){
-  if(SB)return [];   // with the server, each Tech ED budget comes from Budget Config
   var m={};sc.forEach(function(e){var k=e.superManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBudget(a,null),b:grpBudget(a,ov)}});
 }
 function sumTab(c){
   var p=c.pv;
@@ -2183,10 +2186,13 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   }
   lt.addEventListener("click",function(ev){var p=ev.target.getAttribute&&ev.target.getAttribute("data-p");if(p){st.lt=p;apply()}});
   $("lFold").onclick=function(){st.lc=true;apply()};$("rFold").onclick=function(){st.rc=true;apply()};
-  /* centre tabs: Employees and Scenarios sit with the result tabs */
-  var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios");
-  tEmp.type="button";tEmp.setAttribute("data-x","emp");tScn.type="button";tScn.setAttribute("data-x","scn");
-  mpTabs.insertBefore(tEmp,mpTabs.firstChild.nextSibling);mpTabs.insertBefore(tScn,lyTog);
+  /* centre tabs: "Scenarios & History" is one tab. Employees is not a tab: Summary links to it (see "View Employees"). */
+  var tScn=mk("button",null,null,"Scenarios &amp; History");
+  tScn.type="button";tScn.setAttribute("data-x","scn");
+  mpTabs.insertBefore(tScn,lyTog);
+  var bar=mk("div",null,"bkbar",'<button class="btn lnk" type="button" id="bBack">‹ Back to Summary</button>');metPanel.insertBefore(bar,gridCard);
+  $("imp").addEventListener("click",function(ev){if(ev.target.closest&&ev.target.closest("#bViewEmp")){ct="emp";apply()}});
+  $("bBack").addEventListener("click",function(){setPT("summary");if(ct!=="res"){ct="res";apply()}});
   /* "+" chooses which tabs show */
   var plus=mk("button","tabPlus","tplus","＋");plus.type="button";plus.title="Choose the tabs shown in this pane";
   mpTabs.insertBefore(plus,lyTog);
@@ -2262,30 +2268,39 @@ function fitBlock(p){
     +body+(over?'<div class="wm" style="color:#B7791F">Over the allocation by '+big(b1.used-al)+' · warning only</div>':'<div class="wm">'+big(al-b1.used)+' left after this change.</div>')+'</div>';
 }
 function cmTable(sc,p){
-  if(SB)return [];
   var m={};sc.forEach(function(e){var k=e.compManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBudget(a,null),b:grpBudget(a,ov)}});
 }
 var _ted57=tedTable;tedTable=function(){return []};
 var _hero=heroHtml;
+function roleNow(){   // the demo has a role picker; in the app the role comes from the login (or "View as")
+  if(!apiMode())return S.role;
+  var r=String((S.as||(ME&&(ME.activeRole||ME.role))||"")).toLowerCase();
+  return /hr|admin/.test(r)?"HR":/comp/.test(r)?"CM":/tech/.test(r)?"TE":"HR";
+}
+function impactTable(title,col,rows,lastCol,lastKey){
+  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by '+title+'</div><div class="tedt"><div class="tedr th"><b>'+col+'</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>'+lastCol+'</span><span>Status</span></div>';
+  rows.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x[lastKey]+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
+  return t+'</div></div>';
+}
 heroHtml=function(vr,p){
-  var h=fitBlock(p)+wiHtml();
-  if(S.role==="CM")return h;
-  if(S.role==="HR"){
-    var TT=_ted57(scope(),p);if(TT.length<2)return h;
-    var u='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Skipped</span><span>Status</span></div>';
-    TT.forEach(function(t){u+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
-    u+='</div></div>';var k=h.indexOf('<div class="wi wp">');return k>=0?h.slice(0,k)+u+h.slice(k):h+u}
-  var CT=cmTable(scope(),p);if(CT.length<2)return h;
-  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Comp Manager</div><div class="tedt"><div class="tedr th"><b>Comp Manager</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Changing</span><span>Status</span></div>';
-  CT.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x.chg+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
-  t+='</div></div>';
-  var i=h.indexOf('<div class="wi wp">');
-  return i>=0?h.slice(0,i)+t+h.slice(i):h+t;
+  var h=fitBlock(p)+wiHtml(),role=roleNow();
+  if(role==="CM")return h;
+  var u="",TT=role==="HR"?_ted57(scope(),p):[];
+  if(TT.length>1)u=impactTable("Tech ED","Tech ED",TT,"Skipped","skip");
+  else{var CT=cmTable(scope(),p);if(CT.length>1)u=impactTable("Comp Manager","Comp Manager",CT,"Changing","chg")}
+  if(!u)return h;
+  var k=h.indexOf('<div class="wi wp">');   // the Before vs After block follows Budget fit
+  return k>=0?h.slice(0,k)+u+h.slice(k):h+u;
 };
 var _smY=smYears;smYears=function(){return ""};
+/* Employees is part of Summary: "View Employees" at the end of Summary opens the list, "Back to Summary" returns. */
+var _sum54=sumTab;sumTab=function(c){
+  var h=_sum54(c),i=h.lastIndexOf('</div>'),add='<div class="wm" style="margin:8px 0"><button class="btn lnk" id="bViewEmp" type="button">View Employees ›</button></div>';
+  return i>=0?h.slice(0,i)+add+h.slice(i):h+add;
+};
 /* Rating bell: people at each rating against a target bell, with the average Hike % or Total Reward % per rating */
 var BELL_TG={5:10,4:20,3:50,2:15,1:5};
 S.bcPlot=S.bcPlot||"";S.bcCmp=S.bcCmp||"both";
@@ -2333,7 +2348,8 @@ chartsTab=function(c){
   return '<div class="sm">'+_hero(vr,p)+(LYK?_smY(vr,p,K0):'')+'</div>'+hikeDist(vr,p,K0);
 };
 /* old What-If / Checks places now land on Summary (the drill-down lives there) */
-var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot")t="summary";_setPT54(t)};
+var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot"||t==="history")t="summary";_setPT54(t)};
+if(PT==="history")PT="summary";
 $("imp").addEventListener("click",function(ev){var f=ev.target.closest&&ev.target.closest("[data-fit]");if(!f)return;ev.stopImmediatePropagation();FIT_VIEW=f.getAttribute("data-fit");renderImpact()},true);
 $("imp").addEventListener("change",function(ev){var t=ev.target;if(!t||!t.id)return;if(t.id==="bcPlot"){S.bcPlot=t.value;renderImpact()}else if(t.id==="bcCmp"){S.bcCmp=t.value;renderImpact()}});
 

@@ -924,3 +924,6 @@
 .bo .tb-more>#bReset{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;height:32px;padding:0 14px;border:1px solid rgba(255,255,255,.4)!important;border-radius:8px;background:transparent!important;color:#fff!important;font-weight:700;cursor:pointer}
 .bo .tb-more>#bReset:hover:not(:disabled){background:rgba(255,255,255,.14)!important}
 .bo #scnCard .card-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* Employees is not a tab: Summary links to it, this bar leads back */
+.bo .bkbar{display:none;padding:6px 10px;border-bottom:1px solid #E5E7EB;background:#fff}
+.bo[data-ct=emp] .bkbar{display:block}
