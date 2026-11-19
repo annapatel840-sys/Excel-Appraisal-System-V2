@@ -4551,10 +4551,18 @@ module.exports = async function (req, res) {
       const selectedUtilization = employeeSheetRows.reduce(
         (sum, row) => sum + employeeUtilized(row), 0,
       );
-      const sourceApplied = n(value(sourceRow, "applied_budget")) ||
-        (n(value(sourceRow, "budget_base")) * n(value(sourceRow, "percentage"))) / 100;
-      const destinationApplied = n(value(destinationRow, "applied_budget")) ||
-        (n(value(destinationRow, "budget_base")) * n(value(destinationRow, "percentage"))) / 100;
+      const sourceAppliedRaw = value(sourceRow, "applied_budget");
+      const destinationAppliedRaw = value(destinationRow, "applied_budget");
+      const sourceApplied =
+        sourceAppliedRaw !== null && sourceAppliedRaw !== undefined &&
+        String(sourceAppliedRaw).trim() !== ""
+          ? n(sourceAppliedRaw)
+          : (n(value(sourceRow, "budget_base")) * n(value(sourceRow, "percentage"))) / 100;
+      const destinationApplied =
+        destinationAppliedRaw !== null && destinationAppliedRaw !== undefined &&
+        String(destinationAppliedRaw).trim() !== ""
+          ? n(destinationAppliedRaw)
+          : (n(value(destinationRow, "budget_base")) * n(value(destinationRow, "percentage"))) / 100;
       const sourceUtilized = n(value(sourceRow, "total_utilization"));
       const destinationUtilized = n(value(destinationRow, "total_utilization"));
       const availableToTransfer = Math.max(0, sourceApplied - sourceUtilized + selectedUtilization);
