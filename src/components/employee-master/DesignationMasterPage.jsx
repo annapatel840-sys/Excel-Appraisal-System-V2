@@ -11,6 +11,7 @@ import {
   useGridState,
   useGridView,
 } from "./DataGrid";
+import { pickExportRows } from "@/lib/table-export";
 import { PanelTab } from "./SidePanel";
 import { usePanel } from "./panelStore";
 import "./employee-master-ui.css";
@@ -833,6 +834,24 @@ export function DesignationMasterPage({ readOnly = false }) {
   }, [filters, tab, grid.filters, grid.sort]);
 
   const rowKey = (r) => r.id;
+
+  /* ---------- row checkboxes (used for Export; one selection per tab) ---------- */
+  const [ticks, setTicks] = useState({ des: new Set(), grp: new Set(), band: new Set() });
+  const tickedNow = ticks[tab] || new Set();
+  const viewKeys = useMemo(() => view.map(rowKey), [view]);
+  // Ticks that fell out of the current filter / list no longer count.
+  const tickedCount = viewKeys.filter((k) => tickedNow.has(k)).length;
+  const allTicked = viewKeys.length > 0 && tickedCount === viewKeys.length;
+  const toggleTick = (id) =>
+    setTicks((t) => {
+      const next = new Set(t[tab]);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...t, [tab]: next };
+    });
+  const toggleAllTicks = () =>
+    setTicks((t) => ({ ...t, [tab]: allTicked ? new Set() : new Set(viewKeys) }));
+
   const selId = sel[tab];
   const selRow = rowsAll.find((r) => r.id === selId) || null;
 
@@ -851,6 +870,13 @@ export function DesignationMasterPage({ readOnly = false }) {
 
   /* ---------- export ---------- */
   const exportXls = () => {
+    // Nothing ticked or everything ticked -> every row in the current filter;
+    // otherwise only the ticked rows.
+    const exportRows = pickExportRows(view, tickedNow, rowKey);
+    if (!exportRows.length) {
+      toast("Nothing to export");
+      return;
+    }
     const cols = defs.filter((d) => d.key !== "hist");
     const esc = (s) =>
       String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -858,7 +884,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       '<html><head><meta charset="utf-8"></head><body><table border="1"><tr>' +
       cols.map((c) => `<th style="background:#E6EEF8;color:#102A43">${esc(c.label)}</th>`).join("") +
       "</tr>" +
-      view.map((r) => "<tr>" + cols.map((c) => `<td>${esc(c.get(r))}</td>`).join("") + "</tr>").join("") +
+      exportRows.map((r) => "<tr>" + cols.map((c) => `<td>${esc(c.get(r))}</td>`).join("") + "</tr>").join("") +
       "</table></body></html>";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([html], { type: "application/vnd.ms-excel" }));
@@ -1171,7 +1197,13 @@ export function DesignationMasterPage({ readOnly = false }) {
                 allRows={rowsAll}
                 rows={pageRows}
                 rowKey={rowKey}
-                selected={new Set(selId ? [selId] : [])}
+                selectable
+                selected={tickedNow}
+                onToggleRow={toggleTick}
+                onToggleAll={toggleAllTicks}
+                allSelected={allTicked}
+                someSelected={tickedCount > 0}
+                highlighted={new Set(selId ? [selId] : [])}
                 rowClass={(r) => (tab === "des" && r.status !== "Active" ? "emx-dim" : "")}
                 emptyText="No rows match the filters"
               />

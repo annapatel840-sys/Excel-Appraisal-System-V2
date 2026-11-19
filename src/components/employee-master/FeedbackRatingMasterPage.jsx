@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { isEmptyFilter, matchesValue, NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
+import { useRowSelection } from "@/lib/table-export";
 
 /*
  * Feedback & Rating Master — HR Operations › Master.
@@ -516,6 +517,12 @@ export function FeedbackRatingMasterPage({
   const tableW = cols.reduce((s, c) => s + colWidth(c), 0);
   const atRisk = filtered.filter((r) => r.risk === "Yes").length;
 
+  /* ---------- row checkboxes (used for Export) ---------- */
+  // Stable key per row: its position in the loaded data.
+  const rowIds = useMemo(() => new Map(ROWS.map((r, i) => [r, String(i)])), [ROWS]);
+  const rowKeyOf = (r) => rowIds.get(r) ?? `${r.cid}|${r.id}|${r.eff}|${r.batch}`;
+  const rowSel = useRowSelection(filtered, rowKeyOf);
+
   /* ---------- actions ---------- */
 
   const describeColFilter = (c, f) => {
@@ -565,12 +572,15 @@ export function FeedbackRatingMasterPage({
   };
 
   const exportXls = () => {
-    if (!filtered.length) {
+    // Nothing ticked or everything ticked -> every row in the current filter;
+    // otherwise only the ticked rows. All columns are exported.
+    const exportRows = rowSel.pick(filtered);
+    if (!exportRows.length) {
       showToast("Nothing to export");
       return;
     }
     const heads = [];
-    cols.forEach((c) => {
+    COLS.forEach((c) => {
       if (c.k === "emp") heads.push({ h: "Emp ID", t: "text", x: "id" }, { h: "Employee Name", t: "text", x: "name" }, { h: "Designation", t: "text", x: "desig" });
       else heads.push({ h: c.h, t: c.t, x: c.k, c });
     });
@@ -580,7 +590,7 @@ export function FeedbackRatingMasterPage({
       h += `<th style="${st}background:#E6EEF8;color:#102A43;font-weight:bold;text-align:${x.t === "num" ? "right" : "left"}">${esc(x.h)}</th>`;
     });
     h += "</tr>";
-    filtered.forEach((r, i) => {
+    exportRows.forEach((r, i) => {
       const bg = i % 2 ? "#F2F5F9" : "#FBFCFE";
       h += "<tr>";
       heads.forEach((x) => {
@@ -612,7 +622,7 @@ export function FeedbackRatingMasterPage({
       a.remove();
     }, 400);
     setMenuOpen(false);
-    showToast(`Exported ${filtered.length} rows`);
+    showToast(`Exported ${exportRows.length} rows`);
   };
 
   /* ---------- render ---------- */
@@ -820,6 +830,19 @@ export function FeedbackRatingMasterPage({
                       {cols.map((c) => (
                         <th key={c.k} className={(c.fz ? "fz " : "") + (c.t === "num" ? "n" : "")}>
                           <div className="thc">
+                            {c.k === "emp" && (
+                              <input
+                                type="checkbox"
+                                className="rowchk"
+                                checked={rowSel.allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = rowSel.someSelected;
+                                }}
+                                onChange={rowSel.toggleAll}
+                                title="Select all rows in the current filter"
+                                aria-label="Select all"
+                              />
+                            )}
                             <span className="tl" title={c.h}>
                               {c.h}
                             </span>
@@ -848,17 +871,26 @@ export function FeedbackRatingMasterPage({
                   </thead>
                   <tbody>
                     {slice.map((r, i) => (
-                      <tr className="data" key={`${r.cid}-${r.id}-${i}`}>
+                      <tr className={"data" + (rowSel.selected.has(rowKeyOf(r)) ? " rowsel" : "")} key={`${r.cid}-${r.id}-${i}`}>
                         {cols.map((c) => {
                           const cl = (c.fz ? "fz rl " : "") + (c.t === "num" ? "n " : "") + (wrap[c.k] ? "wr" : "");
                           let v;
                           if (c.k === "emp")
                             v = (
-                              <>
-                                <b>{`${r.id} - ${r.name}`}</b>
-                                <br />
-                                <span className="sub">{r.desig}</span>
-                              </>
+                              <div className="rowef">
+                                <input
+                                  type="checkbox"
+                                  className="rowchk"
+                                  checked={rowSel.selected.has(rowKeyOf(r))}
+                                  onChange={() => rowSel.toggle(rowKeyOf(r))}
+                                  aria-label="Select row"
+                                />
+                                <div>
+                                  <b>{`${r.id} - ${r.name}`}</b>
+                                  <br />
+                                  <span className="sub">{r.desig}</span>
+                                </div>
+                              </div>
                             );
                           else if (c.k === "risk") v = <span className={"tag2 " + (r.risk === "Yes" ? "w" : "g")}>{r.risk}</span>;
                           else v = dispOf(r, c);
@@ -1108,6 +1140,9 @@ const FB_CSS = `
 .fb-root table.fx th{position:sticky;top:0;z-index:4;padding:7px 8px 7px 10px;vertical-align:bottom}
 .fb-root table.fx th.fz{left:0;z-index:6;background:#DFE8F3}
 .fb-root table.fx td{overflow:hidden;text-overflow:ellipsis;padding:7px 10px}
+.fb-root .rowchk{width:14px;height:14px;margin:0;accent-color:#27548A;cursor:pointer;flex:none}
+.fb-root .rowef{display:flex;align-items:flex-start;gap:8px}
+.fb-root table.fx tr.rowsel td{background:#E8F0FB !important}
 .fb-root table.fx td.fz{position:sticky;left:0;z-index:2;border-right:1px solid var(--th-line)}
 .fb-root table.fx td.wr{white-space:normal}
 .fb-root table.fx.cmp td{padding:3px 10px}.fb-root table.fx.cmp th{padding-top:4px;padding-bottom:4px}

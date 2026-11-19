@@ -4,6 +4,7 @@ import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+import { useRowSelection } from "@/lib/table-export";
 import { FilterStatus, filterTableCss, useTableFilters } from "./FilterableTable";
 
 const STATIC_COL_META = {
@@ -316,7 +317,15 @@ export function PayrollDataPage() {
     if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
   }, [currentPage]);
 
+  // Row checkboxes (used for Export). Key = the row's position in the loaded data.
+  const rowIds = useMemo(() => new Map(stored.map((r, i) => [r, String(i)])), [stored]);
+  const rowKeyOf = (r) => rowIds.get(r) ?? `${r.empId}|${r.cycleId ?? r.cycle ?? ""}`;
+  const rowSel = useRowSelection(rows, rowKeyOf);
+
   const handleExport = () => {
+    // Nothing ticked or everything ticked -> every row in the current filter;
+    // otherwise only the ticked rows. All columns are exported.
+    const exportRows = rowSel.pick(rows);
     const headers = COLS.map((c) => c.label);
     const csvCell = (value) => {
       const text = String(value ?? "");
@@ -324,7 +333,7 @@ export function PayrollDataPage() {
       return `"${safeText.replace(/"/g, '""')}"`;
     };
     const lines = [headers.map(csvCell).join(",")];
-    rows.forEach((r) => {
+    exportRows.forEach((r) => {
       const vals = COLS.map((col) => {
         const val = rawValueFor(r, col, priorMap);
         if (col.money) return val == null ? "" : Math.round(val);
@@ -448,9 +457,22 @@ export function PayrollDataPage() {
           </colgroup>
           <thead>
             <tr>
-              {COLS.map((c) => (
+              {COLS.map((c, colIndex) => (
                 <th key={c.key} className={c.frozen ? "frozen" : ""}>
                   <div className="pd-th-inner">
+                    {colIndex === 0 && (
+                      <input
+                        type="checkbox"
+                        className="pd-chk"
+                        checked={rowSel.allSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = rowSel.someSelected;
+                        }}
+                        onChange={rowSel.toggleAll}
+                        title="Select all rows in the current filter"
+                        aria-label="Select all"
+                      />
+                    )}
                     <span>
                       {c.label}
                       {c.cat && (
@@ -506,8 +528,8 @@ export function PayrollDataPage() {
                 </td>
               </tr>
             ) : pageRows.map((r, i) => (
-              <tr key={`${r.empId}-${r.cycle}-${pageStart + i}`}>
-                {COLS.map((col) => {
+              <tr key={`${r.empId}-${r.cycle}-${pageStart + i}`} className={rowSel.selected.has(rowKeyOf(r)) ? "pd-row-sel" : ""}>
+                {COLS.map((col, colIndex) => {
                   const val = rawValueFor(r, col, priorMap);
                   if (col.isYoy) {
                     const cls = val == null ? "new" : val >= 0 ? "pos" : "neg";
@@ -536,9 +558,20 @@ export function PayrollDataPage() {
                         ? "pd-master-cell"
                         : "") + (col.cat === "calc" ? " pd-calc-cell" : "");
 
+                  const rowBox = colIndex === 0 && (
+                    <input
+                      type="checkbox"
+                      className="pd-chk"
+                      checked={rowSel.selected.has(rowKeyOf(r))}
+                      onChange={() => rowSel.toggle(rowKeyOf(r))}
+                      aria-label="Select row"
+                    />
+                  );
+
                   if (col.key === "promo") {
                     return (
                       <td key={col.key} className={cls}>
+                        {rowBox}
                         <span
                           className={`pd-status-badge ${val === "Yes" ? "yes" : "no"}`}
                         >
@@ -549,7 +582,14 @@ export function PayrollDataPage() {
                   }
                   return (
                     <td key={col.key} className={cls}>
-                      {display}
+                      {colIndex === 0 ? (
+                        <span className="pd-chk-cell">
+                          {rowBox}
+                          <span>{display}</span>
+                        </span>
+                      ) : (
+                        display
+                      )}
                     </td>
                   );
                 })}
@@ -720,6 +760,9 @@ const PAYROLL_DATA_CSS = `
 .pd-column-resize-handle:hover { background: rgba(23,54,93,.3); }
 .pd-grid-wrap th { overflow: visible; }
 .pd-th-inner { min-width: 0; }
+.pd-chk { width: 14px; height: 14px; margin: 0 6px 0 0; accent-color: #27548A; cursor: pointer; flex: none; vertical-align: middle; }
+.pd-chk-cell { display: inline-flex; align-items: flex-start; gap: 0; }
+.pd-grid-wrap tr.pd-row-sel td { background: #e8f0fb !important; }
 .pd-th-inner > span { min-width: 0; overflow-wrap: anywhere; }
 .pd-grid-wrap th.frozen, .pd-grid-wrap td.frozen { position: sticky; left: 0; z-index: 3; background: #fff; }
 .pd-grid-wrap th.frozen { z-index: 8; background: #dfe8f3; }

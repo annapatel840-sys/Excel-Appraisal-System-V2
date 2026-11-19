@@ -266,6 +266,7 @@ export function DataGrid({
   defs, grid, allRows, rows, rowKey,
   selectable = false, selected, onToggleRow, onToggleAll,
   allSelected = false, someSelected = false, canSelectRow,
+  highlighted, // optional Set of row keys to tint (e.g. the row open in a side panel) when that differs from the ticked rows
   rowClass, actionHeader, renderAction,
   emptyText = "No rows match the current filters.",
   fillWidth = false, // stretch columns to the full width of the grid area
@@ -402,9 +403,10 @@ export function DataGrid({
               rows.map((row) => {
                 const id = rowKey(row);
                 const on = selected ? selected.has(id) : false;
+                const tinted = highlighted ? highlighted.has(id) : on;
                 const selectableRow = selectable && (!canSelectRow || canSelectRow(row));
                 return (
-                  <tr key={id} className={`${on ? "emx-sel" : ""} ${rowClass ? rowClass(row) : ""}`}>
+                  <tr key={id} className={`${tinted ? "emx-sel" : ""} ${rowClass ? rowClass(row) : ""}`}>
                     {visible.map(({ d, c }, index) => {
                       const content = d.render ? d.render(row) : String(d.get(row) ?? "");
                       return (

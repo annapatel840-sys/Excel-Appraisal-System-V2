@@ -660,6 +660,7 @@ import { AddEmployeeModal } from "./AddEmployeeModal";
 import { usePanel } from "./panelStore";
 import { useScreenFields } from "@/lib/access-store";
 import { fmtDoj } from "@/lib/employee-master-utils";
+import { exportRowsToExcel, pickExportRows } from "@/lib/table-export";
 import { LocationMasterControl } from "./LocationMasterControl";
 
 import { effectiveRow, isActionNeededStatus, isActiveStatus, isInactiveStatus } from "@/lib/eligibility-rules";
@@ -1025,6 +1026,40 @@ export function EligibilityList({
       return next;
     });
 
+  /* export: nothing ticked or everything ticked -> every row in the current
+     view; otherwise only the ticked rows. Every column is exported. */
+  const [exporting, setExporting] = useState(false);
+  const runExport = async () => {
+    const ticked = allSelected
+      ? view
+      : pickExportRows(view, selectedIds, (e) => e.empId);
+    if (!ticked.length || exporting) return;
+    const columns = [];
+    DEFS.forEach((d) => {
+      if (fieldAccess.hidden(d.label)) return;
+      if (d.key === "employee") {
+        columns.push(
+          { header: "Emp ID", value: (e) => e.empId },
+          { header: "Employee Name", value: (e) => e.name },
+          { header: "Designation", value: (e) => e.designation },
+        );
+      } else {
+        columns.push({ header: d.label, value: (e) => d.get(e) });
+      }
+    });
+    setExporting(true);
+    try {
+      await exportRowsToExcel({
+        filename: `Eligibility_${TABS.find(([k]) => k === tab)?.[1].replace(/\s+/g, "_") || "List"}`,
+        sheetName: "Eligibility",
+        columns,
+        rows: ticked,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const bulk = (preset) => {
     if (!selectedRows.length) return;
     onChangeEligibility(Object.assign([...selectedRows], { preset }));
@@ -1196,7 +1231,7 @@ export function EligibilityList({
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false);
-                    onExport?.(view);
+                    runExport();
                   }}
                 >
                   <Download size={14} /> Export to Excel
@@ -1313,7 +1348,7 @@ export function EligibilityList({
                 allRows={employees}
                 rows={pageRows}
                 rowKey={(e) => e.empId}
-                selectable={canEdit}
+                selectable
                 selected={selectedIds}
                 onToggleRow={toggleRow}
                 onToggleAll={toggleAll}

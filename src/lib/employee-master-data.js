@@ -941,8 +941,9 @@ export async function createEmployeeMasterEmployees(records) {
    FETCH ALL EMPLOYEE MASTER EMPLOYEES
    ============================================================ */
 
-export async function fetchAllEmployeeMasterEmployees() {
+export async function fetchAllEmployeeMasterEmployees(filters = {}) {
   const firstPage = await fetchEmployeeMasterEmployees({
+    ...filters,
     page: 1,
     limit: 100,
   });
@@ -953,6 +954,7 @@ export async function fetchAllEmployeeMasterEmployees() {
 
   for (let page = 2; page <= totalPages; page++) {
     const result = await fetchEmployeeMasterEmployees({
+      ...filters,
       page,
       limit: 100,
     });

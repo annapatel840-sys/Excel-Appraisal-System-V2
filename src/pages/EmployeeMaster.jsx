@@ -3189,7 +3189,7 @@ import { useBudget } from "@/lib/budget-store";
 //   );
 // }
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
@@ -4468,6 +4468,47 @@ export function EmployeeMaster() {
       });
     });
   }, [allEmployees, rosterFilters]);
+
+  /* ============================================================
+     EMPLOYEE MASTER EXPORT
+     - nothing ticked        -> every employee (all pages, current search / status / location)
+     - some rows ticked      -> only the ticked employees
+     - every row ticked      -> every employee
+     ============================================================ */
+
+  const rosterExportRef = useRef(null);
+  const rosterTicked = useRef({ rows: [], all: false });
+  const handleRosterSelection = useCallback((rows, all) => {
+    rosterTicked.current = { rows, all };
+  }, []);
+
+  const exportRosterEmployees = async () => {
+    const write = rosterExportRef.current;
+    if (!write) return;
+    const { rows: ticked, all } = rosterTicked.current;
+    try {
+      let toExport = ticked;
+      if (!ticked.length || all) {
+        showBanner("Preparing export", "Loading every employee for the export...");
+        toExport = await fetchAllEmployeeMasterEmployees({
+          search,
+          status:
+            statusFilter === "All"
+              ? "all"
+              : String(statusFilter || "").toLowerCase(),
+          location: locationFilter === "All" ? "" : locationFilter,
+        });
+      }
+      if (!toExport.length) {
+        showBanner("Nothing to export", "There are no employees to export.", true);
+        return;
+      }
+      await write(toExport);
+      showBanner("Export ready", `Exported ${toExport.length} employee${toExport.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      showBanner("Export failed", error?.message || "Unable to export employees.", true);
+    }
+  };
 
   const rosterTotalPages = Math.max(1, rosterPagination.totalPages);
 
@@ -6220,7 +6261,7 @@ export function EmployeeMaster() {
                   ? () => fileInputRef.current?.click()
                   : undefined
               }
-              onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
+              onDownloadData={exportRosterEmployees}
               onAuditHistory={
                 access.canAction("viewAudit")
                   ? () => openAuditHistory("status")
@@ -6266,6 +6307,8 @@ export function EmployeeMaster() {
                 onBulkFieldChange={bulkUpdateEmployeeField}
                 bulkStatusUpdating={statusActionLoading}
                 canEdit={canEditEmployees}
+                onSelectionChange={handleRosterSelection}
+                exportRef={rosterExportRef}
               />
             )}
           </div>

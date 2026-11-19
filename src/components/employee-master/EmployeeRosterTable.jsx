@@ -6,6 +6,7 @@ import { InactiveModal, ChangeModal } from "./EmployeeMasterModal";
 import { useScreenFields } from "@/lib/access-store";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
+import { exportRowsToExcel } from "@/lib/table-export";
 import "./employee-master-ui.css";
 
 /* ---------- value helpers (same aliases as before) ---------- */
@@ -211,6 +212,8 @@ export function EmployeeRosterTable({
   bulkStatusUpdating = false,
   canEdit = true,
   auditEntries, // optional: [{ title, meta, detail }]
+  onSelectionChange, // (rowsTicked: employee[], allTickedOnPage: boolean) => void  (drives Export)
+  exportRef, // ref the parent calls: exportRef.current(employees) writes the Excel file (all columns)
 }) {
   const grid = useGridState(DEFS, { appraisal: true });
   // Access → Fields → Employee Master: Hidden columns are not shown; Read only fields cannot
@@ -260,6 +263,55 @@ export function EmployeeRosterTable({
   );
   const viewSelected = viewIds.filter((id) => selected.has(id)).length;
   const allSelected = viewIds.length > 0 && viewSelected === viewIds.length;
+
+  // Tell the parent what is ticked, so its Export button can follow the rule:
+  // none ticked / everything ticked -> all employees; some ticked -> only those.
+  useEffect(() => {
+    onSelectionChange?.(selectedRows, allSelected);
+  }, [selectedRows, allSelected, onSelectionChange]);
+
+  // Every column of the grid (hidden-by-access ones left out), plus the manager
+  // fields held on the employee record. "Employee" is split into ID / Name / Designation.
+  useEffect(() => {
+    if (!exportRef) return undefined;
+    exportRef.current = (employees) => {
+      const columns = [];
+      defs.forEach((d) => {
+        if (d.key === "employee") {
+          columns.push(
+            { header: "Emp ID", value: (e) => getEmployeeId(e) },
+            { header: "Employee Name", value: (e) => (getEmployeeName(e) === "-" ? "" : getEmployeeName(e)) },
+            { header: "Designation", value: (e) => (getDesignation(e) === "-" ? "" : getDesignation(e)) },
+          );
+        } else {
+          columns.push({
+            header: d.label,
+            value: (e) => {
+              const text = d.get(e);
+              return text === "-" ? "" : text;
+            },
+          });
+        }
+      });
+      [
+        ["Comp. Manager", "compManager"],
+        ["Super Manager", "superManager"],
+        ["Manager Email ID", "managerMail"],
+        ["Super Manager Email ID", "superManagerMail"],
+      ].forEach(([header, field]) => {
+        columns.push({ header, value: (e) => e?.[field] ?? e?.rawEmployee?.[field] ?? "" });
+      });
+      return exportRowsToExcel({
+        filename: "Employee_Master",
+        sheetName: "Employee Master",
+        columns,
+        rows: employees,
+      });
+    };
+    return () => {
+      exportRef.current = null;
+    };
+  }, [exportRef, defs]);
 
   const toggleRow = (id) =>
     setSelected((current) => {
@@ -353,7 +405,7 @@ export function EmployeeRosterTable({
           allRows={list}
           rows={view}
           rowKey={(e) => getEmployeeId(e) || String(getEmployeeName(e))}
-          selectable={canEdit}
+          selectable
           selected={selected}
           onToggleRow={toggleRow}
           onToggleAll={toggleAll}
