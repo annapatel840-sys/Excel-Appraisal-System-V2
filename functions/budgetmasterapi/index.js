@@ -4379,21 +4379,28 @@ module.exports = async function (req, res) {
       const techEdId = String(body.tech_ed_id || "").trim().split(/\s+-\s+/)[0];
       const sourceId = String(body.source_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
       const destinationId = String(body.destination_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
-      if (!techEdId || !sourceId || !destinationId || sourceId.toLowerCase() === destinationId.toLowerCase()) {
-        throw new access.HttpError(400, "Select a Tech-Ed, source Comp Manager and a different destination Comp Manager.");
+      const requestedAmount = n(body.transferred_budget);
+      const requestedEmployeeIds = Array.isArray(body.employee_ids)
+        ? body.employee_ids.map((id) => referenceText(id)).filter(Boolean)
+        : [];
+      if (!techEdId || !sourceId || !destinationId ||
+          sourceId.toLowerCase() === destinationId.toLowerCase()) {
+        throw new access.HttpError(400, "Select a Tech-Ed and a different destination Comp Manager.");
       }
+      if (!(requestedAmount > 0) || !requestedEmployeeIds.length) {
+        throw new access.HttpError(400, "Enter a transfer amount and select at least one employee.");
+      }
+
       const distributionRows = await getAllRows(app, "Budget_Distribution");
       const parent = distributionRows.find((row) =>
         String(value(row, "appraisal_cycle_id") || "").trim() === activeCycleIdForWrite &&
         ownerKey(value(row, "appraiser_tech_ed_id")) === ownerKey(techEdId)
       );
       if (!parent) throw new access.HttpError(404, "The selected Tech-Ed allocation was not found for this cycle.");
-      // A Comp Manager's own access scope is anchored to their employee
-      // team, not to the Tech-Ed identity stored on the parent allocation.
-      // Permit the transfer only when the selected source manager is the
-      // authenticated Comp Manager; source/destination allocation rows are
-      // then validated against this exact parent below. HR/View-As retains
-      // the normal all-scope path.
+
+      // A Comp Manager can transfer only their own source allocation. The
+      // selected destination must be another saved allocation under this
+      // exact Tech-Ed parent and active cycle.
       const isOwnCompManagerSource =
         a.role === "compMgr" && matchesOwner(sourceId, a);
       if (a.enforced && !Boolean(a.scope && a.scope.all) &&
@@ -4405,7 +4412,7 @@ module.exports = async function (req, res) {
 
       const compRows = await getAllRows(app, "Budget_Distribution_Comp");
       const employeeRows = await getAllRows(app, "Employee_Master");
-      const masterByRowId = new Map(employeeRows.map((row) => [idOf(row), String(value(row, "emp_id") || "").trim()]));
+      const masterByRowId = new Map(employeeRows.map((row) => [idOf(row).toLowerCase(), String(value(row, "emp_id") || "").trim()]));
       const masterById = new Map(employeeRows.map((row) => [String(value(row, "emp_id") || "").trim().toLowerCase(), String(value(row, "emp_id") || "").trim()]));
       const masterByName = new Map(employeeRows.map((row) => [
         String(value(row, "emp_name") || value(row, "employee_name") || value(row, "name") || "").trim().toLowerCase(),
@@ -4415,7 +4422,7 @@ module.exports = async function (req, res) {
         const text = referenceText(raw);
         if (!text) return "";
         const first = text.split(/\s+-\s+/)[0].trim();
-        return masterByRowId.get(first) ||
+        return masterByRowId.get(first.toLowerCase()) ||
           masterById.get(first.toLowerCase()) ||
           masterByName.get(text.toLowerCase()) ||
           masterByName.get(first.toLowerCase()) ||
@@ -4423,16 +4430,17 @@ module.exports = async function (req, res) {
       };
       const sourceKey = ownerKey(resolvedOwner(sourceId));
       const destinationKey = ownerKey(resolvedOwner(destinationId));
-      const sourceRow = compRows.find((row) =>
-        String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
-        ownerKey(resolvedOwner(value(row, "comp_manager"))) === sourceKey
+      const parentId = idOf(parent);
+      const compRowFor = (managerKey) => compRows.find((row) =>
+        String(value(row, "budget_distribution_id") || "") === parentId &&
+        (!value(row, "appraisal_cycle_id") ||
+          cycleReference(value(row, "appraisal_cycle_id")) === activeCycleIdForWrite) &&
+        ownerKey(resolvedOwner(value(row, "comp_manager"))) === managerKey
       );
-      const destinationRow = compRows.find((row) =>
-        String(value(row, "budget_distribution_id") || "") === idOf(parent) &&
-        ownerKey(resolvedOwner(value(row, "comp_manager"))) === destinationKey
-      );
+      const sourceRow = compRowFor(sourceKey);
+      const destinationRow = compRowFor(destinationKey);
       if (!sourceRow || !destinationRow) {
-        throw new access.HttpError(404, "Both Comp Managers must already have an allocation row under the selected Tech-Ed.");
+        throw new access.HttpError(404, "The source and destination must both have saved allocations under the selected Tech-Ed.");
       }
 
       const sheetRows = await getAllRows(app, "Appraisal_Sheet");
@@ -4447,32 +4455,88 @@ module.exports = async function (req, res) {
         row.comp_manager || row.comp_manager_id || row.compManager ||
         row.comp_manager_name || row.comp_manager_display
       );
-      const employeeSheetRows = sheetRows.filter((row) =>
+      const employeeIdOfSheet = (row) => {
+        const raw = referenceText(row.emp_id || row.employee_id || row.emp_code || row.empId || idOf(row));
+        return masterByRowId.get(raw.toLowerCase()) ||
+          masterById.get(raw.toLowerCase()) ||
+          raw;
+      };
+      const sourceTeamRows = sheetRows.filter((row) =>
         (cycleOfSheet(row) === activeCycleIdForWrite ||
           cycleOfSheet(row).toLowerCase() === activeCycleNameForWrite) &&
         ownerKey(techOfSheet(row)) === ownerKey(techEdId) &&
-        ownerKey(compOfSheet(row)) === ownerKey(sourceId)
+        ownerKey(compOfSheet(row)) === sourceKey
       );
-      if (!employeeSheetRows.length) {
-        throw new access.HttpError(409, "No employees were found under the source Comp Manager for this Tech-Ed and cycle.");
+      const requestedKeys = new Set(requestedEmployeeIds.map((id) => {
+        const first = id.split(/\s+-\s+/)[0].trim();
+        return (masterByRowId.get(first.toLowerCase()) ||
+          masterById.get(first.toLowerCase()) ||
+          first).toLowerCase();
+      }));
+      const employeeSheetRows = sourceTeamRows.filter((row) =>
+        requestedKeys.has(employeeIdOfSheet(row).toLowerCase())
+      );
+      if (!employeeSheetRows.length || employeeSheetRows.length !== requestedKeys.size) {
+        throw new access.HttpError(409, "One or more selected employees are no longer assigned to the source Comp Manager under this Tech-Ed and cycle. Refresh and select again.");
       }
 
-      const sourceBase = n(value(sourceRow, "budget_base"));
-      const destinationBase = n(value(destinationRow, "budget_base"));
+      // Match the Appraisal Sheet utilization calculation: current-year hike,
+      // PB, RB and JB less previous-year PB/RB/JB. Selected employees' current
+      // utilization moves with them to the destination manager.
+      const amountFrom = (row, keys) => {
+        for (const key of keys) {
+          const raw = row[key];
+          if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+          const parsed = n(raw);
+          if (parsed !== 0) return parsed;
+        }
+        return 0;
+      };
+      const employeeUtilized = (row) => {
+        const serverAmount = n(row.utilized_amount);
+        if (serverAmount !== 0) return serverAmount;
+        return (
+          amountFrom(row, ["hike_amount", "hikeAmount", "current_hike_amount"]) +
+          amountFrom(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus", "performanceBonus", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb_amount", "allocatedPBAmount", "target_pb_next_year", "targetPBNextYear"]) +
+          amountFrom(row, ["new_rb", "newRB", "current_retention_bonus", "retention_bonus", "retentionBonus"]) +
+          amountFrom(row, ["joining_bonus", "joiningBonus", "current_joining_bonus"]) -
+          amountFrom(row, ["previous_year_performance_bonus", "previousPerformanceBonus", "previous_year_pb", "pb_to_be_paid", "pbToBePaid", "previous_pb"]) -
+          amountFrom(row, ["previous_year_retention_bonus", "previousRetentionBonus", "previous_year_rb", "rb_to_be_paid", "rbToBePaid", "previous_rb"]) -
+          amountFrom(row, ["previous_year_joining_bonus", "previousJoiningBonus", "previous_year_jb", "previous_joining_bonus"])
+        );
+      };
+      const selectedUtilization = employeeSheetRows.reduce(
+        (sum, row) => sum + employeeUtilized(row), 0,
+      );
       const sourceApplied = n(value(sourceRow, "applied_budget")) ||
-        (sourceBase * n(value(sourceRow, "percentage"))) / 100;
+        (n(value(sourceRow, "budget_base")) * n(value(sourceRow, "percentage"))) / 100;
       const destinationApplied = n(value(destinationRow, "applied_budget")) ||
-        (destinationBase * n(value(destinationRow, "percentage"))) / 100;
-      const combinedBase = sourceBase + destinationBase;
-      const combinedApplied = sourceApplied + destinationApplied;
-      if (!(combinedBase > 0) || combinedApplied > n(value(parent, "applied_budget")) + 1) {
-        throw new access.HttpError(409, "The combined Comp Manager allocation is invalid for the selected Tech-Ed budget.");
-      }
-      const destinationPct = combinedApplied > 0 ? (combinedApplied / combinedBase) * 100 : 0;
-      if (destinationPct > 100.0001) {
-        throw new access.HttpError(409, "The transferred allocation would exceed 100% of the destination team's combined budget base.");
+        (n(value(destinationRow, "budget_base")) * n(value(destinationRow, "percentage"))) / 100;
+      const sourceUtilized = n(value(sourceRow, "total_utilization"));
+      const destinationUtilized = n(value(destinationRow, "total_utilization"));
+      const availableToTransfer = Math.max(0, sourceApplied - sourceUtilized + selectedUtilization);
+      if (requestedAmount > availableToTransfer + 0.01 || requestedAmount > sourceApplied + 0.01) {
+        throw new access.HttpError(409, "The entered amount exceeds the source Comp Manager's available budget after accounting for the selected employees.");
       }
 
+      const sourceBase = n(value(sourceRow, "budget_base")) ||
+        (n(value(sourceRow, "percentage")) > 0 ? sourceApplied * 100 / n(value(sourceRow, "percentage")) : 0);
+      const destinationBase = n(value(destinationRow, "budget_base")) ||
+        (n(value(destinationRow, "percentage")) > 0 ? destinationApplied * 100 / n(value(destinationRow, "percentage")) : 0);
+      if (!(sourceBase > 0) || !(destinationBase > 0)) {
+        throw new access.HttpError(409, "Both Comp Manager allocations must have a valid budget base before transferring budget.");
+      }
+      const nextSourceApplied = Math.max(0, sourceApplied - requestedAmount);
+      const nextDestinationApplied = destinationApplied + requestedAmount;
+      const nextSourcePct = (nextSourceApplied / sourceBase) * 100;
+      const nextDestinationPct = (nextDestinationApplied / destinationBase) * 100;
+      if (nextSourcePct > 100.0001 || nextDestinationPct > 100.0001) {
+        throw new access.HttpError(409, "The transfer would exceed 100% of a Comp Manager's budget base.");
+      }
+
+      // Update only the selected employees. Other employees remain assigned
+      // to the source manager. Original budget and original team-size snapshots
+      // are intentionally preserved; only current allocation values change.
       const sheetTable = app.datastore().table("74008000000039094");
       for (const row of employeeSheetRows) {
         const patch = { ROWID: idOf(row) };
@@ -4484,28 +4548,21 @@ module.exports = async function (req, res) {
       }
 
       const compTable = app.datastore().table(TABLES.comp);
-      const compColumns = await getColumnNames(compTable);
-      const calcField = pickColumn(compColumns, ["calculated_budget", "claculated_budget"], "calculated_budget");
       await compTable.updateRow({
         ROWID: idOf(sourceRow),
-        percentage: 0,
-        applied_budget: 0,
-        total_utilization: 0,
-        [calcField]: 0,
+        percentage: nextSourcePct,
+        applied_budget: nextSourceApplied,
+        total_utilization: Math.max(0, sourceUtilized - selectedUtilization),
       });
       await compTable.updateRow({
         ROWID: idOf(destinationRow),
-        percentage: destinationPct,
-        budget_base: combinedBase,
-        applied_budget: combinedApplied,
-        [calcField]: combinedApplied,
+        percentage: nextDestinationPct,
+        applied_budget: nextDestinationApplied,
+        total_utilization: destinationUtilized + selectedUtilization,
       });
 
       const historyTable = app.datastore().table("74008000000462004");
-      const transferredIds = employeeSheetRows.map((row) => {
-        const raw = referenceText(row.emp_id || row.employee_id || row.emp_code);
-        return masterByRowId.get(raw) || masterById.get(raw.toLowerCase()) || raw;
-      }).filter(Boolean);
+      const transferredIds = employeeSheetRows.map(employeeIdOfSheet).filter(Boolean);
       const actor = String(a.user?.email || a.user?.email_id || a.user?.name || "Unknown").slice(0, 100);
       await historyTable.insertRow({
         appraisal_cycle_id: activeCycleIdForWrite,
@@ -4513,7 +4570,7 @@ module.exports = async function (req, res) {
         source_comp_manager_id: sourceId,
         destination_comp_manager_id: destinationId,
         employee_ids: JSON.stringify(transferredIds),
-        transferred_budget: sourceApplied,
+        transferred_budget: requestedAmount,
         transferred_by: actor,
         transferred_at: new Date().toISOString().slice(0, 19).replace("T", " "),
       });
@@ -4521,12 +4578,14 @@ module.exports = async function (req, res) {
         success: true,
         resource,
         transferred_count: transferredIds.length,
-        transferred_budget: sourceApplied,
+        transferred_budget: requestedAmount,
+        source_remaining_budget: nextSourceApplied,
+        destination_updated_budget: nextDestinationApplied,
         source_comp_manager_id: sourceId,
         destination_comp_manager_id: destinationId,
       });
     }
-    // COMP_MANAGER_TRANSFER END
+
 
     if (id) {
       const tableId =
