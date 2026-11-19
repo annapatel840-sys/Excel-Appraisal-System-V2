@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
+import { LETTERS_DEMO, generateLettersForCycle, syncLetterState, useLettersStats } from "@/lib/letters-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
