@@ -4436,7 +4436,8 @@ module.exports = async function (req, res) {
       const techEdId = String(body.tech_ed_id || "").trim().split(/\s+-\s+/)[0];
       const sourceId = String(body.source_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
       const destinationId = String(body.destination_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
-      const requestedAmount = n(body.transferred_budget);
+      const requestedPercentage = n(body.transferred_percentage);
+      let requestedAmount = 0;
       const requestedEmployeeIds = Array.isArray(body.employee_ids)
         ? body.employee_ids.map((id) => referenceText(id)).filter(Boolean)
         : [];
@@ -4444,8 +4445,8 @@ module.exports = async function (req, res) {
           sourceId.toLowerCase() === destinationId.toLowerCase()) {
         throw new access.HttpError(400, "Select a Tech-Ed and a different destination Comp Manager.");
       }
-      if (!(requestedAmount > 0) || !requestedEmployeeIds.length) {
-        throw new access.HttpError(400, "Enter a transfer amount and select at least one employee.");
+      if (!(requestedPercentage > 0) || requestedPercentage > 100 || !requestedEmployeeIds.length) {
+        throw new access.HttpError(400, "Enter a transfer percentage between 0 and 100 and select at least one employee.");
       }
 
       const distributionRows = await getAllRows(app, "Budget_Distribution");
@@ -4584,8 +4585,15 @@ module.exports = async function (req, res) {
       const sourceUtilized = n(value(sourceRow, "total_utilization"));
       const destinationUtilized = n(value(destinationRow, "total_utilization"));
       const availableToTransfer = Math.max(0, sourceApplied - sourceUtilized + selectedUtilization);
-      if (requestedAmount > availableToTransfer + 0.01 || requestedAmount > sourceApplied + 0.01) {
-        throw new access.HttpError(409, "The entered amount exceeds the source Comp Manager's available budget after accounting for the selected employees.");
+      if (!(availableToTransfer > 0)) {
+        throw new access.HttpError(409, "There is no transferable budget available for this source Comp Manager and selected employees.");
+      }
+      // Percentage is applied to the server-calculated transferable balance.
+      // This avoids stale client-side amount calculations and prevents a
+      // transfer from exceeding the source's available budget.
+      requestedAmount = Math.round((availableToTransfer * requestedPercentage / 100) * 100) / 100;
+      if (!(requestedAmount > 0) || requestedAmount > availableToTransfer + 0.01 || requestedAmount > sourceApplied + 0.01) {
+        throw new access.HttpError(409, "The selected percentage produces an invalid transfer amount. Refresh the budget and try again.");
       }
 
       const nextSourceApplied = Math.max(0, sourceApplied - requestedAmount);
