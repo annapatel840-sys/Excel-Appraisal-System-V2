@@ -606,7 +606,6 @@ import { useBudget } from "@/lib/budget-store";
 //    ============================================================ */
 
 // export function EmployeeMaster() {
-  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
 //   const catalystUser = useCatalystUser();
 //   const { refreshEmployees } = useAppraisalRefresh();
 //   const role = String(catalystUser?.role || "")
@@ -3826,6 +3825,7 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
    ============================================================ */
 
 export function EmployeeMaster() {
+  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
   const catalystUser = useCatalystUser();
   const { refreshEmployees } = useAppraisalRefresh();
   const role = String(catalystUser?.role || "")
