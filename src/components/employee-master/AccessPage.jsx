@@ -514,6 +514,7 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt, location }) {
           <option value="">anything</option><option value="edit">Edit (can edit)</option><option value="read">Read</option><option value="hidden">Hidden (can’t see)</option>
         </select>
       </div>
+      {!location && <div className="msg">Select a System Location to see and change field limits for it.</div>}
       {lockedLabels.length > 0 && (
         <div className="msg">{screenDef.label} is None for {lockedLabels.join(", ")} at {location}, so those fields are view-only here.</div>
       )}
@@ -530,6 +531,8 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt, location }) {
                 </td>
                 <td><span className={"kind " + f.kind}>{KIND_LABEL[f.kind] || f.kind}</span></td>
                 {rs.map((r) => {
+                  // No System Location chosen: no dropdowns (and no values) in the role columns.
+                  if (!location) return <td key={r.key} className="derived">—</td>;
                   if (f.kind === "calc") return <td key={r.key} className="derived">{LIMIT_LABEL[lims[r.key][f.key]]} (auto)</td>;
                   if (f.kind === "pair") return <td key={r.key} className="derived">{LIMIT_LABEL[lims[r.key][f.key]]} (same as {pairItem ? pairItem.label : f.pairOf})</td>;
                   const v = M.cur("field", r.key, f.key) || "read", sv = M.saved("field", r.key, f.key) || "read";
@@ -1294,6 +1297,8 @@ export default function AccessPage() {
 
   /* ---------- pending changes ---------- */
   const setVal = (kind, role, key, to) => {
+    // Fields tab: nothing can be changed until a System Location is chosen.
+    if (kind === "field" && !systemLocation) return;
     setPending((prev) => {
       const k = kind + "|" + role + "|" + key;
       const next = { ...prev };
