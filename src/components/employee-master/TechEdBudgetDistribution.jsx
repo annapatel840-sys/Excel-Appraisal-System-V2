@@ -1870,7 +1870,7 @@ export function TechEdBudgetDistribution() {
 
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
-    return locationEmployeeRows.filter((employee) => {
+    const matchingRows = locationEmployeeRows.filter((employee) => {
       if (employee.in_appraisal_sheet !== true) return false;
       const raw =
         employee.appraiser_tech_ed_row_id ||
@@ -1916,6 +1916,31 @@ export function TechEdBudgetDistribution() {
         managerIdentityMatches(manager, selectedCompManager)
       );
     });
+    // The roster can contain multiple Appraisal_Sheet rows for the same
+    // employee (for example, an older duplicate row plus the current row).
+    // Team Size and utilisation must count each employee once, matching the
+    // distinct employee count shown by the Appraisal Sheet.
+    const uniqueEmployees = new Map();
+    matchingRows.forEach((employee) => {
+      const employeeIdentity = normalizeOwner(
+        employee.empId ||
+          employee.emp_id ||
+          employee.employeeId ||
+          employee.employee_id ||
+          employee.emp_code ||
+          employee.employee_code ||
+          employee.employeeCode ||
+          employee.row_id ||
+          employee.ROWID ||
+          employee.id ||
+          "",
+      );
+      const key = employeeIdentity || normalizeOwner(
+        employee.name || employee.emp_name || employee.employee_name || "",
+      );
+      if (key && !uniqueEmployees.has(key)) uniqueEmployees.set(key, employee);
+    });
+    return Array.from(uniqueEmployees.values());
   }, [
     locationEmployeeRows,
     techOwnerKey,
