@@ -61,6 +61,7 @@ async function guarded(fn, label = "A request to the server", ms = DEFAULT_TIMEO
     try {
       return await withTimeout(Promise.resolve().then(fn), ms, label);
     } catch (error) {
+      if (error && error.timeout) throw error; // a call that already waited its limit is not repeated
       if (attempt >= MAX_RETRIES || !isTransient(error)) throw error;
       const delay = 250 * 2 ** attempt + Math.floor(Math.random() * 200);
       console.warn("lettersapi: retrying", label, "attempt", attempt + 1, String(error.message || error).slice(0, 120));

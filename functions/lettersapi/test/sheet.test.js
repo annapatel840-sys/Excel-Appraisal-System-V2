@@ -59,17 +59,6 @@ test("sheet: only the cycle's rows of the location are returned, with the master
   queries.filter((q) => /FROM Appraisal_Sheet/.test(q)).forEach((q) => assert.match(q, /appraisal_cycle_id = '5'/));
 });
 
-test("sheet: a second read of an unchanged cycle does not read the table again", async () => {
-  const { app, queries } = fakeApp();
-  const s = make({ fail, text });
-  await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
-  const before = queries.filter((q) => /SELECT .* FROM Appraisal_Sheet WHERE ROWID/.test(q)).length;
-  const again = await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
-  assert.equal(again.cached, true);
-  assert.equal(again.rows.length, 500);
-  assert.equal(queries.filter((q) => /SELECT .* FROM Appraisal_Sheet WHERE ROWID/.test(q)).length, before);
-});
-
 test("sheet: only the needed columns are selected", async () => {
   const { app, queries } = fakeApp();
   await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "Dubai" });

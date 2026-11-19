@@ -262,10 +262,10 @@ export function sheetRowsForLetters(rows, cycleId, location) {
 
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
-  // Do not let a slow read of the saved copy hold Generate back: wait for it at most 8 s.
+  // Do not let a slow read of the saved copy hold Generate back: wait for it at most 4 s.
   await Promise.race([
     stateSync.syncLetterState({ cycles: [{ id: cycle.id, location: cycle.location }] }),
-    new Promise((resolve) => setTimeout(resolve, 8000)),
+    new Promise((resolve) => setTimeout(resolve, 4000)),
   ]);
   // The people always come from the Appraisal_Sheet table (this cycle, this
   // location), never from what this browser happens to hold. Rows passed in by
@@ -302,7 +302,11 @@ export async function generateLettersForCycle(cycle, actor, sheetRows) {
     return out;
   });
   // Stored on the server so every computer sees them.
-  const saveState = await stateSync.flush();
+  // ...and a slow save must not hold the result back either: wait at most 12 s.
+  const saveState = await Promise.race([
+    stateSync.flush(),
+    new Promise((resolve) => setTimeout(() => resolve({ ok: false, message: "the server did not confirm the save in time" }), 12000)),
+  ]);
   result.saved = saveState.ok;
   result.saveError = saveState.ok ? "" : saveState.message;
   return result;

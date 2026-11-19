@@ -1207,19 +1207,23 @@ export function AppraisalCycleMasterPage({
     setGenBusy(true);
     setBanner(null);
     try {
+      // No rows are passed: lettersapi reads this cycle's people from the
+      // Appraisal_Sheet table, filtered by the cycle's location.
       const result = await generateLettersForCycle(
         { id: c.id, name: c.name, effective: c.effective, start: c.start, location: c.location },
         user?.name || "HR",
-        // No rows passed: the people are read from the Appraisal_Sheet table for this cycle's location.
       );
       const why =
         result.total === 0
           ? ` ${result.people ?? 0} employees checked: ${result.noRule ?? 0} matched no Letter Rule (no hike / PB / RB / target PB value on their row), ${result.noTemplate ?? 0} have no active template for their location.`
           : "";
+      const unsaved = result.saved === false
+        ? ` They are NOT saved on the server yet (${result.saveError || "no answer"}), so only this computer shows them.`
+        : "";
       showBanner(
         "Letters generated",
-        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}`,
-        result.total === 0,
+        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}${unsaved}`,
+        result.total === 0 || result.saved === false,
       );
     } catch (error) {
       showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);

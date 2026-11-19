@@ -18,10 +18,7 @@
  *      remembers it.
  *   3. Employee_Master (name, e-mail, status) is read for the cycle's location only
  *      and kept for a minute.
- *   4. Unchanged-table cache: two cheap queries (row count + latest MODIFIEDTIME
- *      of this cycle's rows) tell whether anything changed since the last full
- *      read; if not, the saved rows are returned without reading the table.
- *   5. Every call works inside a time budget. When it is used up the call returns
+ *   4. Every call works inside a time budget. When it is used up the call returns
  *      what it has with done:false and `next`; the browser asks again from
  *      `next`. One call never gets near Catalyst's ~30 s limit.
  *
@@ -37,8 +34,6 @@ const PAGE = 300; // ZCQL maximum rows per query
 const SHEET_BUDGET_MS = 14000; // the whole request is cut off at 24 s (index.js)
 const MASTER_BUDGET_MS = 10000;
 const MASTER_CACHE_MS = 60 * 1000;
-const SHEET_CACHE_MS = 2 * 60 * 1000;
-const SHEET_CACHE_MAX = 20; // cycles kept per instance
 const ID_RE = /^\d{1,30}$/;
 const CYCLE_COLUMNS = ["appraisal_cycle_id", "cycle_id"];
 const LOCATION_COLUMNS = ["location", "work_location"];
@@ -69,7 +64,6 @@ module.exports = function makeLettersSheet(h) {
   // 429, time-limited). Tests may omit it.
   const guarded = h.guarded || ((fn) => fn());
   const masterCache = new Map(); // location key -> { at, map }
-  const sheetCache = new Map(); // cycleId|location -> { at, fingerprint, result }
   let knownCycleColumn = null; // the Appraisal_Sheet column that holds the cycle, once found
   let narrowOk = true; // false once SELECT <columns> was refused: use SELECT *
 
@@ -87,14 +81,14 @@ module.exports = function makeLettersSheet(h) {
   };
   const unwrap = (item, table) => (item && (item[table] || Object.values(item)[0])) || {};
 
-  async function run(app, sql) {
-    return guarded(() => app.zcql().executeZCQLQuery(sql), "Reading the Appraisal Sheet");
+  async function run(app, sql, label = "Reading the Appraisal Sheet") {
+    return guarded(() => app.zcql().executeZCQLQuery(sql), label);
   }
 
   async function page(app, table, where, last, select = "*") {
     const sql =
       `SELECT ${select} FROM ${table} WHERE ROWID > ${last}` + (where ? ` AND ${where}` : "") + ` ORDER BY ROWID ASC LIMIT ${PAGE}`;
-    return ((await run(app, sql)) || []).map((i) => unwrap(i, table));
+    return ((await run(app, sql, `Reading ${table} (from row ${last})`)) || []).map((i) => unwrap(i, table));
   }
 
   /* ---------- cycles (a handful of rows) ---------- */
@@ -108,7 +102,7 @@ module.exports = function makeLettersSheet(h) {
   });
 
   async function readCycle(app, cycleId) {
-    const result = await run(app, `SELECT * FROM ${CYCLE_TABLE} WHERE ROWID = ${cycleId} LIMIT 1`);
+    const result = await run(app, `SELECT * FROM ${CYCLE_TABLE} WHERE ROWID = ${cycleId} LIMIT 1`, "Reading the appraisal cycle");
     if (!result || !result[0]) throw fail(404, "Appraisal cycle not found.");
     return shapeCycle(unwrap(result[0], CYCLE_TABLE));
   }
@@ -176,19 +170,6 @@ module.exports = function makeLettersSheet(h) {
 
   const masterLocation = (m) => text(pick(m, "location", "work_location", "location_name"));
 
-  /* ---------- unchanged-table check for one cycle ---------- */
-  async function fingerprint(app, col, cycleId) {
-    try {
-      const where = `${col} = '${q(cycleId)}'`;
-      // One after the other: this project's Catalyst limit is hit by parallel queries.
-      const count = await run(app, `SELECT COUNT(ROWID) FROM ${SHEET_TABLE} WHERE ${where}`);
-      const latest = await run(app, `SELECT ROWID, MODIFIEDTIME FROM ${SHEET_TABLE} WHERE ${where} ORDER BY MODIFIEDTIME DESC LIMIT 1`);
-      return JSON.stringify([count, latest]);
-    } catch (e) {
-      return null; // no cache this time: read normally
-    }
-  }
-
   /* ---------- one chunk of sheet rows ---------- */
   async function loadSheet(app, params) {
     const cycleId = text(params.cycleId);
@@ -200,7 +181,6 @@ module.exports = function makeLettersSheet(h) {
     const cycle = await readCycle(app, cycleId);
     const location = text(params.location) || cycle.location;
     const wantAll = isAll(location);
-    const cacheKey = `${cycleId}|${location.toLowerCase()}`;
 
     const columns = knownCycleColumn ? [knownCycleColumn] : CYCLE_COLUMNS;
     let lastError = null;
@@ -208,13 +188,6 @@ module.exports = function makeLettersSheet(h) {
     for (const col of columns) {
       try {
         const where = `${col} = '${q(cycleId)}'`;
-
-        // Unchanged since the last full read? Return it without reading the table.
-        const print = after === "0" ? await fingerprint(app, col, cycleId) : null;
-        const hit = sheetCache.get(cacheKey);
-        if (print && hit && hit.fingerprint === print && Date.now() - hit.at < SHEET_CACHE_MS) {
-          return { ...hit.result, cached: true };
-        }
 
         const master = await masterFor(app, location, started + MASTER_BUDGET_MS);
         const select = narrowOk ? `ROWID, ${SHEET_COLUMNS.join(", ")}` : "*";
@@ -263,14 +236,9 @@ module.exports = function makeLettersSheet(h) {
           done,
           cached: false,
         };
-        // Remember a read that finished in this one call (so it is the whole cycle).
-        if (done && after === "0" && print) {
-          if (sheetCache.size >= SHEET_CACHE_MAX) sheetCache.delete(sheetCache.keys().next().value);
-          sheetCache.set(cacheKey, { at: Date.now(), fingerprint: print, result });
-        }
         return result;
       } catch (e) {
-        if (e && e.status) throw e;
+        if (e && (e.status || e.timeout)) throw fail(504, `The Appraisal Sheet read stopped: ${e.message}`); // names the query that stalled
         lastError = e;
       }
     }
