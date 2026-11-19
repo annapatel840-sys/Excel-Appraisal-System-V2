@@ -1901,11 +1901,25 @@ export function TechEdBudgetDistribution() {
       // Tech-Ed where the same Comp Manager also has an allocation.
       if (isCompManagerView) {
         if (!selectedTransferParent) return false;
-        const selectedTechEd =
+        const selectedTechEdRaw =
           selectedTransferParent.appraiser_tech_ed_id ||
           selectedTransferParent.tech_ed_id ||
           selectedTransferParent.tech_ed ||
           "";
+        const selectedTechEdOwner = techEdOwners.find((owner) =>
+          [
+            owner?.employee_id,
+            owner?.row_id,
+            owner?.ROWID,
+            owner?.assignment,
+            owner?.name,
+            owner?.email,
+            owner?.email_id,
+          ]
+            .filter(Boolean)
+            .some((alias) => ownerMatches(alias, selectedTechEdRaw)),
+        );
+        const selectedTechEd = selectedTechEdOwner?.assignment || selectedTechEdRaw;
         if (!ownerMatches(assignment, selectedTechEd)) return false;
       }
       // Team Size is the current generated Appraisal_Sheet roster, not
@@ -2058,7 +2072,8 @@ export function TechEdBudgetDistribution() {
     ? num(selectedCompManagerBudgetRow?.applied_budget)
     : num(myUpdated);
   const budgetCardOriginalTeam = isCompManagerView
-    ? num(selectedCompManagerBudgetRow?.original_headcount)
+    ? (num(selectedCompManagerBudgetRow?.original_headcount) ||
+      num(selectedManagerNode?.team0))
     : team0;
   const usedPct = budgetCardUpdated ? (used / budgetCardUpdated) * 100 : 0;
   const over = usedPct > 100;
