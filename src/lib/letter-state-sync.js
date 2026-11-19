@@ -1,4 +1,6 @@
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { cycleLocationOf, isAllLocations, matchesLocation } from "@/lib/location-store";
 
 /*
  * Keeps the Letters data (people, letters, statuses, audit lines, "generated")
@@ -21,17 +23,25 @@ export const STATE_ON_SERVER = import.meta.env.VITE_LETTERS_STATE_ON_SERVER !== 
 const API_URL = catalystFunctionUrl("lettersapi");
 const SAVE_DELAY_MS = 1000;
 const SYNC_EVERY_MS = 15000;
+const FAIL_BACKOFF_MS = 60000;
+const LOAD_TIMEOUT_MS = 25000;
 
 let host = null; // { getS, touch }
 const saved = new Map(); // cycleId -> { hash, rev }
 let timer = null;
 let saving = null;
-let syncing = null;
 let synced = false;
-let lastSync = { key: "", at: 0 };
 
 export function attach(h) {
   host = h;
+}
+
+function withTimeout(promise, ms) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error("The letters server did not answer in time.")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
 async function request({ method = "GET", body, params } = {}) {
@@ -72,7 +82,7 @@ const shareable = (S) => S.cycles.filter((c) => !c.sample);
 async function saveNow() {
   if (!STATE_ON_SERVER || !host) return { ok: true };
   if (saving) await saving.catch(() => {});
-  if (syncing) await syncing.catch(() => {});
+  await Promise.allSettled([...inflight.values()]);
   const S = host.getS();
   const run = (async () => {
     let conflict = false;
@@ -124,7 +134,7 @@ export async function flush() {
     clearTimeout(timer);
     timer = null;
   }
-  if (syncing) await syncing.catch(() => {});
+  await Promise.allSettled([...inflight.values()]);
   try {
     synced = true; // a save is being asked for explicitly
     return await saveNow();
@@ -133,13 +143,27 @@ export async function flush() {
   }
 }
 
-/* Put the cycles saved on the server into the screen state. */
-export function syncLetterState({ location = "All", force = false } = {}) {
+/* Put the saved copy of the given cycles into the screen state.
+   cycles = [{ id, location }]. Only these cycles are asked for: one small file
+   each, nothing is scanned. A request already running for the same cycles is
+   shared; a failed one is not repeated for a minute. */
+const inflight = new Map(); // key -> promise
+const lastDone = new Map(); // key -> { at, ok }
+
+const isAll = (v) => ["", "all", "all locations", "alllocations"].includes(String(v ?? "").trim().toLowerCase());
+
+export function syncLetterState({ cycles = [], force = false } = {}) {
   if (!STATE_ON_SERVER || !host) return Promise.resolve();
-  const key = String(location || "All").trim().toLowerCase();
-  if (syncing) return syncing;
-  if (!force && lastSync.key === key && Date.now() - lastSync.at < SYNC_EVERY_MS) return Promise.resolve();
-  syncing = request({ params: { view: "state", location: location || "All" } })
+  const wanted = cycles
+    .map((c) => ({ id: String(c && c.id ? c.id : "").trim(), location: String((c && c.location) || "").trim() }))
+    .filter((c) => c.id && !isAll(c.location))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (!wanted.length) return Promise.resolve();
+  const key = wanted.map((c) => c.id).join(",");
+  if (inflight.has(key)) return inflight.get(key);
+  const prev = lastDone.get(key);
+  if (!force && prev && Date.now() - prev.at < (prev.ok ? SYNC_EVERY_MS : FAIL_BACKOFF_MS)) return Promise.resolve();
+  const promise = withTimeout(request({ params: { view: "state", cycles: JSON.stringify(wanted) } }), LOAD_TIMEOUT_MS)
     .then((data) => {
       const S = host.getS();
       (data.cycles || []).forEach((c) => {
@@ -163,14 +187,43 @@ export function syncLetterState({ location = "All", force = false } = {}) {
         saved.set(id, { hash: JSON.stringify(collect(S, merged).state), rev: Number(c.rev) || 0 });
       });
       synced = true;
-      lastSync = { key, at: Date.now() };
+      lastDone.set(key, { at: Date.now(), ok: true });
       host.touch();
     })
     .catch((error) => {
+      lastDone.set(key, { at: Date.now(), ok: false });
       console.warn("Letters could not be loaded from the server:", error?.message || error);
     })
     .finally(() => {
-      syncing = null;
+      inflight.delete(key);
     });
-  return syncing;
+  inflight.set(key, promise);
+  return promise;
+}
+
+/* The Letters screen: the Active cycles of the location chosen in the top bar
+   (every location's Active cycles only when All Locations is chosen). */
+export async function syncForLocation(selectedLocation, { force = false } = {}) {
+  if (!STATE_ON_SERVER || !host) return;
+  let list = [];
+  try {
+    // lettersapi lists the Active cycles itself (a few rows), so opening the
+    // Letters screen does not wait on payrollcycleapi.
+    const data = await request({ params: { view: "cycles" } });
+    list = Array.isArray(data?.cycles) ? data.cycles : [];
+  } catch {
+    try {
+      const data = await payrollCycleRequest("cycles");
+      list = Array.isArray(data) ? data : [];
+    } catch {
+      return;
+    }
+  }
+  const flag = (v) => v === true || ["true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
+  const cycles = list
+    .filter((c) => String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase() === "active" && !flag(c?.archived) && !flag(c?.hidden))
+    .filter((c) => !isAll(cycleLocationOf(c)))
+    .filter((c) => isAllLocations(selectedLocation) || matchesLocation(cycleLocationOf(c), selectedLocation))
+    .map((c) => ({ id: c.id ?? c.ROWID, location: cycleLocationOf(c) }));
+  await syncLetterState({ cycles, force });
 }

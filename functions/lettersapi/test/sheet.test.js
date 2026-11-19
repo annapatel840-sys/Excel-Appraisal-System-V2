@@ -1,0 +1,98 @@
+// Run with:  node --test functions/lettersapi/test
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const make = require("../lettersSheet.js");
+
+const fail = (status, message) => Object.assign(new Error(message), { status });
+const text = (v) => String(v ?? "").trim();
+
+function fakeApp() {
+  const master = [];
+  const sheet = [];
+  for (let i = 1; i <= 700; i += 1) {
+    master.push({ ROWID: String(1000 + i), emp_id: "E" + i, emp_name: "N" + i, email_id: `e${i}@x`, location: i <= 500 ? "Dubai" : "India", emp_status: "Active" });
+  }
+  let rid = 1;
+  for (let i = 1; i <= 700; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + i, appraisal_cycle_id: "5", hike_amount: 100 });
+  for (let i = 1; i <= 900; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + ((i % 700) + 1), appraisal_cycle_id: "4" });
+  const queries = [];
+  const app = {
+    zcql: () => ({
+      executeZCQLQuery: async (sql) => {
+        queries.push(sql);
+        if (/COUNT\(ROWID\) FROM Appraisal_Sheet/.test(sql)) return [{ Appraisal_Sheet: { "COUNT(ROWID)": "700" } }];
+        if (/ORDER BY MODIFIEDTIME/.test(sql)) return [{ Appraisal_Sheet: { ROWID: "700", MODIFIEDTIME: "t1" } }];
+        if (/FROM Appraisal_Cycle_Master WHERE ROWID > 0/.test(sql)) {
+          return [
+            { Appraisal_Cycle_Master: { ROWID: "5", cycle_name: "Dubai - Annual 2027", location: "Dubai", status: "Active" } },
+            { Appraisal_Cycle_Master: { ROWID: "4", cycle_name: "Old", location: "Dubai", status: "Closed" } },
+            { Appraisal_Cycle_Master: { ROWID: "6", cycle_name: "Hidden", location: "India", status: "Active", hidden: "true" } },
+            { Appraisal_Cycle_Master: { ROWID: "7", cycle_name: "India - Annual 2027", location: "India", status: "Active" } },
+          ];
+        }
+        if (/FROM Appraisal_Cycle_Master/.test(sql)) return [{ Appraisal_Cycle_Master: { ROWID: "5", cycle_name: "Dubai - Annual 2027", location: "Dubai" } }];
+        const table = /FROM (\w+)/.exec(sql)[1];
+        const last = Number(/ROWID > (\d+)/.exec(sql)[1]);
+        let rows = (table === "Employee_Master" ? master : sheet).filter((r) => Number(r.ROWID) > last);
+        const c = /AND appraisal_cycle_id = '(\d+)'/.exec(sql);
+        if (c) rows = rows.filter((r) => r.appraisal_cycle_id === c[1]);
+        const l = /AND location = '([^']+)'/.exec(sql);
+        if (l) rows = rows.filter((r) => r.location === l[1]);
+        return rows.slice(0, 300).map((r) => ({ [table]: r }));
+      },
+    }),
+  };
+  return { app, queries };
+}
+
+test("sheet: only the cycle's rows of the location are returned, with the master's details", async () => {
+  const { app, queries } = fakeApp();
+  const s = make({ fail, text });
+  const d = await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
+  assert.equal(d.done, true);
+  assert.equal(d.rows.length, 500);
+  assert.equal(d.rows[0].name, "N1");
+  assert.equal(d.rows[0].location, "Dubai");
+  assert.equal(d.rows[0].hikeAmount, 100);
+  // Appraisal_Sheet is only ever asked for this cycle, never read whole.
+  queries.filter((q) => /FROM Appraisal_Sheet/.test(q)).forEach((q) => assert.match(q, /appraisal_cycle_id = '5'/));
+});
+
+test("sheet: a second read of an unchanged cycle does not read the table again", async () => {
+  const { app, queries } = fakeApp();
+  const s = make({ fail, text });
+  await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
+  const before = queries.filter((q) => /SELECT .* FROM Appraisal_Sheet WHERE ROWID/.test(q)).length;
+  const again = await s.loadSheet(app, { cycleId: "5", location: "Dubai" });
+  assert.equal(again.cached, true);
+  assert.equal(again.rows.length, 500);
+  assert.equal(queries.filter((q) => /SELECT .* FROM Appraisal_Sheet WHERE ROWID/.test(q)).length, before);
+});
+
+test("sheet: only the needed columns are selected", async () => {
+  const { app, queries } = fakeApp();
+  await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "Dubai" });
+  const q = queries.find((x) => /FROM Appraisal_Sheet WHERE ROWID/.test(x));
+  assert.match(q, /^SELECT ROWID, emp_id, /);
+});
+
+test("cycles: only Active, not hidden, cycles are listed", async () => {
+  const { app } = fakeApp();
+  const d = await make({ fail, text }).loadCycles(app);
+  assert.deepEqual(d.cycles.map((c) => c.id), ["5", "7"]);
+  assert.equal(d.cycles[0].location, "Dubai");
+});
+
+test("sheet: another location of the same cycle", async () => {
+  const { app } = fakeApp();
+  const d = await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "India" });
+  assert.equal(d.rows.length, 200);
+});
+
+test("sheet: a bad cycle id or paging position is refused", async () => {
+  const { app } = fakeApp();
+  const s = make({ fail, text });
+  await assert.rejects(() => s.loadSheet(app, { cycleId: "5; DROP", location: "Dubai" }), /not valid/);
+  await assert.rejects(() => s.loadSheet(app, { cycleId: "5", location: "Dubai", after: "x'" }), /not valid/);
+});

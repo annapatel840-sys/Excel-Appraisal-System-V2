@@ -62,10 +62,23 @@ export async function loadServerTemplates(location) {
    limited to the cycle's location. Used when Generate runs on the Appraisal
    Cycle Master. */
 export async function loadServerSheet(cycleId, location) {
-  const params = { view: "sheet", cycleId: String(cycleId) };
-  if (location) params.location = location;
-  const data = await request({ params });
-  return { cycle: data.cycle || {}, rows: data.rows || [], skipped: data.skipped || {} };
+  // The server reads Appraisal_Sheet in time-budgeted chunks (only this cycle's
+  // rows, only this location) and says where to continue, so one request can
+  // never run into Catalyst's time limit. Ask again until it says it is done.
+  const rows = [];
+  let cycle = {};
+  let after = "";
+  for (let guard = 0; guard < 60; guard += 1) {
+    const params = { view: "sheet", cycleId: String(cycleId) };
+    if (location) params.location = location;
+    if (after) params.after = after;
+    const data = await request({ params });
+    cycle = data.cycle || cycle;
+    rows.push(...(data.rows || []));
+    if (data.done || !data.next) return { cycle, rows };
+    after = String(data.next);
+  }
+  throw new Error("The Appraisal Sheet is too large to load in one go. Please try again.");
 }
 
 /* Publish a new version. `docxFile` is the File picked with "Import from Word"

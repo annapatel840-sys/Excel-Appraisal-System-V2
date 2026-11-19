@@ -14,6 +14,11 @@
    POST /  { action:"saveTemplate", template:{...}, baseVer, note, docx? }
                                   -> publishes a NEW VERSION of one template
                                      (creates the template the first time)
+   GET  /?view=cycles             -> { cycles:[{id,name,location,status}] } Active cycles
+   GET  /?view=sheet&cycleId=5&location=Dubai[&after=<ROWID>]
+                                  -> the Appraisal_Sheet people of ONE cycle and ONE
+                                     location, in time-budgeted chunks (see
+                                     lettersSheet.js). Ask again from `next` until done.
    POST /  { action:"setActive", id, active }
                                   -> turns a template Active / Inactive
 
@@ -440,6 +445,7 @@ async function authorize(req, level) {
 }
 
 const lettersState = require("./lettersState")({ locationMap, putObject, getObjectBuffer, fail, text });
+const lettersSheet = require("./lettersSheet")({ fail, text });
 
 function parseCycles(raw) {
   try {
@@ -465,6 +471,21 @@ module.exports = async function lettersApi(req, res) {
       const q = new URL(req.url, "https://x").searchParams;
       const view = q.get("view") || "templates";
       if (view === "docx") return await sendDocx(adminApp, res, text(q.get("id")), q.get("ver"));
+      if (view === "cycles") {
+        // Active cycles (id + location) for the Letters screen, without going through payrollcycleapi.
+        return sendJson(res, 200, { success: true, data: await lettersSheet.loadCycles(adminApp) });
+      }
+      if (view === "sheet") {
+        // People of one cycle + location, read from Appraisal_Sheet in time-budgeted chunks.
+        return sendJson(res, 200, {
+          success: true,
+          data: await lettersSheet.loadSheet(adminApp, {
+            cycleId: q.get("cycleId"),
+            location: q.get("location"),
+            after: q.get("after"),
+          }),
+        });
+      }
       if (view === "state") {
         return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, parseCycles(q.get("cycles"))) });
       }

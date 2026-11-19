@@ -46,9 +46,20 @@ const listeners = new Set();
 
 // Logos and signatures of server templates are big and come back from the
 // server on every load, so they are not kept in this browser copy.
+// The people, letters and audit lines of real cycles live on the server
+// (Appraisal_Sheet and the Stratus state file), so they are not copied into this
+// browser: a stale copy here was shown instead of the table's data.
 function forStorage() {
+  const real = new Set(S.cycles.filter((c) => !c.sample).map((c) => c.id));
+  const refs = new Set(S.letters.filter((l) => real.has(l.cycle)).map((l) => l.id));
+  real.forEach((id) => refs.add(id));
   return {
     ...S,
+    sheet: S.sheet.filter((r) => !real.has(r.cycle)),
+    letters: S.letters.filter((l) => !real.has(l.cycle)),
+    audit: S.audit.filter((a) => !refs.has(a.ref)),
+    cycles: S.cycles.filter((c) => c.sample),
+    generated: Object.fromEntries(Object.entries(S.generated || {}).filter(([id]) => !real.has(id))),
     tpls: S.tpls.map((t) =>
       t.fromServer && t.sg ? { ...t, sg: { ...t.sg, logoData: "", sigData: "" } } : t,
     ),
@@ -252,6 +263,18 @@ export function sheetRowsForLetters(rows, cycleId, location) {
 export async function generateLettersForCycle(cycle, actor, sheetRows) {
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
   await stateSync.syncLetterState({ cycles: [{ id: cycle.id, location: cycle.location }] });
+  // The people always come from the Appraisal_Sheet table (this cycle, this
+  // location), never from what this browser happens to hold. Rows passed in by
+  // a caller are used as given.
+  if (!Array.isArray(sheetRows)) {
+    const loaded = await api.loadServerSheet(cycle.id, cycle.location);
+    sheetRows = sheetRowsForLetters(loaded.rows, cycle.id, cycle.location);
+    if (!sheetRows.length) {
+      throw new Error(
+        `No Appraisal Sheet rows were found for ${cycle.location || "this cycle"} in ${cycle.name || "this cycle"}. Generate the Appraisal Sheet first.`,
+      );
+    }
+  }
   const result = run(actor, (st) => {
     const cy = core.bindAnnualCycle(st, cycle);
     if (cycle.location && !/^all/i.test(String(cycle.location))) cy.loc = cycle.location;
