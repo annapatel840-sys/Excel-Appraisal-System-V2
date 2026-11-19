@@ -616,7 +616,6 @@
 //   // eligibility writes are for HR and App Administrator; others read only.
 //   const access = useAccess();
 //   const isRoleHR = role === "hr" || role === "appadministrator";
-  useEffect(() => {
 //   // With access rules (/me ok) a 'view' level makes the screen read-only.
 //   const canEditEmployees =
 //     isRoleHR && access.canScreen("employeeMaster", "edit");
@@ -658,7 +657,6 @@
 //     return !isTechEd;
 //   };
 //   useEffect(() => {
-  const [allEmployees, setAllEmployees] = useState([]);
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 //   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
