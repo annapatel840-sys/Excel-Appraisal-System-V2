@@ -56,7 +56,7 @@ const numOrBlank = (value) => {
 };
 
 // Columns behind the Tech-Ed Budget Distribution table's header filters.
-const HR_W = { level: 70, owner: 190, pct: 70, original: 104, additional: 104, updated: 104, utilised: 96, remaining: 96, util: 84, origCount: 70, curCount: 70 };
+const HR_W = { level: 92, owner: 235, pct: 100, original: 130, additional: 125, updated: 130, utilised: 115, remaining: 125, util: 110, origCount: 105, curCount: 105 };
 const HR_COLS = [
   { key: "level", label: "Level", kind: "text", get: (i) => i.level },
   { key: "owner", label: "Tech-ED", kind: "text", get: (i) => i.owner },
@@ -224,6 +224,7 @@ const CSS = `
 .bd-root .owner {
   color: #12304f;
   font-weight: 700;
+  cursor: context-menu;
 }
 .bd-root .readonly {
   display: inline-flex;
