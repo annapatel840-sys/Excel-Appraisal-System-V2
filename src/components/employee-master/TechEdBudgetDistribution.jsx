@@ -1685,10 +1685,9 @@ export function TechEdBudgetDistribution() {
 
   // The source must be the authenticated Comp Manager, never a row inferred
   // from the aggregated My Budget tree or a "view as" preview node.
-  const isSignedInTransferSource = (row) => {
-    const identity = row.comp_manager_display || row.comp_manager || row.comp_manager_id || "";
-    return currentUserMatchesManager(identity, user, employeeRows);
-  };
+  // Source identity is resolved by budgetmasterapi from the authenticated
+  // Catalyst session. Never guess it from the display name or a roster alias.
+  const isSignedInTransferSource = (row) => row.is_signed_in_manager === true;
 
   const transferParentRows = useMemo(() => {
     if (!isCompManagerView || !activeCycleId) return [];
@@ -1741,7 +1740,7 @@ export function TechEdBudgetDistribution() {
   const transferDestinationRows = transferManagerRows.filter((row) =>
     !isSignedInTransferSource(row),
   );
-  const selectedTransferSourceRow = transferSourceRows[0] || null;
+  const selectedTransferSourceRow = transferSourceRows.length === 1 ? transferSourceRows[0] : null;
   const transferSource = selectedTransferSourceRow
     ? String(selectedTransferSourceRow.comp_manager_display ||
         selectedTransferSourceRow.comp_manager || selectedTransferSourceRow.comp_manager_id || "")
@@ -1757,6 +1756,7 @@ export function TechEdBudgetDistribution() {
       .filter((employee) => {
         if (employee.in_appraisal_sheet !== true) return false;
         const employeeManager =
+          employee.delegation_comp_manager ||
           employee.comp_manager ||
           employee.comp_manager_id ||
           employee.compManager ||
@@ -2449,10 +2449,16 @@ export function TechEdBudgetDistribution() {
               <div style={{ fontWeight: 700, color: "#183b5b" }}>Choose employees to move</div>
               <span style={{ fontSize: 12, color: "#52708c", background: "#edf4fb", borderRadius: 20, padding: "5px 10px" }}>{transferEmployeeRows.length} available · {selectedTransferEmployees.length} selected</span>
             </div>
-            {!transferSource ? (
-              <div className="mut">Select a Tech-Ed with your Comp Manager allocation first.</div>
+            {!selectedTransferParent ? (
+              <div className="mut">Choose one of your Tech-Ed allocations to load its Comp Manager team.</div>
+            ) : !transferSource ? (
+              <div style={{ padding: 14, borderRadius: 10, background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" }}>
+                Your signed-in Comp Manager identity could not be matched to an allocation under this Tech-Ed. No source manager has been selected.
+              </div>
             ) : transferEmployeeRows.length === 0 ? (
-              <div className="mut">No employees are currently assigned to this Comp Manager under the selected Tech-Ed.</div>
+              <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>
+                No current-cycle Appraisal Sheet employees are assigned to {transferSource} under this Tech-Ed. Existing transfers may have moved this team already.
+              </div>
             ) : (
               <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border, #ddd)", borderRadius: 8, padding: 10 }}>
                 {transferEmployeeRows.map((employee) => {
