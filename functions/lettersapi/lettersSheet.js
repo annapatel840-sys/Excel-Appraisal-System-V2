@@ -239,11 +239,15 @@ module.exports = function makeLettersSheet(h) {
     const location = text(params.location) || cycle.location;
     const wantAll = isAll(location);
 
-    // Both tables are read together (the gate lets two Data Store calls run at once).
-    const [masterRes, sheetRes] = await Promise.allSettled([
-      readTable(app, MASTER_TABLE, projectMaster, ctx),
-      readTable(app, SHEET_TABLE, projectSheet, ctx),
-    ]);
+    // One table at a time: this project allows two Data Store calls at once, and reading both
+    // big tables together took both slots, so every other request (login check, templates,
+    // letters state) waited behind this one and timed out. One slot stays free this way.
+    const settle = (p) => p.then((value) => ({ status: "fulfilled", value }), (reason) => ({ status: "rejected", reason }));
+    const masterRes = await settle(readTable(app, MASTER_TABLE, projectMaster, ctx));
+    const sheetRes =
+      masterRes.status === "fulfilled"
+        ? await settle(readTable(app, SHEET_TABLE, projectSheet, ctx))
+        : { status: "rejected", reason: Object.assign(new Error("Appraisal_Sheet has not been started yet."), { pending: true, rowsRead: (tables.get(SHEET_TABLE) || { rows: [] }).rows.length }) };
     const bad = [masterRes, sheetRes].find((r) => r.status === "rejected" && !(r.reason && r.reason.pending));
     if (bad) {
       const e = bad.reason || {};

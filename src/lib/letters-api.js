@@ -18,7 +18,8 @@ const API_URL = catalystFunctionUrl("lettersapi");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Catalyst ends a slow request (~30 s: "EXECUTION_TIME_EXCEEDED") when the function starts cold.
 // A read is safe to repeat, and the second attempt reaches a warm function, so reads retry once.
-const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+// 408/504 are NOT retried: the server is already overloaded, and a retry only adds to the pile.
+const RETRYABLE = new Set([429, 500, 502, 503]);
 
 // noRetry: do not repeat the call after a cancel (a slow read must not be doubled while the first
 // one is still running on the server).
@@ -39,8 +40,7 @@ async function request({ method = "GET", body, params, noRetry = false } = {}, a
     });
   } catch (error) {
     if (error?.name === "AbortError") {
-      if (method === "GET" && attempt < 1 && !noRetry) return request({ method, body, params }, attempt + 1);
-      throw new Error("The letters server did not answer in time. Please try again.");
+      throw new Error("The letters server did not answer in time. Please try again in a minute.");
     }
     throw error;
   } finally {
@@ -104,9 +104,11 @@ export async function loadServerSheet(cycleId, location) {
     const params = { view: "sheet", cycleId: String(cycleId), page: String(page), limit: String(LIMIT) };
     if (location) params.location = location;
     let data = await request({ params, noRetry: true });
+    let wait = 1500;
     while (data && data.pending) {
       if (Date.now() > giveUpAt) throw new Error("The Appraisal Sheet is still being read on the server. Please try again in a minute.");
-      await sleep(1500); // each ask costs a login check on the server: do not hammer it
+      await sleep(wait); // each ask costs a login check on the server: back off instead of hammering it
+      wait = Math.min(wait * 1.5, 8000);
       data = await request({ params, noRetry: true });
     }
     cycle = data.cycle || cycle;

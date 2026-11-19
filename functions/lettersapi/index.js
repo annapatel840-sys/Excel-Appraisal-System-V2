@@ -558,6 +558,7 @@ async function locationMapCached(app) {
   return map;
 }
 const lettersState = require("./lettersState")({ locationMap: locationMapCached, putObject, getObjectBuffer, deleteObject, fail, text });
+const sheetBusy = new Set();
 const lettersSheet = require("./lettersSheet")({ fail, text, guarded });
 
 function parseCycles(raw) {
@@ -592,17 +593,26 @@ async function handle(req, res) {
       }
       if (view === "sheet") {
         // People of one cycle + location, read from Appraisal_Sheet in time-budgeted chunks.
-        return sendJson(res, 200, {
-          success: true,
-          data: await lettersSheet.loadSheet(adminApp, {
-            cycleId: q.get("cycleId"),
-            location: q.get("location"),
-            page: q.get("page"),
-            limit: q.get("limit"),
-            // The browser gave up (cancelled / closed): stop reading, free the Data Store slots.
-            isCancelled: () => !!req.clientGone,
-          }),
-        });
+        // Only ONE such read per cycle and location runs at a time: a second ask (a retry, another
+        // tab) is told to wait instead of piling more work onto the Data Store.
+        const busyKey = `${q.get("cycleId")}|${text(q.get("location")).toLowerCase()}`;
+        if (sheetBusy.has(busyKey)) return sendJson(res, 200, { success: true, data: { pending: true, busy: true } });
+        sheetBusy.add(busyKey);
+        try {
+          return sendJson(res, 200, {
+            success: true,
+            data: await lettersSheet.loadSheet(adminApp, {
+              cycleId: q.get("cycleId"),
+              location: q.get("location"),
+              page: q.get("page"),
+              limit: q.get("limit"),
+              // The browser gave up (cancelled / closed): stop reading, free the Data Store slots.
+              isCancelled: () => !!req.clientGone,
+            }),
+          });
+        } finally {
+          sheetBusy.delete(busyKey);
+        }
       }
       if (view === "state") {
         return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, parseCycles(q.get("cycles"))) });
