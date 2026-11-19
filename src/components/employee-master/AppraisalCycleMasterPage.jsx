@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LETTERS_DEMO, generateLettersForCycle, syncLetterState, useLettersStats } from "@/lib/letters-store";
+import { LETTERS_DEMO, clearLettersForCycle, generateLettersForCycle, syncLetterState, useLettersStats } from "@/lib/letters-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
@@ -446,8 +446,8 @@ export function AppraisalCycleMasterPage({
   // Letters already generated (by anyone) are kept on the server. Only the
   // selected cycle's copy is loaded (one small file), never every location's.
   useEffect(() => {
-    if (current && (current.status === "Active" || current.status === "Closed")) syncLetterState({ cycles: [{ id: current.id, location: current.location }] });
-  }, [current?.id, current?.status, current?.location]);
+    if (current && !current.archived && (current.status === "Active" || current.status === "Closed")) syncLetterState({ cycles: [{ id: current.id, location: current.location }] });
+  }, [current?.id, current?.status, current?.archived, current?.location]);
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
   // Letters step: live counts from the shared Letters store (the same state the
   // Letters screen under Operation shows). A cycleStats prop still wins if given.
@@ -890,6 +890,13 @@ export function AppraisalCycleMasterPage({
     );
     if (ok) {
       setConfirm(null);
+      // Archiving clears the cycle's letters data (the stored copy is deleted too).
+      if (kind === "archive") {
+        autoLettersTried.current.add(String(cycle.id));
+        clearLettersForCycle({ id: cycle.id, location: cycle.location }, user?.name || "HR").catch((error) =>
+          showBanner("Letters not cleared", error?.message || "The letters of this cycle could not be cleared.", true),
+        );
+      }
       // The cycle is Closed: its location's letters are made from its Appraisal Sheet.
       if (kind === "close" && cycle.process === "Annual") {
         autoLettersTried.current.add(String(cycle.id));

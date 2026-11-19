@@ -117,6 +117,21 @@ async function saveNow() {
   }
 }
 
+/* The cycle was archived: forget its saved copy here and delete it on the server.
+   The caller has already removed the cycle from the screen state, so nothing saves it again. */
+export async function forgetCycle({ id, location }) {
+  const cycleId = String(id);
+  if (!STATE_ON_SERVER) return;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  if (saving) await saving.catch(() => {});
+  await Promise.allSettled([...inflight.values()]);
+  saved.delete(cycleId);
+  await request({ method: "POST", body: { action: "clearState", cycleId, location: location || "" } });
+}
+
 /* The store calls this after every change. */
 export function notifyChanged() {
   if (!STATE_ON_SERVER || !host || !synced) return;

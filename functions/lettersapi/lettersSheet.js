@@ -3,25 +3,30 @@
 /*
  * Letters PEOPLE: the Appraisal_Sheet rows of ONE cycle (and its location).
  *
- *   GET ?view=sheet&cycleId=<ROWID>&location=<name>&page=1&limit=5000
+ *   GET ?view=sheet&cycleId=<ROWID>&location=<n>&page=1&limit=5000
  *     -> { cycle, location, data:[...], pagination:{ page, limit, totalCount, totalPages, returnedCount } }
- *     (page / limit work exactly as in employeesapi)
+ *     or { pending:true, progress:{...} } while the tables are still being read
+ *        (the browser asks again after a moment; nothing is read twice)
  *   GET ?view=cycles
  *     -> { cycles:[ { id, name, location, status } ] }   (Active, not archived/hidden)
  *
- * Why it cannot time out
- *   1. The CYCLE narrows the read. Cycles are created one per location, so
- *      `appraisal_cycle_id = X` is already close to "this location's people".
- *      Appraisal_Sheet keeps every cycle ever generated, so it is never read whole.
- *      The location is then still checked on every row (against Employee_Master).
- *   2. cycle_id is a LOOKUP (bigint) column, so the cycle is compared as a number
- *      first and as quoted text second: the same two forms payrollcycleapi uses in
- *      its sheet-status read. The form that works is remembered.
- *   3. Employee_Master (name, e-mail, status) is read for the cycle's location only
- *      and kept for a minute.
- *   4. Every call works inside a time budget. When it is used up the call returns
- *      what it has with done:false and `next`; the browser asks again from
- *      `next`. One call never gets near Catalyst's ~30 s limit.
+ * How the big table is read (the same way employeesapi reads it, which is known to work)
+ *   1. Appraisal_Sheet and Employee_Master are read WHOLE with the Data Store's
+ *      paged read (getPagedRows, 200 rows per page, next-page token). No WHERE on
+ *      an unindexed column, no per-cycle guessing: that was a full table scan per
+ *      query, repeated for every probe and every 300 rows.
+ *   2. The rows are filtered by cycle and location IN MEMORY (instant), and only the
+ *      columns letters need are kept, so even a very large table stays small.
+ *   3. Each table is remembered for 5 minutes. Before reusing it, two cheap queries
+ *      (row count + latest MODIFIEDTIME) prove it is unchanged, exactly like
+ *      employeesapi's cachedTableRead; a changed table is read again.
+ *   4. The read RESUMES. A call works inside a time budget; when it is used up the
+ *      pages already read are kept (with the next-page token) and the call answers
+ *      { pending:true }. The next call continues from that page instead of starting
+ *      again, so a big table finishes after a few short calls instead of one call
+ *      that Catalyst kills at ~30 s.
+ *   5. When the browser has gone away (cancelled / closed) the read stops at the
+ *      next page, so abandoned requests no longer hold the Data Store slots.
  *
  * Rows come back in the field names the Appraisal Sheet screen uses (empId,
  * newPBToBeOffered, hikeAmount ...), so letters-store.sheetRowsForLetters turns
@@ -31,18 +36,30 @@
 const SHEET_TABLE = "Appraisal_Sheet";
 const MASTER_TABLE = "Employee_Master";
 const CYCLE_TABLE = "Appraisal_Cycle_Master";
-const PAGE = 300; // ZCQL maximum rows per query
+const PAGE = 300; // ZCQL maximum rows per query (cycles only: a handful of rows)
+const PAGE_ROWS = 200; // Data Store paged read, same as employeesapi (DATASTORE_PAGE_SIZE)
+const PAGE_TIMEOUT_MS = 12000; // one page of a table
+const REQUEST_BUDGET_MS = 17000; // the whole request is cut off at 24 s (index.js)
+const FRESH_MS = 20 * 1000; // a table read this recently is reused without any check
+const TABLE_CACHE_MS = 5 * 60 * 1000; // an unchanged table is reused this long (like employeesapi)
 const DEFAULT_LIMIT = 20; // same as employeesapi
 const MAX_LIMIT = 5000; // same as employeesapi
-const SHEET_BUDGET_MS = 14000; // the whole request is cut off at 24 s (index.js)
-const MASTER_BUDGET_MS = 10000;
-const MASTER_CACHE_MS = 60 * 1000;
 const ID_RE = /^\d{1,30}$/;
-const CYCLE_COLUMNS = ["cycle_id", "appraisal_cycle_id"]; // cycle_id first, as in payrollcycleapi / employeesapi
-const LOCATION_COLUMNS = ["location", "work_location"];
+
+// Only these columns are kept in memory (what letters and shape() need).
+const SHEET_KEYS = [
+  "current_annual_base_pay", "hike_amount", "hike_pct", "new_pb_to_be_offered", "new_pb_installment",
+  "new_rb", "month_rb", "target_pb_next_year", "eligible_for_promotion", "new_title", "manager_rating",
+  "comp_manager_rewards", "comp_manager_remarks", "name", "emp_name", "email_id", "email", "department",
+  "designation", "title", "reporting_manager", "manager", "location", "work_location", "date_of_join", "joining_date",
+];
+const MASTER_KEYS = [
+  "emp_name", "name", "email_id", "email", "emp_status", "status", "location", "work_location", "location_name",
+  "department", "designation", "title", "repo_manager", "reporting_manager", "manager",
+  "date_of_join", "joining_date", "Joining_date", "doj",
+];
 
 const isAll = (v) => ["", "all", "all locations", "alllocations"].includes(String(v ?? "").trim().toLowerCase());
-const q = (v) => String(v ?? "").replace(/\\/g, "\\\\").replace(/'/g, "''");
 const flag = (v) => v === true || ["true", "1", "yes", "archived"].includes(String(v ?? "").trim().toLowerCase());
 
 module.exports = function makeLettersSheet(h) {
@@ -50,8 +67,7 @@ module.exports = function makeLettersSheet(h) {
   // Every Data Store call goes through the gate (limited at once, retried on a
   // 429, time-limited). Tests may omit it.
   const guarded = h.guarded || ((fn) => fn());
-  const masterCache = new Map(); // location key -> { at, map }
-  let knownWhere = null; // { col, quoted } that worked for Appraisal_Sheet
+  const tables = new Map(); // table name -> { fp, rows, token, done, at, chain }
 
   const positiveInteger = (v, fallback) => {
     const n = Number(v);
@@ -121,67 +137,81 @@ module.exports = function makeLettersSheet(h) {
     return { cycles };
   }
 
-  /* ---------- Employee_Master of the location, by employee id ---------- */
-  async function masterFor(app, location, deadline) {
-    const key = isAll(location) ? "*" : location.toLowerCase();
-    const hit = masterCache.get(key);
-    if (hit && Date.now() - hit.at < MASTER_CACHE_MS) return hit.map;
+  /* ---------- whole-table paged read, remembered, resumable ---------- */
+  const projectSheet = (r) => {
+    const o = { ROWID: rowId(r), cyc: lookupText(r.cycle_id ?? r.appraisal_cycle_id), emp_id: lookupText(r.emp_id) };
+    SHEET_KEYS.forEach((k) => {
+      if (r[k] !== undefined && r[k] !== null) o[k] = r[k];
+    });
+    return o;
+  };
+  const projectMaster = (r) => {
+    const o = { ROWID: rowId(r), emp_id: lookupText(r.emp_id) };
+    MASTER_KEYS.forEach((k) => {
+      if (r[k] !== undefined && r[k] !== null) o[k] = r[k];
+    });
+    return o;
+  };
 
-    const readWith = async (where) => {
-      const rows = [];
-      let last = "0";
-      for (let guard = 0; guard < 200; guard += 1) {
-        if (Date.now() > deadline) throw fail(503, "Employee Master took too long to read. Try again.");
-        const p = await page(app, MASTER_TABLE, where, last);
-        rows.push(...p);
-        if (p.length < PAGE) break;
-        last = rowId(p[p.length - 1]);
-        if (!last) break;
-      }
-      return rows;
-    };
+  // Row count + latest change: tells whether the table is unchanged (employeesapi: tableFingerprint).
+  async function fingerprint(app, name) {
+    try {
+      const count = await run(app, `SELECT COUNT(ROWID) FROM ${name}`, `Counting ${name}`);
+      const latest = await run(app, `SELECT ROWID, MODIFIEDTIME FROM ${name} ORDER BY MODIFIEDTIME DESC LIMIT 1`, `Checking ${name}`);
+      return JSON.stringify([count, latest]);
+    } catch (e) {
+      return null; // cannot tell: the table is simply read again
+    }
+  }
 
-    let rows = null;
-    if (key !== "*") {
-      for (const col of LOCATION_COLUMNS) {
-        try {
-          rows = await readWith(`${col} = '${q(location)}'`);
-          break;
-        } catch (e) {
-          if (e && e.status) throw e; // our own timeout error
-          // that column does not exist on this table: try the next name
-        }
+  const pendingError = (name, e) => Object.assign(new Error(`${name} is still being read.`), { pending: true, table: name, rowsRead: e.rows.length });
+
+  async function readTable(app, name, project, ctx) {
+    let e = tables.get(name);
+    if (!e) {
+      e = { fp: null, rows: [], token: null, done: false, at: 0, chain: Promise.resolve() };
+      tables.set(name, e);
+    }
+    // One request at a time per table, so two requests never resume the same read together.
+    const turn = e.chain.then(() => work(app, name, project, ctx, e));
+    e.chain = turn.catch(() => {});
+    return turn;
+  }
+
+  async function work(app, name, project, ctx, e) {
+    if (e.done && Date.now() - e.at < FRESH_MS) return e.rows;
+    if (ctx.isCancelled()) throw pendingError(name, e);
+    const fp = await fingerprint(app, name);
+    if (e.done && fp && fp === e.fp && Date.now() - e.at < TABLE_CACHE_MS) {
+      e.at = Date.now();
+      return e.rows;
+    }
+    // Resume a half-read table only when it provably has not changed since; otherwise start again.
+    if (e.done || !fp || fp !== e.fp) {
+      e.rows = [];
+      e.token = null;
+      e.done = false;
+    }
+    e.fp = fp;
+    const table = app.datastore().table(name);
+    while (!e.done) {
+      if (ctx.isCancelled() || Date.now() > ctx.deadline) throw pendingError(name, e);
+      const options = { maxRows: PAGE_ROWS };
+      if (e.token) options.nextToken = e.token;
+      const result = await guarded(() => table.getPagedRows(options), `Reading ${name}`, PAGE_TIMEOUT_MS);
+      const data = Array.isArray(result && result.data) ? result.data : [];
+      // getPagedRows gives flat rows (employeesapi reads them that way); a wrapped { Table: {...} } row is accepted too.
+      data.forEach((r) => e.rows.push(project(r && r[name] && typeof r[name] === "object" ? r[name] : r || {})));
+      e.token = (result && result.next_token) || null;
+      if (!(result && result.more_records === true) || !e.token) {
+        e.done = true;
+        e.at = Date.now();
       }
     }
-    if (rows === null) rows = await readWith(""); // All Locations, or no location column
-
-    // Indexed by the employee ID and by the Catalyst ROWID, like employeesapi's
-    // buildEmployeeMasterMap: Appraisal_Sheet.emp_id may hold either.
-    const map = new Map();
-    rows.forEach((r) => {
-      const id = text(r.emp_id).toLowerCase();
-      const rid = rowId(r).toLowerCase();
-      if (id) map.set(id, r);
-      if (rid) map.set(rid, r);
-    });
-    masterCache.set(key, { at: Date.now(), map });
-    return map;
+    return e.rows;
   }
 
   const masterLocation = (m) => text(pick(m, "location", "work_location", "location_name"));
-
-  /* ---------- one chunk of sheet rows ---------- */
-  // WHERE for one cycle on Appraisal_Sheet. cycle_id is a lookup (bigint) column on
-  // this project, so the number form goes first and the quoted form second.
-  function cycleWheres(cycleId) {
-    const cols = knownWhere ? [knownWhere.col] : CYCLE_COLUMNS;
-    const out = [];
-    cols.forEach((col) => {
-      const forms = knownWhere ? [knownWhere.quoted] : [false, true];
-      forms.forEach((quoted) => out.push({ col, quoted, sql: `${col} = ${quoted ? `'${q(cycleId)}'` : cycleId}` }));
-    });
-    return out;
-  }
 
   /* Same contract as employeesapi: page + limit in, { data, pagination } out. */
   async function loadSheet(app, params) {
@@ -191,55 +221,51 @@ module.exports = function makeLettersSheet(h) {
     const limit = Math.min(positiveInteger(params.limit, DEFAULT_LIMIT), MAX_LIMIT);
 
     const started = Date.now();
+    const ctx = { deadline: started + REQUEST_BUDGET_MS, isCancelled: params.isCancelled || (() => false) };
     const cycle = await readCycle(app, cycleId);
     const location = text(params.location) || cycle.location;
     const wantAll = isAll(location);
-    const master = await masterFor(app, location, started + MASTER_BUDGET_MS);
 
-    // This cycle's rows only (never the whole table), 300 at a time by ROWID.
+    // Both tables are read together (the gate lets two Data Store calls run at once).
+    const [masterRes, sheetRes] = await Promise.allSettled([
+      readTable(app, MASTER_TABLE, projectMaster, ctx),
+      readTable(app, SHEET_TABLE, projectSheet, ctx),
+    ]);
+    const bad = [masterRes, sheetRes].find((r) => r.status === "rejected" && !(r.reason && r.reason.pending));
+    if (bad) {
+      const e = bad.reason || {};
+      throw fail(e.status || (e.timeout ? 504 : 500), `The Appraisal Sheet could not be read: ${e.message || e}`);
+    }
+    if (masterRes.status === "rejected" || sheetRes.status === "rejected") {
+      const prog = (res, name) => (res.status === "rejected" ? res.reason.rowsRead : (tables.get(name) || { rows: [] }).rows.length);
+      return {
+        pending: true,
+        cycle: { id: cycle.id, name: cycle.name, location: cycle.location },
+        progress: { employeeMaster: prog(masterRes, MASTER_TABLE), appraisalSheet: prog(sheetRes, SHEET_TABLE) },
+      };
+    }
+
+    // Employee_Master by the employee ID and by the Catalyst ROWID, like employeesapi's
+    // buildEmployeeMasterMap: Appraisal_Sheet.emp_id may hold either.
+    const master = new Map();
+    masterRes.value.forEach((r) => {
+      const id = text(r.emp_id).toLowerCase();
+      const rid = rowId(r).toLowerCase();
+      if (id) master.set(id, r);
+      if (rid) master.set(rid, r);
+    });
+
+    // This cycle's rows only, then the location (the person's own location decides).
     const rows = [];
-    let last = "0";
-    let where = null;
-    let page1 = null;
-    let lastError = null;
-    let answered = false; // some form of the query ran (even with no rows)
-    for (const w of cycleWheres(cycleId)) {
-      try {
-        const p = await page(app, SHEET_TABLE, w.sql, "0");
-        answered = true;
-        if (!p.length && !knownWhere) continue; // this column or form matched nothing: try the next
-        where = w;
-        page1 = p;
-        break;
-      } catch (e) {
-        if (e && (e.status || e.timeout)) throw fail(e.status || 504, `The Appraisal Sheet read stopped: ${e.message}`);
-        lastError = e; // this column does not exist, or it is the other type: try the next
+    sheetRes.value.forEach((r) => {
+      if (r.cyc !== cycleId) return;
+      const m = master.get(lookupText(r.emp_id).toLowerCase());
+      if (!wantAll) {
+        const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
+        if (loc.toLowerCase() !== location.toLowerCase()) return;
       }
-    }
-    if (!where && !answered && lastError) throw fail(500, `The Appraisal Sheet could not be read: ${(lastError && lastError.message) || lastError}`);
-    if (where) {
-      knownWhere = { col: where.col, quoted: where.quoted };
-      let p = page1;
-      for (let guard = 0; guard < 200; guard += 1) {
-        p.forEach((r) => {
-          const empRef = lookupText(r.emp_id);
-          const m = master.get(empRef.toLowerCase());
-          if (!wantAll) {
-            // The person's own location decides (Employee_Master first, then the sheet row).
-            const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
-            if (loc.toLowerCase() !== location.toLowerCase()) return;
-          }
-          rows.push(shape(r, m));
-        });
-        if (p.length < PAGE) break;
-        last = rowId(p[p.length - 1]);
-        if (!last) break;
-        if (Date.now() - started > SHEET_BUDGET_MS) {
-          throw fail(504, "The Appraisal Sheet took too long to read. Please try again.");
-        }
-        p = await page(app, SHEET_TABLE, where.sql, last);
-      }
-    }
+      rows.push(shape(r, m));
+    });
 
     // Pagination, as in employeesapi.
     const totalCount = rows.length;
@@ -285,5 +311,5 @@ module.exports = function makeLettersSheet(h) {
     };
   }
 
-  return { loadSheet, loadCycles, _internal: { shape } };
+  return { loadSheet, loadCycles, _internal: { shape, tables } };
 };

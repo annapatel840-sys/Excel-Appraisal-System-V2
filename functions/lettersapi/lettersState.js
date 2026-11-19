@@ -17,6 +17,8 @@
  *   GET  ?view=state&cycles=[{"id":"<cycleId>","location":"<name>"}]  -> { cycles: [ { cycleId, rev, ... } ] }
  *   POST { action: "saveState", cycleId, location, baseRev, state }
  *        -> { rev }   (409 when someone else saved a newer copy first)
+ *   POST { action: "clearState", cycleId, location }
+ *        -> { cleared }   deletes the stored letters of the cycle (cycle archived)
  */
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
@@ -26,7 +28,7 @@ const NOT_FOUND = /not\s*found|no\s*such|404|does not exist/i;
 const key = (cycleId) => `state/${cycleId}.json`;
 
 module.exports = function makeLettersState(h) {
-  const { locationMap, putObject, getObjectBuffer, fail, text } = h;
+  const { locationMap, putObject, getObjectBuffer, deleteObject, fail, text } = h;
 
   async function readState(app, bucket, cycleId) {
     let buf;
@@ -110,5 +112,22 @@ module.exports = function makeLettersState(h) {
     return { rev };
   }
 
-  return { loadState, saveState };
+  // Archiving a cycle clears its letters: the stored file is deleted. An "All" cycle (no
+  // single location) is cleared in every location's bucket; a missing file is fine.
+  async function clearState(app, payload) {
+    const cycleId = text(payload.cycleId);
+    if (!ID_RE.test(cycleId)) throw fail(400, "Appraisal cycle ID is not valid.");
+    const locations = await locationMap(app);
+    const wanted = text(payload.location).toLowerCase();
+    const all = ["", "all", "all locations", "alllocations"].includes(wanted);
+    const entries = all ? [...locations.values()] : [locations.get(wanted)].filter(Boolean);
+    let cleared = 0;
+    for (const entry of entries) {
+      await deleteObject(app, entry.bucket, key(cycleId));
+      cleared += 1;
+    }
+    return { cleared };
+  }
+
+  return { loadState, saveState, clearState };
 };

@@ -17,8 +17,12 @@
    GET  /?view=cycles             -> { cycles:[{id,name,location,status}] } Active cycles
    GET  /?view=sheet&cycleId=5&location=Dubai&page=1&limit=5000
                                   -> the Appraisal_Sheet people of ONE cycle and ONE
-                                     location, in time-budgeted chunks (see
-                                     lettersSheet.js). Ask again from `next` until done.
+                                     location (see lettersSheet.js). Answers
+                                     { pending:true } while the big tables are still
+                                     being read: ask again, it resumes where it stopped.
+   POST /  { action:"clearState", cycleId, location }
+                                  -> deletes the stored letters of one cycle (used when
+                                     the cycle is archived)
    POST /  { action:"setActive", id, active }
                                   -> turns a template Active / Inactive
 
@@ -167,6 +171,16 @@ async function toBuffer(obj) {
 }
 async function getObjectBuffer(app, bucketName, key) {
   return guarded(async () => toBuffer(await bucketOf(app, bucketName).getObject(key)), `Reading from bucket ${bucketName}`, 12000);
+}
+
+// A missing object counts as deleted.
+async function deleteObject(app, bucketName, key) {
+  try {
+    return await guarded(() => bucketOf(app, bucketName).deleteObject(key), `Deleting from bucket ${bucketName}`, 12000);
+  } catch (e) {
+    if (/not\s*found|no\s*such|404|does not exist/i.test(String((e && e.message) || ""))) return null;
+    throw fail(500, `Could not delete from the Stratus bucket "${bucketName}". (${e.message})`);
+  }
 }
 
 /* ---------- validation ---------- */
@@ -446,7 +460,16 @@ async function authorize(req, level) {
   return { adminApp, actor: text(actor) || "unknown" };
 }
 
-const lettersState = require("./lettersState")({ locationMap, putObject, getObjectBuffer, fail, text });
+// Location_Master is a handful of rows read by almost every request: keep it for a minute
+// instead of paying a Data Store call each time (fewer calls = less waiting in the gate).
+let locationCache = { at: 0, map: null };
+async function locationMapCached(app) {
+  if (locationCache.map && Date.now() - locationCache.at < 60 * 1000) return locationCache.map;
+  const map = await locationMap(app);
+  locationCache = { at: Date.now(), map };
+  return map;
+}
+const lettersState = require("./lettersState")({ locationMap: locationMapCached, putObject, getObjectBuffer, deleteObject, fail, text });
 const lettersSheet = require("./lettersSheet")({ fail, text, guarded });
 
 function parseCycles(raw) {
@@ -488,6 +511,8 @@ async function handle(req, res) {
             location: q.get("location"),
             page: q.get("page"),
             limit: q.get("limit"),
+            // The browser gave up (cancelled / closed): stop reading, free the Data Store slots.
+            isCancelled: () => !!req.clientGone,
           }),
         });
       }
@@ -507,6 +532,9 @@ async function handle(req, res) {
     if (payload.action === "saveState") {
       return sendJson(res, 200, { success: true, data: await lettersState.saveState(adminApp, actor, payload) });
     }
+    if (payload.action === "clearState") {
+      return sendJson(res, 200, { success: true, data: await lettersState.clearState(adminApp, payload) });
+    }
     if (payload.action === "setActive") {
       return sendJson(res, 200, { success: true, data: await setActive(adminApp, payload) });
     }
@@ -522,7 +550,7 @@ async function handle(req, res) {
    limit ends the request without one (that is the endless "pending" in the
    Network tab). The browser can then retry or show the message. */
 const REQUEST_LIMIT_MS = 24000;
-const BUILD = "letters-gate2-2026-11-19";
+const BUILD = "letters-gate3-2026-11-19";
 const BOOTED_AT = Date.now();
 let served = 0;
 module.exports = async function lettersApi(req, res) {
@@ -538,6 +566,12 @@ module.exports = async function lettersApi(req, res) {
     } catch (e) {
       /* fall through to the normal handler */
     }
+  }
+  // Knows when the browser has gone away, so long reads can stop (see view=sheet).
+  if (typeof res.on === "function") {
+    res.on("close", () => {
+      if (!res.writableEnded) req.clientGone = true;
+    });
   }
   const t0 = Date.now();
   console.log("lettersapi: start", req.method, String(req.url).slice(0, 120), "build", BUILD);

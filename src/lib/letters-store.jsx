@@ -312,6 +312,22 @@ export async function generateLettersForCycle(cycle, actor, sheetRows) {
   return result;
 }
 
+// Archiving a cycle clears its letters: the people, letters and audit lines are removed from
+// the screen state and the stored copy is deleted on the server.
+export async function clearLettersForCycle(cycle, actor) {
+  const id = String(cycle.id);
+  run(actor, (st) => {
+    const refs = new Set(st.letters.filter((l) => l.cycle === id).map((l) => l.id));
+    refs.add(id);
+    st.letters = st.letters.filter((l) => l.cycle !== id);
+    st.sheet = st.sheet.filter((r) => r.cycle !== id);
+    st.audit = st.audit.filter((a) => !refs.has(a.ref));
+    delete st.generated[id];
+    st.cycles = st.cycles.filter((c) => c.id !== id);
+  });
+  await stateSync.forgetCycle({ id, location: cycle.location });
+}
+
 export const reviewLetters = (ids, actor) => run(actor, (st) => core.markReviewed(st, ids));
 export const previewLetter = (id, actor) => run(actor, (st) => core.reviewOnPreview(st, id));
 export const sendLetters = (ids, actor) => run(actor, (st) => core.sendLetters(st, ids));

@@ -20,7 +20,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // A read is safe to repeat, and the second attempt reaches a warm function, so reads retry once.
 const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
 
-async function request({ method = "GET", body, params } = {}, attempt = 0) {
+// noRetry: do not repeat the call after a cancel (a slow read must not be doubled while the first
+// one is still running on the server).
+async function request({ method = "GET", body, params, noRetry = false } = {}, attempt = 0) {
   const url = new URL(API_URL);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
   // A call that never answers must end with a message, not stay "pending".
@@ -37,14 +39,14 @@ async function request({ method = "GET", body, params } = {}, attempt = 0) {
     });
   } catch (error) {
     if (error?.name === "AbortError") {
-      if (method === "GET" && attempt < 1) return request({ method, body, params }, attempt + 1);
+      if (method === "GET" && attempt < 1 && !noRetry) return request({ method, body, params }, attempt + 1);
       throw new Error("The letters server did not answer in time. Please try again.");
     }
     throw error;
   } finally {
     clearTimeout(timer);
   }
-  if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 1) {
+  if (method === "GET" && !response.ok && RETRYABLE.has(response.status) && attempt < 1 && !noRetry) {
     await sleep(1500);
     return request({ method, body, params }, attempt + 1);
   }
@@ -79,14 +81,22 @@ export async function loadServerTemplates(location) {
 export async function loadServerSheet(cycleId, location) {
   // Same call shape as the roster (employeesapi): page + limit, answered as
   // { data, pagination }. 5000 rows per page, so one request in practice.
+  // While the server is still reading the big tables it answers { pending:true }
+  // within its time budget; ask again after a moment, it continues where it stopped.
   const LIMIT = 5000;
   const rows = [];
   let cycle = {};
   let totalPages = 1;
+  const giveUpAt = Date.now() + 4 * 60 * 1000;
   for (let page = 1; page <= totalPages && page <= 20; page += 1) {
     const params = { view: "sheet", cycleId: String(cycleId), page: String(page), limit: String(LIMIT) };
     if (location) params.location = location;
-    const data = await request({ params });
+    let data = await request({ params, noRetry: true });
+    while (data && data.pending) {
+      if (Date.now() > giveUpAt) throw new Error("The Appraisal Sheet is still being read on the server. Please try again in a minute.");
+      await sleep(800);
+      data = await request({ params, noRetry: true });
+    }
     cycle = data.cycle || cycle;
     rows.push(...(Array.isArray(data.data) ? data.data : []));
     totalPages = Math.max(1, Number(data.pagination?.totalPages || 1));
@@ -103,6 +113,11 @@ export async function saveServerTemplate({ template, baseVer, note, docxFile }) 
     docx = { fileName: docxFile.name, base64: await fileToBase64(docxFile) };
   }
   return request({ method: "POST", body: { action: "saveTemplate", template, baseVer, note: note || "", docx } });
+}
+
+/* The cycle was archived: its stored letters are deleted on the server. */
+export function clearServerLetters(cycleId, location) {
+  return request({ method: "POST", body: { action: "clearState", cycleId: String(cycleId), location: location || "" } });
 }
 
 export function setServerTemplateActive(id, active) {
