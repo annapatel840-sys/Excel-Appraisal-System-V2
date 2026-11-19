@@ -4522,7 +4522,7 @@ module.exports = async function (req, res) {
       const normalizeEmployeeKey = (raw) => {
         const text = referenceText(raw);
         if (!text) return "";
-        const first = text.split(/\\s+-\\s+/)[0].trim();
+        const first = text.split(/\s+-\s+/)[0].trim();
         return (masterByRowId.get(first.toLowerCase()) ||
           masterById.get(first.toLowerCase()) ||
           first).toLowerCase();
