@@ -2381,129 +2381,129 @@ export function TechEdBudgetDistribution() {
 
       {/* COMP_MANAGER_TRANSFER START */}
       {isCompManagerView && (
-        <div className="card" style={{ overflow: "hidden", border: "1px solid #d7e2ef", borderRadius: 16, boxShadow: "0 10px 28px rgba(17, 48, 79, .08)", background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)" }}>
-          <div className="pane-head" style={{ cursor: "default", padding: "17px 20px", background: "linear-gradient(110deg, #12304f 0%, #1c496f 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 16, fontWeight: 700 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(255,255,255,.14)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>⇄</span>
-              Comp Manager Team & Budget Transfer
-            </span>
-            <span style={{ color: "#d9e8f7", fontSize: 12, fontWeight: 500 }}>Active cycle · {cycleLabel || "—"}</span>
-          </div>
-          <div style={{ padding: "18px 20px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "end" }}>
-            <label htmlFor="cmTransferTechEd">Tech-Ed</label>
-            <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
-              setTransferParentId(event.target.value);
-              setTransferDestination("");
-              setTransferAmount("");
-              setSelectedTransferEmployeeIds([]);
-            }}>
-              <option value="">Select Tech-Ed</option>
-              {transferParentRows.map((parent) => {
-                const raw = parent.appraiser_tech_ed_id || parent.tech_ed_id || parent.tech_ed || "";
-                const linked = techEdOwners.find((owner) =>
-                  [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
-                    .filter(Boolean).some((alias) => ownerMatches(alias, raw)),
-                );
-                const label = linked?.assignment || raw || "Tech-Ed";
-                return <option key={parent.id} value={parent.id}>{label}</option>;
-              })}
-            </select>
-            <div style={{ minWidth: 190 }}>
-              <label>Source Comp Manager</label>
-              <div style={{ padding: "8px 10px", border: "1px solid var(--border, #ddd)", borderRadius: 6 }}>
-                {transferSource || "Select a Tech-Ed"}
+        <section style={{ marginTop: 18, overflow: "hidden", border: "1px solid #dbe5f0", borderRadius: 18, background: "#fff", boxShadow: "0 12px 32px rgba(15, 42, 70, .08)" }}>
+          <div style={{ padding: "20px 24px", background: "linear-gradient(115deg, #102f4f 0%, #1d5279 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", fontSize: 23 }}>⇄</div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 750, letterSpacing: ".1px" }}>Team & Budget Transfer</div>
+                <div style={{ marginTop: 3, fontSize: 12, color: "#d7e7f5" }}>Move selected employees and a chosen budget amount to another Comp Manager under your Tech-Ed</div>
               </div>
             </div>
-            <label htmlFor="cmTransferDestination">Destination Comp Manager</label>
-            <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
-              <option value="">Destination Comp Manager</option>
-              {transferDestinationRows.map((row) => {
-                const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
-                return <option key={row.id || label} value={label}>{label}</option>;
-              })}
-            </select>
+            <span style={{ padding: "7px 11px", borderRadius: 30, background: "rgba(255,255,255,.12)", color: "#e8f3fb", fontSize: 12, fontWeight: 600 }}>Active cycle · {cycleLabel || "—"}</span>
           </div>
-          <div style={{ padding: "15px 20px", background: "#f2f7fc", borderTop: "1px solid #e1eaf3", borderBottom: "1px solid #e1eaf3", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="cmTransferAmount" style={{ fontWeight: 650, color: "#183b5b" }}>Budget amount to transfer</label>
-            <input
-              id="cmTransferAmount"
-              type="number"
-              min="0"
-              max={transferAvailableAmount}
-              step="1"
-              value={transferAmount}
-              onChange={(event) => setTransferAmount(event.target.value)}
-              disabled={!transferSource || !transferDestination}
-              placeholder="Enter amount"
-              style={{ maxWidth: 190 }}
-            />
-            <span className="mut">
-              Available to transfer: {lakh(transferAvailableAmount)}
-            </span>
-            <span className="mut">
-              Selected employees: {selectedTransferEmployees.length}
-            </span>
-          </div>
-          <div style={{ padding: "18px 20px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, color: "#183b5b" }}>Choose employees to move</div>
-              <span style={{ fontSize: 12, color: "#52708c", background: "#edf4fb", borderRadius: 20, padding: "5px 10px" }}>{transferEmployeeRows.length} available · {selectedTransferEmployees.length} selected</span>
+
+          <div style={{ padding: 22, background: "linear-gradient(180deg, #f7faff 0%, #fff 100%)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 16 }}>
+              <div style={{ minWidth: 0 }}>
+                <label htmlFor="cmTransferTechEd" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700, letterSpacing: ".3px" }}>1 · SELECT TECH-ED</label>
+                <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
+                  setTransferParentId(event.target.value);
+                  setTransferDestination("");
+                  setTransferAmount("");
+                  setSelectedTransferEmployeeIds([]);
+                }} style={{ width: "100%", minHeight: 44, border: "1px solid #cbd8e6", borderRadius: 10, background: "#fff", padding: "9px 12px", color: "#173b5b", fontWeight: 600 }}>
+                  <option value="">Choose your Tech-Ed</option>
+                  {transferParentRows.map((parent) => {
+                    const raw = parent.appraiser_tech_ed_id || parent.tech_ed_id || parent.tech_ed || "";
+                    const linked = techEdOwners.find((owner) =>
+                      [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
+                        .filter(Boolean).some((alias) => ownerMatches(alias, raw)),
+                    );
+                    const label = linked?.assignment || raw || "Tech-Ed";
+                    return <option key={parent.id} value={parent.id}>{label}</option>;
+                  })}
+                </select>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <label style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700, letterSpacing: ".3px" }}>2 · TRANSFER FROM (YOU)</label>
+                <div style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", border: "1px solid #cbd8e6", borderRadius: 10, background: "#f1f6fb", color: "#173b5b", fontWeight: 700 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 10, background: transferSource ? "#0f9f78" : "#f59e0b" }} />
+                  {transferSource || (selectedTransferParent ? "Identity not matched" : "Select a Tech-Ed")}
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <label htmlFor="cmTransferDestination" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700, letterSpacing: ".3px" }}>3 · TRANSFER TO</label>
+                <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource} style={{ width: "100%", minHeight: 44, border: "1px solid #cbd8e6", borderRadius: 10, background: transferSource ? "#fff" : "#f1f5f9", padding: "9px 12px", color: "#173b5b" }}>
+                  <option value="">Choose destination Comp Manager</option>
+                  {transferDestinationRows.map((row) => {
+                    const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
+                    return <option key={row.id || label} value={label}>{label}</option>;
+                  })}
+                </select>
+              </div>
             </div>
-            {!selectedTransferParent ? (
-              <div className="mut">Choose one of your Tech-Ed allocations to load its Comp Manager team.</div>
-            ) : !transferSource ? (
-              <div style={{ padding: 14, borderRadius: 10, background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" }}>
-                Your signed-in Comp Manager identity could not be matched to an allocation under this Tech-Ed. No source manager has been selected.
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.1fr) repeat(2, minmax(150px, .7fr))", gap: 12, marginTop: 18 }}>
+              <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
+                <label htmlFor="cmTransferAmount" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700 }}>BUDGET AMOUNT TO TRANSFER</label>
+                <input id="cmTransferAmount" type="number" min="0" max={transferAvailableAmount} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} disabled={!transferSource || !transferDestination} placeholder="Enter amount" style={{ width: "100%", minHeight: 42, border: "1px solid #cbd8e6", borderRadius: 9, padding: "8px 11px", fontSize: 16, fontWeight: 700, color: "#173b5b" }} />
               </div>
-            ) : transferEmployeeRows.length === 0 ? (
-              <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>
-                No current-cycle Appraisal Sheet employees are assigned to {transferSource} under this Tech-Ed. Existing transfers may have moved this team already.
+              <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
+                <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>AVAILABLE TO TRANSFER</div>
+                <div style={{ marginTop: 8, color: "#087f68", fontSize: 21, fontWeight: 800 }}>{lakh(transferAvailableAmount)}</div>
+                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>After current utilization</div>
               </div>
-            ) : (
-              <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border, #ddd)", borderRadius: 8, padding: 10 }}>
-                {transferEmployeeRows.map((employee) => {
-                  const employeeId = employee.__transferEmployeeId;
-                  const employeeName = employee.empName || employee.emp_name || employee.employee_name || employee.name || "";
-                  const checked = selectedTransferEmployeeIds.includes(employeeId);
-                  return (
-                    <label key={employeeId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => setSelectedTransferEmployeeIds((current) =>
-                          event.target.checked
-                            ? [...current, employeeId]
-                            : current.filter((id) => id !== employeeId)
-                        )}
-                      />
-                      <span>{employeeId}{employeeName ? " - " + employeeName : ""}</span>
-                    </label>
-                  );
-                })}
+              <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
+                <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>EMPLOYEES SELECTED</div>
+                <div style={{ marginTop: 8, color: "#173b5b", fontSize: 21, fontWeight: 800 }}>{selectedTransferEmployees.length}<span style={{ color: "#8193a5", fontSize: 13, fontWeight: 500 }}> / {transferEmployeeRows.length}</span></div>
+                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>Only selected employees will move</div>
               </div>
-            )}
+            </div>
+
+            <div style={{ marginTop: 18, border: "1px solid #dbe5f0", borderRadius: 13, overflow: "hidden", background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "13px 16px", background: "#f5f8fc", borderBottom: "1px solid #e4ebf3" }}>
+                <div>
+                  <div style={{ color: "#173b5b", fontSize: 14, fontWeight: 750 }}>4 · SELECT EMPLOYEES</div>
+                  <div style={{ marginTop: 3, color: "#71869b", fontSize: 12 }}>Choose which employees should move to the destination manager</div>
+                </div>
+                {transferEmployeeRows.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <button type="button" onClick={() => setSelectedTransferEmployeeIds(transferEmployeeRows.map((employee) => employee.__transferEmployeeId))} style={{ border: 0, background: "transparent", color: "#17669a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Select all</button>
+                    <button type="button" onClick={() => setSelectedTransferEmployeeIds([])} style={{ border: 0, background: "transparent", color: "#647b92", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Clear</button>
+                  </div>
+                )}
+              </div>
+              <div style={{ padding: 14 }}>
+                {!selectedTransferParent ? (
+                  <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#64748b", fontSize: 13 }}>Choose one of your Tech-Ed allocations to load its Comp Manager team.</div>
+                ) : !transferSource ? (
+                  <div style={{ padding: 14, borderRadius: 10, background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", fontSize: 13 }}>Your signed-in Comp Manager identity could not be matched to an allocation under this Tech-Ed. No source manager has been selected.</div>
+                ) : transferEmployeeRows.length === 0 ? (
+                  <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0", fontSize: 13 }}>No current-cycle Appraisal Sheet employees are assigned to {transferSource} under this Tech-Ed. Existing transfers may already have moved this team.</div>
+                ) : (
+                  <div style={{ maxHeight: 280, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 7, paddingRight: 4 }}>
+                    {transferEmployeeRows.map((employee) => {
+                      const employeeId = employee.__transferEmployeeId;
+                      const employeeName = employee.empName || employee.emp_name || employee.employee_name || employee.name || "";
+                      const checked = selectedTransferEmployeeIds.includes(employeeId);
+                      return (
+                        <label key={employeeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", border: "1px solid " + (checked ? "#8bc8b8" : "#e5ebf2"), borderRadius: 9, background: checked ? "#effaf6" : "#fff", cursor: "pointer", color: "#284761", fontSize: 12 }}>
+                          <input type="checkbox" checked={checked} onChange={(event) => setSelectedTransferEmployeeIds((current) => event.target.checked ? [...current, employeeId] : current.filter((id) => id !== employeeId))} />
+                          <span style={{ fontWeight: 700, color: "#173b5b" }}>{employeeId}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employeeName}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {err && <div style={{ marginTop: 14, padding: 11, borderRadius: 9, background: "#fff1f2", border: "1px solid #fecdd3", color: "#be123c", fontSize: 13 }}>{err}</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
+              <div style={{ color: "#71869b", fontSize: 12 }}>The original allocation snapshot is not changed by this transfer.</div>
+              <button type="button" className="budget-save-btn" onClick={transferCompManagerTeam} disabled={!transferParentId || !transferSource || !transferDestination || !selectedTransferEmployeeIds.length || !(Number(transferAmount) > 0) || Number(transferAmount) > transferAvailableAmount + 0.01 || transferring} style={{ minHeight: 44, padding: "0 22px", borderRadius: 10, fontWeight: 750, boxShadow: "0 5px 14px rgba(18, 48, 79, .16)" }}>
+                {transferring ? "Transferring…" : "Transfer selected employees & budget"}
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <button
-              type="button"
-              className="budget-save-btn"
-              disabled={
-                !transferParentId ||
-                !transferSource ||
-                !transferDestination ||
-                !selectedTransferEmployeeIds.length ||
-                !(Number(transferAmount) > 0) ||
-                Number(transferAmount) > transferAvailableAmount + 0.01 ||
-                transferring
-              }
-              onClick={transferCompManagerTeam}
-            >
-              {transferring ? "Transferring…" : "Transfer Selected Employees & Budget"}
-            </button>
-          </div>
-        </div>
+        </section>
       )}
       {/* COMP_MANAGER_TRANSFER END */}
+
 
       {!isCompManagerView && (
         <div className="card">
