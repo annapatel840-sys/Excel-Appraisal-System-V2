@@ -33,7 +33,7 @@ import { showNotice } from "@/lib/show-notice";
 import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
-import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
+import { useNotices } from "@/lib/notices";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 
@@ -49,7 +49,7 @@ import { exportToExcel } from "@/lib/export-excel";
 import { manualEditedEmpIds } from "@/lib/dashboard-overview";
 import { useAccess } from "@/lib/access-store";
 import { useSettings } from "@/lib/settings-store";
-import { NotificationBell } from "@/components/appraisal/NotificationBell";
+import { NotificationBell, useNoticeItems } from "@/components/appraisal/NotificationBell";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 
@@ -311,26 +311,7 @@ export function SheetPage() {
 
   // Notification bell (top bar): live notices (budget change, bulk edit,
   // data upload, employee status change) + the edited count.
-  const notificationItems = withPreviewBudgetNotice(dynamicNotices, distributionBudget).map((notice) => ({
-    key: notice.key,
-    tag: notice.tag,
-    text: notice.text,
-    sub: notice.sub,
-    actions: [
-      ...(notice.kind === "budget"
-        ? [
-            {
-              // Same in-app navigation the Detailed Screen's "View budget" uses.
-              label: "View budget",
-              onClick: () => {
-                window.history.pushState({}, "", "/budget-distribution");
-                window.dispatchEvent(new PopStateEvent("popstate"));
-              },
-            },
-          ]
-        : []),
-    ],
-  }));
+  const notificationItems = useNoticeItems();
   if (appraisalRows.length > 0) {
     const allEdited = editedCount >= appraisalRows.length;
     notificationItems.push({

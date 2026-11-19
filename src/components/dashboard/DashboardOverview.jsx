@@ -169,15 +169,15 @@ function YearMenu({ cycles, selected, onChange }) {
   }, [open]);
   const chosen = cycles.filter((c) => selected.includes(c.key));
   const label = chosen.length
-    ? `${chosen.length === 1 ? "1 Year" : `${chosen.length} Years`} · ${chosen.map((c) => c.name.replace("Annual ", "")).join(", ")}`
-    : "Pick Years";
+    ? `${chosen.length === 1 ? "1 Cycle" : `${chosen.length} Cycles`} · ${chosen.map((c) => c.name).join(", ")}`
+    : "Pick Appraisal Cycle";
   const toggle = (k) => onChange(selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k]);
   return (
     <div className="ymenu" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)}>{label} ▾</button>
       {open ? (
         <div className="ypop">
-          {cycles.length === 0 ? <div className="mut" style={{ padding: "4px 0" }}>No closed Annual cycles yet</div> : null}
+          {cycles.length === 0 ? <div className="mut" style={{ padding: "4px 0" }}>No closed appraisal cycles yet</div> : null}
           {cycles.map((c) => (
             <label key={c.key}>
               <input type="checkbox" checked={selected.includes(c.key)} onChange={() => toggle(c.key)} />
@@ -185,7 +185,7 @@ function YearMenu({ cycles, selected, onChange }) {
             </label>
           ))}
           <div className="yb">
-            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All Years</button>
+            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All Cycles</button>
             <button type="button" className="btn" onClick={() => onChange([])}>Clear</button>
           </div>
         </div>
@@ -909,7 +909,7 @@ export function DashboardOverview() {
       <div className="cmp">
         <span className="mut">Compare With</span>
         <YearMenu cycles={compareCycles} selected={cmp} onChange={(v) => setCmp(v)} />
-        <span className="mut" style={{ fontSize: 11 }}>Annual cycles, same people only</span>
+        <span className="mut" style={{ fontSize: 11 }}>All appraisal cycles, same people only</span>
         <span className="sp"><Toggle value={unit} onChange={setUnit} options={[["n", "Numbers"], ["p", "%"]]} /></span>
       </div>
 

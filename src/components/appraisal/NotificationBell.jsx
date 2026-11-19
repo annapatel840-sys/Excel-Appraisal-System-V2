@@ -2,6 +2,38 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
+import { useDistributionBudget } from "@/lib/distribution-budget";
+
+/* Shared by every screen: notices -> bell items (budget, bulk edit, upload,
+   status change). The Appraisal Sheet adds its own "Edited" item on top. */
+export function useNoticeItems() {
+  const { notices } = useNotices();
+  const distributionBudget = useDistributionBudget();
+  return withPreviewBudgetNotice(notices, distributionBudget).map((notice) => ({
+    key: notice.key,
+    tag: notice.tag,
+    text: notice.text,
+    sub: notice.sub,
+    actions:
+      notice.kind === "budget"
+        ? [
+            {
+              label: "View budget",
+              onClick: () => {
+                window.history.pushState({}, "", "/budget-distribution");
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              },
+            },
+          ]
+        : [],
+  }));
+}
+
+/* Bell for every screen except the Appraisal Sheet (no edited count). */
+export function GlobalNotificationBell() {
+  return <NotificationBell items={useNoticeItems()} />;
+}
 
 /*
  * Notification bell for the top blue bar (between "View as" and the profile

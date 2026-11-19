@@ -1,7 +1,7 @@
-// "Compare with" on the Dashboard Overview: previous Annual cycles, same
-// people only. Nothing here runs until a person picks a year.
+// "Compare with" on the Dashboard Overview: previous appraisal cycles (Annual
+// and Exceptional alike), same people only. Nothing here runs until a person picks a year.
 //
-//  - useCompareCycles()        the Annual cycles that can be picked (Closed /
+//  - useCompareCycles()        the cycles that can be picked (Closed /
 //                              archived, for the selected location).
 //  - usePreviousCycleData()    each employee's own history (the same
 //                              appraisalhistoryapi read the Detailed Screen
@@ -38,8 +38,8 @@ export function useCompareCycles() {
           const name = nameOf(c);
           const status = String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase();
           const closed = status === "closed" || isTruthy(c?.archived);
-          const annual = /^annual\b/i.test(bareCycleName(name));
-          if (!name || !annual || !closed) return;
+          // Every finished cycle can be compared: Annual, Mid-year, Exceptional...
+          if (!name || !closed) return;
           // This location's cycles, plus org-wide ones.
           const own = matchesCycleLocation(c, selectedLocation);
           if (!own && !isAllLocations(cycleLocationOf(c))) return;
