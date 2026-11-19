@@ -1704,6 +1704,16 @@ export function TechEdBudgetDistribution() {
         String(parent.appraisal_cycle_id) === String(activeCycleId)),
     );
   }, [isCompManagerView, activeCycleId, budgetCompManagerTransferOptions, budgetDistributionRows]);
+  useEffect(() => {
+    if (transferParentRows.length === 1) {
+      const onlyId = String(transferParentRows[0].id || "");
+      if (onlyId && transferParentId !== onlyId) setTransferParentId(onlyId);
+      return;
+    }
+    if (transferParentId && !transferParentRows.some((row) => String(row.id) === String(transferParentId))) {
+      setTransferParentId("");
+    }
+  }, [transferParentRows, transferParentId]);
   const selectedTransferParent = transferParentRows.find(
     (parent) => String(parent.id) === String(transferParentId),
   ) || null;
@@ -1717,14 +1727,23 @@ export function TechEdBudgetDistribution() {
   }, [selectedTransferParent, budgetCompManagerTransferOptions, activeCycleId]);
   // The signed-in manager's own saved allocation rows are the source
   // choices. Sibling rows are destinations under this exact parent only.
+  // Resolve the signed-in Comp Manager independently for each selected
+  // Tech-Ed. cmNodes is an aggregated My Budget view and may expose only one
+  // liveId when the same manager has allocations under multiple Tech-Eds.
   const transferSourceRows = transferManagerRows.filter((row) =>
-    cmNodes.some((node) => String(node.liveId) === String(row.id)),
+    currentUserMatchesManager(
+      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
+      user,
+      locationEmployeeRows,
+    ),
   );
   const transferDestinationRows = transferManagerRows.filter((row) =>
-    !cmNodes.some((node) => String(node.liveId) === String(row.id)),
+    !currentUserMatchesManager(
+      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
+      user,
+      locationEmployeeRows,
+    ),
   );
-  // The signed-in Comp Manager is always the source. Selecting a Tech-Ed
-  // resolves that manager's allocation under the selected parent.
   const selectedTransferSourceRow = transferSourceRows[0] || null;
   const transferSource = selectedTransferSourceRow
     ? String(selectedTransferSourceRow.comp_manager_display ||
