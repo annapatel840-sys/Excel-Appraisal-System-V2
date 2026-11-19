@@ -272,7 +272,10 @@ export function AppraisalCycleMasterPage({
   const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
-  const [genBusy, setGenBusy] = useState(false); // Letters step: Generate is running
+  const [genBusy, setGenBusy] = useState(false); // Letters are being generated (automatically, after the Appraisal Sheet)
+  const [genBusyCycle, setGenBusyCycle] = useState(""); // which cycle the letters are being generated for
+  const autoLettersTried = useRef(new Set()); // cycle ids already auto-generated in this visit: never loops
+  const lettersRef = useRef({}); // latest letters stats, read by the auto-generate effect
   const bannerRef = useRef(null);
   const [canReuseExistingCycleData, setCanReuseExistingCycleData] = useState(false);
 
@@ -449,6 +452,7 @@ export function AppraisalCycleMasterPage({
   // Letters step: live counts from the shared Letters store (the same state the
   // Letters screen under Operation shows). A cycleStats prop still wins if given.
   const lettersByCycle = useLettersStats();
+  lettersRef.current = lettersByCycle;
   const NO_LETTERS = { gen: false, toSend: 0, sent: 0, dropped: 0, outOfDate: 0, missing: 0, total: 0 };
   const lettersOf = (c) =>
     statsFor(c)?.letters || (c && lettersByCycle[String(c.id)]) || NO_LETTERS;
@@ -504,6 +508,37 @@ export function AppraisalCycleMasterPage({
     window.addEventListener("appraisal:cycle-updated", refresh);
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [currentSetupCycleId, loadSetupStatus]);
+
+  // Letters are generated automatically once the Appraisal Sheet of the cycle's
+  // location is generated (there is no Generate button any more). This also
+  // covers a sheet that was generated earlier, or an automatic run that failed:
+  // it is tried once each time this screen is opened, and only while the cycle
+  // has no letters. Safe to repeat: generating never touches Reviewed / Sent letters.
+  useEffect(() => {
+    const c = current;
+    if (!c || c.status !== "Active" || c.archived || c.process !== "Annual") return undefined;
+    if (!setupStatus[c.id]?.sheet?.generated) return undefined;
+    const id = String(c.id);
+    if (autoLettersTried.current.has(id)) return undefined;
+    let cancelled = false;
+    (async () => {
+      // Let the saved letters of this cycle load first, so existing letters are not mistaken for none.
+      await Promise.race([
+        syncLetterState({ cycles: [{ id: c.id, location: c.location }] }),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (cancelled || autoLettersTried.current.has(id)) return;
+      const L = lettersRef.current[id];
+      if (L && L.gen && L.total > 0) return;
+      autoLettersTried.current.add(id);
+      generateLetters(c, true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, current?.status, current?.process, current?.archived, current?.location, setupStatus[current?.id]?.sheet?.generated]);
 
   // Pending items: use the prop when given, otherwise derive from cycleStats.
   const pendingList = (() => {
@@ -836,6 +871,11 @@ export function AppraisalCycleMasterPage({
           `${cycle.name}: ${result?.data?.eligible ?? result?.eligible ?? "eligible"} eligible employee(s) processed.`,
         );
         setConfirm(null);
+        // The letters of this cycle's location are generated automatically right after its sheet.
+        if (cycle.status === "Active" && cycle.process === "Annual") {
+          autoLettersTried.current.add(String(cycle.id));
+          setTimeout(() => generateLetters(cycle, true), 0);
+        }
       } catch (error) {
         setCanReuseExistingCycleData(error?.code === "EXISTING_CYCLE_DATA_AVAILABLE");
         setModalError(error?.message || "Unable to generate the sheet.");
@@ -1198,14 +1238,16 @@ export function AppraisalCycleMasterPage({
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
-  // Letters step -> Generate / Regenerate. Safe to repeat: it adds letters for
-  // employees who have none and replaces unsent Out-of-date ones; Reviewed and
-  // Sent letters are never touched.
-  const generateLetters = async (c) => {
+  // Runs by itself after the Appraisal Sheet is generated (see the effect above
+  // and submitConfirm). Safe to repeat: it adds letters for employees who have
+  // none and replaces unsent Out-of-date ones; Reviewed and Sent letters are
+  // never touched.
+  const generateLetters = async (c, auto = false) => {
     if (genBusy) return;
     setSaving(true);
     setGenBusy(true);
-    setBanner(null);
+    setGenBusyCycle(String(c.id));
+    if (!auto) setBanner(null);
     try {
       // No rows are passed: lettersapi reads this cycle's people from the
       // Appraisal_Sheet table, filtered by the cycle's location.
@@ -1221,15 +1263,20 @@ export function AppraisalCycleMasterPage({
         ? ` They are NOT saved on the server yet (${result.saveError || "no answer"}), so only this computer shows them.`
         : "";
       showBanner(
-        "Letters generated",
-        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}${unsaved}`,
+        auto ? "Letters generated automatically" : "Letters generated",
+        `${c.name}${c.location ? ` (${c.location})` : ""}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${why}${unsaved}`,
         result.total === 0 || result.saved === false,
       );
     } catch (error) {
-      showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
+      showBanner(
+        auto ? "Letters not generated automatically" : "Letters not generated",
+        `${error?.message || "Unable to generate the letters."}${auto ? " They are tried again the next time this screen is opened." : ""}`,
+        true,
+      );
     } finally {
       setSaving(false);
       setGenBusy(false);
+      setGenBusyCycle("");
     }
   };
 
@@ -1403,18 +1450,13 @@ export function AppraisalCycleMasterPage({
         "Letters",
         !lettersOpen
           ? "Available after Generate"
-          : !L.gen || (L.total === 0 && canMakeLetters)
-            ? `Letters not generated yet${loadedSheet ? ` · ${sheetRows.length} employees in the Appraisal Sheet` : ""}`
+          : genBusy && genBusyCycle === String(c.id)
+            ? `Generating the letters for ${c.location || "this cycle"}…`
+            : !L.gen || (L.total === 0 && canMakeLetters)
+            ? `Letters are generated automatically after the Appraisal Sheet${loadedSheet ? ` · ${sheetRows.length} employees in the Appraisal Sheet` : ""}`
             : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped${L.outOfDate ? ` · ${L.outOfDate} Out of date` : ""}${L.missing ? ` · ${L.missing} still to generate` : ""}`,
         !lettersOpen ? "lk" : L.gen && L.total > 0 && L.toSend === 0 && !letterTodo ? "ok" : "wn",
-        lettersOpen
-          ? [
-              ...(canMakeLetters && (!L.gen || L.total === 0 || letterTodo)
-                ? [{ l: L.gen && L.total > 0 ? "Regenerate" : "Generate", id: "gen-lt" }]
-                : []),
-              { l: "Open ›", id: "go-lt" },
-            ]
-          : [],
+        lettersOpen ? [{ l: "Open ›", id: "go-lt" }] : [],
       ),
       row(
         "Closed",
