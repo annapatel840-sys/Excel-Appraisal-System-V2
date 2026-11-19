@@ -186,23 +186,69 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     setPvErr("");
     setPv(id);
   };
-  /* Send: no mail goes out yet. Ready -> Delivered, stamped with who and when. */
+  /* Send: the letter is e-mailed to the employee through Catalyst Mail, from the verified sender
+     address configured on the server (LETTERS_FROM_EMAIL). Ready -> Delivered when the mail was
+     accepted, Failed (with the reason in the audit trail) when it was not. */
+  const [sending, setSending] = useState(false);
   const sendable = (l) => canEdit && !!l && UNSENT_STATUSES.includes(l.status);
-  const rowSend = (id) => {
-    if (!sendable(S.letters.find((x) => x.id === id))) return;
-    store.markLettersSent([id], actor);
-    toast("Marked as sent");
+
+  // The mail of one letter, or { problem } when it must not go out yet.
+  const buildMail = (l) => {
+    const r = empOf(S, l);
+    const t = tplOf(S, l.tpl);
+    if (!r.email) return { problem: `${r.name}: no email address on the Employee Master.` };
+    const mg = mergeLetterHtml(t.html, tagValues(S, l), t.sg);
+    if (mg.miss.length) return { problem: `${r.name}: empty tag ${mg.miss.map((k) => "{{" + k + "}}").join(", ")}.` };
+    const logo = t.sg.logoData ? `<img src="${t.sg.logoData}" alt="Company logo" style="max-height:60px;margin-bottom:16px" />` : "";
+    const style = `font-family:${t.font || "Calibri"}, Arial, sans-serif;font-size:${t.fsize || 11}pt;line-height:${t.lh || 1.15}`;
+    return {
+      id: l.id,
+      to: r.email,
+      subject: `${l.type} letter - ${r.name}`,
+      html: `<div style="${style}">${logo}${mg.html}</div>`,
+    };
   };
-  const sendFromPreview = () => {
-    if (!sendable(S.letters.find((x) => x.id === pv))) return;
-    store.markLettersSent([pv], actor);
-    setSel((cur) => {
-      const n = new Set(cur);
-      n.delete(pv);
-      return n;
+
+  const sendMany = async (ids) => {
+    if (sending) return { sent: 0, failed: 0, errors: [] };
+    const mails = [];
+    const problems = [];
+    ids.forEach((id) => {
+      const l = S.letters.find((x) => x.id === id);
+      if (!sendable(l)) return;
+      const m = buildMail(l);
+      if (m.problem) problems.push(m.problem);
+      else mails.push(m);
     });
-    setPv(null);
-    toast("Marked as sent");
+    setSending(true);
+    try {
+      const out = mails.length ? await store.emailLetters(mails, actor) : { sent: 0, failed: 0, errors: [] };
+      return { ...out, errors: [...problems, ...out.errors] };
+    } finally {
+      setSending(false);
+    }
+  };
+  const summary = (o) =>
+    o.sent && !o.errors.length ? `Email sent (${o.sent})` : `${o.sent} sent. ${o.errors[0] || "Nothing was sent."}`;
+
+  const rowSend = async (id) => {
+    const o = await sendMany([id]);
+    toast(summary(o));
+  };
+  const sendFromPreview = async () => {
+    if (!sendable(S.letters.find((x) => x.id === pv))) return;
+    const o = await sendMany([pv]);
+    if (o.sent) {
+      setSel((cur) => {
+        const n = new Set(cur);
+        n.delete(pv);
+        return n;
+      });
+      setPv(null);
+      toast(summary(o));
+    } else {
+      setPvErr(o.errors[0] || "The email could not be sent.");
+    }
   };
 
   /* ---------------- grid columns ---------------- */
@@ -234,7 +280,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           {sendable(l) && (
             <>
               <span className="lt-sep">|</span>
-              <button type="button" className="lt-lnk" onClick={() => rowSend(l.id)}>Send</button>
+              <button type="button" className="lt-lnk" disabled={sending} onClick={() => rowSend(l.id)}>{sending ? "Sending…" : "Send"}</button>
             </>
           )}
         </span>
@@ -636,7 +682,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           <div className="lt-preview-foot">
             <span className="err">{note}</span>
             <span className="lt-sp" />
-            {canSend && <button type="button" className="lt-btn main" onClick={sendFromPreview}>Send</button>}
+            {canSend && <button type="button" className="lt-btn main" disabled={sending} onClick={sendFromPreview}>{sending ? "Sending…" : "Send"}</button>}
             <button type="button" className="lt-btn" onClick={() => setPv(null)}>Close</button>
           </div>
         </div>

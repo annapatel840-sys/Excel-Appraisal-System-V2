@@ -25,6 +25,11 @@
                                      the cycle is archived)
    POST /  { action:"setActive", id, active }
                                   -> turns a template Active / Inactive
+   POST /  { action:"sendLetter", to, subject, html, letterId }
+                                  -> e-mails ONE letter through Catalyst Mail (Cloud Scale > Mail).
+                                     The sender is the verified address in LETTERS_FROM_EMAIL
+                                     (default test_team_member5@wissen.com). Catalyst refuses any
+                                     sender that is not verified there.
    GET  /?view=config             -> the stored Letter Rules + Letter Fields
                                      { exists, rev, rules, fields, audit }
    POST /  { action:"saveConfig", baseRev, rules, fields, audit }
@@ -579,6 +584,44 @@ function parseCycles(raw) {
   }
 }
 
+/* ---------- e-mail (Catalyst Mail) ---------- */
+// Must be an address listed under Cloud Scale > Mail > Email Configuration with
+// Domain Verification = Verified AND Confirmation = Verified.
+const FROM_EMAIL = () => process.env.LETTERS_FROM_EMAIL || "test_team_member5@wissen.com";
+const MAIL_RE = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
+const MAX_MAIL_HTML = 2 * 1024 * 1024;
+
+async function sendLetterMail(app, actor, payload) {
+  const to = text(payload.to);
+  if (!MAIL_RE.test(to)) throw fail(400, "The employee has no valid email address on the Employee Master.");
+  const subject = text(payload.subject).replace(/[\r\n]+/g, " ").slice(0, 200);
+  if (!subject) throw fail(400, "The email needs a subject.");
+  // The letter HTML is built by the HR screen; scripts and inline handlers never belong in a mail.
+  const html = String(payload.html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "");
+  if (!html.trim()) throw fail(400, "The letter is empty.");
+  if (Buffer.byteLength(html) > MAX_MAIL_HTML) throw fail(413, "The letter is too large to email (over 2 MB). Use a smaller logo or signature image.");
+  const from = FROM_EMAIL();
+  try {
+    await app.email().sendMail({
+      from_email: from,
+      to_email: [to],
+      subject,
+      content: html,
+      html_mode: true,
+    });
+  } catch (e) {
+    const why = String((e && (e.message || e.code)) || e).slice(0, 300);
+    console.error("lettersapi: sendMail failed", from, "->", to, why);
+    throw fail(502, /verif|not\s*allowed|sender|from/i.test(why)
+      ? `Catalyst Mail refused the sender ${from}. Check that it is verified under Cloud Scale > Mail. (${why})`
+      : `The email could not be sent: ${why}`);
+  }
+  console.log("lettersapi: letter", text(payload.letterId), "mailed to", to, "from", from, "by", actor);
+  return { sent: true, from, to, letterId: text(payload.letterId) };
+}
+
 async function handle(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -648,6 +691,9 @@ async function handle(req, res) {
     if (payload.action === "clearState") {
       return sendJson(res, 200, { success: true, data: await lettersState.clearState(adminApp, payload) });
     }
+    if (payload.action === "sendLetter") {
+      return sendJson(res, 200, { success: true, data: await sendLetterMail(adminApp, actor, payload) });
+    }
     if (payload.action === "setActive") {
       return sendJson(res, 200, { success: true, data: await setActive(adminApp, payload) });
     }
@@ -663,7 +709,7 @@ async function handle(req, res) {
    limit ends the request without one (that is the endless "pending" in the
    Network tab). The browser can then retry or show the message. */
 const REQUEST_LIMIT_MS = 24000;
-const BUILD = "letters-gate3-2026-11-19";
+const BUILD = "letters-mail-2026-11-19";
 const BOOTED_AT = Date.now();
 let served = 0;
 module.exports = async function lettersApi(req, res) {

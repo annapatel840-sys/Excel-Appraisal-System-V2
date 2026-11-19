@@ -152,6 +152,13 @@ export function saveServerConfig({ rules, fields, baseRev, audit }) {
   return request({ method: "POST", body: { action: "saveConfig", rules, fields, baseRev: baseRev || 0, audit: audit || [] } });
 }
 
+/* E-mail ONE letter. The server sends it through Catalyst Mail from the verified sender
+   address (LETTERS_FROM_EMAIL, default test_team_member5@wissen.com). Never retried by the
+   client: a repeated POST could mail the employee twice. */
+export function sendServerLetter({ letterId, to, subject, html }) {
+  return request({ method: "POST", body: { action: "sendLetter", letterId, to, subject, html } });
+}
+
 export function setServerTemplateActive(id, active) {
   return request({ method: "POST", body: { action: "setActive", id, active: !!active } });
 }

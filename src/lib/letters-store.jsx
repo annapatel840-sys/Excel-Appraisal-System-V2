@@ -437,6 +437,27 @@ export const previewLetter = (id, actor) => run(actor, (st) => core.reviewOnPrev
 export const sendLetters = (ids, actor) => run(actor, (st) => core.sendLetters(st, ids));
 // The Send button on the Letters screen: Ready -> Delivered (no mail yet).
 export const markLettersSent = (ids, actor) => run(actor, (st) => core.markSent(st, ids));
+/* Really e-mail letters. `mails` = [{ id, to, subject, html }] built by the screen (it holds the
+   merged letter). One at a time, so one bad address never stops the rest and nobody is mailed twice.
+   Returns { sent, failed, errors:[message] }. */
+export async function emailLetters(mails, actor) {
+  const out = { sent: 0, failed: 0, errors: [] };
+  for (const m of mails) {
+    const cur = S.letters.find((x) => x.id === m.id);
+    if (!cur || !core.UNSENT_STATUSES.includes(cur.status)) continue; // already sent meanwhile
+    try {
+      const res = await api.sendServerLetter({ letterId: m.id, to: m.to, subject: m.subject, html: m.html });
+      run(actor, (st) => core.recordMailResult(st, m.id, true, "", res.from));
+      out.sent += 1;
+    } catch (e) {
+      const msg = e?.message || "The email could not be sent.";
+      run(actor, (st) => core.recordMailResult(st, m.id, false, msg));
+      out.failed += 1;
+      out.errors.push(msg);
+    }
+  }
+  return out;
+}
 export const moreOnLetters = (action, ids, reason, actor) => run(actor, (st) => core.moreAction(st, action, ids, reason));
 export const sendTestLetter = (id, actor) => run(actor, (st) => core.testSend(st, core.lOf(st, id)));
 export const sendTestTemplate = (id, empName, version, actor) =>

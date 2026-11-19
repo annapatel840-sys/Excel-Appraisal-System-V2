@@ -563,6 +563,26 @@ export function markSent(S, ids) {
   return n;
 }
 
+/* The result of a real e-mail. ok -> Delivered (stamped with who / when / to whom);
+   not ok -> Failed, with the reason in the audit trail so HR can fix it and Send again. */
+export function recordMailResult(S, id, ok, message, from) {
+  const l = lOf(S, id);
+  if (!l) return false;
+  const r = empOf(S, l);
+  l.sentOn = S.t || nowStamp();
+  l.sentBy = (S.actor || "HR") + " (HR)";
+  l.sentTo = (r && r.email) || "";
+  if (ok) {
+    l.status = "Delivered";
+    audit(S, "Letter", l.id, "Sent", "", "Emailed to " + l.sentTo + (from ? " from " + from : ""), "v" + l.ver);
+  } else {
+    l.status = "Failed";
+    audit(S, "Letter", l.id, "Send failed", "", String(message || "The email could not be sent."), "v" + l.ver);
+  }
+  refreshStale(S);
+  return true;
+}
+
 export function markReviewed(S, ids) {
   let n = 0;
   ids.forEach((id) => {
