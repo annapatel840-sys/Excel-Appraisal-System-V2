@@ -1678,7 +1678,6 @@ export function TechEdBudgetDistribution() {
 
   // COMP_MANAGER_TRANSFER START
   const [transferParentId, setTransferParentId] = useState("");
-  const [transferSource, setTransferSource] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
   const [transferAmount, setTransferAmount] = useState("");
   const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] = useState([]);
@@ -1724,12 +1723,13 @@ export function TechEdBudgetDistribution() {
   const transferDestinationRows = transferManagerRows.filter((row) =>
     !cmNodes.some((node) => String(node.liveId) === String(row.id)),
   );
-  const selectedTransferSourceRow = transferSourceRows.find((row) =>
-    managerIdentityMatches(
-      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
-      transferSource,
-    ),
-  ) || null;
+  // The signed-in Comp Manager is always the source. Selecting a Tech-Ed
+  // resolves that manager's allocation under the selected parent.
+  const selectedTransferSourceRow = transferSourceRows[0] || null;
+  const transferSource = selectedTransferSourceRow
+    ? String(selectedTransferSourceRow.comp_manager_display ||
+        selectedTransferSourceRow.comp_manager || selectedTransferSourceRow.comp_manager_id || "")
+    : "";
   const transferEmployeeRows = useMemo(() => {
     if (!selectedTransferParent || !transferSource) return [];
     const rawTechEd =
@@ -1782,12 +1782,7 @@ export function TechEdBudgetDistribution() {
   );
   const selectedTransferUtilization = selectedTransferEmployees.reduce(
     (sum, employee) =>
-      sum + Math.max(
-        0,
-        num(employee.hike_amount) +
-          num(employee.allocated_pb_amount) +
-          num(employee.new_rb),
-      ),
+      sum + employeeUtilized(employee),
     0,
   );
   const transferAvailableAmount = Math.max(
@@ -2379,7 +2374,6 @@ export function TechEdBudgetDistribution() {
             <label htmlFor="cmTransferTechEd">Tech-Ed</label>
             <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
               setTransferParentId(event.target.value);
-              setTransferSource("");
               setTransferDestination("");
               setTransferAmount("");
               setSelectedTransferEmployeeIds([]);
@@ -2395,19 +2389,12 @@ export function TechEdBudgetDistribution() {
                 return <option key={parent.id} value={parent.id}>{label}</option>;
               })}
             </select>
-            <label htmlFor="cmTransferSource">Source Comp Manager</label>
-            <select id="cmTransferSource" value={transferSource} onChange={(event) => {
-              setTransferSource(event.target.value);
-              setTransferDestination("");
-              setTransferAmount("");
-              setSelectedTransferEmployeeIds([]);
-            }} disabled={!selectedTransferParent}>
-              <option value="">Source Comp Manager</option>
-              {transferSourceRows.map((row) => {
-                const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
-                return <option key={row.id || label} value={label}>{label}</option>;
-              })}
-            </select>
+            <div style={{ minWidth: 190 }}>
+              <label>Source Comp Manager</label>
+              <div style={{ padding: "8px 10px", border: "1px solid var(--border, #ddd)", borderRadius: 6 }}>
+                {transferSource || "Select a Tech-Ed"}
+              </div>
+            </div>
             <label htmlFor="cmTransferDestination">Destination Comp Manager</label>
             <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
               <option value="">Destination Comp Manager</option>
@@ -2441,7 +2428,7 @@ export function TechEdBudgetDistribution() {
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Select employees to transfer</div>
             {!transferSource ? (
-              <div className="mut">Select a Tech-Ed and source Comp Manager first.</div>
+              <div className="mut">Select a Tech-Ed with your Comp Manager allocation first.</div>
             ) : transferEmployeeRows.length === 0 ? (
               <div className="mut">No employees are currently assigned to this Comp Manager under the selected Tech-Ed.</div>
             ) : (
