@@ -3672,6 +3672,7 @@ function HRApplyBudget() {
     [budgetMasterRows],
   );
   const [selectedCycle, setSelectedCycle] = useState(() => String(activeBudgetCycleId || ""));
+  const cycleSnapshot = origSnap[selectedCycle] || EMPTY_BUDGET_CYCLE_SNAPSHOT;
   const activeCycleForLocation = (cycles) => {
     const availableCycles = (Array.isArray(cycles) ? cycles : []).filter((cycle) => {
       const status = String(cycle.status ?? cycle.cycle_status ?? "")
@@ -3805,7 +3806,6 @@ function HRApplyBudget() {
       return;
     }
 
-    const cycleSnapshot = origSnap[selectedCycle] || EMPTY_BUDGET_CYCLE_SNAPSHOT;
     const employeeDirectoryByAlias = new Map();
     [...(Array.isArray(employeeRows) ? employeeRows : []), ...(Array.isArray(dashboardRows) ? dashboardRows : [])].forEach((employee) => {
       [
