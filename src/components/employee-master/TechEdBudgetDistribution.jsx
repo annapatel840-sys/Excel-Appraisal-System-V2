@@ -1730,19 +1730,14 @@ export function TechEdBudgetDistribution() {
   // Resolve the signed-in Comp Manager independently for each selected
   // Tech-Ed. cmNodes is an aggregated My Budget view and may expose only one
   // liveId when the same manager has allocations under multiple Tech-Eds.
-  const transferSourceRows = transferManagerRows.filter((row) =>
-    currentUserMatchesManager(
-      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
-      user,
-      locationEmployeeRows,
-    ),
-  );
+  const isSignedInTransferSource = (row) => {
+    const identity = row.comp_manager_display || row.comp_manager || row.comp_manager_id || "";
+    return currentUserMatchesManager(identity, user, locationEmployeeRows) ||
+      cmNodes.some((node) => managerIdentityMatches(identity, node.name));
+  };
+  const transferSourceRows = transferManagerRows.filter(isSignedInTransferSource);
   const transferDestinationRows = transferManagerRows.filter((row) =>
-    !currentUserMatchesManager(
-      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
-      user,
-      locationEmployeeRows,
-    ),
+    !isSignedInTransferSource(row),
   );
   const selectedTransferSourceRow = transferSourceRows[0] || null;
   const transferSource = selectedTransferSourceRow
