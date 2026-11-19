@@ -56,7 +56,7 @@ const numOrBlank = (value) => {
 };
 
 // Columns behind the Tech-Ed Budget Distribution table's header filters.
-const HR_W = { level: 70, owner: 190, pct: 70, original: 104, additional: 104, updated: 104, utilised: 96, remaining: 96, util: 84, origCount: 70, curCount: 70, status: 76, access: 104 };
+const HR_W = { level: 70, owner: 190, pct: 70, original: 104, additional: 104, updated: 104, utilised: 96, remaining: 96, util: 84, origCount: 70, curCount: 70 };
 const HR_COLS = [
   { key: "level", label: "Level", kind: "text", get: (i) => i.level },
   { key: "owner", label: "Tech-ED", kind: "text", get: (i) => i.owner },
@@ -69,7 +69,6 @@ const HR_COLS = [
   { key: "util", label: "Utilisation %", kind: "number", num: true, get: (i) => numOrBlank(i.row.utilization_percentage) },
   { key: "origCount", label: "Original Count", kind: "number", get: (i) => i.originalCount },
   { key: "curCount", label: "Current Count", kind: "number", get: (i) => i.liveCount },
-  { key: "status", label: "Status", kind: "text", get: (i) => i.row.status || "Active" },
 ];
 
 const CSS = `
@@ -224,16 +223,6 @@ const CSS = `
 .bd-root tr.tech td:first-child { box-shadow: inset 4px 0 0 #14a3a3; }
 .bd-root .owner {
   color: #12304f;
-  font-weight: 700;
-}
-.bd-root .status {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 1px 7px;
-  background: #e8f5ed;
-  color: #166534;
-  font-size: 10.5px;
   font-weight: 700;
 }
 .bd-root .readonly {
@@ -591,7 +580,7 @@ export function BudgetDistributionPage() {
   });
   const tf = useTableFilters(tableItems, HR_COLS);
   const rz = useColumnResize(HR_W);
-  const hrKeys = [...HR_COLS.map((c) => c.key), "access"];
+  const hrKeys = HR_COLS.map((c) => c.key);
 
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
@@ -740,7 +729,7 @@ export function BudgetDistributionPage() {
                 <tbody>
                   {tf.rows.length === 0 && (
                     <tr className="ft-empty">
-                      <td colSpan={HR_COLS.length + 1}>No Tech-ED records match the filters.</td>
+                      <td colSpan={HR_COLS.length}>No Tech-ED records match the filters.</td>
                     </tr>
                   )}
                   {tf.rows.map(({ row, owner, originalCount, liveCount }) => {
@@ -752,7 +741,7 @@ export function BudgetDistributionPage() {
                         <tr className="tech">
                           <td><b>Tech-ED</b></td>
                           <td>
-                            <div className="owner">{owner || row.tech_ed_id || "—"}</div>
+                            <div className="owner" title="Right-click to view Comp Manager details" onContextMenu={(event) => { event.preventDefault(); setOpen((current) => ({ ...current, [key]: !expanded })); }}>{owner || row.tech_ed_id || "—"}</div>
                             {owner && owner !== row.tech_ed_id ? <div className="muted-small">{row.tech_ed_id}</div> : null}
                           </td>
                           <td className="num">{pct(row.budget_percentage)}</td>
@@ -764,18 +753,11 @@ export function BudgetDistributionPage() {
                           <td className="num">{pct(row.utilization_percentage)}</td>
                           <td>{originalCount}</td>
                           <td>{liveCount}</td>
-                          <td><span className="status">{row.status || "Active"}</span></td>
-                          <td>
-                            <button type="button" className="readonly"
-                              onClick={() => setOpen((current) => ({ ...current, [key]: !expanded }))}
-                              aria-expanded={expanded}>
-                              {expanded ? "Hide details" : "Show details"}
-                            </button>
-                          </td>
+
                         </tr>
                         {expanded ? (
                           <tr className="tech-detail-row">
-                            <td colSpan={HR_COLS.length + 1}>
+                            <td colSpan={HR_COLS.length}>
                               <div className="detail">
                                 <div className="detail-grid">
                                   <div className="detail-item"><div className="label">Tech-ED</div><b>{owner || row.tech_ed_id || "—"}</b></div>
