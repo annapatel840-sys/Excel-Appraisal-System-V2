@@ -4282,7 +4282,26 @@ module.exports = async function (req, res) {
         sourceRows.appraisalRows || [],
       );
       bundle.transferCompManager = (bundle.transferCompManager || []).map((row) => {
-        const isSignedInManager = a.role === "compMgr" && matchesOwner(row.comp_manager, a);
+        const rawOwner = String(row.comp_manager || "").trim();
+        const ownerPartsForIdentity = rawOwner.split(/\s+-\s+/);
+        const ownerIdForIdentity = ownerPartsForIdentity[0].trim().toLowerCase();
+        const ownerNameForIdentity = ownerPartsForIdentity.length > 1
+          ? ownerPartsForIdentity.slice(1).join(" - ").trim().toLowerCase()
+          : "";
+        const signedInEmail = String(a.user?.email || a.user?.email_id || "").trim().toLowerCase();
+        const signedInName = String(
+          a.user?.name || a.user?.display_name ||
+          [a.user?.first_name, a.user?.last_name].filter(Boolean).join(" ")
+        ).trim().toLowerCase();
+        const authenticatedEmployee = (sourceRows.masterEmployeeRows || []).find((employee) => {
+          const employeeEmail = String(firstValue(employee, ["email", "email_id", "work_email", "official_email"]) || "").trim().toLowerCase();
+          return signedInEmail && employeeEmail === signedInEmail;
+        });
+        const authenticatedEmployeeId = String(firstValue(authenticatedEmployee, ["emp_id", "empId", "employee_id"]) || "").trim().toLowerCase();
+        const isSignedInManager = a.role === "compMgr" && Boolean(
+          (authenticatedEmployeeId && ownerIdForIdentity === authenticatedEmployeeId) ||
+          (signedInName && (ownerNameForIdentity === signedInName || rawOwner.toLowerCase() === signedInName))
+        );
         const rawManager = String(row.comp_manager || "").trim();
         if (!rawManager) return { ...row, is_signed_in_manager: isSignedInManager };
         const parts = rawManager.split(/\s+-\s+/);
