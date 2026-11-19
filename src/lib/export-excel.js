@@ -1,5 +1,4 @@
 import { COLUMNS } from "./appraisal-data";
-import { excelCurrencyFormat } from "./currency-format";
 
 /* ============================================================
    EXCEL FORMULA HELPERS
@@ -326,9 +325,7 @@ export async function exportToExcel(
       }
 
       if (NUMBER_FORMATS[column.type]) {
-        // Currency columns follow the selected location's currency type + display format.
-        cell.numFmt =
-          column.type === "currency" ? excelCurrencyFormat() : NUMBER_FORMATS[column.type];
+        cell.numFmt = NUMBER_FORMATS[column.type];
       }
 
       cell.border = thinBorder;

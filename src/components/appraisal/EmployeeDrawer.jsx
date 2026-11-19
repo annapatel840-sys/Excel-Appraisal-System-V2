@@ -13,7 +13,6 @@ import {
   formatAppraisalDate,
 } from "@/lib/appraisal-data";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 // ============================================================
 // API
 // ============================================================
@@ -34,7 +33,7 @@ function currency(value) {
     return "—";
   }
 
-  return formatMoneyAmount(Math.round(Number(value) || 0));
+  return Math.round(Number(value) || 0).toLocaleString("en-IN");
 }
 
 function percentageChange(current, previous) {
@@ -233,7 +232,6 @@ function ComparisonRow({
 // ============================================================
 
 export function EmployeeDrawer({ employee, onOpenChange }) {
-  useCurrencyConfig();
   const currentCycleName = useCurrentCycleName();
   const [previous, setPrevious] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);

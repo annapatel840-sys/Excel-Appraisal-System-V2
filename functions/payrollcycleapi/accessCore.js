@@ -94,7 +94,7 @@ const fslug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+
 const SCREEN_FIELD_SPEC = {
   employeeMaster: [['Employee ID', 'm'], 'Employee Name', 'Designation', 'Department', 'Reporting Manager', 'Director', 'Appraiser Tech-ED', 'Employee Type', 'Email ID', 'Date of Joining', 'Location', 'Cost Center', 'Organization Experience', 'Total Experience', 'Current Salary', 'Last Appraisal Month/Year', 'Employee Status', 'Exit Date', 'Remark'],
   cycleMaster: ['Cycle Name', 'Cycle Type', 'Year', 'Process', 'Start Date', 'Close Date', 'Effective Date', ['Status', 'm'], 'Letters to Send', ['Mismatch', 'm'], 'Remarks'],
-  locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Currency Display Format', 'Status'],
+  locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Status'],
   budgetMaster: [['Tech-ED', 'm'], 'Budget %', 'Reason for Change', ['Allocated', 'm'], ['Updated', 'm'], ['Team Size', 'm'], 'Allotted to Comp Managers', ['Buffer', 'm']],
   payrollMaster: [['Employee ID', 'm'], ['Employee Name', 'm'], ['Appraisal Cycle Name', 'm'], 'Effective Date', 'FY Year', 'Current Annual Base Pay', 'Joining Bonus', 'Performance Bonus', 'Retention Bonus', 'Hike %', 'Hike Amount', 'Total CTC with Rewards', 'Total Reward Hike Amount', 'Total Reward Hike %', 'Target Performance Bonus for Next Year', 'Target PB Criteria', 'Total Bonus', 'New Base Pay', 'RB to be Paid', 'Month (RB)', 'PB to be Paid', 'Month (PB)', 'TB to be Paid', 'Month (TB)'],
   feedbackRating: [['Employee', 'm'], ['Department', 'm'], ['Band', 'm'], ['Cycle', 'm'], 'Effective Date', 'Manager Rating', 'Manager Feedback', 'RR%', 'YoE Ratio', 'Interview Count', 'Gross Margin', 'Cost Center/Client', 'Client Manager', 'Client Rating', 'Client Feedback', 'At Risk', ['Comp Manager', 'm'], ['Tech-ED', 'm'], ['Upload Batch', 'm']],
@@ -442,9 +442,6 @@ async function loadDelegation(zcql, cycleIds) {
   const z = zq(zcql);
   const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
   const activeCycleSet = new Set((Array.isArray(cycleIds) ? cycleIds : [cycleIds]).map((id) => String(id || "").trim()).filter(Boolean));
-  // COMP_MANAGER_TRANSFER START
-  const transferHistoryRows = await selectAll(z, "Comp_Manager_Transfer_History").catch(() => []);
-  // COMP_MANAGER_TRANSFER END
   const [allDelegationRows, masterRows, sheetRows] = await Promise.all([
     activeCycleSet.size ? selectAll(z, d.table) : Promise.resolve([]),
     selectAll(z, e.table),
@@ -577,25 +574,6 @@ async function loadDelegation(zcql, cycleIds) {
     [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
   ));
 
-  // COMP_MANAGER_TRANSFER START
-  // Keep the original Comp Manager's access to the transferred employees for
-  // this cycle only; unrelated Tech-Ed teams and cycles are not included.
-  transferHistoryRows.forEach((row) => {
-    if (!activeCycleSet.has(lookupText(row.appraisal_cycle_id))) return;
-    const sourceKey = managerKey(row.source_comp_manager_id);
-    if (!sourceKey) return;
-    let ids = [];
-    try { ids = JSON.parse(String(row.employee_ids || "[]")); } catch (_) {}
-    (Array.isArray(ids) ? ids : []).forEach((rawEmpId) => {
-      const empId = employeeOf(rawEmpId);
-      if (!empId) return;
-      const key = norm(empId);
-      const members = out.teamCompMgr[sourceKey] || (out.teamCompMgr[sourceKey] = []);
-      if (!members.some((existing) => norm(existing) === key)) members.push(empId);
-      out.compMgr[sourceKey] = (out.compMgr[sourceKey] || 0) + 1;
-    });
-  });
-  // COMP_MANAGER_TRANSFER END
   Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
     if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
     if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(empId); }

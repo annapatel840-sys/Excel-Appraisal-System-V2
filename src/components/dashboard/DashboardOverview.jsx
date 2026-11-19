@@ -38,7 +38,6 @@ import {
 
 import "./overview.css";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /* The Overview shows the rows the Appraisal store already narrowed to the
    selected location and the signed-in (or "View as") login; the budget comes
    from the Budget store for the same login and location. Nothing here widens
@@ -54,7 +53,7 @@ const go = (to) => {
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
 
-const tipMoney = (v) => formatMoneyAmount(Math.round(num(v)));
+const tipMoney = (v) => Math.round(num(v)).toLocaleString("en-IN");
 
 /* ---------------- small building blocks ---------------- */
 
@@ -429,7 +428,6 @@ const Cell = ({ col, row }) => col.cell(row);
 /* ---------------- main ---------------- */
 
 export function DashboardOverview() {
-  useCurrencyConfig();
   const { rows: allRows, audit } = useAppraisal();
   const budgetCtx = useBudget();
   const { effectiveId, actualId } = useViewAs();

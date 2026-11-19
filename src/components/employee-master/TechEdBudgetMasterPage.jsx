@@ -5,7 +5,6 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
 
@@ -23,10 +22,8 @@ const ownerName = (value) => {
 };
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const money = (v) => {
-  const n = Number(v) || 0;
-  return formatMoneyAmount(n, { decimals: Number.isInteger(n) ? 0 : 2 });
-};
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const money = (v) => INR.format(Number(v) || 0);
 function dateText(iso) {
   const p = String(iso || "").split("-");
   const M = [
@@ -253,7 +250,6 @@ const HEADS = [
 ];
 
 export function TechEdBudgetMasterPage() {
-  useCurrencyConfig();
   const user = useCatalystUser();
   // Dashboard uses these AppraisalContext rows for its Active + Eligible headcount.
   const { rows: dashboardRows = [], readOnlyCycle } = useAppraisal();

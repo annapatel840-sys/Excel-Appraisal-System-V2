@@ -31,8 +31,6 @@ export const FIELDS = COLUMNS.map((c) => ({
             : c.type === "enum"
                 ? "enum"
                 : "text",
-    // Money columns follow the selected location's currency display format.
-    currency: c.type === "currency",
     ...(c.options ? { options: c.options } : {}),
     ...(c.optionLabels ? { optionLabels: c.optionLabels } : {}),
     // Enum columns whose options are all numbers (e.g. Manager Rating 1-5)

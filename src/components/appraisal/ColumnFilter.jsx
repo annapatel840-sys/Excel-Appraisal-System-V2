@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { fieldByKey, isEmptyFilter } from "@/lib/appraisal-filters";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /* ============================================================
    COLUMN FILTER — Excel-style column menu
    - Sort A→Z / Z→A (smallest / largest for numbers); up to 3 sort levels
@@ -219,7 +218,6 @@ export function ColumnFilter({
   // the window is short); the value list shrinks to fit instead.
   alwaysBelow = false,
 }) {
-  useCurrencyConfig();
   const meta = fieldByKey(columnKey);
 
   const [open, setOpen] = useState(false);
@@ -272,8 +270,7 @@ export function ColumnFilter({
 
     const number = Number(text);
 
-    if (!Number.isFinite(number)) return text;
-    return meta?.currency ? formatMoneyAmount(number) : number.toLocaleString("en-IN");
+    return Number.isFinite(number) ? number.toLocaleString("en-IN") : text;
   };
 
   const sortedOptions = useMemo(

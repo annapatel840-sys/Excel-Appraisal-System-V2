@@ -3,8 +3,6 @@
 // same math is used by DetailScreenPage, TeamChangesPage and
 // BudgetAllocationPage.
 
-import { activeSymbol, moneyLakhs, moneyWithSymbol } from "./currency-format";
-
 export const DEFAULT_LEVELS = ["Tech-ED", "Comp Manager"];
 
 // Who sits at which level, and who allots budget to whom.
@@ -283,14 +281,12 @@ export const TYPE_LABEL = {
   out: "Transferred out",
 };
 
-// Short form: lakhs for lakh-grouped formats ("₹ 12.50 L"), otherwise K / M / B.
 export function fmtLakh(n) {
-  return activeSymbol() + " " + moneyLakhs(n);
+  return "₹ " + ((Number(n) || 0) / 1e5).toFixed(2) + " L";
 }
 
-// Full amount with the selected location's currency symbol + display format.
 export function fmtInr(n) {
-  return moneyWithSymbol(Math.round(Number(n) || 0));
+  return "₹ " + Math.round(Number(n) || 0).toLocaleString("en-IN");
 }
 
 export function colLabel(key) {

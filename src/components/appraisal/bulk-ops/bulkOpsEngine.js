@@ -5,8 +5,6 @@
    cfg: { apiUrl, cycle:{id,name,location}, canApply, applyNote, getSheetEmp(), getHdr(), onBudget(b,info), onApplied(batch), loadXLSX() }
    returns { reload(), dirty(), refresh(), setCycle(c), destroy() } */
 /* eslint-disable */
-/* Hand edit (not from the dummy): amounts follow the selected location's currency display format. Re-apply if this file is regenerated. */
-import { money as fmtMoneyAmount } from "@/lib/currency-format";
 export function createBulkOps(root, cfg) {
   cfg = cfg || {};
   var __docL = [], __winL = [];
@@ -96,9 +94,9 @@ S.rules=[newRule("hikePct",true)];
 /* ---------------- helpers ---------------- */
 function $(id){return root.querySelector("#"+id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function inr(n){var v=Number(n);return fmtMoneyAmount(v,{decimals:Number.isInteger(v)?0:2})}
+function inr(n){return Number(n).toLocaleString("en-IN",{maximumFractionDigits:2})}
 function pct(n){return Number(n).toFixed(2)+"%"}
-function big(n){return fmtMoneyAmount(Math.round(Number(n)||0))}   /* full amount, no symbol */
+function big(n){return Math.round(Number(n)||0).toLocaleString("en-IN")}   /* full amount, no symbol */
 function bucket(e){return e.rating==null?null:Math.min(5,Math.max(1,Math.round(e.rating)))}
 function nowT(){var d=new Date();return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function lvl(p){return p>100?"danger":p>90?"warn":""}
@@ -436,16 +434,6 @@ function budgetOf(list,over){
     bud=0.35*s.base;used=s.used;tpb=s.tpb;
   }
   return {budget:bud,used:used,util:bud?used/bud*100:0,utilT:bud?(used+tpb)/bud*100:0,tpb:tpb,left:bud-used-(S.incTpb?tpb:0)};
-}
-/* Budget of one group (a Tech ED's or a Comp Manager's people). In the demo it is worked out from the rows. With the
-   Appraisal Sheet header or the server the budget is one figure for the whole screen, so each group gets its share of it
-   by Base pay, and "used" is what the group's own rows consume. */
-function grpBudget(list,over){
-  var H=cfg.getHdr?cfg.getHdr():null;
-  if(!H&&!SB)return budgetOf(list,over);
-  var all=scope(),tb=budgetOf(all,null),ab=sums(all,null).base,gb=sums(list,null).base,
-      sh=ab?gb/ab:(all.length?list.length/all.length:0),bud=tb.budget*sh,u=sums(list,over),t=u.tpb;
-  return {budget:bud,used:u.used,util:bud?u.used/bud*100:0,utilT:bud?(u.used+t)/bud*100:0,tpb:t,left:bud-u.used-(S.incTpb?t:0)};
 }
 /* Distribute a total: the shares are worked out once per preview over the rows that will be processed
    (selected, not skipped). Whole rupees; any rounding left over goes one rupee at a time to the first rows. */
@@ -841,7 +829,14 @@ function renderScn(){
     h+='</tbody></table>';
   }
   $("scnList").innerHTML=h;
-  $("batchList").innerHTML=historyTab();   // History lives in the Scenarios & History tab (with Restore)
+  var b="";
+  if(!S.batches.length)b='<div class="mini">Nothing applied in this session.</div>';
+  else{
+    b='<table><thead><tr><th>Time</th><th>Rule</th><th class="r">Rows</th><th>Source</th></tr></thead><tbody>';
+    S.batches.slice().reverse().forEach(function(x){b+='<tr><td>'+x.time+'</td><td>'+esc(x.text)+'</td><td class="r">'+x.rows.length+'</td><td>bulk · '+esc(x.id)+'</td></tr>'});
+    b+='</tbody></table>';
+  }
+  $("batchList").innerHTML=b;
 }
 
 /* ---------------- actions ---------------- */
@@ -1496,16 +1491,15 @@ function checksTab(c){
 }
 $("mpTabs").addEventListener("click",function(ev){var t=ev.target.getAttribute&&ev.target.getAttribute("data-t");if(!t)return;PT=t;try{localStorage.setItem(PT_KEY,t)}catch(x){}
   [].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===t)});renderImpact()});
-function onPanelClick(ev){
+$("imp").addEventListener("click",function(ev){
   if(ev.target.closest&&ev.target.closest("#bDlList")){downloadList();return}
   var rb=ev.target.closest&&ev.target.closest("[data-restore]");
   if(rb&&!RESTORE_ENABLED)return;
   if(rb){var id=rb.getAttribute("data-restore");
     if(restoreAt.id===id&&Date.now()-restoreAt.t<6000){restoreAt={id:"",t:0};doRestore(id)}
-    else{restoreAt={id:id,t:Date.now()};renderImpact();renderScn();setTimeout(function(){if(restoreAt.id===id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderImpact();renderScn()}},6100)}
+    else{restoreAt={id:id,t:Date.now()};renderImpact();setTimeout(function(){if(restoreAt.id===id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderImpact()}},6100)}
     return}
-var r=ev.target.closest&&ev.target.closest(".ck[data-ck]");if(!r)return;var k=r.getAttribute("data-ck");S.checkF=S.checkF===k?"":k;S.page=1;renderGrid();renderImpact()}
-$("imp").addEventListener("click",onPanelClick);$("scnCard").addEventListener("click",onPanelClick);
+var r=ev.target.closest&&ev.target.closest(".ck[data-ck]");if(!r)return;var k=r.getAttribute("data-ck");S.checkF=S.checkF===k?"":k;S.page=1;renderGrid();renderImpact()});
 $("imp").addEventListener("change",function(ev){if(ev.target.id==="tpbSel"){S.incTpb=ev.target.value==="1";try{localStorage.setItem(TPB_KEY,S.incTpb?"1":"0")}catch(x){}if(S.pv)refreshPreview();else render();return}
   if(ev.target.id==="gbSel"){GB=ev.target.value;S.wiDr="";try{localStorage.setItem(GB_KEY,GB)}catch(x){}renderImpact()}});
 [].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===PT)});
@@ -1763,10 +1757,11 @@ function smYears(vr,p,K0){
   return '<div class="sm-h">Average Hike % Over the Years</div><div class="wm" style="margin:0 0 4px">Dashed = this proposal. Demo history; the real figures come from the history table.</div>'+lg+o;
 }
 function tedTable(sc,p){
+  if(SB)return [];   // with the server, each Tech ED budget comes from Budget Config
   var m={};sc.forEach(function(e){var k=e.superManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBudget(a,null),b:grpBudget(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
 }
 function sumTab(c){
   var p=c.pv;
@@ -2024,7 +2019,7 @@ function hStat(arr,s){
 }
 function niceStep(x){var p=Math.pow(10,Math.floor(Math.log10(x))),m=x/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
 function hFmt(v,pct,axis){if(v==null)return "–";if(pct)return v.toFixed(axis?1:1)+"%";
-  return fmtMoneyAmount(Math.round(v))}
+  return Math.round(v).toLocaleString("en-IN")}
 function heroHtml(vr,p){
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var M=HMEAS[HS.meas]||HMEAS.hikePct;if(!HMEAS[HS.meas])HS.meas="hikePct";
@@ -2188,13 +2183,10 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   }
   lt.addEventListener("click",function(ev){var p=ev.target.getAttribute&&ev.target.getAttribute("data-p");if(p){st.lt=p;apply()}});
   $("lFold").onclick=function(){st.lc=true;apply()};$("rFold").onclick=function(){st.rc=true;apply()};
-  /* centre tabs: "Scenarios & History" is one tab. Employees is not a tab: Summary links to it (see "View Employees"). */
-  var tScn=mk("button",null,null,"Scenarios &amp; History");
-  tScn.type="button";tScn.setAttribute("data-x","scn");
-  mpTabs.insertBefore(tScn,lyTog);
-  var bar=mk("div",null,"bkbar",'<button class="btn lnk" type="button" id="bBack">‹ Back to Summary</button>');metPanel.insertBefore(bar,gridCard);
-  $("imp").addEventListener("click",function(ev){if(ev.target.closest&&ev.target.closest("#bViewEmp")){ct="emp";apply()}});
-  $("bBack").addEventListener("click",function(){setPT("summary");if(ct!=="res"){ct="res";apply()}});
+  /* centre tabs: Employees and Scenarios sit with the result tabs */
+  var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios");
+  tEmp.type="button";tEmp.setAttribute("data-x","emp");tScn.type="button";tScn.setAttribute("data-x","scn");
+  mpTabs.insertBefore(tEmp,mpTabs.firstChild.nextSibling);mpTabs.insertBefore(tScn,lyTog);
   /* "+" chooses which tabs show */
   var plus=mk("button","tabPlus","tplus","＋");plus.type="button";plus.title="Choose the tabs shown in this pane";
   mpTabs.insertBefore(plus,lyTog);

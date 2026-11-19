@@ -46,12 +46,11 @@ import BULK_OPS_MARKUP from "@/components/appraisal/bulk-ops/bulkOpsMarkup";
 import logoUrl from "@/assets/wissen-logo.png";
 import "@/styles/bulk-ops.css";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /* Apply is on: changes are saved through the Appraisal Sheet store (same audit trail and save path as inline and bulk edits). */
 const APPLY_ENABLED = true;
 
 /* ---------- header formatting ---------- */
-const rupees = (n) => formatMoneyAmount(Math.round(Number(n) || 0));
+const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const pctOf = (x) =>
   x && Number(x.budget) ? ((Number(x.used) || 0) / Number(x.budget)) * 100 : 0;
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
@@ -186,7 +185,6 @@ const BulkOperations = forwardRef(function BulkOperations(
   { apiUrl = "", offlineApi = false, cycle, height = "100%", onApplied, readOnly = false },
   ref,
 ) {
-  useCurrencyConfig();
   const hostRef = useRef(null);
   const rootRef = useRef(null);
   const apiRef = useRef(null);
@@ -324,7 +322,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       saveChanges: (changes, source, meta) => {
         const { sheetRows: rows, storeBulkUpdate: bulkUpdate } = live.current;
         // Every Apply is one batch in the audit trail (source "Bulk edit"); every Restore is
-        // one "Bulk restore" batch pointing back at it. This is what the history list in the Scenarios & History tab reads.
+        // one "Bulk restore" batch pointing back at it. This is what the History tab reads.
         const isRestore = source === "bulk_restore";
         const opts = {
           source: isRestore ? RESTORE_SOURCE : APPLY_SOURCE,
@@ -466,7 +464,7 @@ const BulkOperations = forwardRef(function BulkOperations(
               {sheetHdr
                 ? sheetHdr.pending
                   ? "…"
-                  : formatMoneyAmount(Math.round(b0.budget))
+                  : Math.round(b0.budget).toLocaleString("en-IN")
                 : rupees(b0.budget)}
             </strong>
           </div>

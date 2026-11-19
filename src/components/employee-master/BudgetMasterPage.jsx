@@ -2698,7 +2698,6 @@ const EMPTY_BUDGET_CYCLE_SNAPSHOT = Object.freeze({});
 //    PAGE SWITCH
 //    ===================================================================== */
 // export function BudgetMasterPage() {
-  useCurrencyConfig();
 //   const user = useCatalystUser();
 //   const role = String(user?.role || "")
 //     .trim()
@@ -2781,7 +2780,6 @@ import {
   useTableFilters,
 } from "./FilterableTable";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 const NAVY = "#102A43";
 const TEAL = "#2F6FED";
 const BORDER = "#D5DFEB";
@@ -2952,8 +2950,12 @@ function amount(value) {
 }
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
 function money(value) {
-  return formatMoneyAmount(Math.round(amount(value)));
+  return INR.format(amount(value));
 }
 
 // Select the whole value when a % field gets focus (click or Tab).

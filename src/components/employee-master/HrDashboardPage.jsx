@@ -11,7 +11,6 @@ import { isActionNeededStatus, isInactiveStatus, statusOf } from "@/lib/eligibil
 import { useBudget } from "@/lib/budget-store";
 import { useLetters } from "@/lib/letters-store";
 
-import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /*
  * HR Operations -> HR Dashboard.
  *
@@ -100,7 +99,7 @@ function ageDays(value) {
   return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
 const escHtml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const inr = (n) => formatMoneyAmount(Number(n || 0), { decimals: Number.isInteger(Number(n || 0)) ? 0 : 2 });
+const inr = (n) => Number(n || 0).toLocaleString("en-IN");
 const pct = (n) => Number(n || 0).toFixed(2);
 const locOf = (e) => e?.location || e?.rawEmployee?.location || e?.rawEmployee?.work_location || e?.work_location || "";
 const C = (t, node) => ({ t: String(t), node: node === undefined ? String(t) : node });
@@ -260,7 +259,6 @@ function Grid({ cols, rows, numCols = [], foot }) {
 
 /* ---------------- page ---------------- */
 export function HrDashboardPage({ onNavigate, canOpen }) {
-  useCurrencyConfig();
   const [location] = useSelectedLocation();
   const budget = useBudget();
   const { S: lettersState, version: lettersVersion } = useLetters();
