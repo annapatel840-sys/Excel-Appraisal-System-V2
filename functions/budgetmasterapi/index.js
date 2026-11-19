@@ -3644,22 +3644,8 @@ async function calculateBudgetBases(
         : canCreateOriginal
           ? (originalBase * effectivePct) / 100
           : 0;
-      const transferNet = compManagerTransferHistory.reduce((net, transfer) => {
-        if (cycleReference(value(transfer, "appraisal_cycle_id")) !== cycleId) return net;
-        const transferTechKey = canonicalTechKey(
-          resolvePersonId(value(transfer, "tech_ed_id")),
-        );
-        if (transferTechKey !== details.techEdKey) return net;
-        const sourceKey = ownerKey(resolvePersonId(value(transfer, "source_comp_manager_id")));
-        const destinationKey = ownerKey(resolvePersonId(value(transfer, "destination_comp_manager_id")));
-        const amount = n(value(transfer, "transferred_budget"));
-        if (sourceKey === details.compKey) return net - amount;
-        if (destinationKey === details.compKey) return net + amount;
-        return net;
-      }, 0);
       const updatedBudget =
-        (rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0) +
-        transferNet;
+        rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0;
 
       const savedOriginalCountValue = row.original_headcount;
       // Use the count accumulated in the exact same canonical Tech-Ed
@@ -3848,7 +3834,24 @@ async function calculateBudgetBases(
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (originalBase * pct) / 100;
-      const updatedBudget = (stats.base * pct) / 100;
+      const currentTransferTechKey = canonicalTechKey(
+        resolvePersonId(details.techEdKey),
+      );
+      const currentTransferCompKey = ownerKey(resolvePersonId(details.compKey));
+      const transferNet = compManagerTransferHistory.reduce((net, transfer) => {
+        if (cycleReference(value(transfer, "appraisal_cycle_id")) !== cycleId) return net;
+        const transferTechKey = canonicalTechKey(
+          resolvePersonId(value(transfer, "tech_ed_id")),
+        );
+        if (transferTechKey !== currentTransferTechKey) return net;
+        const sourceKey = ownerKey(resolvePersonId(value(transfer, "source_comp_manager_id")));
+        const destinationKey = ownerKey(resolvePersonId(value(transfer, "destination_comp_manager_id")));
+        const amount = n(value(transfer, "transferred_budget"));
+        if (sourceKey === currentTransferCompKey) return net - amount;
+        if (destinationKey === currentTransferCompKey) return net + amount;
+        return net;
+      }, 0);
+      const updatedBudget = (stats.base * pct) / 100 + transferNet;
       const savedOriginalCountValue = row.original_headcount;
       const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
