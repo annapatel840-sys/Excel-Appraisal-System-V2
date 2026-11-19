@@ -4467,6 +4467,12 @@ module.exports = async function (req, res) {
         ownerKey(techOfSheet(row)) === ownerKey(techEdId) &&
         ownerKey(compOfSheet(row)) === sourceKey
       );
+      const destinationTeamRows = sheetRows.filter((row) =>
+        (cycleOfSheet(row) === activeCycleIdForWrite ||
+          cycleOfSheet(row).toLowerCase() === activeCycleNameForWrite) &&
+        ownerKey(techOfSheet(row)) === ownerKey(techEdId) &&
+        ownerKey(compOfSheet(row)) === destinationKey
+      );
       const requestedKeys = new Set(requestedEmployeeIds.map((id) => {
         const first = id.split(/\s+-\s+/)[0].trim();
         return (masterByRowId.get(first.toLowerCase()) ||
@@ -4548,6 +4554,26 @@ module.exports = async function (req, res) {
       }
 
       const compTable = app.datastore().table(TABLES.comp);
+      // Preserve the first-allocation team-size snapshot. If a legacy row
+      // has no valid snapshot yet, capture its pre-transfer Appraisal_Sheet
+      // count once; never overwrite it on later transfers.
+      const compColumns = await getColumnNames(compTable);
+      const originalCountField = compColumns.find((column) =>
+        ["original_headcount", "allocation_headcount"].includes(String(column).toLowerCase()),
+      );
+      if (originalCountField) {
+        const ensureOriginalCount = async (row, count) => {
+          const saved = n(value(row, originalCountField));
+          if (!(saved > 0) && count > 0) {
+            await compTable.updateRow({
+              ROWID: idOf(row),
+              [originalCountField]: count,
+            });
+          }
+        };
+        await ensureOriginalCount(sourceRow, sourceTeamRows.length);
+        await ensureOriginalCount(destinationRow, destinationTeamRows.length);
+      }
       await compTable.updateRow({
         ROWID: idOf(sourceRow),
         percentage: nextSourcePct,
