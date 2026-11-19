@@ -1651,7 +1651,13 @@ function filterOwn(
   const ownTechEmployees = employeeRoster.filter((employee) =>
     matchesTechEdOwner(employee.appraiser_tech_ed, a, techEdOwners),
   );
-  return { master, techEd, compManager, employeeRoster: ownTechEmployees };
+  return {
+    master,
+    techEd,
+    compManager,
+    transferCompManager: compManager,
+    employeeRoster: ownTechEmployees,
+  };
 }
 
 function ownerKey(raw) {
