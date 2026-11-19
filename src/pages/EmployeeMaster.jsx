@@ -58,6 +58,7 @@
 // import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 // import { ProcessingOverlay } from "@/components/ui/processing-overlay";
 // import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
+import { useBudget } from "@/lib/budget-store";
 // import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
 // import "@/styles/employee-master.css";
@@ -616,6 +617,7 @@
 //   // eligibility writes are for HR and App Administrator; others read only.
 //   const access = useAccess();
 //   const isRoleHR = role === "hr" || role === "appadministrator";
+  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
 //   // With access rules (/me ok) a 'view' level makes the screen read-only.
 //   const canEditEmployees =
 //     isRoleHR && access.canScreen("employeeMaster", "edit");
@@ -656,7 +658,15 @@
 //     if (tab === "access") return isRoleHR;
 //     return !isTechEd;
 //   };
-//   const [allEmployees, setAllEmployees] = useState([]);
+//   useEffect(() => {
+    // Warm the cycle-wise budget data while HR is already in Operations.
+    // Budget Master can then render from the shared in-flight/completed load.
+    if (["hr", "humanresources", "hroperation", "hroperations", "appadministrator"].includes(role)) {
+      requestBudgetData?.();
+    }
+  }, [role, requestBudgetData]);
+
+  const [allEmployees, setAllEmployees] = useState([]);
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 //   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
