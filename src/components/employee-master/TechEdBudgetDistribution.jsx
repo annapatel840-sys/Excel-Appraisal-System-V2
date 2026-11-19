@@ -1862,7 +1862,12 @@ export function TechEdBudgetDistribution() {
   }
   // COMP_MANAGER_TRANSFER END
 
-  const selectedCompManager = selectedManagerNode?.name || "";
+  const selectedCompManager = isCompManagerView
+    ? transferSource || selectedManagerNode?.name || ""
+    : "";
+  const selectedCompManagerBudgetRow = isCompManagerView
+    ? selectedTransferSourceRow
+    : null;
 
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
@@ -2368,7 +2373,7 @@ export function TechEdBudgetDistribution() {
                   {budgetCardHasAllocation ? lakh(budgetCardUpdated) : "—"}
                 </div>
                 <div className="d">
-                  {hasLiveAllocation ? <Chg d={budgetCardUpdated - budgetCardOriginal} /> : "—"}
+                  {budgetCardHasAllocation ? <Chg d={budgetCardUpdated - budgetCardOriginal} /> : "—"}
                 </div>
               </div>
               <div>
@@ -2382,7 +2387,7 @@ export function TechEdBudgetDistribution() {
                 <div>
                   <div className="f-label">Remaining</div>
                   <div className={"v" + (budgetCardUpdated - used < 0 ? " over" : "")}>
-                    {hasLiveAllocation ? lakh(budgetCardUpdated - used) : "—"}
+                    {budgetCardHasAllocation ? lakh(budgetCardUpdated - used) : "—"}
                   </div>
                   <div className="d mut">Updated budget − utilised</div>
                 </div>
