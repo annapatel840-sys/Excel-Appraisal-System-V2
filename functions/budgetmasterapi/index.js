@@ -4282,8 +4282,9 @@ module.exports = async function (req, res) {
         sourceRows.appraisalRows || [],
       );
       bundle.transferCompManager = (bundle.transferCompManager || []).map((row) => {
+        const isSignedInManager = a.role === "compMgr" && matchesOwner(row.comp_manager, a);
         const rawManager = String(row.comp_manager || "").trim();
-        if (!rawManager) return row;
+        if (!rawManager) return { ...row, is_signed_in_manager: isSignedInManager };
         const parts = rawManager.split(/\s+-\s+/);
         const managerKey = parts[0].trim().toLowerCase();
         const manager = managerByEmployeeId.get(managerKey) ||
@@ -4292,12 +4293,12 @@ module.exports = async function (req, res) {
           (parts.length > 1
             ? managerByName.get(parts.slice(1).join(" - ").toLowerCase())
             : null);
-        if (!manager) return row;
+        if (!manager) return { ...row, is_signed_in_manager: isSignedInManager };
         const employeeId = String(firstValue(manager, ["emp_id", "empId", "employee_id"]) || "").trim();
         const employeeName = String(firstValue(manager, ["emp_name", "employee_name", "name"]) || "").trim();
         return employeeId && employeeName
-          ? { ...row, comp_manager_display: employeeId + " - " + employeeName }
-          : row;
+          ? { ...row, comp_manager_display: employeeId + " - " + employeeName, is_signed_in_manager: isSignedInManager }
+          : { ...row, is_signed_in_manager: isSignedInManager };
       });
       const budgetCycleRefs = new Set(
         (bundle.master || []).map((row) => String(row.appraisal_cycle_id || "").trim().toLowerCase()).filter(Boolean),
@@ -4440,10 +4441,8 @@ module.exports = async function (req, res) {
       // exact Tech-Ed parent and active cycle.
       const isOwnCompManagerSource =
         a.role === "compMgr" && matchesOwner(sourceId, a);
-      if (a.enforced && !Boolean(a.scope && a.scope.all) &&
-          !isOwnCompManagerSource &&
-          !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
-        throw new access.HttpError(403, "You can only transfer your own Comp Manager allocation under a Tech-Ed where you have an allocation.");
+      if (a.enforced && !(a.scope && a.scope.all) && !isOwnCompManagerSource) {
+        throw new access.HttpError(403, "You can only transfer budget and employees from your own Comp Manager allocation.");
       }
       access.guard(a, () => access.requireAction(a, "allotNextLevel"));
 
