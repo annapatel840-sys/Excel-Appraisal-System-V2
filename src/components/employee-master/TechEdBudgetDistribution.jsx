@@ -1679,7 +1679,7 @@ export function TechEdBudgetDistribution() {
   // COMP_MANAGER_TRANSFER START
   const [transferParentId, setTransferParentId] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
-  const [transferAmount, setTransferAmount] = useState("");
+  const [transferPercentage, setTransferPercentage] = useState("");
   const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] = useState([]);
   const [transferring, setTransferring] = useState(false);
 
@@ -1801,21 +1801,33 @@ export function TechEdBudgetDistribution() {
       sum + employeeUtilized(employee),
     0,
   );
-  const transferAvailableAmount = Math.max(
-    0,
-    num(selectedTransferSourceRow?.applied_budget) -
-      num(selectedTransferSourceRow?.total_utilization) +
-      selectedTransferUtilization,
+  const transferSourceApplied = Math.max(0, num(selectedTransferSourceRow?.applied_budget));
+  // Selected employees' utilization is released from the source allocation
+  // when they move, but the transferable amount can never exceed the source's
+  // remaining allocated budget itself.
+  const transferAvailableAmount = Math.min(
+    transferSourceApplied,
+    Math.max(
+      0,
+      transferSourceApplied -
+        num(selectedTransferSourceRow?.total_utilization) +
+        selectedTransferUtilization,
+    ),
   );
+  const transferPercentageValue = Math.min(100, Math.max(0, Number(transferPercentage) || 0));
+  const transferCalculatedAmount = Math.round(
+    (transferAvailableAmount * transferPercentageValue / 100) * 100,
+  ) / 100;
   async function transferCompManagerTeam() {
-    const amount = Number(transferAmount);
+    const percentage = Number(transferPercentage);
     if (
       !transferParentId ||
       !transferSource ||
       !transferDestination ||
       !selectedTransferEmployeeIds.length ||
-      !(amount > 0) ||
-      amount > transferAvailableAmount + 0.01 ||
+      !(percentage > 0) ||
+      percentage > 100 ||
+      !(transferCalculatedAmount > 0) ||
       transferring
     ) return;
     setTransferring(true);
@@ -1828,11 +1840,11 @@ export function TechEdBudgetDistribution() {
         appraisal_cycle_id: activeCycleId,
         source_comp_manager_id: transferSource,
         destination_comp_manager_id: transferDestination,
-        transferred_budget: amount,
+        transferred_percentage: percentage,
         employee_ids: selectedTransferEmployeeIds,
       }, "comp_manager_transfer");
       setTransferDestination("");
-      setTransferAmount("");
+      setTransferPercentage("");
       setSelectedTransferEmployeeIds([]);
     } catch (error) {
       setErr(error?.message || "Comp Manager transfer failed.");
@@ -2400,7 +2412,7 @@ export function TechEdBudgetDistribution() {
                 <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
                   setTransferParentId(event.target.value);
                   setTransferDestination("");
-                  setTransferAmount("");
+                  setTransferPercentage("");
                   setSelectedTransferEmployeeIds([]);
                 }} style={{ width: "100%", minHeight: 44, border: "1px solid #cbd8e6", borderRadius: 10, background: "#fff", padding: "9px 12px", color: "#173b5b", fontWeight: 600 }}>
                   <option value="">Choose your Tech-Ed</option>
@@ -2438,13 +2450,18 @@ export function TechEdBudgetDistribution() {
 
             <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.1fr) repeat(2, minmax(150px, .7fr))", gap: 12, marginTop: 18 }}>
               <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
-                <label htmlFor="cmTransferAmount" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700 }}>BUDGET AMOUNT TO TRANSFER</label>
-                <input id="cmTransferAmount" type="number" min="0" max={transferAvailableAmount} step="1" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} disabled={!transferSource || !transferDestination} placeholder="Enter amount" style={{ width: "100%", minHeight: 42, border: "1px solid #cbd8e6", borderRadius: 9, padding: "8px 11px", fontSize: 16, fontWeight: 700, color: "#173b5b" }} />
+                <label htmlFor="cmTransferPercentage" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700 }}>BUDGET PERCENTAGE TO TRANSFER</label>
+                <div style={{ position: "relative" }}>
+                  <input id="cmTransferPercentage" type="number" min="0" max="100" step="0.01" value={transferPercentage} onChange={(event) => setTransferPercentage(event.target.value)} disabled={!transferSource || !transferDestination} placeholder="Enter percentage (e.g. 25)" style={{ width: "100%", minHeight: 42, border: "1px solid #cbd8e6", borderRadius: 9, padding: "8px 42px 8px 11px", fontSize: 16, fontWeight: 700, color: "#173b5b" }} />
+                  <span style={{ position: "absolute", right: 13, top: 11, color: "#647b92", fontWeight: 700 }}>%</span>
+                </div>
+                <div style={{ marginTop: 7, color: "#71869b", fontSize: 11 }}>Enter 1–100% of the available budget</div>
               </div>
               <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
                 <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>AVAILABLE TO TRANSFER</div>
                 <div style={{ marginTop: 8, color: "#087f68", fontSize: 21, fontWeight: 800 }}>{lakh(transferAvailableAmount)}</div>
-                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>After current utilization</div>
+                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>Maximum transferable amount</div>
+                <div style={{ marginTop: 9, paddingTop: 9, borderTop: "1px solid #e5edf5", color: "#35516d", fontSize: 12 }}>Amount you are giving: <strong style={{ color: "#087f68", fontSize: 15 }}>{lakh(transferCalculatedAmount)}</strong></div>
               </div>
               <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
                 <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>EMPLOYEES SELECTED</div>
@@ -2495,7 +2512,7 @@ export function TechEdBudgetDistribution() {
             {err && <div style={{ marginTop: 14, padding: 11, borderRadius: 9, background: "#fff1f2", border: "1px solid #fecdd3", color: "#be123c", fontSize: 13 }}>{err}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
               <div style={{ color: "#71869b", fontSize: 12 }}>The original allocation snapshot is not changed by this transfer.</div>
-              <button type="button" className="budget-save-btn" onClick={transferCompManagerTeam} disabled={!transferParentId || !transferSource || !transferDestination || !selectedTransferEmployeeIds.length || !(Number(transferAmount) > 0) || Number(transferAmount) > transferAvailableAmount + 0.01 || transferring} style={{ minHeight: 44, padding: "0 22px", borderRadius: 10, fontWeight: 750, boxShadow: "0 5px 14px rgba(18, 48, 79, .16)" }}>
+              <button type="button" className="budget-save-btn" onClick={transferCompManagerTeam} disabled={!transferParentId || !transferSource || !transferDestination || !selectedTransferEmployeeIds.length || !(Number(transferPercentage) > 0) || Number(transferPercentage) > 100 || !(transferCalculatedAmount > 0) || transferring} style={{ minHeight: 44, padding: "0 22px", borderRadius: 10, fontWeight: 750, boxShadow: "0 5px 14px rgba(18, 48, 79, .16)" }}>
                 {transferring ? "Transferring…" : "Transfer selected employees & budget"}
               </button>
             </div>
