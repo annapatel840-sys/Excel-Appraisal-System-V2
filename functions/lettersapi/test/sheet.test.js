@@ -102,3 +102,33 @@ test("sheet: a bad cycle id or paging position is refused", async () => {
   const s = make({ fail, text });
   await assert.rejects(() => s.loadSheet(app, { cycleId: "5; DROP", location: "Dubai" }), /not valid/);
 });
+
+test("sheet: an employee with two rows in one cycle is listed once, from the row that has values", async () => {
+  const sheet = [
+    { ROWID: "1", emp_id: "E1", cycle_id: "5" }, // empty duplicate (older)
+    { ROWID: "2", emp_id: "E1", cycle_id: "5", hike_amount: 500, new_pb_to_be_offered: 1000 },
+    { ROWID: "3", emp_id: "E1", cycle_id: "5" }, // empty duplicate (newer)
+    { ROWID: "4", emp_id: "E2", cycle_id: "5" }, // only an empty row: no letter
+    { ROWID: "5", emp_id: "E3", cycle_id: "5", hike_amount: 0 },
+  ];
+  const master = ["E1", "E2", "E3"].map((e, i) => ({ ROWID: String(100 + i), emp_id: e, emp_name: e, location: "Australia" }));
+  const app = {
+    zcql: () => ({
+      executeZCQLQuery: async (sql) => {
+        if (/COUNT/.test(sql)) return [{ x: { c: "1" } }];
+        if (/MODIFIEDTIME/.test(sql)) return [{ x: { ROWID: "1" } }];
+        return [{ Appraisal_Cycle_Master: { ROWID: "5", cycle_name: "Australia - Annual 2027", location: "Australia" } }];
+      },
+    }),
+    datastore: () => ({
+      table: (name) => ({
+        getPagedRows: async () => ({ data: name === "Employee_Master" ? master : sheet, more_records: false }),
+      }),
+    }),
+  };
+  const d = await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "Australia", limit: "5000" });
+  assert.deepEqual(d.data.map((r) => r.empId), ["E1"]);
+  assert.equal(d.data[0].hikeAmount, 500);
+  assert.equal(d.data[0].newPBToBeOffered, 1000);
+  assert.equal(d.emptyRowsIgnored, 2);
+});

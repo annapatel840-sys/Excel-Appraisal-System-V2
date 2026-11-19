@@ -9,8 +9,6 @@ const { Readable } = require("node:stream");
 /* ---- fake Catalyst: Data Store + ZCQL + Stratus, all in memory ---- */
 const LOC = (id, name, code, status = "") => ({ ROWID: id, location_name: name, location_code: code, status });
 const db = {
-  Letter_Templates: [],
-  Letter_Template_Versions: [],
   Location_Master: [
     LOC("74008000000022894", "India", "IN"),
     LOC("74008000000022895", "Dubai", "AE-DXB"),
@@ -53,16 +51,20 @@ const fakeApp = {
   stratus: () => ({
     bucket: (n) => {
       if (n === "letter-templates-xx") throw new Error("bucket does not exist"); // never created
-      if (!buckets.has(n)) buckets.set(n, new Map());
-      const bucket = buckets.get(n);
+      const bucket = () => {
+        if (!buckets.has(n)) buckets.set(n, new Map());
+        return buckets.get(n);
+      };
       return {
         putObject: async (key, body) => {
-          bucket.set(key, Buffer.from(body));
+          const bucket_ = bucket();
+          bucket_.set(key, Buffer.from(body));
           return true;
         },
         getObject: async (key) => {
-          if (!bucket.has(key)) throw new Error("NoSuchKey " + key);
-          return Readable.from([bucket.get(key)]);
+          const b = buckets.get(n);
+          if (!b || !b.has(key)) throw new Error("NoSuchKey " + key);
+          return Readable.from([b.get(key)]);
         },
       };
     },
@@ -153,11 +155,12 @@ test("first publish stores the docx and config in Stratus and rows in the Data S
   assert.equal(t.hasDocx, true);
   assert.equal(t.sg.logoData, "data:image/png;base64,BBBB");
   assert.deepEqual([...buckets.keys()], ["letter-templates-in"]);
-  assert.deepEqual([...buckets.get("letter-templates-in").keys()].sort(), ["T9001/v1/Hike Letter.docx", "T9001/v1/config.json"]);
-  assert.equal(db.Letter_Templates[0].bucket, "letter-templates-in");
-  assert.equal(db.Letter_Templates.length, 1);
-  assert.equal(db.Letter_Template_Versions.length, 1);
-  assert.equal(db.Letter_Templates[0].updated_by, "hr@example.com");
+  assert.deepEqual([...buckets.get("letter-templates-in").keys()].sort(), ["T9001/v1/Hike Letter.docx", "T9001/v1/config.json", "templates/index.json"]);
+  const idx = JSON.parse(buckets.get("letter-templates-in").get("templates/index.json"));
+  assert.equal(idx.templates.length, 1);
+  assert.equal(idx.templates[0].bucket, "letter-templates-in");
+  assert.equal(idx.versions.length, 1);
+  assert.equal(idx.templates[0].updated_by, "hr@example.com");
 });
 
 test("a seed template starting at version 1 publishes as version 2", async () => {
@@ -182,6 +185,9 @@ test("GET templates returns content; GET docx returns the stored file", async ()
   assert.deepEqual(g.json.data.problems, []);
   const t = g.json.data.templates.find((x) => x.id === "T9001");
   assert.equal(t.name, "Hike Letter v2");
+  // one location only
+  const dub = await call("GET", "/?view=templates&location=Dubai");
+  assert.ok(dub.json.data.templates.every((x) => x.location === "Dubai"));
   assert.match(t.html, /lt-merge-field/);
   const d = await call("GET", "/?view=docx&id=T9001&ver=1");
   assert.equal(d.status, 200);
@@ -219,7 +225,7 @@ test("a location whose bucket was never created gives a clear error", async () =
   const r = await save({ template: tpl({ id: "T9300", name: "Nowhere letter", location: "Nowhere" }), baseVer: 0 });
   assert.equal(r.status, 500);
   assert.match(r.json.message, /letter-templates-xx/);
-  assert.equal(db.Letter_Templates.some((x) => x.tpl_id === "T9300"), false);
+  assert.equal(buckets.has("letter-templates-xx"), false);
 });
 
 test("bad input is refused", async () => {

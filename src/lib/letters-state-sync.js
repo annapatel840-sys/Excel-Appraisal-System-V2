@@ -117,6 +117,21 @@ async function saveNow() {
   }
 }
 
+/* The cycle was archived: forget its saved copy here and delete it on the server.
+   The caller has already removed the cycle from the screen state, so nothing saves it again. */
+export async function forgetCycle({ id, location }) {
+  const cycleId = String(id);
+  if (!STATE_ON_SERVER) return;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  if (saving) await saving.catch(() => {});
+  await Promise.allSettled([...inflight.values()]);
+  saved.delete(cycleId);
+  await request({ method: "POST", body: { action: "clearState", cycleId, location: location || "" } });
+}
+
 /* The store calls this after every change. */
 export function notifyChanged() {
   if (!STATE_ON_SERVER || !host || !synced) return;
@@ -201,8 +216,9 @@ export function syncLetterState({ cycles = [], force = false } = {}) {
   return promise;
 }
 
-/* The Letters screen: the Active cycles of the location chosen in the top bar
-   (every location's Active cycles only when All Locations is chosen). */
+/* The Letters screen: the Active and Closed cycles of the location chosen in the
+   top bar (every location's when All Locations is chosen). Letters are made when a
+   cycle is closed, so a Closed cycle must be loaded too. Archived ones stay out. */
 export async function syncForLocation(selectedLocation, { force = false } = {}) {
   if (!STATE_ON_SERVER || !host) return;
   let list = [];
@@ -214,9 +230,12 @@ export async function syncForLocation(selectedLocation, { force = false } = {}) 
   }
   const flag = (v) => v === true || ["true", "1", "yes"].includes(String(v ?? "").trim().toLowerCase());
   const cycles = list
-    .filter((c) => String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase() === "active" && !flag(c?.archived) && !flag(c?.hidden))
+    .filter((c) => ["active", "closed"].includes(String(c?.status ?? c?.cycle_status ?? "").trim().toLowerCase()) && !flag(c?.archived) && !flag(c?.hidden))
     .filter((c) => !isAll(cycleLocationOf(c)))
     .filter((c) => isAllLocations(selectedLocation) || matchesLocation(cycleLocationOf(c), selectedLocation))
     .map((c) => ({ id: c.id ?? c.ROWID, location: cycleLocationOf(c) }));
   await syncLetterState({ cycles, force });
+  // Letters this browser made earlier that never reached the server (a failed save) are saved now,
+  // so other users can see them. Cycles already identical on the server are skipped.
+  await flush().catch(() => {});
 }

@@ -115,6 +115,7 @@ function run(actor, fn) {
 // { status: "idle" | "loading" | "ok" | "error", message }
 let sync = { status: "idle", message: "" };
 let syncing = null;
+let syncingFor = "";
 
 function setSync(next) {
   sync = next;
@@ -124,12 +125,14 @@ function setSync(next) {
 
 // Load the templates held on the server into the state. Call it when the
 // Letters screen opens; {force:true} is the Retry button.
-export function syncTemplates({ force = false } = {}) {
+export function syncTemplates({ force = false, location } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  if (syncing && !force) return syncing;
+  const loc = !location || /^all( locations)?$/i.test(String(location).trim()) ? "" : String(location).trim();
+  if (syncing && !force && syncingFor === loc) return syncing;
+  syncingFor = loc;
   setSync({ status: "loading", message: "" });
   syncing = api
-    .loadServerTemplates()
+    .loadServerTemplates(loc)
     .then(({ templates, problems }) => {
       run("HR", (st) => core.applyServerTemplates(st, templates));
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });

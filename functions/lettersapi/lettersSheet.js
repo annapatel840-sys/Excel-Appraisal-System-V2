@@ -211,6 +211,19 @@ module.exports = function makeLettersSheet(h) {
     return e.rows;
   }
 
+  // How many of the values letters are made from are filled in on this Appraisal_Sheet row.
+  const VALUE_KEYS = [
+    "current_annual_base_pay", "hike_amount", "hike_pct", "new_pb_to_be_offered", "new_pb_installment",
+    "new_rb", "month_rb", "target_pb_next_year", "new_title", "manager_rating", "comp_manager_rewards", "comp_manager_remarks",
+  ];
+  const valueScore = (r) =>
+    VALUE_KEYS.reduce((n, k) => {
+      const v = r[k];
+      if (v === undefined || v === null) return n;
+      const t = String(v).trim();
+      return t === "" || (/^-?[\d,.]+$/.test(t) && Number(t.replace(/,/g, "")) === 0) ? n : n + 1;
+    }, 0);
+
   const masterLocation = (m) => text(pick(m, "location", "work_location", "location_name"));
 
   /* Same contract as employeesapi: page + limit in, { data, pagination } out. */
@@ -256,13 +269,29 @@ module.exports = function makeLettersSheet(h) {
     });
 
     // This cycle's rows only, then the location (the person's own location decides).
-    const rows = [];
+    // An employee can have more than one Appraisal_Sheet row in a cycle (a generated row that
+    // was never filled in next to the real one). Only ONE row per employee is used: the one
+    // that holds values; a row with no values at all is never used for a letter.
+    const best = new Map(); // employee key -> { r, m, score }
     sheetRes.value.forEach((r) => {
       if (r.cyc !== cycleId) return;
       const m = master.get(lookupText(r.emp_id).toLowerCase());
       if (!wantAll) {
         const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
         if (loc.toLowerCase() !== location.toLowerCase()) return;
+      }
+      const key = (text(m && m.emp_id) || lookupText(r.emp_id)).toLowerCase();
+      const score = valueScore(r);
+      const had = best.get(key);
+      // more filled values wins; on a tie the newer row (higher ROWID) wins
+      if (!had || score > had.score || (score === had.score && Number(rowId(r)) > Number(rowId(had.r)))) best.set(key, { r, m, score });
+    });
+    const rows = [];
+    let emptyDropped = 0;
+    best.forEach(({ r, m, score }) => {
+      if (score === 0) {
+        emptyDropped += 1;
+        return;
       }
       rows.push(shape(r, m));
     });
@@ -278,6 +307,7 @@ module.exports = function makeLettersSheet(h) {
       location: wantAll ? "All" : location,
       data,
       pagination: { page: safePage, limit, totalCount, totalPages, returnedCount: data.length },
+      emptyRowsIgnored: emptyDropped,
     };
   }
 

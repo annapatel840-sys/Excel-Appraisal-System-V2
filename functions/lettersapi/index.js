@@ -39,13 +39,14 @@
         <tplId>/v<ver>/config.json        what the editor needs (name, family,
                                           html, body, font, signatory block with
                                           logo / signature)
-     Data Store (looked up by NAME)
-        Letter_Templates          tpl_id, name, family, location, bucket,
-                                  tpl_version, active, docx_file, docx_key,
-                                  config_key, updated_by, updated_on
-        Letter_Template_Versions  tpl_id, tpl_version, bucket, docx_file,
-                                  docx_key, config_key, published_by,
-                                  published_on, note
+        templates/index.json              the template list of that location:
+                                          { templates:[ {tpl_id, name, family, location,
+                                          bucket, tpl_version, active, docx_file, docx_key,
+                                          config_key, updated_by, updated_on} ],
+                                          versions:[ {tpl_id, tpl_version, bucket, docx_file,
+                                          docx_key, config_key, published_by, published_on, note} ] }
+     No Data Store table is needed for templates: the list lives in the bucket next to the
+     files, so nothing has to be created in the Data Store.
      Location_Master (read only) gives the allowed locations and their codes.
    A template belongs to exactly one location for its whole life, so a
    location's letters can only ever come from that location's bucket.
@@ -58,7 +59,9 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 const { guarded } = require("./guard");
 
-const TBL = { templates: "Letter_Templates", versions: "Letter_Template_Versions", locations: "Location_Master" };
+const TBL = { locations: "Location_Master" };
+const INDEX_KEY = "templates/index.json";
+const NOT_FOUND = /not\s*found|no\s*such|404|does not exist/i;
 const SCREEN_KEY = "employeeMaster";
 const BUCKET_PREFIX = () => process.env.LETTERS_BUCKET_PREFIX || "letter-templates";
 const MAX_BODY_BYTES = 12 * 1024 * 1024; // whole request (JSON with base64)
@@ -235,11 +238,48 @@ function cleanTemplate(t) {
   };
 }
 
-/* ---------- reading ---------- */
-function indexOf(rows, key) {
-  const m = new Map();
-  rows.forEach((r) => m.set(text(r[key]), r));
-  return m;
+/* ---------- template list (one index.json per location bucket) ---------- */
+const emptyIndex = () => ({ v: 1, templates: [], versions: [] });
+
+async function readIndex(app, bucketName) {
+  let buf;
+  try {
+    buf = await getObjectBuffer(app, bucketName, INDEX_KEY);
+  } catch (e) {
+    // Not created yet (no template published for this location): an empty list.
+    // A bucket that does not exist reads the same way; publishing then says so clearly.
+    if (NOT_FOUND.test(String((e && e.message) || ""))) return emptyIndex();
+    throw e;
+  }
+  try {
+    const j = JSON.parse(buf.toString("utf8"));
+    return { v: 1, templates: Array.isArray(j.templates) ? j.templates : [], versions: Array.isArray(j.versions) ? j.versions : [] };
+  } catch (e) {
+    throw new Error(`The template list in bucket "${bucketName}" is not valid JSON.`);
+  }
+}
+const writeIndex = (app, bucketName, idx) =>
+  putObject(app, bucketName, INDEX_KEY, Buffer.from(JSON.stringify({ v: 1, templates: idx.templates, versions: idx.versions }), "utf8"), "application/json");
+
+// Every location's list (or one location's): [{ loc, idx }] plus the buckets that could not be read.
+async function readIndexes(app, onlyLocation) {
+  const locs = [...(await locationMapCached(app)).values()];
+  const want = text(onlyLocation).toLowerCase();
+  const pick = want && !["all", "all locations"].includes(want) ? locs.filter((l) => l.name.toLowerCase() === want || l.code.toLowerCase() === want) : locs;
+  const out = [];
+  const problems = [];
+  for (let i = 0; i < pick.length; i += 2) {
+    await Promise.all(
+      pick.slice(i, i + 2).map(async (loc) => {
+        try {
+          out.push({ loc, idx: await readIndex(app, loc.bucket) });
+        } catch (e) {
+          problems.push({ id: "", location: loc.name, message: `The templates of ${loc.name} could not be read from bucket "${loc.bucket}". (${e.message})` });
+        }
+      }),
+    );
+  }
+  return { lists: out, problems };
 }
 
 async function readConfig(app, bucketName, key) {
@@ -274,20 +314,21 @@ function shape(row, cfg, history) {
   };
 }
 
-async function loadTemplates(app) {
-  const [rows, vers] = await Promise.all([readAll(app, TBL.templates), readAll(app, TBL.versions)]);
+async function loadTemplates(app, onlyLocation) {
+  const { lists, problems } = await readIndexes(app, onlyLocation);
   const templates = [];
-  const problems = [];
+  const jobs = [];
+  lists.forEach(({ idx }) => idx.templates.forEach((row) => jobs.push({ row, idx })));
   // Read the config files two at a time (this project's Catalyst concurrency limit).
-  for (let i = 0; i < rows.length; i += 2) {
+  for (let i = 0; i < jobs.length; i += 2) {
     const part = await Promise.all(
-      rows.slice(i, i + 2).map(async (row) => {
+      jobs.slice(i, i + 2).map(async ({ row, idx }) => {
         const cfg = await readConfig(app, text(row.bucket), text(row.config_key));
         if (!cfg) {
           problems.push({ id: text(row.tpl_id), location: text(row.location), message: `"${text(row.name)}" (${text(row.location)}) could not be read from bucket "${text(row.bucket)}".` });
           return null;
         }
-        const history = vers
+        const history = idx.versions
           .filter((v) => text(v.tpl_id) === text(row.tpl_id))
           .map((v) => ({ ver: Number(v.tpl_version) || 0, by: text(v.published_by), on: text(v.published_on), note: text(v.note), file: text(v.docx_file) }))
           .sort((a, b) => b.ver - a.ver);
@@ -299,16 +340,25 @@ async function loadTemplates(app) {
   return { templates, problems };
 }
 
+// The template with this id, wherever it lives: { loc, idx, row } or null.
+async function findTemplate(app, id) {
+  const { lists } = await readIndexes(app);
+  for (const { loc, idx } of lists) {
+    const row = idx.templates.find((r) => text(r.tpl_id) === id);
+    if (row) return { loc, idx, row };
+  }
+  return null;
+}
+
 async function sendDocx(app, res, id, ver) {
   if (!ID_RE.test(id)) throw fail(400, "The template id is not valid.");
-  const rows = await readAll(app, TBL.templates, `tpl_id = '${id}'`);
-  if (!rows.length) throw fail(404, "Template not found.");
-  let key = text(rows[0].docx_key);
-  let file = text(rows[0].docx_file);
-  let bucketName = text(rows[0].bucket);
+  const found = await findTemplate(app, id);
+  if (!found) throw fail(404, "Template not found.");
+  let key = text(found.row.docx_key);
+  let file = text(found.row.docx_file);
+  let bucketName = text(found.row.bucket);
   if (ver) {
-    const vers = await readAll(app, TBL.versions, `tpl_id = '${id}'`);
-    const v = vers.find((x) => Number(x.tpl_version) === Number(ver));
+    const v = found.idx.versions.find((x) => text(x.tpl_id) === id && Number(x.tpl_version) === Number(ver));
     if (!v) throw fail(404, "That version was not found.");
     key = text(v.docx_key);
     file = text(v.docx_file);
@@ -334,18 +384,24 @@ async function saveTemplate(app, actor, payload) {
   if (!loc) throw fail(400, `"${tpl.location}" is not an active location in Location Master.`);
   tpl.location = loc.name;
   const note = clip(text(payload.note), 250);
-  const rows = await readAll(app, TBL.templates, `tpl_id = '${tpl.id}'`);
-  const current = rows[0] || null;
+  const { lists } = await readIndexes(app);
+  const found = await (async () => {
+    for (const { loc: l, idx } of lists) {
+      const row = idx.templates.find((r) => text(r.tpl_id) === tpl.id);
+      if (row) return { loc: l, row };
+    }
+    return null;
+  })();
+  const current = found ? found.row : null;
   const currentVer = current ? Number(current.tpl_version) || 0 : 0;
   if (current && text(current.location).toLowerCase() !== loc.name.toLowerCase()) {
     throw fail(400, `This template belongs to ${text(current.location)} and cannot be moved to ${loc.name}. Clone it and choose the other location.`);
   }
 
   // One template per name and location: "Hike Letter" can exist once for each location.
-  const everyone = await readAll(app, TBL.templates);
-  const dup = everyone.find(
-    (r) => text(r.tpl_id) !== tpl.id && text(r.name).toLowerCase() === tpl.name.toLowerCase() && text(r.location).toLowerCase() === tpl.location.toLowerCase(),
-  );
+  const dup = lists
+    .flatMap(({ idx }) => idx.templates)
+    .find((r) => text(r.tpl_id) !== tpl.id && text(r.name).toLowerCase() === tpl.name.toLowerCase() && text(r.location).toLowerCase() === tpl.location.toLowerCase());
   if (dup) throw fail(409, `A template named "${tpl.name}" already exists for ${tpl.location || "All locations"}.`);
 
   // Optimistic check: the screen sends the version it started from.
@@ -370,7 +426,6 @@ async function saveTemplate(app, actor, payload) {
   await putObject(app, loc.bucket, configKey, Buffer.from(config, "utf8"), "application/json");
 
   const on = stamp();
-  const ds = app.datastore();
   const row = {
     tpl_id: tpl.id,
     name: tpl.name,
@@ -378,19 +433,19 @@ async function saveTemplate(app, actor, payload) {
     location: clip(tpl.location, 100),
     bucket: clip(loc.bucket, 100),
     tpl_version: ver,
+    active: current ? isOn(current.active) : true, // a template is Active from its first publish
     docx_file: clip(docxFile, 150),
     docx_key: clip(docxKey, 250),
     config_key: clip(configKey, 250),
     updated_by: clip(actor, 150),
     updated_on: on,
   };
-  if (current) {
-    await ds.table(TBL.templates).updateRow({ ROWID: rowId(current), ...row });
-  } else {
-    // A template is Active from its first publish.
-    await ds.table(TBL.templates).insertRow({ ...row, active: true });
-  }
-  await ds.table(TBL.versions).insertRow({
+  // Read the list again just before writing it, so a template published meanwhile is not lost.
+  const idx = await readIndex(app, loc.bucket);
+  const at = idx.templates.findIndex((r) => text(r.tpl_id) === tpl.id);
+  if (at >= 0) idx.templates[at] = row;
+  else idx.templates.push(row);
+  idx.versions.push({
     tpl_id: tpl.id,
     tpl_version: ver,
     bucket: clip(loc.bucket, 100),
@@ -401,17 +456,22 @@ async function saveTemplate(app, actor, payload) {
     published_on: on,
     note,
   });
+  await writeIndex(app, loc.bucket, idx);
 
-  const { templates } = await loadTemplates(app);
+  const { templates } = await loadTemplates(app, loc.name);
   return templates.find((t) => t.id === tpl.id);
 }
 
 async function setActive(app, payload) {
   const id = text(payload.id);
   if (!ID_RE.test(id)) throw fail(400, "The template id is not valid.");
-  const rows = await readAll(app, TBL.templates, `tpl_id = '${id}'`);
-  if (!rows.length) throw fail(404, "This template has not been saved to the server yet. Publish it once first.");
-  await app.datastore().table(TBL.templates).updateRow({ ROWID: rowId(rows[0]), active: !!payload.active });
+  const found = await findTemplate(app, id);
+  if (!found) throw fail(404, "This template has not been saved to the server yet. Publish it once first.");
+  const idx = await readIndex(app, found.loc.bucket);
+  const row = idx.templates.find((r) => text(r.tpl_id) === id);
+  if (!row) throw fail(404, "This template has not been saved to the server yet. Publish it once first.");
+  row.active = !!payload.active;
+  await writeIndex(app, found.loc.bucket, idx);
   return { id, active: !!payload.active };
 }
 
@@ -520,7 +580,7 @@ async function handle(req, res) {
         return sendJson(res, 200, { success: true, data: await lettersState.loadState(adminApp, parseCycles(q.get("cycles"))) });
       }
       if (view === "templates") {
-        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp) });
+        return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp, q.get("location")) });
       }
       throw fail(400, "Unknown view.");
     }
