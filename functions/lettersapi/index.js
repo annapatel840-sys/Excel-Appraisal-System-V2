@@ -467,7 +467,9 @@ async function handle(req, res) {
     if (req.method !== "GET" && req.method !== "POST") {
       return sendJson(res, 405, { success: false, message: "Method not allowed." });
     }
+    const tAuth = Date.now();
     const { adminApp, actor } = await authorize(req, req.method === "GET" ? "view" : "edit");
+    console.log("lettersapi: login and access check took", Date.now() - tAuth, "ms");
 
     if (req.method === "GET") {
       const q = new URL(req.url, "https://x").searchParams;
@@ -519,7 +521,25 @@ async function handle(req, res) {
    limit ends the request without one (that is the endless "pending" in the
    Network tab). The browser can then retry or show the message. */
 const REQUEST_LIMIT_MS = 24000;
+const BUILD = "letters-guard-2026-11-19";
+const BOOTED_AT = Date.now();
+let served = 0;
 module.exports = async function lettersApi(req, res) {
+  served += 1;
+  // ?view=ping answers at once, before any login or database work. Open it to see
+  // whether the function is reachable and which version of this file is deployed.
+  if (req.method === "GET") {
+    try {
+      const u = new URL(req.url, "https://x").searchParams;
+      if (u.get("view") === "ping") {
+        return sendJson(res, 200, { success: true, data: { build: BUILD, node: process.version, upSeconds: Math.round((Date.now() - BOOTED_AT) / 1000), requestsServed: served } });
+      }
+    } catch (e) {
+      /* fall through to the normal handler */
+    }
+  }
+  const t0 = Date.now();
+  console.log("lettersapi: start", req.method, String(req.url).slice(0, 120), "build", BUILD);
   const timer = setTimeout(() => {
     console.error("lettersapi: request exceeded", REQUEST_LIMIT_MS, "ms:", req.method, req.url);
     sendJson(res, 504, { success: false, message: "The letters server took too long to answer. Please try again." });
@@ -528,6 +548,7 @@ module.exports = async function lettersApi(req, res) {
     await handle(req, res);
   } finally {
     clearTimeout(timer);
+    console.log("lettersapi: done in", Date.now() - t0, "ms");
   }
 };
 
