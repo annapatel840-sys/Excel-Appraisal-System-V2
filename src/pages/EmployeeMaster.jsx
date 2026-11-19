@@ -606,6 +606,7 @@ import { useBudget } from "@/lib/budget-store";
 //    ============================================================ */
 
 // export function EmployeeMaster() {
+  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
 //   const catalystUser = useCatalystUser();
 //   const { refreshEmployees } = useAppraisalRefresh();
 //   const role = String(catalystUser?.role || "")
@@ -617,7 +618,11 @@ import { useBudget } from "@/lib/budget-store";
 //   // eligibility writes are for HR and App Administrator; others read only.
 //   const access = useAccess();
 //   const isRoleHR = role === "hr" || role === "appadministrator";
-  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
+  useEffect(() => {
+    // Prefetch the shared cycle-wise budget data while HR is in Operations.
+    if (isRoleHR) requestBudgetData?.();
+  }, [isRoleHR, requestBudgetData]);
+
 //   // With access rules (/me ok) a 'view' level makes the screen read-only.
 //   const canEditEmployees =
 //     isRoleHR && access.canScreen("employeeMaster", "edit");
@@ -659,13 +664,6 @@ import { useBudget } from "@/lib/budget-store";
 //     return !isTechEd;
 //   };
 //   useEffect(() => {
-    // Warm the cycle-wise budget data while HR is already in Operations.
-    // Budget Master can then render from the shared in-flight/completed load.
-    if (["hr", "humanresources", "hroperation", "hroperations", "appadministrator"].includes(role)) {
-      requestBudgetData?.();
-    }
-  }, [role, requestBudgetData]);
-
   const [allEmployees, setAllEmployees] = useState([]);
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
