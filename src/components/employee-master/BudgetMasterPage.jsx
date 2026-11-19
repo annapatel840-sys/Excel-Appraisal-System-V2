@@ -3670,7 +3670,7 @@ function HRApplyBudget() {
         .filter((cycle) => cycle.id),
     [budgetMasterRows],
   );
-  const [selectedCycle, setSelectedCycle] = useState("");
+  const [selectedCycle, setSelectedCycle] = useState(() => String(activeBudgetCycleId || ""));
   const activeCycleForLocation = (cycles) => {
     const availableCycles = (Array.isArray(cycles) ? cycles : []).filter((cycle) => {
       const status = String(cycle.status ?? cycle.cycle_status ?? "")
@@ -3735,12 +3735,14 @@ function HRApplyBudget() {
       const master = budgetMasterRows.find(
         (row) => String(row.appraisal_cycle_id || "") === String(activeBudgetCycleId),
       );
+      const cycleId = String(activeBudgetCycleId);
       setActiveCycle({
-        id: String(activeBudgetCycleId),
-        appraisal_cycle_id: String(activeBudgetCycleId),
-        name: String(master?.appraisal_cycle_name || master?.cycle_name || activeBudgetCycleId),
+        id: cycleId,
+        appraisal_cycle_id: cycleId,
+        name: String(master?.appraisal_cycle_name || master?.cycle_name || cycleId),
         status: "Active",
       });
+      setSelectedCycle(cycleId);
       setCycleLoading(false);
       return () => {
         mounted = false;
@@ -3753,7 +3755,9 @@ function HRApplyBudget() {
     payrollCycleRequest("cycles")
       .then((cycles) => {
         if (!mounted) return;
-        setActiveCycle(activeCycleForLocation(cycles));
+        const selected = activeCycleForLocation(cycles);
+        setActiveCycle(selected);
+        setSelectedCycle(String(selected?.id ?? selected?.appraisal_cycle_id ?? selected?.cycle_id ?? selected?.ROWID ?? ""));
       })
       .catch((cycleError) => {
         console.error("Failed to load active appraisal cycle:", cycleError);
@@ -3774,7 +3778,9 @@ function HRApplyBudget() {
       setCycleLoading(true);
       payrollCycleRequest("cycles")
         .then((cycles) => {
-          setActiveCycle(activeCycleForLocation(cycles));
+          const selected = activeCycleForLocation(cycles);
+          setActiveCycle(selected);
+          setSelectedCycle(String(selected?.id ?? selected?.appraisal_cycle_id ?? selected?.cycle_id ?? selected?.ROWID ?? ""));
         })
         .catch(() => setActiveCycle(null))
         .finally(() => setCycleLoading(false));
@@ -3792,17 +3798,74 @@ function HRApplyBudget() {
     };
   }, [selectedLocation, activeBudgetCycleId]);
   useEffect(() => {
-    if (cycleLoading) return;
-    const cycleId =
-      activeCycle?.id ??
-      activeCycle?.appraisal_cycle_id ??
-      activeCycle?.cycle_id ??
-      activeCycle?.ROWID ??
-      "";
-    setSelectedCycle(cycleId ? String(cycleId) : "");
-  }, [activeCycle, cycleLoading]);
+    if (!selectedCycle) {
+      setRows([]);
+      setOrgPct("");
+      return;
+    }
 
-  useEffect(() => {
+    const cycleSnapshot = origSnap[selectedCycle] || {};
+    const employeeDirectoryByAlias = new Map();
+    [...(Array.isArray(employeeRows) ? employeeRows : []), ...(Array.isArray(dashboardRows) ? dashboardRows : [])].forEach((employee) => {
+      [
+        employee?.row_id,
+        employee?.ROWID,
+        employee?.emp_id,
+        employee?.employee_id,
+        employee?.name,
+        employee?.employee_name,
+        employee?.emp_name,
+        employee?.email,
+        employee?.email_id,
+      ].forEach((alias) => {
+        const aliasKey = normalizeOwnerKey(alias);
+        if (aliasKey && !employeeDirectoryByAlias.has(aliasKey)) {
+          employeeDirectoryByAlias.set(aliasKey, employee);
+        }
+      });
+    });
+    const splitOwner = (raw) => {
+      const text = String(raw || "").trim();
+      const separator = text.indexOf(" - ");
+      const rawId = separator > 0 ? text.slice(0, separator).trim() : "";
+      const hasIdPrefix = Boolean(rawId && /^[a-z]*[0-9]+$/i.test(rawId));
+      return {
+        text,
+        rawId: hasIdPrefix ? rawId : "",
+        rawName: hasIdPrefix ? text.slice(separator + 3).trim() : text,
+      };
+    };
+    const findEmployee = (raw) => {
+      const { text, rawId, rawName } = splitOwner(raw);
+      if (!text) return null;
+      return employeeDirectoryByAlias.get(normalizeOwnerKey(text)) ||
+        employeeDirectoryByAlias.get(normalizeOwnerKey(rawId)) ||
+        employeeDirectoryByAlias.get(normalizeOwnerKey(rawName)) ||
+        null;
+    };
+    const canonicalOwnerKeyFast = (raw) => {
+      const { text, rawId } = splitOwner(raw);
+      if (!text) return "";
+      const matched = findEmployee(text);
+      if (matched) {
+        const id = String(matched.emp_id || matched.employee_id || "").trim();
+        const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
+        return normalizeOwnerKey(id || name || text);
+      }
+      return normalizeOwnerKey(rawId || text);
+    };
+    const ownerNameFast = (raw) => {
+      const { text, rawId, rawName } = splitOwner(raw);
+      if (!text) return "Unassigned";
+      const matched = findEmployee(text);
+      if (matched) {
+        const id = String(matched.emp_id || matched.employee_id || "").trim();
+        const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
+        return id && name ? id + " - " + name : name || id || text;
+      }
+      return rawId ? rawId + " - " + rawName : text;
+    };
+
     const employeeCounts = new Map();
     const employeeBases = new Map();
     const countedEligibleEmployees = new Set();
@@ -3820,7 +3883,7 @@ function HRApplyBudget() {
       // Resolve an ID-only Tech-Ed entry back to Employee_Master for display.
       const displayName =
         String(item?.name || "").trim() ||
-        ownerName(label || id || rowId, employeeRows);
+        ownerNameFast(label || id || rowId);
       const displayLabel =
         label.includes(" - ")
           ? label
@@ -3846,9 +3909,9 @@ function HRApplyBudget() {
           "",
       ).trim();
       if (!assignment) return;
-      const key = canonicalOwnerKey(assignment, employeeRows);
+      const key = canonicalOwnerKeyFast(assignment);
       if (!key) return;
-      const label = ownerName(assignment, employeeRows) || assignment;
+      const label = ownerNameFast(assignment) || assignment;
       if (!ownerValues.has(key)) ownerValues.set(key, label);
       [assignment, key, label].forEach((alias) => {
         techOwnerByAlias.set(normalizeOwnerKey(alias), key);
@@ -3913,7 +3976,7 @@ function HRApplyBudget() {
         const resolved = techOwnerByAlias.get(normalizeOwnerKey(candidate));
         if (resolved) return resolved;
       }
-      return canonicalOwnerKey(text, employeeRows);
+      return canonicalOwnerKeyFast(text);
     };
     // Full current-cycle Appraisal Sheet roster for this location. A Tech-ED
     // with no employee here must not appear in Budget Master, even if a stale
@@ -4062,6 +4125,7 @@ function HRApplyBudget() {
     });
 
     const nextRows = [];
+    const nextRowByKey = new Map();
     const seenOwners = new Set();
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
       .filter(
@@ -4076,7 +4140,7 @@ function HRApplyBudget() {
         // Multiple legacy records may point to the same Tech-Ed using ROWID,
         // employee ID, or label. Keep one display row per canonical roster key.
         if (seenOwners.has(key)) {
-          const existing = nextRows.find((item) => item.canonicalKey === key);
+          const existing = nextRowByKey.get(key);
           if (existing) {
             existing.pct = amount(row.percentage);
             existing.base =
@@ -4106,7 +4170,7 @@ function HRApplyBudget() {
                 ? amount(currentCountValue)
                 : employeeCounts.get(key) || 0;
             const originalCountValue = row.original_headcount;
-            const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+            const savedCount = cycleSnapshot.teCount?.[key];
             const legacyCount = row.headcount;
             const hasApiCount =
               originalCountValue !== null &&
@@ -4166,7 +4230,7 @@ function HRApplyBudget() {
             ? amount(currentCountValue)
             : assignedCount;
         const originalCountValue = row.original_headcount;
-        const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+        const savedCount = cycleSnapshot.teCount?.[key];
         const legacyCount = row.headcount;
         const hasApiCount =
           originalCountValue !== null &&
@@ -4223,10 +4287,10 @@ function HRApplyBudget() {
               (Number(row.percentage)
                 ? (calculated * 100) / Number(row.percentage)
                 : calculated);
-        nextRows.push({
+        const nextRow = {
           id: row.id || "tech-ed-" + key,
           canonicalKey: key,
-          name: ownerValues.get(key) || ownerName(owner, employeeRows),
+          name: ownerValues.get(key) || ownerNameFast(owner),
           pct: amount(row.percentage),
           pctSet:
             row.percentage !== null &&
@@ -4246,7 +4310,9 @@ function HRApplyBudget() {
           originalCountIsSet,
           originalCountNeedsMigration: useLegacyMigration,
           lastChanged: "—",
-        });
+        };
+        nextRows.push(nextRow);
+        nextRowByKey.set(key, nextRow);
         seenOwners.add(key);
       });
 
@@ -4255,7 +4321,7 @@ function HRApplyBudget() {
     ownerValues.forEach((owner, key) => {
       if (seenOwners.has(key) || !(locationTeamCounts.get(key) > 0)) return;
       const label = owner;
-      nextRows.push({
+      const nextRow = {
         id: "tech-ed-" + key,
         canonicalKey: key,
         name: label,
@@ -4274,7 +4340,9 @@ function HRApplyBudget() {
         team: dashboardCurrentCounts.get(key) || 0,
         originalCountIsSet: false,
         lastChanged: "—",
-      });
+      };
+      nextRows.push(nextRow);
+      nextRowByKey.set(key, nextRow);
       seenOwners.add(key);
     });
 
@@ -4287,14 +4355,13 @@ function HRApplyBudget() {
     }
   }, [
     budgetDistributionRows,
-    budgetMasterRows,
     employeeRows,
-    locationEmployeeRows,
     techEdOwners,
     dashboardRows,
     selectedCycle,
     selectedMaster?.budget_percentage,
-    origSnap,
+    selectedMaster?.budget_percentage_is_set,
+    cycleSnapshot,
   ]);
 
   // budgetmasterapi calculates this cycle's Org Base from the explicit
