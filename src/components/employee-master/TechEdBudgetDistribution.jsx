@@ -1680,6 +1680,8 @@ export function TechEdBudgetDistribution() {
   const [transferParentId, setTransferParentId] = useState("");
   const [transferSource, setTransferSource] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] = useState([]);
   const [transferring, setTransferring] = useState(false);
   const transferParentRows = useMemo(() => {
     if (!isCompManagerView || !activeCycleId) return [];
@@ -1722,8 +1724,89 @@ export function TechEdBudgetDistribution() {
   const transferDestinationRows = transferManagerRows.filter((row) =>
     !cmNodes.some((node) => String(node.liveId) === String(row.id)),
   );
+  const selectedTransferSourceRow = transferSourceRows.find((row) =>
+    managerIdentityMatches(
+      row.comp_manager_display || row.comp_manager || row.comp_manager_id || "",
+      transferSource,
+    ),
+  ) || null;
+  const transferEmployeeRows = useMemo(() => {
+    if (!selectedTransferParent || !transferSource) return [];
+    const rawTechEd =
+      selectedTransferParent.appraiser_tech_ed_id ||
+      selectedTransferParent.tech_ed_id ||
+      selectedTransferParent.tech_ed ||
+      "";
+    return locationEmployeeRows
+      .filter((employee) => {
+        if (employee.in_appraisal_sheet !== true) return false;
+        const employeeManager =
+          employee.comp_manager ||
+          employee.comp_manager_id ||
+          employee.compManager ||
+          employee.comp_manager_name ||
+          employee.comp_manager_display ||
+          "";
+        if (!managerIdentityMatches(employeeManager, transferSource)) return false;
+        const employeeTechEd =
+          employee.appraiser_tech_ed_row_id ||
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed ||
+          employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed1 ||
+          employee.tech_ed ||
+          employee.tech_ed_id ||
+          employee.techEd ||
+          "";
+        const linkedTechEd = techEdOwners.find((owner) =>
+          [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
+            .filter(Boolean)
+            .some((alias) => ownerMatches(alias, employeeTechEd)),
+        );
+        return ownerMatches(linkedTechEd?.assignment || employeeTechEd, rawTechEd);
+      })
+      .map((employee) => ({
+        ...employee,
+        __transferEmployeeId: String(
+          employee.empId || employee.emp_id || employee.employeeId ||
+          employee.employee_id || employee.emp_code || "",
+        ).trim(),
+      }))
+      .filter((employee) => employee.__transferEmployeeId)
+      .sort((a, b) =>
+        String(a.__transferEmployeeId).localeCompare(String(b.__transferEmployeeId), undefined, { numeric: true }),
+      );
+  }, [selectedTransferParent, transferSource, locationEmployeeRows, techEdOwners]);
+  const selectedTransferEmployees = transferEmployeeRows.filter((employee) =>
+    selectedTransferEmployeeIds.includes(employee.__transferEmployeeId),
+  );
+  const selectedTransferUtilization = selectedTransferEmployees.reduce(
+    (sum, employee) =>
+      sum + Math.max(
+        0,
+        num(employee.hike_amount) +
+          num(employee.allocated_pb_amount) +
+          num(employee.new_rb),
+      ),
+    0,
+  );
+  const transferAvailableAmount = Math.max(
+    0,
+    num(selectedTransferSourceRow?.applied_budget) -
+      num(selectedTransferSourceRow?.total_utilization) +
+      selectedTransferUtilization,
+  );
   async function transferCompManagerTeam() {
-    if (!transferParentId || !transferSource || !transferDestination || transferring) return;
+    const amount = Number(transferAmount);
+    if (
+      !transferParentId ||
+      !transferSource ||
+      !transferDestination ||
+      !selectedTransferEmployeeIds.length ||
+      !(amount > 0) ||
+      amount > transferAvailableAmount + 0.01 ||
+      transferring
+    ) return;
     setTransferring(true);
     setErr("");
     try {
@@ -1734,9 +1817,12 @@ export function TechEdBudgetDistribution() {
         appraisal_cycle_id: activeCycleId,
         source_comp_manager_id: transferSource,
         destination_comp_manager_id: transferDestination,
+        transferred_budget: amount,
+        employee_ids: selectedTransferEmployeeIds,
       }, "comp_manager_transfer");
-      setTransferSource("");
       setTransferDestination("");
+      setTransferAmount("");
+      setSelectedTransferEmployeeIds([]);
     } catch (error) {
       setErr(error?.message || "Comp Manager transfer failed.");
     } finally {
@@ -2295,6 +2381,8 @@ export function TechEdBudgetDistribution() {
               setTransferParentId(event.target.value);
               setTransferSource("");
               setTransferDestination("");
+              setTransferAmount("");
+              setSelectedTransferEmployeeIds([]);
             }}>
               <option value="">Select Tech-Ed</option>
               {transferParentRows.map((parent) => {
@@ -2311,6 +2399,8 @@ export function TechEdBudgetDistribution() {
             <select id="cmTransferSource" value={transferSource} onChange={(event) => {
               setTransferSource(event.target.value);
               setTransferDestination("");
+              setTransferAmount("");
+              setSelectedTransferEmployeeIds([]);
             }} disabled={!selectedTransferParent}>
               <option value="">Source Comp Manager</option>
               {transferSourceRows.map((row) => {
@@ -2326,8 +2416,74 @@ export function TechEdBudgetDistribution() {
                 return <option key={row.id || label} value={label}>{label}</option>;
               })}
             </select>
-            <button type="button" className="budget-save-btn" disabled={!transferParentId || !transferSource || !transferDestination || transferring} onClick={transferCompManagerTeam}>
-              {transferring ? "Transferring…" : "Transfer Team"}
+          </div>
+          <div className="reason" style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <label htmlFor="cmTransferAmount">Budget amount to transfer</label>
+            <input
+              id="cmTransferAmount"
+              type="number"
+              min="0"
+              max={transferAvailableAmount}
+              step="1"
+              value={transferAmount}
+              onChange={(event) => setTransferAmount(event.target.value)}
+              disabled={!transferSource || !transferDestination}
+              placeholder="Enter amount"
+              style={{ maxWidth: 190 }}
+            />
+            <span className="mut">
+              Available to transfer: {lakh(transferAvailableAmount)}
+            </span>
+            <span className="mut">
+              Selected employees: {selectedTransferEmployees.length}
+            </span>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Select employees to transfer</div>
+            {!transferSource ? (
+              <div className="mut">Select a Tech-Ed and source Comp Manager first.</div>
+            ) : transferEmployeeRows.length === 0 ? (
+              <div className="mut">No employees are currently assigned to this Comp Manager under the selected Tech-Ed.</div>
+            ) : (
+              <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border, #ddd)", borderRadius: 8, padding: 10 }}>
+                {transferEmployeeRows.map((employee) => {
+                  const employeeId = employee.__transferEmployeeId;
+                  const employeeName = employee.empName || employee.emp_name || employee.employee_name || employee.name || "";
+                  const checked = selectedTransferEmployeeIds.includes(employeeId);
+                  return (
+                    <label key={employeeId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => setSelectedTransferEmployeeIds((current) =>
+                          event.target.checked
+                            ? [...current, employeeId]
+                            : current.filter((id) => id !== employeeId)
+                        )}
+                      />
+                      <span>{employeeId}{employeeName ? " - " + employeeName : ""}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button
+              type="button"
+              className="budget-save-btn"
+              disabled={
+                !transferParentId ||
+                !transferSource ||
+                !transferDestination ||
+                !selectedTransferEmployeeIds.length ||
+                !(Number(transferAmount) > 0) ||
+                Number(transferAmount) > transferAvailableAmount + 0.01 ||
+                transferring
+              }
+              onClick={transferCompManagerTeam}
+            >
+              {transferring ? "Transferring…" : "Transfer Selected Employees & Budget"}
             </button>
           </div>
         </div>
