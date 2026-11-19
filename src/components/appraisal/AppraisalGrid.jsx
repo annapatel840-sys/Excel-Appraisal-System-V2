@@ -4902,6 +4902,24 @@ export function AppraisalGrid({
             notesSlot,
           )}
 
+        {/* Applied sorts: one removable tag each (click to remove), like the filter tags above the grid */}
+        {sortList.length > 0 && !groupedRows && (
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-1.5">
+            {sortList.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                title="Remove this sort"
+                onClick={() => setSortList((previous) => previous.filter((x) => x.key !== item.key))}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
+              >
+                Sort: {item.label || item.key} {item.dir === "desc" ? "↓" : "↑"}
+                <X className="size-3" />
+              </button>
+            ))}
+          </div>
+        )}
+
         <div ref={gridViewportRef} className="min-h-0 flex-1 overflow-auto">
           <table
             className="border-separate border-spacing-0"

@@ -640,7 +640,7 @@ const LOC_COLS = [
   { key: "currency_code", label: "Currency", kind: "text", get: (l) => l.currency_code || "" },
   { key: "status", label: "Status", kind: "text", get: (l) => l.status || "" },
 ];
-const LOC_WIDTHS = { location_name: 190, location_code: 110, address: 280, currency_code: 110, status: 110, actions: 170 };
+const LOC_WIDTHS = { location_name: 170, location_code: 110, address: 360, currency_code: 170, status: 120, actions: 215 };
 
 export function LocationMasterControl({
   value = "All",

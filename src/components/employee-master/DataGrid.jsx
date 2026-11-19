@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+import { describeTableFilter } from "./FilterableTable";
 
 const OPS = [
   ["contains", "contains"],
@@ -67,8 +68,13 @@ export function useGridState(defs, options = {}) {
     setSorts([]);
   };
 
+  const removeSort = (key) => {
+    setSorts((current) => current.filter((s) => s.key !== key));
+    setSort((s) => (s && s.key === key ? null : s));
+  };
+
   return {
-    cols, patchCol, filters, setFilter, clearColumn, clearAll,
+    cols, patchCol, filters, setFilter, clearColumn, clearAll, removeSort,
     appraisal, sorts, addSort,
     sort: appraisal ? sorts : sort, setSort, dens, setDens, filterCount: Object.keys(filters).length,
   };
@@ -317,6 +323,28 @@ export function DataGrid({
 
   return (
     <>
+      {grid.appraisal && (Object.keys(grid.filters).length > 0 || (grid.sorts || []).length > 0) && (
+        <div className="emx-ftags">
+          {Object.entries(grid.filters).map(([key, f]) => {
+            const d = defs.find((x) => x.key === key);
+            return d ? (
+              <button key={`f:${key}`} type="button" className="emx-ftag" title="Remove this filter" onClick={() => grid.setFilter(key, null)}>
+                {f && f.kind ? describeTableFilter(d.label, f) : `${d.label}: filtered`}
+                <X size={12} />
+              </button>
+            ) : null;
+          })}
+          {(grid.sorts || []).map((s) => {
+            const d = defs.find((x) => x.key === s.key);
+            return d ? (
+              <button key={`s:${s.key}`} type="button" className="emx-ftag" title="Remove this sort" onClick={() => grid.removeSort(s.key)}>
+                Sort: {d.label} {s.dir === "desc" ? "↓" : "↑"}
+                <X size={12} />
+              </button>
+            ) : null;
+          })}
+        </div>
+      )}
       <div className="emx-wrap">
         <table
           className={"emx-table" + (grid.dens === "compact" ? " cmp" : "")}

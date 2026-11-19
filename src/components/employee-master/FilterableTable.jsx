@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
-import { isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+import { NUMBER_OPS, TEXT_OPS, isEmptyFilter, matchesValue } from "@/lib/appraisal-filters";
+import { X } from "lucide-react";
 
 /* ============================================================
    Column filters for the Budget Distribution tables.
@@ -94,6 +95,8 @@ export function useTableFilters(rows, columns) {
     setSorts([]);
   };
 
+  const removeSort = (key) => setSorts((current) => current.filter((s) => s.key !== key));
+
   return {
     rows: view,
     total: rows.length,
@@ -103,7 +106,9 @@ export function useTableFilters(rows, columns) {
     hasView: activeCount > 0 || sorts.length > 0,
     setFilter,
     addSort,
+    removeSort,
     clearAll,
+    labelOf: (key) => byKey.get(key)?.label || key,
     optionsFor: (col) =>
       Array.from(new Set(rows.map((r) => String(col.get(r) ?? "")))),
     valuesFor: (col) => rows.map((r) => col.get(r)),
@@ -214,19 +219,50 @@ export function FilterTh({ tf, col, rz, noFilter = false, className = "", style 
   );
 }
 
-/* "Showing 3 of 12 · Clear filters" strip, only visible while a filter or sort
-   is applied. */
+/* Readable text for one applied column filter ("Status: Active", "Code contains "AU""). */
+export function describeTableFilter(label, f) {
+  if (f.kind === "enum") return `${label}: ${(f.values || []).join(", ")}`;
+  const ops = f.kind === "text" ? TEXT_OPS : NUMBER_OPS;
+  const opText = (op) => (ops.find((o) => o.value === op)?.label || op).toLowerCase();
+  const one = (op, v, v2) =>
+    op === "between" ? `between ${v} and ${v2}` : f.kind === "text" ? `${opText(op)} "${v}"` : `${opText(op)} ${v}`;
+  let text = `${label} ${one(f.op, f.value, f.value2)}`;
+  if (f.op2 && String(f.value3 ?? "").trim() !== "") {
+    text += ` ${f.join === "or" ? "or" : "and"} ${one(f.op2, f.value3)}`;
+  }
+  return text;
+}
+
+/* "Showing 3 of 12" strip with one removable tag per applied filter and per
+   sort (click a tag to remove it), plus "Clear all". Only visible while a
+   filter or sort is applied. */
 export function FilterStatus({ tf, noun = "rows" }) {
   if (!tf.hasView) return null;
+  const filterTags = Object.entries(tf.filters)
+    .filter(([key, f]) => f && !isEmptyFilter(f))
+    .map(([key, f]) => ({
+      id: `f:${key}`,
+      text: describeTableFilter(tf.labelOf(key), f),
+      clear: () => tf.setFilter(key, null),
+    }));
+  const sortTags = tf.sorts.map((s) => ({
+    id: `s:${s.key}`,
+    text: `Sort: ${tf.labelOf(s.key)} ${s.dir === "desc" ? "↓" : "↑"}`,
+    clear: () => tf.removeSort(s.key),
+  }));
   return (
     <div className="ft-status">
-      <span>
-        {tf.activeCount > 0
-          ? `${tf.activeCount} filter${tf.activeCount === 1 ? "" : "s"} · showing ${tf.rows.length} of ${tf.total} ${noun}`
-          : "Sorted view"}
+      <span className="ft-count">
+        {tf.activeCount > 0 ? `Showing ${tf.rows.length} of ${tf.total} ${noun}` : "Sorted view"}
       </span>
+      {[...filterTags, ...sortTags].map((t) => (
+        <button key={t.id} type="button" className="ft-tag" title="Remove" onClick={t.clear}>
+          {t.text}
+          <X size={12} />
+        </button>
+      ))}
       <button type="button" className="ft-clear" onClick={tf.clearAll}>
-        Clear filters &amp; sort
+        Clear all
       </button>
     </div>
   );
@@ -243,6 +279,9 @@ ${root} ${table} td { overflow-wrap: break-word; }
 ${root} .ft-rz { position: absolute; top: 0; right: -3px; z-index: 5; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
 ${root} .ft-rz:hover { background: linear-gradient(90deg, transparent 2px, #2f6fed 2px, #2f6fed 5px, transparent 5px); }
 ${root} .ft-status { display: flex; align-items: center; gap: 12px; padding: 5px 14px; background: #eef4fc; border-bottom: 1px solid #c9d8ec; font-size: 11.5px; color: #334155; }
+${root} .ft-status { flex-wrap: wrap; }
+${root} .ft-tag { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 999px; background: #dbe7f6; color: #17365d; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+${root} .ft-tag:hover { background: #c8daf1; }
 ${root} .ft-clear { margin-left: auto; background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 ${root} .ft-empty td { text-align: center !important; color: #64748b; padding: 12px 8px !important; }
 `;

@@ -545,6 +545,13 @@ export function FeedbackRatingMasterPage({
       const c = colOf(k);
       return c ? [{ id: "c:" + k, text: describeColFilter(c, f), clear: () => setColFilter(k, null) }] : [];
     }),
+    // Applied sorts: removable like the filters (the default Employee sort is not shown as a tag).
+    ...sorts.flatMap((x) => {
+      const c = colOf(x.key);
+      return c && !(sorts.length === 1 && x.key === "emp" && x.dir === "asc")
+        ? [{ id: "s:" + x.key, text: `Sort: ${c.h} ${x.dir === "desc" ? "↓" : "↑"}`, clear: () => setSorts((p) => p.filter((y) => y.key !== x.key)) }]
+        : [];
+    }),
   ];
   const onCycle = (v) => {
     // Keep the id's original type: real cycle ids are long ROWID strings; +v would break the match.
@@ -779,7 +786,7 @@ export function FeedbackRatingMasterPage({
           {filterTags.length > 0 && (
             <div className="fb-tags">
               {filterTags.map((t) => (
-                <button key={t.id} type="button" className="fb-tag" title="Remove this filter" onClick={t.clear}>
+                <button key={t.id} type="button" className="fb-tag" title="Remove" onClick={t.clear}>
                   {t.text}
                   <X size={12} />
                 </button>
