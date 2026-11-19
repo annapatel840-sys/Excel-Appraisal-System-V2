@@ -723,7 +723,6 @@ export function BudgetDistributionPage() {
                     {HR_COLS.map((c) => (
                       <FilterTh key={c.key} tf={tf} rz={rz} col={c} className={c.num ? "num" : ""} />
                     ))}
-                    <FilterTh tf={tf} rz={rz} noFilter col={{ key: "access", label: "Access" }} />
                   </tr>
                 </thead>
                 <tbody>
