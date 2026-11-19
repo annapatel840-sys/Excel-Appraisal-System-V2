@@ -4558,8 +4558,10 @@ module.exports = async function (req, res) {
       // has no valid snapshot yet, capture its pre-transfer Appraisal_Sheet
       // count once; never overwrite it on later transfers.
       const compColumns = await getColumnNames(compTable);
-      const originalCountField = compColumns.find((column) =>
-        ["original_headcount", "allocation_headcount"].includes(String(column).toLowerCase()),
+      const originalCountField = pickColumn(
+        compColumns,
+        ["original_headcount", "allocation_headcount"],
+        "",
       );
       if (originalCountField) {
         const ensureOriginalCount = async (row, count) => {
