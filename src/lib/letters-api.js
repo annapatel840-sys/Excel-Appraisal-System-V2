@@ -106,7 +106,7 @@ export async function loadServerSheet(cycleId, location) {
     let data = await request({ params, noRetry: true });
     while (data && data.pending) {
       if (Date.now() > giveUpAt) throw new Error("The Appraisal Sheet is still being read on the server. Please try again in a minute.");
-      await sleep(2500); // each ask costs a login check on the server: do not hammer it
+      await sleep(1500); // each ask costs a login check on the server: do not hammer it
       data = await request({ params, noRetry: true });
     }
     cycle = data.cycle || cycle;

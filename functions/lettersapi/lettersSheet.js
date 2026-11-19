@@ -258,6 +258,8 @@ module.exports = function makeLettersSheet(h) {
       };
     }
 
+    console.log("lettersapi sheet: cycle", cycleId, location, "- Employee_Master rows", masterRes.value.length, ", Appraisal_Sheet rows", sheetRes.value.length, ", read in", Date.now() - started, "ms");
+
     // Employee_Master by the employee ID and by the Catalyst ROWID, like employeesapi's
     // buildEmployeeMasterMap: Appraisal_Sheet.emp_id may hold either.
     const master = new Map();
@@ -295,6 +297,8 @@ module.exports = function makeLettersSheet(h) {
       }
       rows.push(shape(r, m));
     });
+
+    console.log("lettersapi sheet: cycle", cycleId, location, "->", rows.length, "people,", emptyDropped, "empty duplicate rows ignored, total", Date.now() - started, "ms");
 
     // Pagination, as in employeesapi.
     const totalCount = rows.length;
