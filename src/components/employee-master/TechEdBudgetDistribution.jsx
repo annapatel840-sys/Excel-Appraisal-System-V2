@@ -1713,18 +1713,14 @@ export function TechEdBudgetDistribution() {
         String(row.appraisal_cycle_id) === String(activeCycleId)),
     );
   }, [selectedTransferParent, budgetCompManagerRows, activeCycleId]);
+  // The signed-in manager's own saved allocation rows are the source
+  // choices. Sibling rows are destinations under this exact parent only.
   const transferSourceRows = transferManagerRows.filter((row) =>
-    currentUserMatchesManager(
-      row.comp_manager_display || row.comp_manager || row.comp_manager_id,
-      user,
-      employeeRows,
-    ),
+    liveComps.some((ownRow) => String(ownRow.id) === String(row.id)),
   );
-  const transferDestinationRows = transferManagerRows.filter((row) => {
-    const identity = String(row.comp_manager_display || row.comp_manager || row.comp_manager_id || "").trim();
-    return identity && identity !== transferSource &&
-      !currentUserMatchesManager(identity, user, employeeRows);
-  });
+  const transferDestinationRows = transferManagerRows.filter((row) =>
+    !liveComps.some((ownRow) => String(ownRow.id) === String(row.id)),
+  );
   async function transferCompManagerTeam() {
     if (!transferParentId || !transferSource || !transferDestination || transferring) return;
     setTransferring(true);
