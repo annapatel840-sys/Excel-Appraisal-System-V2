@@ -345,7 +345,15 @@
 //   const [applyingPct, setApplyingPct] = useState(false);
 
 
-//   const selectedCompManager = selectedManagerNode?.name || "";
+//   // In a Comp Manager view, all totals must be scoped to the Tech-Ed
+  // currently selected for transfer. The same manager can have separate
+  // allocations under multiple Tech-Eds; never add those rows together here.
+  const selectedCompManager = isCompManagerView
+    ? transferSource || selectedManagerNode?.name || ""
+    : "";
+  const selectedCompManagerBudgetRow = isCompManagerView
+    ? selectedTransferSourceRow
+    : null;
 
 //   const assignedTeam = useMemo(() => {
 //     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
@@ -1883,6 +1891,18 @@ export function TechEdBudgetDistribution() {
           .some((alias) => ownerMatches(alias, raw)),
       );
       const assignment = String(linked?.assignment || raw).trim();
+      // Comp Manager totals are for the selected Tech-Ed allocation only.
+      // This avoids showing employees and budget belonging to another
+      // Tech-Ed where the same Comp Manager also has an allocation.
+      if (isCompManagerView) {
+        if (!selectedTransferParent) return false;
+        const selectedTechEd =
+          selectedTransferParent.appraiser_tech_ed_id ||
+          selectedTransferParent.tech_ed_id ||
+          selectedTransferParent.tech_ed ||
+          "";
+        if (!ownerMatches(assignment, selectedTechEd)) return false;
+      }
       // Team Size is the current generated Appraisal_Sheet roster, not
       // the eligible payroll/budget subset. Inactive or Not Eligible employees
       // remain in the team count while they are still on this cycle's sheet.
@@ -1915,6 +1935,7 @@ export function TechEdBudgetDistribution() {
     isCompManagerView,
     isCompManagerLogin,
     selectedCompManager,
+    selectedTransferParent,
   ]);
   // Hide Comp Manager allocations that have no Appraisal Sheet employees
   // in the currently selected location. Keep the underlying allocation data
@@ -2022,7 +2043,19 @@ export function TechEdBudgetDistribution() {
   const used = assignedTeam
     .filter(isActiveAndEligible)
     .reduce((sum, employee) => sum + employeeUtilized(employee), 0);
-  const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
+  const budgetCardHasAllocation = isCompManagerView
+    ? Boolean(selectedCompManagerBudgetRow?.id)
+    : hasLiveAllocation;
+  const budgetCardOriginal = isCompManagerView
+    ? num(selectedCompManagerBudgetRow?.calculated_budget)
+    : num(myOriginal);
+  const budgetCardUpdated = isCompManagerView
+    ? num(selectedCompManagerBudgetRow?.applied_budget)
+    : num(myUpdated);
+  const budgetCardOriginalTeam = isCompManagerView
+    ? num(selectedCompManagerBudgetRow?.original_headcount)
+    : team0;
+  const usedPct = budgetCardUpdated ? (used / budgetCardUpdated) * 100 : 0;
   const over = usedPct > 100;
 
   // Tech ED history: newest first. The latest row carries today's roll-up;
@@ -2325,31 +2358,31 @@ export function TechEdBudgetDistribution() {
               <div>
                 <div className="f-label">Original Allotted</div>
                 <div className="v">
-                  {hasLiveAllocation ? lakh(myOriginal) : "—"}
+                  {budgetCardHasAllocation ? lakh(budgetCardOriginal) : "—"}
                 </div>
                 <div className="d mut">Fixed at allocation</div>
               </div>
               <div>
                 <div className="f-label">Updated Budget</div>
                 <div className="v">
-                  {hasLiveAllocation ? lakh(myUpdated) : "—"}
+                  {budgetCardHasAllocation ? lakh(budgetCardUpdated) : "—"}
                 </div>
                 <div className="d">
-                  {hasLiveAllocation ? <Chg d={myUpdated - myOriginal} /> : "—"}
+                  {hasLiveAllocation ? <Chg d={budgetCardUpdated - budgetCardOriginal} /> : "—"}
                 </div>
               </div>
               <div>
                 <div className="f-label">Team Size</div>
                 <div className="v">
-                  {team0} → {currentTeamCount}
+                  {budgetCardOriginalTeam} → {currentTeamCount}
                 </div>
                 <div className="d mut">At allocation → now</div>
               </div>
               {isCompManagerView ? (
                 <div>
                   <div className="f-label">Remaining</div>
-                  <div className={"v" + (myUpdated - used < 0 ? " over" : "")}>
-                    {hasLiveAllocation ? lakh(myUpdated - used) : "—"}
+                  <div className={"v" + (budgetCardUpdated - used < 0 ? " over" : "")}>
+                    {hasLiveAllocation ? lakh(budgetCardUpdated - used) : "—"}
                   </div>
                   <div className="d mut">Updated budget − utilised</div>
                 </div>
@@ -2374,11 +2407,11 @@ export function TechEdBudgetDistribution() {
                 <div className="d">
                   {over ? (
                     <span className="over">
-                      ▲ {lakh(used - myUpdated)} over
+                      ▲ {lakh(used - budgetCardUpdated)} over
                     </span>
                   ) : (
                     <span className="mut">
-                      Remaining {lakh(myUpdated - used)}
+                      Remaining {lakh(budgetCardUpdated - used)}
                     </span>
                   )}
                 </div>
