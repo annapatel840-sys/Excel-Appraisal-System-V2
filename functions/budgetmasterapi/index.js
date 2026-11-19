@@ -4381,7 +4381,7 @@ module.exports = async function (req, res) {
       const resolvedOwner = (raw) => {
         const text = referenceText(raw);
         if (!text) return "";
-        const first = text.split(/\\s+-\\s+/)[0].trim();
+        const first = text.split(/\s+-\s+/)[0].trim();
         return masterByRowId.get(first) ||
           masterById.get(first.toLowerCase()) ||
           masterByName.get(text.toLowerCase()) ||
