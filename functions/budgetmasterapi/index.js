@@ -4500,18 +4500,38 @@ module.exports = async function (req, res) {
       }
 
       const sheetRows = await getAllRows(app, "Appraisal_Sheet");
+      const employeeMasterRowsForTransfer = await getAllRows(app, "Employee_Master");
+      const transferMasterById = new Map(employeeMasterRowsForTransfer.map((row) => [
+        referenceText(row.emp_id || row.employee_id).toLowerCase(), row,
+      ]).filter(([key]) => Boolean(key)));
+      const transferMasterByRowId = new Map(employeeMasterRowsForTransfer.map((row) => [
+        String(idOf(row) || "").toLowerCase(), row,
+      ]).filter(([key]) => Boolean(key)));
       const cycleOfSheet = (row) => referenceText(
         row.appraisal_cycle_id || row.cycle_id || row.appraisalCycleId || row.cycleId
       );
-      const techOfSheet = (row) => resolvedOwner(
-        row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed ||
-        row.appraiser_teched || row.tech_ed_id || row.tech_ed
-      );
+      const masterOfSheetEmployee = (row) => {
+        const raw = referenceText(row.emp_id || row.employee_id || row.emp_code || row.empId);
+        const first = raw.split(/\s+-\s+/)[0].trim().toLowerCase();
+        return transferMasterById.get(first) || transferMasterByRowId.get(first) || null;
+      };
+      const techOfSheet = (row) => {
+        const direct = row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed ||
+          row.appraiser_teched || row.tech_ed_id || row.tech_ed;
+        const master = masterOfSheetEmployee(row);
+        const assignment = direct || (master && (
+          master.appraiser_tech_ed1 || master.appraiser_tech_ed_row_id ||
+          master.appraiser_tech_ed_id || master.appraiser_tech_ed ||
+          master.appraiser_teched || master.tech_ed_id || master.tech_ed
+        )) || "";
+        return resolvedOwner(assignment);
+      };
       const employeeIdOfSheet = (row) => {
-        const raw = referenceText(row.emp_id || row.employee_id || row.emp_code || row.empId || idOf(row));
-        return masterByRowId.get(raw.toLowerCase()) ||
-          masterById.get(raw.toLowerCase()) ||
-          raw;
+        const master = masterOfSheetEmployee(row);
+        return referenceText(
+          row.emp_id || row.employee_id || row.emp_code || row.empId ||
+          (master && (master.emp_id || master.employee_id)) || idOf(row)
+        );
       };
 
       // The roster API exposes the effective Comp Manager by applying current
