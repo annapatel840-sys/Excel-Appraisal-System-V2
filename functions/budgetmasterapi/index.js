@@ -4571,17 +4571,46 @@ module.exports = async function (req, res) {
         ownerKey(techOfSheet(row)) === ownerKey(techEdId) &&
         ownerKey(compOfSheet(row)) === destinationKey
       );
-      const requestedKeys = new Set(requestedEmployeeIds.map((id) => {
-        const first = id.split(/\s+-\s+/)[0].trim();
-        return (masterByRowId.get(first.toLowerCase()) ||
+      // The browser roster may submit Employee_Master IDs, Catalyst ROWIDs,
+      // or display labels. Match every stable identity for each Appraisal Sheet
+      // row rather than assuming emp_id is always a plain string.
+      const employeeIdentityKeys = (raw) => {
+        const text = referenceText(raw);
+        if (!text) return [];
+        const first = text.split(/\s+-\s+/)[0].trim();
+        const keys = [text, first];
+        const resolved = masterByRowId.get(first.toLowerCase()) ||
           masterById.get(first.toLowerCase()) ||
-          first).toLowerCase();
-      }));
-      const employeeSheetRows = sourceTeamRows.filter((row) =>
-        requestedKeys.has(employeeIdOfSheet(row).toLowerCase())
+          masterByName.get(text.toLowerCase()) ||
+          masterByName.get(first.toLowerCase());
+        if (resolved) keys.push(resolved);
+        return [...new Set(keys.map((key) => String(key).trim().toLowerCase()).filter(Boolean))];
+      };
+      const requestedKeys = new Set(
+        requestedEmployeeIds.flatMap((id) => employeeIdentityKeys(id)),
       );
-      if (!employeeSheetRows.length || employeeSheetRows.length !== requestedKeys.size) {
-        throw new access.HttpError(409, "One or more selected employees are no longer assigned to the source Comp Manager under this Tech-Ed and cycle. Refresh and select again.");
+      const rowIdentityKeys = (row) => [
+        ...employeeIdentityKeys(row.emp_id),
+        ...employeeIdentityKeys(row.employee_id),
+        ...employeeIdentityKeys(row.emp_code),
+        ...employeeIdentityKeys(row.empId),
+        ...employeeIdentityKeys(idOf(row)),
+        ...employeeIdentityKeys(employeeIdOfSheet(row)),
+      ];
+      const employeeSheetRows = sourceTeamRows.filter((row) =>
+        rowIdentityKeys(row).some((key) => requestedKeys.has(key))
+      );
+      const matchedRequestedKeys = new Set(
+        employeeSheetRows.flatMap((row) => rowIdentityKeys(row))
+          .filter((key) => requestedKeys.has(key)),
+      );
+      const unmatchedCount = requestedEmployeeIds.filter((id) =>
+        !employeeIdentityKeys(id).some((key) => matchedRequestedKeys.has(key))
+      ).length;
+      if (!employeeSheetRows.length || unmatchedCount > 0) {
+        throw new access.HttpError(409,
+          "The selected employee IDs could not all be matched to Appraisal Sheet rows for this source allocation. Refresh the page and select employees again. Unmatched: " + unmatchedCount
+        );
       }
 
       // Match the Appraisal Sheet utilization calculation: current-year hike,
