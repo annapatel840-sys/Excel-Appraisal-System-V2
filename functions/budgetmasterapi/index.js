@@ -1574,14 +1574,14 @@ function filterOwn(
         )
       : [];
 
-    // The child allocation is the authoritative record for the signed-in
-    // Comp Manager. Do not drop it merely because its parent Tech-Ed row is
-    // missing, was recreated, or is not returned in this role-scoped bundle.
-    // The frontend can resolve a cycle from the parent when available and
-    // still display a legacy child row whose optional cycle field is blank.
-    // Keep the ownership check above (isOwnCompAllocation) as the security
-    // boundary; never return another manager's child rows.
-    let compManager = ownSavedCompRows;
+    // The signed-in Comp Manager may see sibling manager allocations only
+    // under Tech-Ed parents where they have their own saved allocation. This
+    // supplies the transfer destination list without exposing other teams.
+    // Employee roster and normal budget calculations remain restricted to
+    // the signed-in manager's own employees/allocation in the frontend.
+    let compManager = bundle.compManager.filter((row) =>
+      savedParentIds.has(String(row.budget_distribution_id || "").trim()),
+    );
 
     // Compatibility fallback for older rows without a usable parent link.
     if (!techEd.length) {
