@@ -3644,8 +3644,22 @@ async function calculateBudgetBases(
         : canCreateOriginal
           ? (originalBase * effectivePct) / 100
           : 0;
+      const transferNet = compManagerTransferHistory.reduce((net, transfer) => {
+        if (cycleReference(value(transfer, "appraisal_cycle_id")) !== cycleId) return net;
+        const transferTechKey = canonicalTechKey(
+          resolvePersonId(value(transfer, "tech_ed_id")),
+        );
+        if (transferTechKey !== details.techEdKey) return net;
+        const sourceKey = ownerKey(resolvePersonId(value(transfer, "source_comp_manager_id")));
+        const destinationKey = ownerKey(resolvePersonId(value(transfer, "destination_comp_manager_id")));
+        const amount = n(value(transfer, "transferred_budget"));
+        if (sourceKey === details.compKey) return net - amount;
+        if (destinationKey === details.compKey) return net + amount;
+        return net;
+      }, 0);
       const updatedBudget =
-        rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0;
+        (rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0) +
+        transferNet;
 
       const savedOriginalCountValue = row.original_headcount;
       // Use the count accumulated in the exact same canonical Tech-Ed
@@ -3765,6 +3779,10 @@ async function calculateBudgetBases(
       });
     }
 
+    // Transfer history is an additive budget adjustment on top of each
+    // manager's normal percentage allocation. This keeps received budget
+    // available for onward transfers even when employee moves change bases.
+    const compManagerTransferHistory = await getAllRows(app, "Comp_Manager_Transfer_History").catch(() => []);
     // Upsert Comp Manager owners under their matching Tech-ED parent.
     const touchedCompRowIds = new Set();
     for (const [pairKey, details] of compLabels) {
@@ -4525,20 +4543,8 @@ module.exports = async function (req, res) {
         throw new access.HttpError(409, "The entered amount exceeds the source Comp Manager's available budget after accounting for the selected employees.");
       }
 
-      const sourceBase = n(value(sourceRow, "budget_base")) ||
-        (n(value(sourceRow, "percentage")) > 0 ? sourceApplied * 100 / n(value(sourceRow, "percentage")) : 0);
-      const destinationBase = n(value(destinationRow, "budget_base")) ||
-        (n(value(destinationRow, "percentage")) > 0 ? destinationApplied * 100 / n(value(destinationRow, "percentage")) : 0);
-      if (!(sourceBase > 0) || !(destinationBase > 0)) {
-        throw new access.HttpError(409, "Both Comp Manager allocations must have a valid budget base before transferring budget.");
-      }
       const nextSourceApplied = Math.max(0, sourceApplied - requestedAmount);
       const nextDestinationApplied = destinationApplied + requestedAmount;
-      const nextSourcePct = (nextSourceApplied / sourceBase) * 100;
-      const nextDestinationPct = (nextDestinationApplied / destinationBase) * 100;
-      // A received transfer may take a manager above 100% of their own
-      // employee budget base. The parent pool remains conserved because the
-      // source decreases by exactly the amount the destination receives.
 
       // Update only the selected employees. Other employees remain assigned
       // to the source manager. Original budget and original team-size snapshots
@@ -4578,13 +4584,11 @@ module.exports = async function (req, res) {
       }
       await compTable.updateRow({
         ROWID: idOf(sourceRow),
-        percentage: nextSourcePct,
         applied_budget: nextSourceApplied,
         total_utilization: Math.max(0, sourceUtilized - selectedUtilization),
       });
       await compTable.updateRow({
         ROWID: idOf(destinationRow),
-        percentage: nextDestinationPct,
         applied_budget: nextDestinationApplied,
         total_utilization: destinationUtilized + selectedUtilization,
       });
