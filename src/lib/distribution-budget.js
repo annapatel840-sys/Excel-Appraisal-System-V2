@@ -1169,7 +1169,6 @@ export function useDistributionBudget() {
         (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner)
       )
         return;
-      if (!isActiveAndEligible(employee)) return;
       const rawManager =
         employee.comp_manager ||
         employee.comp_manager_id ||
@@ -1196,7 +1195,14 @@ export function useDistributionBudget() {
         utilized: 0,
         name: manager,
       };
+      // Current Team Size is every current-cycle Appraisal_Sheet
+      // employee assigned to this Comp Manager, including inactive or
+      // not-eligible rows. Budget base and utilization remain eligible-only.
       stats.count += 1;
+      if (!isActiveAndEligible(employee)) {
+        managerStats.set(key, stats);
+        return;
+      }
       const previousCtcValue =
         employee.previous_appraisal_total_ctc_with_rewards ??
         employee.Previous_Appraisal_total_CTC_with_rewards ??
