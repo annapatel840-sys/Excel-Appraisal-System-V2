@@ -3725,13 +3725,28 @@ function HRApplyBudget() {
       (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
     ) || null;
 
-  // Re-read the backend whenever Budget Master is opened, not only when the app provider first mounts.
-  useEffect(() => {
-    reloadBudget();
-  }, [reloadBudget]);
 
+  // The shared Budget Provider already resolves the selected cycle and its
+  // cycle-wise calculations. Use that snapshot immediately; only query the
+  // cycle API when there is no active cycle (for the latest closed-cycle fallback).
   useEffect(() => {
     let mounted = true;
+    if (activeBudgetCycleId) {
+      const master = budgetMasterRows.find(
+        (row) => String(row.appraisal_cycle_id || "") === String(activeBudgetCycleId),
+      );
+      setActiveCycle({
+        id: String(activeBudgetCycleId),
+        appraisal_cycle_id: String(activeBudgetCycleId),
+        name: String(master?.appraisal_cycle_name || master?.cycle_name || activeBudgetCycleId),
+        status: "Active",
+      });
+      setCycleLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
     setActiveCycle(null);
     setSelectedCycle("");
     setCycleLoading(true);
@@ -3750,7 +3765,7 @@ function HRApplyBudget() {
     return () => {
       mounted = false;
     };
-  }, [selectedLocation, activeBudgetCycleId]);
+  }, [selectedLocation, activeBudgetCycleId, budgetMasterRows]);
 
   useEffect(() => {
     const refreshActiveCycle = () => {
