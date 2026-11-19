@@ -6,6 +6,7 @@ import {
   merge, sendProblem, sendLetters, markReviewed, moreAction, refreshStale, needLetters,
   inr, words, fyOf, ruleMessages, fieldMessages, saveTemplate, lOf, rowOf, tplOf,
   reviewOnPreview, markSent, resolveTemplate, publishTemplate, applyServerTemplates, templateMessages,
+  planRulesSave, planFieldsSave, saveRules, saveFields, applyServerConfig, audit,
 } from "./letters-core.js";
 
 const CYCLE = { id: "74008000000099999", name: "Annual 2026", effective: "2026-04-01" };
@@ -253,4 +254,73 @@ test("Send marks a Ready letter Delivered (no mail yet); Preview leaves it Ready
   assert.ok(l.sentOn && l.sentBy);
   assert.equal(S.audit[0].action, "Sent");
   assert.equal(markSent(S, [l.id]), 0); // already delivered: nothing happens twice
+});
+/* ---------------- rules and fields come from the server ---------------- */
+
+const clone = (x) => JSON.parse(JSON.stringify(x));
+
+test("planning a rules save changes nothing and builds the audit line", () => {
+  const S = fresh();
+  const before = clone(S.rules);
+  const draft = clone(S.rules);
+  draft[0].name = "Renamed rule";
+  draft.splice(1, 1); // remove the 2nd
+  draft.push({ id: "R99", name: "Brand new", family: "Bonus", cycle: "Any", org: "Any", cond: { F6: "Yes" }, type: "X", tpl: "T3", prio: 9, active: false });
+  const plan = planRulesSave(S, draft, "because");
+  assert.equal(plan.count, 3);
+  assert.match(plan.entry.detail, /changed Renamed rule/);
+  assert.match(plan.entry.detail, /removed Hike only/);
+  assert.match(plan.entry.detail, /added Brand new/);
+  assert.equal(plan.entry.scope, "Rules");
+  assert.equal(plan.entry.reason, "because");
+  assert.deepEqual(S.rules, before); // nothing applied yet
+  assert.equal(planRulesSave(S, clone(S.rules), "").entry, null); // no change, no audit line
+});
+
+test("saveRules applies the draft and the planned audit line once", () => {
+  const S = fresh();
+  const draft = clone(S.rules).slice(0, 2);
+  const plan = planRulesSave(S, draft, "");
+  const n = S.audit.length;
+  assert.equal(saveRules(S, draft, "", plan), plan.count);
+  assert.equal(S.rules.length, 2);
+  assert.equal(S.audit.length, n + 1);
+  assert.equal(S.audit[0], plan.entry);
+});
+
+test("saveFields works the same way", () => {
+  const S = fresh();
+  const draft = clone(S.fields);
+  draft[0].label = "Promoted";
+  const plan = planFieldsSave(S, draft, "");
+  assert.equal(plan.count, 1);
+  saveFields(S, draft, "", plan);
+  assert.equal(S.fields[0].label, "Promoted");
+  assert.equal(S.audit[0].scope, "Fields");
+});
+
+test("the server copy replaces the built-in rules, and a deleted rule stays deleted", () => {
+  const S = fresh();
+  audit(S, "Templates", "T1", "Published", "", "kept");
+  const mine = { id: "R500", name: "My own rule", family: "Revision", cycle: "Annual", org: "Any", cond: { F1: "Yes" }, type: "Mine", tpl: "T1", prio: 1, active: true };
+  applyServerConfig(S, { rules: [mine], fields: clone(S.fields), audit: [{ id: "S1", when: "19-Nov-2026 10:00", scope: "Rules", ref: "", action: "Rules saved", by: "HR (HR)", reason: "", detail: "added My own rule", tpl: "" }] });
+  assert.deepEqual(S.rules.map((r) => r.id), ["R500"]);
+  assert.ok(S.audit.some((a) => a.id === "S1"));
+  assert.ok(S.audit.some((a) => a.scope === "Templates" && a.detail === "kept")); // other audit lines stay
+
+  // somebody deletes every rule: the next load shows none, not the built-in samples
+  applyServerConfig(S, { rules: [], fields: clone(S.fields), audit: [] });
+  assert.equal(S.rules.length, 0);
+  const row = S.sheet.filter((r) => r.status === "Active")[0];
+  assert.equal(pick(S, row).length, 0);
+  assert.ok(!S.audit.some((a) => a.scope === "Rules")); // history is the server's too
+});
+
+test("rules loaded from the server decide who gets a letter", () => {
+  const S = fresh();
+  const promoted = S.sheet.filter((r) => r.cycle === S.cycles.filter((c) => !c.sample)[0].id || true).filter((r) => r.status === "Active" && r.v.promo === "Yes")[0];
+  const only = { id: "R7000", name: "Promoted people", family: "Revision", cycle: "Any", org: "Any", cond: { F1: "Yes" }, type: "Promo", tpl: "T1", prio: 1, active: true };
+  applyServerConfig(S, { rules: [only], fields: clone(S.fields), audit: [] });
+  const got = pick(S, promoted);
+  assert.deepEqual(got.map((r) => r.id), ["R7000"]);
 });

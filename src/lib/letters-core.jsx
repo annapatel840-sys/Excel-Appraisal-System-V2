@@ -195,8 +195,8 @@ export function fmtVal(row, col) {
 
 /* ---------------- audit ---------------- */
 
-export function audit(S, scope, ref, action, reason, detail, tpl) {
-  S.audit.unshift({
+export function mkAudit(S, scope, ref, action, reason, detail, tpl) {
+  return {
     id: "A" + Date.now().toString(36) + "-" + (S.audit.length + 1),
     when: S.t || nowStamp(),
     scope,
@@ -206,7 +206,11 @@ export function audit(S, scope, ref, action, reason, detail, tpl) {
     reason: reason || "",
     detail: detail || "",
     tpl: tpl || "",
-  });
+  };
+}
+
+export function audit(S, scope, ref, action, reason, detail, tpl) {
+  S.audit.unshift(mkAudit(S, scope, ref, action, reason, detail, tpl));
 }
 
 // Once any letter has gone out, changes to rules / fields / templates need a
@@ -755,37 +759,60 @@ export function fieldMessages(S, d) {
   return e;
 }
 
-/* Save a draft of rules / fields / one template, with the audit entry. */
-export function saveRules(S, draft, reason) {
+/* Save a draft of rules / fields, with the audit entry.
+   The store first asks the server to keep the new list (see letters-store.jsx);
+   only when that worked does it call saveRules / saveFields, so this screen never shows
+   rules the server does not have. planRulesSave / planFieldsSave work out what changed
+   and the audit line without touching the state. */
+function listChanges(oldList, draft, nameOf) {
   const ch = [];
-  draft.forEach((r) => {
-    const o = S.rules.filter((x) => x.id === r.id)[0];
-    if (!o) ch.push("added " + r.name);
-    else if (JSON.stringify(o) !== JSON.stringify(r)) ch.push("changed " + r.name);
+  draft.forEach((x) => {
+    const o = oldList.filter((y) => y.id === x.id)[0];
+    if (!o) ch.push("added " + nameOf(x));
+    else if (JSON.stringify(o) !== JSON.stringify(x)) ch.push("changed " + nameOf(x));
   });
-  S.rules.forEach((o) => {
-    if (!draft.some((x) => x.id === o.id)) ch.push("removed " + o.name);
+  oldList.forEach((o) => {
+    if (!draft.some((x) => x.id === o.id)) ch.push("removed " + nameOf(o));
   });
-  S.rules = draft;
-  if (ch.length) audit(S, "Rules", "", "Rules saved", reason, ch.join("; "));
-  refreshStale(S);
-  return ch.length;
+  return ch;
 }
 
-export function saveFields(S, draft, reason) {
-  const ch = [];
-  draft.forEach((f) => {
-    const o = S.fields.filter((x) => x.id === f.id)[0];
-    if (!o) ch.push("added " + f.label);
-    else if (JSON.stringify(o) !== JSON.stringify(f)) ch.push("changed " + f.label);
-  });
-  S.fields.forEach((o) => {
-    if (!draft.some((x) => x.id === o.id)) ch.push("removed " + o.label);
-  });
-  S.fields = draft;
-  if (ch.length) audit(S, "Fields", "", "Fields saved", reason, ch.join("; "));
+export function planRulesSave(S, draft, reason) {
+  const ch = listChanges(S.rules, draft, (r) => r.name);
+  return { count: ch.length, entry: ch.length ? mkAudit(S, "Rules", "", "Rules saved", reason, ch.join("; ")) : null };
+}
+
+export function planFieldsSave(S, draft, reason) {
+  const ch = listChanges(S.fields, draft, (f) => f.label);
+  return { count: ch.length, entry: ch.length ? mkAudit(S, "Fields", "", "Fields saved", reason, ch.join("; ")) : null };
+}
+
+export function saveRules(S, draft, reason, plan) {
+  const p = plan || planRulesSave(S, draft, reason);
+  S.rules = draft;
+  if (p.entry) S.audit.unshift(p.entry);
   refreshStale(S);
-  return ch.length;
+  return p.count;
+}
+
+export function saveFields(S, draft, reason, plan) {
+  const p = plan || planFieldsSave(S, draft, reason);
+  S.fields = draft;
+  if (p.entry) S.audit.unshift(p.entry);
+  refreshStale(S);
+  return p.count;
+}
+
+/* The rules and fields held on the server replace whatever this browser had.
+   Their audit lines (scope Rules / Fields) come from the server too, so every
+   computer shows the same history. */
+const CONFIG_SCOPES = ["Rules", "Fields"];
+export function applyServerConfig(S, cfg) {
+  S.rules = Array.isArray(cfg.rules) ? cfg.rules.map((r) => ({ ...r, cond: { ...(r.cond || {}) } })) : [];
+  S.fields = Array.isArray(cfg.fields) ? cfg.fields.map((f) => ({ ...f })) : [];
+  const others = S.audit.filter((a) => CONFIG_SCOPES.indexOf(a.scope) < 0);
+  S.audit = (Array.isArray(cfg.audit) ? cfg.audit : []).concat(others);
+  refreshStale(S);
 }
 
 /* ---------------- templates ---------------- */

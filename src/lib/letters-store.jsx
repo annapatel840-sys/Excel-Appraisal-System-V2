@@ -13,6 +13,9 @@ import * as stateSync from "./letters-state-sync";
  *
  * TEMPLATES are the exception: they are stored on the server (letters-api.js ->
  * functions/lettersapi) and loaded into this state by syncTemplates().
+ * So are the Letter RULES and Letter FIELDS: they are stored once on the server
+ * (syncConfig / saveRules / saveFields below) and stay until somebody edits or
+ * deletes them. Whatever this browser holds is only a cache; the server copy wins.
  *
  * Going live: keep the action names below and replace their bodies with calls
  * to the Letters Catalyst function (read, save, generate, send). The screens
@@ -186,13 +189,87 @@ export async function setTemplateActive(id, active, actor) {
   return run(actor, (st) => core.setTemplateActive(st, id, active));
 }
 
+/* ---------------- rules + fields on the server ---------------- */
+
+// { status: "idle" | "loading" | "ok" | "error", message, exists, rev }
+//   exists = the server holds a saved copy; rev = its revision (used to spot a clash)
+let config = { status: "idle", message: "", exists: false, rev: 0 };
+let configSyncing = null;
+
+function setConfig(next) {
+  config = { ...config, ...next };
+  version += 1;
+  listeners.forEach((l) => l());
+}
+
+// Load the rules and fields held on the server into the state. Call it when the
+// Letters screen opens; {force:true} is the Retry button.
+export function syncConfig({ force = false } = {}) {
+  if (!api.CONFIG_ON_SERVER) return Promise.resolve();
+  if (configSyncing && !force) return configSyncing;
+  setConfig({ status: "loading", message: "" });
+  const p = api
+    .loadServerConfig()
+    .then((cfg) => {
+      // Nothing saved yet: keep what this screen shows (see "Save these rules to the server").
+      if (cfg.exists) run("HR", (st) => core.applyServerConfig(st, cfg));
+      setConfig({ status: "ok", message: "", exists: !!cfg.exists, rev: Number(cfg.rev) || 0 });
+    })
+    .catch((error) => setConfig({ status: "error", message: error?.message || "The letter rules could not be loaded." }))
+    .finally(() => {
+      if (configSyncing === p) configSyncing = null;
+    });
+  configSyncing = p;
+  return p;
+}
+
+// Ask the server to keep rules + fields. Throws (nothing changes here) when it refuses.
+async function pushConfig({ rules, fields, entry, baseRev }) {
+  try {
+    const saved = await api.saveServerConfig({ rules, fields, baseRev: baseRev ?? config.rev, audit: entry ? [entry] : [] });
+    setConfig({ status: "ok", message: "", exists: true, rev: Number(saved.rev) || 0 });
+  } catch (error) {
+    // Somebody saved first: show their version, then tell the person.
+    if (error && error.status === 409) await syncConfig({ force: true });
+    throw error;
+  }
+}
+
+/* Save the Letter Rules. `baseRev` = the revision the edit started from (config.rev when the
+   person pressed Edit), so a change somebody else saved meanwhile is noticed, not overwritten.
+   Server first: if it refuses, the screen keeps the old rules and the error reaches the tab. */
+export async function saveRules(draft, reason, actor, baseRev) {
+  S.actor = actor || "HR";
+  const plan = core.planRulesSave(S, draft, reason);
+  if (!plan.count) return 0;
+  if (api.CONFIG_ON_SERVER) await pushConfig({ rules: draft, fields: S.fields, entry: plan.entry, baseRev });
+  return run(actor, (st) => core.saveRules(st, draft, reason, plan));
+}
+
+export async function saveFields(draft, reason, actor, baseRev) {
+  S.actor = actor || "HR";
+  const plan = core.planFieldsSave(S, draft, reason);
+  if (!plan.count) return 0;
+  if (api.CONFIG_ON_SERVER) await pushConfig({ rules: S.rules, fields: draft, entry: plan.entry, baseRev });
+  return run(actor, (st) => core.saveFields(st, draft, reason, plan));
+}
+
+// First time only: nothing is stored on the server yet, so this screen shows what this
+// browser holds. This stores it, and from then on the server copy is the one everybody sees.
+export async function saveCurrentConfigToServer(actor) {
+  S.actor = actor || "HR";
+  const entry = core.mkAudit(S, "Rules", "", "Rules saved", "", `Stored ${S.rules.length} rule${S.rules.length === 1 ? "" : "s"} and ${S.fields.length} field${S.fields.length === 1 ? "" : "s"} on the server`);
+  await pushConfig({ rules: S.rules, fields: S.fields, entry, baseRev: config.rev });
+  run(actor, (st) => st.audit.unshift(entry));
+}
+
 /* ---------------- reading (React) ---------------- */
 
 // The state object plus a counter that changes on every update, for use in
 // useMemo dependency lists (the state object itself is edited in place).
 export function useLetters() {
   const v = useSyncExternalStore(subscribe, getVersion);
-  return { S, version: v, sync };
+  return { S, version: v, sync, config };
 }
 
 // { [cycleId]: { gen, toSend, sent, dropped, outOfDate, missing, total } }
@@ -283,6 +360,11 @@ export async function generateLettersForCycle(cycle, actor, sheetRows) {
       );
     }
   }
+  // The letters follow the Letter Rules stored on the server, never an old copy from this browser.
+  if (api.CONFIG_ON_SERVER) {
+    await syncConfig({ force: true });
+    if (config.status === "error") throw new Error(`The letter rules could not be loaded: ${config.message}`);
+  }
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.
   // Do not let a slow read of the saved copy hold Generate back: wait for it at most 4 s.
   await Promise.race([
@@ -364,8 +446,6 @@ export const sendTestTemplate = (id, empName, version, actor) =>
     return t.sg.from;
   });
 export const saveRemark = (id, value, actor) => run(actor, (st) => core.setRemark(st, id, value));
-export const saveRules = (draft, reason, actor) => run(actor, (st) => core.saveRules(st, draft, reason));
-export const saveFields = (draft, reason, actor) => run(actor, (st) => core.saveFields(st, draft, reason));
 
 // Demo helpers (shown only while LETTERS_DEMO is true).
 export const loadSampleLetters = (actor) => run(actor, (st) => core.loadSampleLetters(st));
@@ -373,4 +453,5 @@ export function resetSampleData() {
   S = core.createState();
   commit();
   syncTemplates({ force: true }); // templates on the server come straight back
+  syncConfig({ force: true }); // ...and so do the rules and fields
 }

@@ -52,7 +52,9 @@ async function request({ method = "GET", body, params, noRetry = false } = {}, a
   }
   const result = await response.json().catch(() => null);
   if (!response.ok || result?.success !== true) {
-    throw new Error(result?.message || `Letters request failed (${response.status}).`);
+    const error = new Error(result?.message || `Letters request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
   }
   return result.data;
 }
@@ -132,6 +134,22 @@ export async function saveServerTemplate({ template, baseVer, note, docxFile }) 
 /* The cycle was archived: its stored letters are deleted on the server. */
 export function clearServerLetters(cycleId, location) {
   return request({ method: "POST", body: { action: "clearState", cycleId: String(cycleId), location: location || "" } });
+}
+
+/* ---- Letter Rules + Letter Fields (stored once for everybody) ---- */
+
+// Set VITE_LETTERS_CONFIG_ON_SERVER=false to keep rules in this browser only (offline demo).
+export const CONFIG_ON_SERVER = import.meta.env.VITE_LETTERS_CONFIG_ON_SERVER !== "false";
+
+/* { exists, rev, rules, fields, audit }  exists:false = nothing has been saved yet. */
+export function loadServerConfig() {
+  return request({ params: { view: "config" } });
+}
+
+/* Store rules + fields. `baseRev` is the revision this screen last loaded; the server refuses
+   (409) when somebody saved a newer one. `audit` = the new audit lines of this save. */
+export function saveServerConfig({ rules, fields, baseRev, audit }) {
+  return request({ method: "POST", body: { action: "saveConfig", rules, fields, baseRev: baseRev || 0, audit: audit || [] } });
 }
 
 export function setServerTemplateActive(id, active) {

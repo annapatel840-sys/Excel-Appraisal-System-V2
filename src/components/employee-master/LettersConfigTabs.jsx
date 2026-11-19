@@ -55,16 +55,67 @@ function Toolbar({ title, hint, children }) {
   );
 }
 
+const uniq = (list) => [...new Set(list.filter((x) => x !== undefined && x !== null && String(x).trim() !== ""))];
+
+/* Rules and fields are stored on the server. This note says when the screen is still loading
+   them, could not load them, or when nothing is stored yet (this browser then shows its own copy). */
+function ConfigNote({ config, what, actor, toast, setErrs }) {
+  const [busy, setBusy] = useState(false);
+  if (!config) return null;
+  const line = { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" };
+  if (config.status === "loading") {
+    return <div className="lt-note lt-in-note" style={line}>Loading the letter {what} from the server...</div>;
+  }
+  if (config.status === "error") {
+    return (
+      <div className="lt-note warn lt-in-note" style={line}>
+        <span>The letter {what} could not be loaded from the server: {config.message} Editing is turned off until they load, so nothing is overwritten.</span>
+        <button type="button" className="lt-btn sm" onClick={() => store.syncConfig({ force: true })}>Retry</button>
+      </div>
+    );
+  }
+  if (config.status === "ok" && !config.exists) {
+    const keep = async () => {
+      setBusy(true);
+      try {
+        await store.saveCurrentConfigToServer(actor);
+        setErrs([]);
+        toast("Rules and fields stored on the server");
+      } catch (e) {
+        setErrs([e?.message || "They could not be stored on the server."]);
+      } finally {
+        setBusy(false);
+      }
+    };
+    return (
+      <div className="lt-note warn lt-in-note" style={line}>
+        <span>Nothing is stored on the server yet, so this screen shows the rules and fields of this browser only. Store them once and everyone sees the same {what}; they then stay until someone edits or deletes them.</span>
+        <button type="button" className="lt-btn sm pri" disabled={busy} onClick={keep}>{busy ? "Storing..." : "Store rules and fields on the server"}</button>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Editing is off while the server copy is loading or could not be read.
+const configBlocksEdit = (config) => !!config && (config.status === "loading" || config.status === "error");
+
 /* ====================== Letter Rules ====================== */
 
-export function RulesTab({ S, actor, ui, toast }) {
+export function RulesTab({ S, actor, ui, toast, config }) {
   const [draft, setDraft] = useState(null);
   const [errs, setErrs] = useState([]);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [baseRev, setBaseRev] = useState(0); // server revision this edit started from
   const ed = !!draft;
   const rs = ed ? draft : S.rules;
   const ruleFields = S.fields.filter((f) => f.rules);
   const bad = ed ? ruleMessages(S, rs) : {};
+  // Choices come from the data (cycles, organizations, templates and the rules themselves), not a fixed list.
+  const cycleTypes = uniq(["Any", "Annual", "Exceptional", ...S.cycles.map((c) => c.type), ...rs.map((r) => r.cycle)]);
+  const orgChoices = uniq(["Any", ...S.orgs, ...S.sheet.map((r) => r.org), ...rs.map((r) => r.org)]);
+  const familyChoices = uniq(["Revision", "Bonus", "Target PB", ...S.tpls.map((t) => t.family), ...rs.map((r) => r.family)]);
 
   // how many active employees each rule gives a letter to today
   const cnt = {};
@@ -82,6 +133,7 @@ export function RulesTab({ S, actor, ui, toast }) {
   const startEdit = () => {
     const go = (why) => {
       setReason(why || "");
+      setBaseRev(config ? config.rev : 0);
       setDraft(copy(S.rules));
       setErrs([]);
     };
@@ -95,15 +147,24 @@ export function RulesTab({ S, actor, ui, toast }) {
   const add = () =>
     setDraft((d) => [...d, { id: "R" + (Date.now() % 100000), name: "", family: "", cycle: "Any", org: "Any", cond: {}, type: "", tpl: "", prio: 9, active: false }]);
   const remove = (id) => setDraft((d) => d.filter((r) => r.id !== id));
-  const save = () => {
+  const save = async () => {
     if (Object.keys(bad).length) {
       toast("Fix the highlighted rules before saving");
       return;
     }
-    const n = store.saveRules(draft, reason, actor);
-    setDraft(null);
-    setErrs([]);
-    toast(n ? "Rules saved" : "No changes");
+    setSaving(true);
+    try {
+      // Stored on the server first; the screen only changes when that worked.
+      const n = await store.saveRules(draft, reason, actor, baseRev);
+      setDraft(null);
+      setErrs([]);
+      toast(n ? "Rules saved" : "No changes");
+    } catch (error) {
+      if (error && error.status === 409) setDraft(null); // somebody saved first: show their version
+      setErrs([error?.message || "The rules could not be saved. Nothing was changed."]);
+    } finally {
+      setSaving(false);
+    }
   };
   const toggleActive = (r, checked) => {
     if (checked) {
@@ -138,8 +199,8 @@ export function RulesTab({ S, actor, ui, toast }) {
     { key: "prio", label: "Priority", w: 90, get: (r) => String(r.prio), sv: (r) => Number(r.prio), render: (r) => (ed ? <input type="number" className="lt-cell-in" style={{ width: 56 }} value={r.prio} onChange={(e) => setRule(r.id, { prio: Number(e.target.value) })} /> : String(r.prio)) },
     { key: "name", label: "Rule Name", w: 190, get: (r) => r.name, render: (r) => text(r, "name", "Rule Name", !String(r.name || "").trim()) },
     { key: "family", label: "Family", w: 120, get: (r) => r.family, render: (r) => (ed ? <input type="text" list="lt-fam" className={"lt-cell-in" + (!String(r.family || "").trim() ? " bad" : "")} value={r.family} placeholder="Family" onChange={(e) => setRule(r.id, { family: e.target.value })} /> : r.family) },
-    { key: "cycle", label: "Cycle Type", w: 120, get: (r) => r.cycle, render: (r) => select(r, "cycle", ["Any", "Annual", "Exceptional"]) },
-    { key: "org", label: "Organization", w: 130, get: (r) => r.org, render: (r) => select(r, "org", ["Any", ...S.orgs]) },
+    { key: "cycle", label: "Cycle Type", w: 120, get: (r) => r.cycle, render: (r) => select(r, "cycle", cycleTypes) },
+    { key: "org", label: "Organization", w: 130, get: (r) => r.org, render: (r) => select(r, "org", orgChoices) },
     ...ruleFields.map((f) => ({
       key: "c_" + f.id,
       label: f.label,
@@ -191,16 +252,17 @@ export function RulesTab({ S, actor, ui, toast }) {
       <Toolbar title="Letter Rules" hint="One Letter Per Family; The Matching Rule With The Lowest Priority Number Wins.">
         {ed ? (
           <>
-            <button type="button" className="lt-btn" onClick={add}>+ Add Rule</button>
-            <button type="button" className="lt-btn pri" onClick={save}>Save Rules</button>
-            <button type="button" className="lt-btn" onClick={cancel}>Cancel</button>
+            <button type="button" className="lt-btn" onClick={add} disabled={saving}>+ Add Rule</button>
+            <button type="button" className="lt-btn pri" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Rules"}</button>
+            <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
-          <button type="button" className="lt-btn pri" onClick={startEdit}>Edit Rules</button>
+          <button type="button" className="lt-btn pri" onClick={startEdit} disabled={configBlocksEdit(config)}>Edit Rules</button>
         )}
       </Toolbar>
       {ui.el}
       <div className="lt-content">
+        <ConfigNote config={config} what="rules" actor={actor} toast={toast} setErrs={setErrs} />
         <LockNote S={S} />
         <LtErrs errs={errs} />
         {badKeys.length > 0 && (
@@ -219,9 +281,9 @@ export function RulesTab({ S, actor, ui, toast }) {
           <DataGrid defs={defs} grid={grid} allRows={rs} rows={view} rowKey={(r) => r.id} emptyText="No Rules." />
         </div>
         <datalist id="lt-fam">
-          <option>Revision</option>
-          <option>Bonus</option>
-          <option>Target PB</option>
+          {familyChoices.map((f) => (
+            <option key={f} value={f} />
+          ))}
         </datalist>
         <div className="lt-foot2">
           <span><b>No Letter Today:</b> {none.length ? none.join(", ") : "none"}</span>
@@ -233,10 +295,12 @@ export function RulesTab({ S, actor, ui, toast }) {
 
 /* ====================== Letter Fields ====================== */
 
-export function FieldsTab({ S, actor, ui, toast }) {
+export function FieldsTab({ S, actor, ui, toast, config }) {
   const [draft, setDraft] = useState(null);
   const [errs, setErrs] = useState([]);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [baseRev, setBaseRev] = useState(0); // server revision this edit started from
   const ed = !!draft;
   const fs = ed ? draft : S.fields;
 
@@ -244,6 +308,7 @@ export function FieldsTab({ S, actor, ui, toast }) {
   const startEdit = () => {
     const go = (why) => {
       setReason(why || "");
+      setBaseRev(config ? config.rev : 0);
       setDraft(copy(S.fields));
       setErrs([]);
     };
@@ -256,16 +321,25 @@ export function FieldsTab({ S, actor, ui, toast }) {
   };
   const add = () => setDraft((d) => [...d, { id: "F" + (Date.now() % 100000), label: "", col: "", rules: false, tag: true, tagName: "", show: false }]);
   const remove = (id) => setDraft((d) => d.filter((f) => f.id !== id));
-  const save = () => {
+  const save = async () => {
     const er = fieldMessages(S, draft);
     if (er.length) {
       setErrs(er.slice(0, 8));
       return;
     }
-    const n = store.saveFields(draft, reason, actor);
-    setDraft(null);
-    setErrs([]);
-    toast(n ? "Fields saved" : "No changes");
+    setSaving(true);
+    try {
+      // Stored on the server first; the screen only changes when that worked.
+      const n = await store.saveFields(draft, reason, actor, baseRev);
+      setDraft(null);
+      setErrs([]);
+      toast(n ? "Fields saved" : "No changes");
+    } catch (error) {
+      if (error && error.status === 409) setDraft(null); // somebody saved first: show their version
+      setErrs([error?.message || "The fields could not be saved. Nothing was changed."]);
+    } finally {
+      setSaving(false);
+    }
   };
   const chooseColumn = (f, col) => {
     const ct = catOf(col);
@@ -323,15 +397,16 @@ export function FieldsTab({ S, actor, ui, toast }) {
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add}>+ Add Field</button>
-            <button type="button" className="lt-btn pri" onClick={save}>Save Fields</button>
-            <button type="button" className="lt-btn" onClick={cancel}>Cancel</button>
+            <button type="button" className="lt-btn pri" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Fields"}</button>
+            <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
-          <button type="button" className="lt-btn pri" onClick={startEdit}>Edit Fields</button>
+          <button type="button" className="lt-btn pri" onClick={startEdit} disabled={configBlocksEdit(config)}>Edit Fields</button>
         )}
       </Toolbar>
       {ui.el}
       <div className="lt-content">
+        <ConfigNote config={config} what="fields" actor={actor} toast={toast} setErrs={setErrs} />
         <LockNote S={S} />
         <LtErrs errs={errs} />
         <div className="lt-cfg">

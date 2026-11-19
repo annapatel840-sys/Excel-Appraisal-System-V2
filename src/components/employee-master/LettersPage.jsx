@@ -108,7 +108,7 @@ function RemarkInput({ letter, actor }) {
 export function LettersPage({ canEdit = true, onNavigate }) {
   const user = useCatalystUser();
   const actor = user?.name || "HR";
-  const { S, version, sync } = store.useLetters();
+  const { S, version, sync, config } = store.useLetters();
   const ui = useLtBar();
   const { toast, el: toastEl } = useToast();
 
@@ -138,6 +138,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   // Templates live on the server: load them when the screen opens.
   // The templates shown are the ones of the location chosen in the top bar.
   const [selectedLocation] = useSelectedLocation();
+  // The Letter Rules and Fields are stored on the server too, the same for every location.
+  useEffect(() => {
+    store.syncConfig();
+  }, []);
+
   useEffect(() => {
     store.syncTemplates({ location: selectedLocation });
     // Letters generated on any computer are kept on the server: load them.
@@ -773,8 +778,8 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           {visibleTab === "audit" && canEdit && (
             <AuditTab S={S} onBack={() => changeTab("letters")} onExport={(rows) => exportGrid(AUDIT_DEFS, rows, "Letters_Audit_Trail", "Audit")} />
           )}
-          {visibleTab === "rules" && canEdit && <RulesTab S={S} actor={actor} ui={ui} toast={toast} />}
-          {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} />}
+          {visibleTab === "rules" && canEdit && <RulesTab S={S} actor={actor} ui={ui} toast={toast} config={config} />}
+          {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} config={config} />}
           {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} sync={sync} selectedId={tplSel} setSelectedId={setTplSel} />}
         </div>
         {panelOpen ? renderPanel() : <button type="button" className="lt-flap" aria-label="Open panel" onClick={() => setPanelOpen(true)}>Panel ›</button>}

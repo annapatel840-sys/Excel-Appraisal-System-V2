@@ -3,8 +3,8 @@
 /* ---------------------------------------------------------------------
    lettersapi - Letters screen (HR Operations > Operation > Letters)
 
-   This first version stores the TEMPLATES, including the original Word
-   (.docx) file HR imported. Letters, rules and fields are not stored here yet.
+   Stores the TEMPLATES (including the original Word .docx file HR imported),
+   the letters of each cycle, and the Letter RULES and FIELDS (lettersConfig.js).
 
    GET  /?view=templates          -> { success, data:{ templates:[...] } }
                                      every template, newest published version, with
@@ -25,6 +25,13 @@
                                      the cycle is archived)
    POST /  { action:"setActive", id, active }
                                   -> turns a template Active / Inactive
+   GET  /?view=config             -> the stored Letter Rules + Letter Fields
+                                     { exists, rev, rules, fields, audit }
+   POST /  { action:"saveConfig", baseRev, rules, fields, audit }
+                                  -> stores them for everybody (409 if somebody saved
+                                     first). They stay until edited or deleted.
+                                     Bucket: <LETTERS_BUCKET_PREFIX>-config
+                                     (or the env variable LETTERS_CONFIG_BUCKET)
 
    Where things live
      One Stratus bucket PER LOCATION, named from Location_Master:
@@ -557,6 +564,8 @@ async function locationMapCached(app) {
   locationCache = { at: Date.now(), map };
   return map;
 }
+const configBucket = () => process.env.LETTERS_CONFIG_BUCKET || `${BUCKET_PREFIX()}-config`;
+const lettersConfig = require("./lettersConfig")({ configBucket, putObject, getObjectBuffer, fail, text });
 const lettersState = require("./lettersState")({ locationMap: locationMapCached, putObject, getObjectBuffer, deleteObject, fail, text });
 const sheetBusy = new Set();
 const lettersSheet = require("./lettersSheet")({ fail, text, guarded });
@@ -620,12 +629,18 @@ async function handle(req, res) {
       if (view === "templates") {
         return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp, q.get("location")) });
       }
+      if (view === "config") {
+        return sendJson(res, 200, { success: true, data: await lettersConfig.loadConfig(adminApp) });
+      }
       throw fail(400, "Unknown view.");
     }
 
     const payload = await readBody(req);
     if (payload.action === "saveTemplate") {
       return sendJson(res, 200, { success: true, data: await saveTemplate(adminApp, actor, payload) });
+    }
+    if (payload.action === "saveConfig") {
+      return sendJson(res, 200, { success: true, data: await lettersConfig.saveConfig(adminApp, actor, payload) });
     }
     if (payload.action === "saveState") {
       return sendJson(res, 200, { success: true, data: await lettersState.saveState(adminApp, actor, payload) });
