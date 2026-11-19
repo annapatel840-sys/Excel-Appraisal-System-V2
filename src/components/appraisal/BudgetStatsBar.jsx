@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 
+import { useCurrencyConfig, money as formatMoneyAmount, moneyCompact, usesLakhGrouping } from "@/lib/currency-format";
 // ============================================================
 // Budget summary bar (Appraisal Sheet + Detailed Screen)
 // Shows Budget Allocated, Consumed (Hikes + Bonuses), Utilisation and
@@ -15,11 +16,13 @@ export const FALLBACK_BUDGET_ALLOCATED = 0;
 const ONE_CRORE = 10000000;
 
 export const formatCrore = (amount) =>
-  ` ${(amount / ONE_CRORE).toFixed(2)} Cr`;
+  usesLakhGrouping()
+    ? ` ${(amount / ONE_CRORE).toFixed(2)} Cr`
+    : ` ${moneyCompact(amount, { withSymbol: false })}`;
 
 // Full amount in Indian digit grouping, e.g. ₹ 1,57,00,000 (no Cr / L rounding).
 export const formatRupees = (amount) =>
-  ` ${Math.round(Number(amount) || 0).toLocaleString("en-IN")}`;
+  ` ${formatMoneyAmount(Math.round(Number(amount) || 0))}`;
 
 
 // Consumed = Performance Bonus (PB) + Retention Bonus (RB) + Hike Amount,
@@ -101,6 +104,7 @@ export function BudgetStatsBar({
   // divider between Budget Allocated and Consumed
   allocatedRef,
 }) {
+  useCurrencyConfig();
   const utilisation = allocated ? (consumed / allocated) * 100 : 0;
   const toneFor = (pct) =>
     pct > 100 ? "text-[#b42318]" : pct > 85 ? "text-[#b54708]" : "";

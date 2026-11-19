@@ -50,6 +50,7 @@ import { useColumnResize } from "@/lib/use-column-resize";
 import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
 import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 
+import { useCurrencyConfig, money as formatMoneyAmount, moneyLakhs } from "@/lib/currency-format";
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
@@ -542,8 +543,10 @@ const feedbackDesignation = (items, ...cycleNames) => {
   return "";
 };
 
-const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
-const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
+const fmt = (n) => formatMoneyAmount(Math.round(Number(n) || 0));
+// Editable boxes keep plain "1,23,456" so what is typed and saved never depends on the display format.
+const fmtEdit = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+const lakhs = (n) => moneyLakhs(n);
 const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 const yrs = (v) => {
   const d = dash(v);
@@ -1216,6 +1219,7 @@ const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 export function DetailScreenPage({
   onViewBudget,
 } = {}) {
+  useCurrencyConfig();
   const { rows: liveRows, audit, updateCell, updateLinkedCells, readOnlyCycle } = useAppraisal();
   const cachedAudit = useDeferredValue(audit);
   const budgetContext = useBudget();
@@ -2294,7 +2298,7 @@ export function DetailScreenPage({
                             <EditInput
                               key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
                               className="flex-1"
-                              defaultValue={fmt(proposedPB ?? 0)}
+                              defaultValue={fmtEdit(proposedPB ?? 0)}
                               edited={isEdited("allocatedPBAmount")}
                               locked={!canEditF("allocatedPBAmount")}
                               invalid={pbLow}
@@ -2384,7 +2388,7 @@ export function DetailScreenPage({
                         >
                           <EditInput
                             key={`${employee.id}-newRB-${payReset.rb}`}
-                            defaultValue={fmt(proposedRB ?? 0)}
+                            defaultValue={fmtEdit(proposedRB ?? 0)}
                             edited={isEdited("newRB")}
                             locked={!canEditF("newRB")}
                             invalid={rbLow}
@@ -2455,7 +2459,7 @@ export function DetailScreenPage({
                         >
                           <EditInput
                             key={`${employee.id}-targetPBNextYear`}
-                            defaultValue={fmt(employee.targetPBNextYear ?? 0)}
+                            defaultValue={fmtEdit(employee.targetPBNextYear ?? 0)}
                             edited={isEdited("targetPBNextYear")}
                             locked={!canEditF("targetPBNextYear")}
                             onLive={(v) => setDraft({ tpbStr: v })}

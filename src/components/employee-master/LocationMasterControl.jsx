@@ -615,6 +615,7 @@ import {
   useColumnResize,
   useTableFilters,
 } from "./FilterableTable";
+import { CurrencyPreview, CurrencyTypeSelect, DisplayFormatSelect } from "./CurrencyFields";
 import "./employee-master-ui.css";
 
 const blank = {
@@ -622,10 +623,12 @@ const blank = {
   location_code: "",
   address: "",
   currency_code: "",
+  currency_display_format: "Default",
 };
 const normalize = (x) => ({
   ...x,
   id: String(x.id || ""),
+  currency_display_format: String(x.currency_display_format || "").trim() || "Default",
   status:
     String(x.status || "Active").toLowerCase() === "inactive"
       ? "Inactive"
@@ -637,10 +640,11 @@ const LOC_COLS = [
   { key: "location_name", label: "Location", kind: "text", get: (l) => l.location_name || "" },
   { key: "location_code", label: "Code", kind: "text", get: (l) => l.location_code || "" },
   { key: "address", label: "Address", kind: "text", get: (l) => l.address || "" },
-  { key: "currency_code", label: "Currency", kind: "text", get: (l) => l.currency_code || "" },
+  { key: "currency_code", label: "Currency Type", kind: "text", get: (l) => l.currency_code || "" },
+  { key: "currency_display_format", label: "Display Format", kind: "text", get: (l) => l.currency_display_format || "Default" },
   { key: "status", label: "Status", kind: "text", get: (l) => l.status || "" },
 ];
-const LOC_WIDTHS = { location_name: 170, location_code: 110, address: 360, currency_code: 170, status: 120, actions: 215 };
+const LOC_WIDTHS = { location_name: 170, location_code: 110, address: 360, currency_code: 150, currency_display_format: 160, status: 120, actions: 215 };
 
 export function LocationMasterControl({
   value = "All",
@@ -726,6 +730,8 @@ export function LocationMasterControl({
       currency_code: String(loc.currency_code || "")
         .trim()
         .toUpperCase(),
+      currency_display_format:
+        String(loc.currency_display_format || "").trim() || "Default",
       status: loc.status === "Inactive" ? "Inactive" : "Active",
     };
     if (!payload.location_name || !payload.location_code) {
@@ -874,19 +880,26 @@ export function LocationMasterControl({
                 />
               </label>
               <label style={lf.hidden("Currency Code") ? { display: "none" } : undefined}>
-                Currency Code
-                <input
-{...lf.lock("Currency Code")}
-                  maxLength={10}
+                Currency Type
+                <CurrencyTypeSelect
+                  {...lf.lock("Currency Code")}
+                  ariaLabel="Currency type"
                   value={form.currency_code}
-                  onChange={(e) =>
-                    setForm((v) => ({
-                      ...v,
-                      currency_code: e.target.value.toUpperCase(),
-                    }))
+                  onChange={(code) => setForm((v) => ({ ...v, currency_code: code }))}
+                />
+              </label>
+              <label style={lf.hidden("Currency Display Format") ? { display: "none" } : undefined}>
+                Display Format
+                <DisplayFormatSelect
+                  {...lf.lock("Currency Display Format")}
+                  ariaLabel="Currency display format"
+                  value={form.currency_display_format}
+                  onChange={(format) =>
+                    setForm((v) => ({ ...v, currency_display_format: format }))
                   }
                 />
               </label>
+              <CurrencyPreview code={form.currency_code} format={form.currency_display_format} />
               <div className="em-location-inline-actions">
                 <button
                   type="submit"
@@ -951,12 +964,7 @@ export function LocationMasterControl({
                   const row = edit ? draft : loc;
                   return (
                     <tr key={loc.id || loc.location_code}>
-                      {[
-                        "location_name",
-                        "location_code",
-                        "address",
-                        "currency_code",
-                      ].map((key) => (
+                      {["location_name", "location_code", "address"].map((key) => (
                         <td key={key}>
                           {edit ? (
                             <input
@@ -966,8 +974,7 @@ export function LocationMasterControl({
                                 setDraft((v) => ({
                                   ...v,
                                   [key]:
-                                    key === "location_code" ||
-                                    key === "currency_code"
+                                    key === "location_code"
                                       ? e.target.value.toUpperCase()
                                       : e.target.value,
                                 }))
@@ -978,6 +985,32 @@ export function LocationMasterControl({
                           )}
                         </td>
                       ))}
+                      <td>
+                        {edit ? (
+                          <CurrencyTypeSelect
+                            {...lf.lock("Currency Code")}
+                            ariaLabel="Currency type"
+                            value={row.currency_code}
+                            onChange={(code) => setDraft((v) => ({ ...v, currency_code: code }))}
+                          />
+                        ) : (
+                          loc.currency_code || "—"
+                        )}
+                      </td>
+                      <td>
+                        {edit ? (
+                          <DisplayFormatSelect
+                            {...lf.lock("Currency Display Format")}
+                            ariaLabel="Currency display format"
+                            value={row.currency_display_format}
+                            onChange={(format) =>
+                              setDraft((v) => ({ ...v, currency_display_format: format }))
+                            }
+                          />
+                        ) : (
+                          loc.currency_display_format || "Default"
+                        )}
+                      </td>
                       <td>
                         <span
                           className={`em-location-status ${loc.status.toLowerCase()}`}
@@ -1050,12 +1083,12 @@ export function LocationMasterControl({
                 })}
                 {!loading && !locations.length && (
                   <tr>
-                    <td colSpan={readOnly ? 5 : 6}>No locations found.</td>
+                    <td colSpan={readOnly ? 6 : 7}>No locations found.</td>
                   </tr>
                 )}
                 {!loading && locations.length > 0 && !tf.rows.length && (
                   <tr className="ft-empty">
-                    <td colSpan={readOnly ? 5 : 6}>No locations match the filters.</td>
+                    <td colSpan={readOnly ? 6 : 7}>No locations match the filters.</td>
                   </tr>
                 )}
               </tbody>
@@ -1208,19 +1241,26 @@ export function LocationMasterControl({
                   />
                 </label>
                 <label style={lf.hidden("Currency Code") ? { display: "none" } : undefined}>
-                  Currency Code
-                  <input
-{...lf.lock("Currency Code")}
-                    maxLength={10}
+                  Currency Type
+                  <CurrencyTypeSelect
+                    {...lf.lock("Currency Code")}
+                    ariaLabel="Currency type"
                     value={form.currency_code}
-                    onChange={(e) =>
-                      setForm((v) => ({
-                        ...v,
-                        currency_code: e.target.value.toUpperCase(),
-                      }))
+                    onChange={(code) => setForm((v) => ({ ...v, currency_code: code }))}
+                  />
+                </label>
+                <label style={lf.hidden("Currency Display Format") ? { display: "none" } : undefined}>
+                  Display Format
+                  <DisplayFormatSelect
+                    {...lf.lock("Currency Display Format")}
+                    ariaLabel="Currency display format"
+                    value={form.currency_display_format}
+                    onChange={(format) =>
+                      setForm((v) => ({ ...v, currency_display_format: format }))
                     }
                   />
                 </label>
+                <CurrencyPreview code={form.currency_code} format={form.currency_display_format} />
                 {error && (
                   <div className="em-location-error" role="alert">
                     {error}
@@ -1266,7 +1306,8 @@ export function LocationMasterControl({
                         <th>Location</th>
                         <th>Code</th>
                         <th>Address</th>
-                        <th>Currency</th>
+                        <th>Currency Type</th>
+                        <th>Display Format</th>
                         <th>Status</th>
                         <th>Action</th>
                       </tr>
@@ -1277,12 +1318,7 @@ export function LocationMasterControl({
                         const row = edit ? draft : loc;
                         return (
                           <tr key={loc.id || loc.location_code}>
-                            {[
-                              "location_name",
-                              "location_code",
-                              "address",
-                              "currency_code",
-                            ].map((key) => (
+                            {["location_name", "location_code", "address"].map((key) => (
                               <td key={key}>
                                 {edit ? (
                                   <input
@@ -1292,8 +1328,7 @@ export function LocationMasterControl({
                                       setDraft((v) => ({
                                         ...v,
                                         [key]:
-                                          key === "location_code" ||
-                                          key === "currency_code"
+                                          key === "location_code"
                                             ? e.target.value.toUpperCase()
                                             : e.target.value,
                                       }))
@@ -1304,6 +1339,32 @@ export function LocationMasterControl({
                                 )}
                               </td>
                             ))}
+                            <td>
+                              {edit ? (
+                                <CurrencyTypeSelect
+                                  {...lf.lock("Currency Code")}
+                                  ariaLabel="Currency type"
+                                  value={row.currency_code}
+                                  onChange={(code) => setDraft((v) => ({ ...v, currency_code: code }))}
+                                />
+                              ) : (
+                                loc.currency_code || "—"
+                              )}
+                            </td>
+                            <td>
+                              {edit ? (
+                                <DisplayFormatSelect
+                                  {...lf.lock("Currency Display Format")}
+                                  ariaLabel="Currency display format"
+                                  value={row.currency_display_format}
+                                  onChange={(format) =>
+                                    setDraft((v) => ({ ...v, currency_display_format: format }))
+                                  }
+                                />
+                              ) : (
+                                loc.currency_display_format || "Default"
+                              )}
+                            </td>
                             <td>
                               <span
                                 className={`em-location-status ${loc.status.toLowerCase()}`}
@@ -1374,7 +1435,7 @@ export function LocationMasterControl({
                       })}
                       {!locations.length && (
                         <tr>
-                          <td colSpan={6}>No locations found.</td>
+                          <td colSpan={7}>No locations found.</td>
                         </tr>
                       )}
                     </tbody>

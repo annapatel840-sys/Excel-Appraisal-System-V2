@@ -4,6 +4,7 @@ import {
   hikeAmount as calcHikeAmount,
   hikePct as calcHikePct,
 } from "@/lib/appraisal-data";
+import { activeSymbol, money as formatMoneyAmount } from "@/lib/currency-format";
 
 export const MIN_GROUP = 5; // groups smaller than this are not compared
 export const num = (v) => Number(v) || 0;
@@ -167,26 +168,30 @@ export { calcHikePct };
 // Money as a whole number (no L / Cr, no currency symbol).
 export const money = (v) => {
   const s = v < 0 ? "−" : "";
-  return `${s}${Math.round(Math.abs(v)).toLocaleString("en-IN")}`;
+  return `${s}${formatMoneyAmount(Math.round(Math.abs(v)))}`;
 };
-export const inr = (v) => Math.round(num(v)).toLocaleString("en-IN");
+export const inr = (v) => formatMoneyAmount(Math.round(num(v)));
 
 /* ------------------------------------------------------------------
    Helpers added for the new Overview layout
    ------------------------------------------------------------------ */
 
-// Full value, Indian grouping: "₹ 3,92,45,000". No L / Cr shortening anywhere.
+// Full value in the selected location's currency + display format, e.g. "₹ 3,92,45,000".
+// No L / Cr shortening anywhere.
 export const fmMoney = (v) => {
   const x = num(v);
   const s = x < 0 ? "−" : "";
-  return `${s}₹ ${Math.round(Math.abs(x)).toLocaleString("en-IN")}`;
+  return `${s}${activeSymbol()} ${formatMoneyAmount(Math.round(Math.abs(x)))}`;
 };
 
-// Same, without the rupee sign, for table cells.
-export const fmAmt = (v) => fmMoney(v).replace("₹ ", "");
+// Same, without the currency sign, for table cells.
+export const fmAmt = (v) => {
+  const x = num(v);
+  return `${x < 0 ? "−" : ""}${formatMoneyAmount(Math.round(Math.abs(x)))}`;
+};
 
 // Bar label: the full whole-number value ("3,92,45,000").
-export const barNum = (v) => Math.round(num(v)).toLocaleString("en-IN");
+export const barNum = (v) => formatMoneyAmount(Math.round(num(v)));
 
 // "31-Oct-2026" from an ISO-like date; "" when the date cannot be read.
 export const fmtDate = (value) => {

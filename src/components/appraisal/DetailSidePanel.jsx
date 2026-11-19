@@ -17,6 +17,7 @@ import {
 } from "@/lib/detail-highlight-rules";
 import { PANEL_CSS } from "./detailPanelCss";
 
+import { useCurrencyConfig, money as formatMoneyAmount, moneyLakhs } from "@/lib/currency-format";
 /* ============================================================
    DETAIL SCREEN > PANEL (replaces the old "Feedback" side panel)
 
@@ -40,8 +41,8 @@ const num = (v) => {
   const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
   return Number.isFinite(n) ? n : 0;
 };
-const inr = (n) => Math.round(num(n)).toLocaleString("en-IN");
-const lakhs = (n) => `${(num(n) / 100000).toFixed(2)} L`;
+const inr = (n) => formatMoneyAmount(Math.round(num(n)));
+const lakhs = (n) => moneyLakhs(num(n));
 const pct = (n, d) => (d ? (num(n) / num(d)) * 100 : 0);
 const f1 = (n) => (Math.round(n * 10) / 10).toFixed(1);
 const ratingNum = (v) => {
@@ -273,6 +274,7 @@ function DetailSidePanelView({
   audit,
   budgetCtx,
 }) {
+  useCurrencyConfig();
 
   const [tab, setTab] = useState("info");
   const [sub, setSub] = useState("budget");

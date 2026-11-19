@@ -11,6 +11,7 @@
    ============================================================ */
 import { useSyncExternalStore } from "react";
 import { cycleNameLocation } from "./cycle-name";
+import { setActiveCurrency } from "./currency-format";
 
 export const ALL_LOCATIONS = "All";
 const STORAGE_KEY_PREFIX = "appraisal.selectedLocation.v2:";
@@ -32,10 +33,25 @@ const readStored = (userKey) => {
 
 let activeUserKey = "";
 let selected = ALL_LOCATIONS;
-// Location Master rows registered by the dropdown: [{ name, code }]
+// Location Master rows registered by the dropdown: [{ name, code, currency_code, currency_display_format }]
 let registry = [];
 const listeners = new Set();
-const emit = () => listeners.forEach((fn) => fn());
+
+// The selected location's Currency Type + Display Format drive every amount in the app
+// (see currency-format.js). All Locations / unknown location keeps the original INR look.
+function syncCurrency() {
+  if (isAllLocations(selected)) {
+    setActiveCurrency(null);
+    return;
+  }
+  const key = norm(selected);
+  const hit = registry.find((x) => norm(x.name) === key || norm(x.code) === key);
+  setActiveCurrency(hit ? { code: hit.currency_code, format: hit.currency_display_format } : null);
+}
+const emit = () => {
+  syncCurrency();
+  listeners.forEach((fn) => fn());
+};
 
 export const isAllLocations = (value) => {
   const v = norm(value);
@@ -99,6 +115,8 @@ export function registerLocations(list) {
     .map((x) => ({
       name: String(x?.location_name ?? x?.name ?? "").trim(),
       code: String(x?.location_code ?? x?.code ?? "").trim(),
+      currency_code: String(x?.currency_code ?? "").trim(),
+      currency_display_format: String(x?.currency_display_format ?? "").trim(),
     }))
     .filter((x) => x.name || x.code);
   const firstLocation = registry[0]?.name || registry[0]?.code || "";
@@ -169,6 +187,7 @@ const subscribe = (fn) => {
   const onStorage = (event) => {
     if (event.key === storageKeyForUser(activeUserKey)) {
       selected = event.newValue || ALL_LOCATIONS;
+      syncCurrency();
       fn();
     }
   };

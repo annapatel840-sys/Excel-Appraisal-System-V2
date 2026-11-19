@@ -5,6 +5,8 @@
    cfg: { apiUrl, cycle:{id,name,location}, canApply, applyNote, getSheetEmp(), getHdr(), onBudget(b,info), onApplied(batch), loadXLSX() }
    returns { reload(), dirty(), refresh(), setCycle(c), destroy() } */
 /* eslint-disable */
+/* Hand edit (not from the dummy): amounts follow the selected location's currency display format. Re-apply if this file is regenerated. */
+import { money as fmtMoneyAmount } from "@/lib/currency-format";
 export function createBulkOps(root, cfg) {
   cfg = cfg || {};
   var __docL = [], __winL = [];
@@ -94,9 +96,9 @@ S.rules=[newRule("hikePct",true)];
 /* ---------------- helpers ---------------- */
 function $(id){return root.querySelector("#"+id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function inr(n){return Number(n).toLocaleString("en-IN",{maximumFractionDigits:2})}
+function inr(n){var v=Number(n);return fmtMoneyAmount(v,{decimals:Number.isInteger(v)?0:2})}
 function pct(n){return Number(n).toFixed(2)+"%"}
-function big(n){return Math.round(Number(n)||0).toLocaleString("en-IN")}   /* full amount, no symbol */
+function big(n){return fmtMoneyAmount(Math.round(Number(n)||0))}   /* full amount, no symbol */
 function bucket(e){return e.rating==null?null:Math.min(5,Math.max(1,Math.round(e.rating)))}
 function nowT(){var d=new Date();return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function lvl(p){return p>100?"danger":p>90?"warn":""}
@@ -2022,7 +2024,7 @@ function hStat(arr,s){
 }
 function niceStep(x){var p=Math.pow(10,Math.floor(Math.log10(x))),m=x/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
 function hFmt(v,pct,axis){if(v==null)return "–";if(pct)return v.toFixed(axis?1:1)+"%";
-  return Math.round(v).toLocaleString("en-IN")}
+  return fmtMoneyAmount(Math.round(v))}
 function heroHtml(vr,p){
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var M=HMEAS[HS.meas]||HMEAS.hikePct;if(!HMEAS[HS.meas])HS.meas="hikePct";
@@ -2268,39 +2270,30 @@ function fitBlock(p){
     +body+(over?'<div class="wm" style="color:#B7791F">Over the allocation by '+big(b1.used-al)+' · warning only</div>':'<div class="wm">'+big(al-b1.used)+' left after this change.</div>')+'</div>';
 }
 function cmTable(sc,p){
+  if(SB)return [];
   var m={};sc.forEach(function(e){var k=e.compManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBudget(a,null),b:grpBudget(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
 }
 var _ted57=tedTable;tedTable=function(){return []};
 var _hero=heroHtml;
-function roleNow(){   // the demo has a role picker; in the app the role comes from the login (or "View as")
-  if(!apiMode())return S.role;
-  var r=String((S.as||(ME&&(ME.activeRole||ME.role))||"")).toLowerCase();
-  return /hr|admin/.test(r)?"HR":/comp/.test(r)?"CM":/tech/.test(r)?"TE":"HR";
-}
-function impactTable(title,col,rows,lastCol,lastKey){
-  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by '+title+'</div><div class="tedt"><div class="tedr th"><b>'+col+'</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>'+lastCol+'</span><span>Status</span></div>';
-  rows.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x[lastKey]+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
-  return t+'</div></div>';
-}
 heroHtml=function(vr,p){
-  var h=fitBlock(p)+wiHtml(),role=roleNow();
-  if(role==="CM")return h;
-  var u="",TT=role==="HR"?_ted57(scope(),p):[];
-  if(TT.length>1)u=impactTable("Tech ED","Tech ED",TT,"Skipped","skip");
-  else{var CT=cmTable(scope(),p);if(CT.length>1)u=impactTable("Comp Manager","Comp Manager",CT,"Changing","chg")}
-  if(!u)return h;
-  var k=h.indexOf('<div class="wi wp">');   // the Before vs After block follows Budget fit
-  return k>=0?h.slice(0,k)+u+h.slice(k):h+u;
+  var h=fitBlock(p)+wiHtml();
+  if(S.role==="CM")return h;
+  if(S.role==="HR"){
+    var TT=_ted57(scope(),p);if(TT.length<2)return h;
+    var u='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Skipped</span><span>Status</span></div>';
+    TT.forEach(function(t){u+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
+    u+='</div></div>';var k=h.indexOf('<div class="wi wp">');return k>=0?h.slice(0,k)+u+h.slice(k):h+u}
+  var CT=cmTable(scope(),p);if(CT.length<2)return h;
+  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Comp Manager</div><div class="tedt"><div class="tedr th"><b>Comp Manager</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Changing</span><span>Status</span></div>';
+  CT.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x.chg+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
+  t+='</div></div>';
+  var i=h.indexOf('<div class="wi wp">');
+  return i>=0?h.slice(0,i)+t+h.slice(i):h+t;
 };
 var _smY=smYears;smYears=function(){return ""};
-/* Employees is part of Summary: "View Employees" at the end of Summary opens the list, "Back to Summary" returns. */
-var _sum54=sumTab;sumTab=function(c){
-  var h=_sum54(c),i=h.lastIndexOf('</div>'),add='<div class="wm" style="margin:8px 0"><button class="btn lnk" id="bViewEmp" type="button">View Employees ›</button></div>';
-  return i>=0?h.slice(0,i)+add+h.slice(i):h+add;
-};
 /* Rating bell: people at each rating against a target bell, with the average Hike % or Total Reward % per rating */
 var BELL_TG={5:10,4:20,3:50,2:15,1:5};
 S.bcPlot=S.bcPlot||"";S.bcCmp=S.bcCmp||"both";
@@ -2348,8 +2341,7 @@ chartsTab=function(c){
   return '<div class="sm">'+_hero(vr,p)+(LYK?_smY(vr,p,K0):'')+'</div>'+hikeDist(vr,p,K0);
 };
 /* old What-If / Checks places now land on Summary (the drill-down lives there) */
-var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot"||t==="history")t="summary";_setPT54(t)};
-if(PT==="history")PT="summary";
+var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot")t="summary";_setPT54(t)};
 $("imp").addEventListener("click",function(ev){var f=ev.target.closest&&ev.target.closest("[data-fit]");if(!f)return;ev.stopImmediatePropagation();FIT_VIEW=f.getAttribute("data-fit");renderImpact()},true);
 $("imp").addEventListener("change",function(ev){var t=ev.target;if(!t||!t.id)return;if(t.id==="bcPlot"){S.bcPlot=t.value;renderImpact()}else if(t.id==="bcCmp"){S.bcCmp=t.value;renderImpact()}});
 

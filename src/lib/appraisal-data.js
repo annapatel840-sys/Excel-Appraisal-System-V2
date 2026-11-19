@@ -3,6 +3,7 @@
 // ============================================================
 
 import { parseDateValue } from "./employee-master-data";
+import { money as formatMoneyAmount } from "./currency-format";
 
 // Dropdown options
 // Manager Rating is a whole number 1-5 (read from Feedback_And_Rating).
@@ -824,7 +825,8 @@ export function buildEmployees(count = 250) {
 // FORMATTING
 // ============================================================
 
-export const inr = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+// Whole amount in the selected location's currency display format (Location Master).
+export const inr = (n) => formatMoneyAmount(Math.round(Number(n) || 0));
 
 export const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 

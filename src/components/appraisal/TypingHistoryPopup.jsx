@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 /*
  * Small history table that appears while typing in an editable number cell
  * of the Appraisal Sheet. It is docked top-right of the grid (it moves to the
@@ -19,7 +20,7 @@ const MAX_CYCLES = 3;
 const fmt = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return "0";
-  return Math.round(n).toLocaleString("en-IN");
+  return formatMoneyAmount(Math.round(n));
 };
 
 // Small figure under a value: "% of base" for Hike Amount, otherwise the
@@ -65,6 +66,7 @@ export function TypingHistoryPopup({
   topOffset,
   onClose,
 }) {
+  useCurrencyConfig();
   const ref = useRef(null);
   const [pos, setPos] = useState({ left: 16, top: 120 });
 

@@ -415,3 +415,34 @@
 .em-location-master-table-wrap .em-location-table th { font-size: 13.5px; font-weight: 700; }
 .em-location-master-table-wrap .em-location-table .em-location-status { font-size: 12.5px; }
 .em-location-master-table-wrap .em-location-row-actions .em-btn { font-size: 13px; }
+/* ---- Location Master: currency type / display format dropdowns (Zoho-style) ---- */
+.em-picker-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-width: 0; min-height: 38px; box-sizing: border-box;
+  padding: 8px 10px; border: 1px solid var(--border, #cbd5e1); border-radius: 7px;
+  background: var(--card, #fff); color: var(--foreground, #172033);
+  font: inherit; font-size: 13px; font-weight: 400; text-align: left; cursor: pointer;
+}
+.em-picker-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.em-picker-trigger:hover:not(:disabled) { border-color: #94a3b8; }
+.em-picker-trigger.is-open, .em-picker-trigger:focus-visible { border-color: #2f6fed; outline: none; box-shadow: 0 0 0 2px rgba(47,111,237,.18); }
+.em-picker-trigger:disabled { opacity: .6; cursor: not-allowed; }
+.em-picker-placeholder { color: #94a3b8; }
+.em-picker-chevron { flex: none; transition: transform .15s; }
+.em-picker-trigger.is-open .em-picker-chevron { transform: rotate(180deg); }
+.em-picker-menu {
+  position: fixed; z-index: 4000; display: flex; flex-direction: column; box-sizing: border-box;
+  padding: 6px; border: 1px solid var(--border, #dbe1ea); border-radius: 10px;
+  background: var(--card, #fff); color: var(--foreground, #172033);
+  box-shadow: 0 12px 32px rgba(15,23,42,.18); font-family: inherit;
+}
+.em-picker-search { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 0 10px; border: 1px solid #2f6fed; border-radius: 7px; color: #64748b; }
+.em-picker-search input { flex: 1; min-width: 0; padding: 8px 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 13px; }
+.em-picker-list { overflow-y: auto; min-height: 0; }
+.em-picker-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.em-picker-list button:hover { background: var(--muted, #f1f5f9); }
+.em-picker-list button.is-active { background: #eef3fe; color: #1d4fa8; font-weight: 600; }
+.em-picker-empty { padding: 10px; color: #64748b; font-size: 13px; }
+.em-currency-preview { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; font-size: 12px; font-weight: 600; }
+.em-currency-preview strong { display: flex; align-items: center; min-height: 38px; padding: 0 10px; border: 1px dashed var(--border, #cbd5e1); border-radius: 7px; background: var(--card, #fff); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.em-location-master-table-wrap .em-location-table td .em-picker-trigger { min-width: 150px; min-height: 32px; padding: 5px 8px; }

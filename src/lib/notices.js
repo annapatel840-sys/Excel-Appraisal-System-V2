@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { money as formatMoneyAmount } from "@/lib/currency-format";
 
 /*
  * Dynamic notices for the Appraisal Sheet bell and the Detailed Screen banner.
@@ -42,8 +43,7 @@ const writeDismissed = (list) => {
   }
 };
 
-const money = (n) =>
-  Math.round(Number(n) || 0).toLocaleString("en-IN");
+const money = (n) => formatMoneyAmount(Math.round(Number(n) || 0));
 
 const when = (iso) => {
   const t = new Date(iso).getTime();

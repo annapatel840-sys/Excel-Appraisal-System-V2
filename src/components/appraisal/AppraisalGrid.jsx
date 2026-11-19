@@ -40,6 +40,7 @@ import {
   locationOfRow,
   useSelectedLocation,
 } from "@/lib/location-store";
+import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 // ============================================================
 // API
 // ============================================================
@@ -425,7 +426,7 @@ const formatHistoryNumber = (value) => {
     return "0";
   }
 
-  return Math.round(n).toLocaleString("en-IN");
+  return formatMoneyAmount(Math.round(n));
 };
 
 const computeHistoryChange = (currentValue, previousValue) => {
@@ -1988,6 +1989,7 @@ export function AppraisalGrid({
   isHR = false,
   onRequest,
 }) {
+  useCurrencyConfig();
   const { updateCell, updateLinkedCells, bulkUpdate, modified, readOnlyCycle } =
     useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;

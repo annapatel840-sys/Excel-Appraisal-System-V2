@@ -3,6 +3,7 @@ import { Component, useMemo, useState } from "react";
 import { totalRewardsHikePct, yoeRatio } from "@/lib/appraisal-data";
 import { cycleKey } from "@/lib/employee-feedback";
 
+import { useCurrencyConfig, activeSymbol, money as formatMoneyAmount, moneyCompact, usesLakhGrouping } from "@/lib/currency-format";
 /* ============================================================
    Detail Screen > Feedback panel > "Metrics" tab.
 
@@ -49,8 +50,10 @@ const lakh = (v) =>
   v === null || v === undefined
     ? "—"
     : Math.abs(v) < 1e5
-      ? Math.round(v).toLocaleString("en-IN")
-      : `${(v / 1e5).toFixed(1)}L`;
+      ? formatMoneyAmount(Math.round(v))
+      : usesLakhGrouping()
+        ? `${(v / 1e5).toFixed(1)}L`
+        : moneyCompact(v, { withSymbol: false });
 const norm = (v) => String(v ?? "").trim().toLowerCase();
 const last = (arr) => arr[arr.length - 1];
 
@@ -251,6 +254,7 @@ function DetailMetricsTabInner({
   currentCycleName,
   live,
 }) {
+  useCurrencyConfig();
   const [shown, setShown] = useState(() => readStore(SHOWN_KEY, DEFAULT_SHOWN));
   const [basis, setBasis] = useState(() => {
     const saved = readStore(PEER_KEY, { basis: "desig" }).basis;
@@ -404,8 +408,8 @@ function DetailMetricsTabInner({
             {hikeHistory.length ? ` — history ${hikeHistory.join(", ")}` : ""}
           </li>
           <li>
-            Bonus: ₹{lakh(live.pb + live.rb)}
-            {prevTotal ? `, ${live.pb + live.rb >= prevTotal ? "up" : "down"} from ₹${lakh(prevTotal)} last cycle` : ""}
+            Bonus: {activeSymbol()}{lakh(live.pb + live.rb)}
+            {prevTotal ? `, ${live.pb + live.rb >= prevTotal ? "up" : "down"} from ${activeSymbol()}${lakh(prevTotal)} last cycle` : ""}
             {pbPct !== null ? ` · PB paid ${fx(pbPct, 0)}% of target` : ""}
           </li>
           <li>

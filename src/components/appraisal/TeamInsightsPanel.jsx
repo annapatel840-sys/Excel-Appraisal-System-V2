@@ -10,6 +10,7 @@ import {
   TYPE_LABEL,
 } from "@/lib/budget-engine";
 
+import { useCurrencyConfig } from "@/lib/currency-format";
 const NAVY = "#17365d";
 
 const PILL_CLASS = {
@@ -20,6 +21,7 @@ const PILL_CLASS = {
 };
 
 export function TeamInsightsPanel({ onViewChanges }) {
+  useCurrencyConfig();
   const {
     currentUser,
     isHR,

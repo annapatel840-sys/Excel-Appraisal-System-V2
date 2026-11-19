@@ -7,6 +7,7 @@ import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { useRowSelection } from "@/lib/table-export";
 import { FilterStatus, filterTableCss, useTableFilters } from "./FilterableTable";
 
+import { useCurrencyConfig, money as formatMoneyAmount } from "@/lib/currency-format";
 const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
   emp_name: { label: "Employee Name" },
@@ -82,7 +83,7 @@ function priorRecordFor(rec, priorMap) {
   return priorMap?.get(rec) || null;
 }
 function fmtMoney(v) {
-  return v == null ? "—" : Math.round(v).toLocaleString("en-IN");
+  return v == null ? "—" : formatMoneyAmount(Math.round(v));
 }
 function yoyPctFor(r, baseKey, priorMap) {
   const prior = priorRecordFor(r, priorMap);
@@ -117,6 +118,7 @@ function defaultPayrollColumnWidth(column) {
 const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
+  useCurrencyConfig();
   const canAudit = useAccess().canAction("viewAudit");
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();

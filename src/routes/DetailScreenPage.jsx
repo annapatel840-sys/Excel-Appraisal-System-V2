@@ -12,15 +12,16 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
+import { useCurrencyConfig, activeSymbol, money as formatMoneyAmount, moneyLakhs } from "@/lib/currency-format";
 /* index.html: <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
 const HISTORY_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CYCLE = "Apr-26";
 
 const n = (v) => Number(v) || 0;
 const blank = (v) => v === "" || v == null;
-const fmt = (v) => Math.round(n(v)).toLocaleString("en-IN");
+const fmt = (v) => formatMoneyAmount(Math.round(n(v)));
 const fmtB = (v) => (blank(v) ? "" : fmt(v));
-const lakhs = (v) => `${(n(v) / 1e5).toFixed(2)} L`;
+const lakhs = (v) => moneyLakhs(n(v));
 const dash = (v) => (blank(v) ? "—" : v);
 const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
 const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
@@ -262,6 +263,7 @@ const rc = (p) =>
   tone(p) === "ok" ? "rok" : tone(p) === "warn" ? "rwarn" : "rbad";
 
 export function DetailScreenPage() {
+  useCurrencyConfig();
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const budgetStore = useBudget();
   const { currentUser, isHR } = budgetStore;
@@ -854,7 +856,7 @@ export function DetailScreenPage() {
           <div className="kpis">
             <div className="kpi">
               <span>Budget Allocated</span>
-              <b>₹ {lakhs(bud.allocated)}</b>
+              <b>{activeSymbol()} {lakhs(bud.allocated)}</b>
             </div>
             <div className="kpi">
               <span>Utilisation</span>
