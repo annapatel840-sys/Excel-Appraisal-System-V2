@@ -3769,6 +3769,16 @@ async function calculateBudgetBases(
     // manager's normal percentage allocation. This keeps received budget
     // available for onward transfers even when employee moves change bases.
     const compManagerTransferHistory = await getAllRows(app, "Comp_Manager_Transfer_History").catch(() => []);
+    const transferHistoryTouchesComp = (transfer, techRaw, compRaw) => {
+      if (cycleReference(value(transfer, "appraisal_cycle_id")) !== cycleId) return false;
+      const historyTechKey = canonicalTechKey(resolvePersonId(value(transfer, "tech_ed_id")));
+      const currentTechKey = canonicalTechKey(resolvePersonId(techRaw));
+      if (historyTechKey !== currentTechKey) return false;
+      const currentCompKey = ownerKey(resolvePersonId(compRaw));
+      const sourceKey = ownerKey(resolvePersonId(value(transfer, "source_comp_manager_id")));
+      const destinationKey = ownerKey(resolvePersonId(value(transfer, "destination_comp_manager_id")));
+      return Boolean(currentCompKey && (currentCompKey === sourceKey || currentCompKey === destinationKey));
+    };
     // Upsert Comp Manager owners under their matching Tech-ED parent.
     const touchedCompRowIds = new Set();
     for (const [pairKey, details] of compLabels) {
@@ -3834,24 +3844,18 @@ async function calculateBudgetBases(
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (originalBase * pct) / 100;
-      const currentTransferTechKey = canonicalTechKey(
-        resolvePersonId(details.techEdKey),
+      // A transfer explicitly moves a fixed amount of budget. Keep that
+      // persisted amount stable across refreshes; ordinary, untouched manager
+      // allocations continue to recalculate from their team base and percent.
+      const hasTransferHistory = compManagerTransferHistory.some((transfer) =>
+        transferHistoryTouchesComp(transfer, details.techEdKey, details.compKey),
       );
-      const currentTransferCompKey = ownerKey(resolvePersonId(details.compKey));
-      const transferNet = compManagerTransferHistory.reduce((net, transfer) => {
-        if (cycleReference(value(transfer, "appraisal_cycle_id")) !== cycleId) return net;
-        const transferTechKey = canonicalTechKey(
-          resolvePersonId(value(transfer, "tech_ed_id")),
-        );
-        if (transferTechKey !== currentTransferTechKey) return net;
-        const sourceKey = ownerKey(resolvePersonId(value(transfer, "source_comp_manager_id")));
-        const destinationKey = ownerKey(resolvePersonId(value(transfer, "destination_comp_manager_id")));
-        const amount = n(value(transfer, "transferred_budget"));
-        if (sourceKey === currentTransferCompKey) return net - amount;
-        if (destinationKey === currentTransferCompKey) return net + amount;
-        return net;
-      }, 0);
-      const updatedBudget = (stats.base * pct) / 100 + transferNet;
+      const updatedBudget = hasTransferHistory
+        ? n(row.applied_budget)
+        : (stats.base * pct) / 100;
+      const updatedPct = hasTransferHistory && stats.base > 0
+        ? (updatedBudget / stats.base) * 100
+        : pct;
       const savedOriginalCountValue = row.original_headcount;
       const rosterCount = Number(stats.count) || 0; // immutable baseline = raw generated Appraisal_Sheet rows
       const savedOriginalCountNumber = n(savedOriginalCountValue);
@@ -3872,6 +3876,7 @@ async function calculateBudgetBases(
         [compCalcField]: originalBudget,
         applied_budget: updatedBudget,
         total_utilization: stats.utilized,
+        ...(hasTransferHistory && stats.base > 0 ? { percentage: updatedPct } : {}),
       };
       if (compColumns) {
         const originalBaseField = [
@@ -3924,6 +3929,7 @@ async function calculateBudgetBases(
         budget_base: stats.base,
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
+        percentage: updatedPct,
         // Return live Current Count to the response only; do not persist it
         // over the legacy Original Count snapshot.
         current_headcount: Number(stats.current) || 0,
@@ -3951,10 +3957,20 @@ async function calculateBudgetBases(
         n(staleRow.current_headcount) === 0
       )
         continue;
+      const staleParent = bundle.techEd.find(
+        (parent) => String(parent.id) === String(staleRow.budget_distribution_id),
+      );
+      const staleHasTransferHistory = compManagerTransferHistory.some((transfer) =>
+        staleParent && transferHistoryTouchesComp(
+          transfer,
+          staleParent.appraiser_tech_ed_id,
+          staleRow.comp_manager,
+        ),
+      );
       await compTable.updateRow({
         ROWID: staleRow.id,
         budget_base: 0,
-        applied_budget: 0,
+        ...(staleHasTransferHistory ? {} : { applied_budget: 0 }),
         total_utilization: 0,
       });
       // A stale Comp Manager can have zero live employees after delegation.
@@ -3985,7 +4001,7 @@ async function calculateBudgetBases(
       );
       Object.assign(staleRow, {
         budget_base: 0,
-        applied_budget: 0,
+        ...(staleHasTransferHistory ? {} : { applied_budget: 0 }),
         total_utilization: 0,
         current_headcount: 0,
       });
