@@ -1717,10 +1717,10 @@ export function TechEdBudgetDistribution() {
   // The signed-in manager's own saved allocation rows are the source
   // choices. Sibling rows are destinations under this exact parent only.
   const transferSourceRows = transferManagerRows.filter((row) =>
-    liveComps.some((ownRow) => String(ownRow.id) === String(row.id)),
+    cmNodes.some((node) => String(node.liveId) === String(row.id)),
   );
   const transferDestinationRows = transferManagerRows.filter((row) =>
-    !liveComps.some((ownRow) => String(ownRow.id) === String(row.id)),
+    !cmNodes.some((node) => String(node.liveId) === String(row.id)),
   );
   async function transferCompManagerTeam() {
     if (!transferParentId || !transferSource || !transferDestination || transferring) return;
