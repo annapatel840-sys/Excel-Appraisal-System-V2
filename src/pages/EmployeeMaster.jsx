@@ -58,6 +58,7 @@
 // import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 // import { ProcessingOverlay } from "@/components/ui/processing-overlay";
 // import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
+import { useBudget } from "@/lib/budget-store";
 // import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
 // import "@/styles/employee-master.css";
@@ -605,6 +606,7 @@
 //    ============================================================ */
 
 // export function EmployeeMaster() {
+  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
 //   const catalystUser = useCatalystUser();
 //   const { refreshEmployees } = useAppraisalRefresh();
 //   const role = String(catalystUser?.role || "")
@@ -3830,6 +3832,15 @@ export function EmployeeMaster() {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+  // Warm the shared cycle-wise budget snapshot while HR Operations is open.
+  // Budget Master then joins the in-flight/completed request instead of starting
+  // its first Catalyst reads only after the tab is clicked.
+  useEffect(() => {
+    if (["hr", "humanresources", "hroperation", "appadministrator"].includes(role)) {
+      requestBudgetData();
+    }
+  }, [role, requestBudgetData]);
+
   const isTechEd = role.includes("teched");
   // UI gating only (the backend enforces authorization). Roster/status and
   // eligibility writes are for HR and App Administrator; others read only.
