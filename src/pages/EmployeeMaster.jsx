@@ -3199,7 +3199,7 @@ import {
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
+import { cycleLocationOf, isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { DesignationMasterPage } from "@/components/employee-master/DesignationMasterPage";
 import {
   FIELD_DEFS,
@@ -6438,6 +6438,11 @@ export function EmployeeMaster() {
                     if (tab === "payroll-upload") {
                       setUploadScreen(requestedUploadScreen || "");
                       setUploadCycleId(String(cycle?.id || ""));
+                    }
+                    // Letters are shown location-wise: open the location of the cycle the user came from.
+                    if (tab === "letters" && cycle) {
+                      const cycleLoc = cycleLocationOf(cycle);
+                      if (cycleLoc && !isAllLocations(cycleLoc)) setLocationFilter(cycleLoc);
                     }
                     if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
                       goToTab(tab);

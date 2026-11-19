@@ -539,6 +539,26 @@ export function sendLetters(S, ids) {
   return { sent: sent.length, failed: sent.filter((l) => l.status === "Failed").length, blocked };
 }
 
+/* "Send" on the Letters screen for now: no mail goes out yet. A Ready letter (opening Preview does not change it)
+   becomes Delivered and is stamped with who / when / to whom. When mail is connected, only this function changes. */
+export const UNSENT_STATUSES = ["Ready", "Reviewed", "Failed"];
+export function markSent(S, ids) {
+  let n = 0;
+  ids.forEach((id) => {
+    const l = lOf(S, id);
+    if (!l || UNSENT_STATUSES.indexOf(l.status) < 0) return;
+    const r = empOf(S, l);
+    l.status = "Delivered";
+    l.sentOn = S.t || nowStamp();
+    l.sentBy = (S.actor || "HR") + " (HR)";
+    l.sentTo = (r && r.email) || "";
+    audit(S, "Letter", l.id, "Sent", "", "Marked as sent (mail is not connected yet)" + (l.sentTo ? "; to " + l.sentTo : ""), "v" + l.ver);
+    n++;
+  });
+  refreshStale(S);
+  return n;
+}
+
 export function markReviewed(S, ids) {
   let n = 0;
   ids.forEach((id) => {

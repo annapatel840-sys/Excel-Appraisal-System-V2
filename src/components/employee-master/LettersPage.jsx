@@ -16,10 +16,10 @@ import {
   needLetters,
   num,
   pick,
-  sendProblem,
   tagValues,
   templateGroup,
   tplOf,
+  UNSENT_STATUSES,
 } from "@/lib/letters-core";
 import * as store from "@/lib/letters-store";
 import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
@@ -175,41 +175,29 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     [S, version, sel],
   );
 
-  /* Preview opens the letter as it will be sent. For HR, opening a Ready
-     letter counts as reviewing it. */
+  /* Preview opens the letter as it will be sent (the template filled with this employee's values).
+     Opening it does not change the status: the letter stays Ready until Send is clicked. */
   const openPreview = (id) => {
-    const l = S.letters.find((x) => x.id === id);
-    if (canEdit && l && l.status === "Ready") store.previewLetter(id, actor);
     setPvErr("");
     setPv(id);
   };
+  /* Send: no mail goes out yet. Ready -> Delivered, stamped with who and when. */
+  const sendable = (l) => canEdit && !!l && UNSENT_STATUSES.includes(l.status);
   const rowSend = (id) => {
-    const l = S.letters.find((x) => x.id === id);
-    const why = l ? sendProblem(S, l) : "status is unknown";
-    if (why) {
-      toast("Cannot send: " + why);
-      return;
-    }
-    const res = store.sendLetters([id], actor);
-    const after = S.letters.find((x) => x.id === id);
-    if (res.sent && after) toast(after.status === "Failed" ? "Send failed; use Send again" : "Sent to " + after.sentTo);
+    if (!sendable(S.letters.find((x) => x.id === id))) return;
+    store.markLettersSent([id], actor);
+    toast("Marked as sent");
   };
   const sendFromPreview = () => {
-    const l = S.letters.find((x) => x.id === pv);
-    const why = l ? sendProblem(S, l) : "status is unknown";
-    if (why) {
-      setPvErr("Cannot send: " + why + ".");
-      return;
-    }
-    store.sendLetters([pv], actor);
-    const after = S.letters.find((x) => x.id === pv);
+    if (!sendable(S.letters.find((x) => x.id === pv))) return;
+    store.markLettersSent([pv], actor);
     setSel((cur) => {
       const n = new Set(cur);
       n.delete(pv);
       return n;
     });
     setPv(null);
-    toast(after && after.status === "Failed" ? "Send failed; retry from Preview or Send" : "Sent to " + (after ? after.sentTo : ""));
+    toast("Marked as sent");
   };
 
   /* ---------------- grid columns ---------------- */
@@ -238,7 +226,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       render: (l) => (
         <span style={{ whiteSpace: "nowrap" }}>
           <button type="button" className="lt-lnk" onClick={() => openPreview(l.id)}>Preview</button>
-          {canEdit && (l.status === "Reviewed" || l.status === "Failed") && (
+          {sendable(l) && (
             <>
               <span className="lt-sep">|</span>
               <button type="button" className="lt-lnk" onClick={() => rowSend(l.id)}>Send</button>
@@ -620,9 +608,8 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     const r = empOf(S, l);
     const t = tplOf(S, l.tpl);
     const mg = mergeLetterHtml(t.html, tagValues(S, l), t.sg);
-    const sendable = canEdit && (l.status === "Reviewed" || l.status === "Failed");
-    const why = sendable ? sendProblem(S, l) : "";
-    const note = pvErr || (why ? `Cannot send: ${why}.` : l.alert || "");
+    const canSend = sendable(l);
+    const note = pvErr || l.alert || "";
     return (
       <div className="lt-preview-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setPv(null)}>
         <div className="lt-preview-modal" role="dialog" aria-modal="true" aria-label="Letter preview">
@@ -644,7 +631,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           <div className="lt-preview-foot">
             <span className="err">{note}</span>
             <span className="lt-sp" />
-            {sendable && <button type="button" className="lt-btn main" disabled={!!why} onClick={sendFromPreview}>Send</button>}
+            {canSend && <button type="button" className="lt-btn main" onClick={sendFromPreview}>Send</button>}
             <button type="button" className="lt-btn" onClick={() => setPv(null)}>Close</button>
           </div>
         </div>

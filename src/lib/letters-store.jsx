@@ -353,6 +353,8 @@ export async function clearLettersForCycle(cycle, actor) {
 export const reviewLetters = (ids, actor) => run(actor, (st) => core.markReviewed(st, ids));
 export const previewLetter = (id, actor) => run(actor, (st) => core.reviewOnPreview(st, id));
 export const sendLetters = (ids, actor) => run(actor, (st) => core.sendLetters(st, ids));
+// The Send button on the Letters screen: Ready -> Delivered (no mail yet).
+export const markLettersSent = (ids, actor) => run(actor, (st) => core.markSent(st, ids));
 export const moreOnLetters = (action, ids, reason, actor) => run(actor, (st) => core.moreAction(st, action, ids, reason));
 export const sendTestLetter = (id, actor) => run(actor, (st) => core.testSend(st, core.lOf(st, id)));
 export const sendTestTemplate = (id, empName, version, actor) =>

@@ -5,7 +5,7 @@ import {
   createState, pick, generateLetters, lettersStats, bindAnnualCycle, loadSampleLetters,
   merge, sendProblem, sendLetters, markReviewed, moreAction, refreshStale, needLetters,
   inr, words, fyOf, ruleMessages, fieldMessages, saveTemplate, lOf, rowOf, tplOf,
-  reviewOnPreview, resolveTemplate, publishTemplate, applyServerTemplates, templateMessages,
+  reviewOnPreview, markSent, resolveTemplate, publishTemplate, applyServerTemplates, templateMessages,
 } from "./letters-core.js";
 
 const CYCLE = { id: "74008000000099999", name: "Annual 2026", effective: "2026-04-01" };
@@ -241,4 +241,16 @@ test("loadSampleLetters shows every status and keeps Generate idempotent", () =>
   const r = generateLetters(S, CYCLE.id);
   assert.ok(r.regenerated >= 1);
   assert.ok(S.letters.length > n);
+});
+
+test("Send marks a Ready letter Delivered (no mail yet); Preview leaves it Ready", () => {
+  const S = fresh();
+  generateLetters(S, CYCLE.id);
+  const l = letterOf(S, "E1001", "Revision");
+  assert.equal(l.status, "Ready");
+  assert.equal(markSent(S, [l.id]), 1);
+  assert.equal(l.status, "Delivered");
+  assert.ok(l.sentOn && l.sentBy);
+  assert.equal(S.audit[0].action, "Sent");
+  assert.equal(markSent(S, [l.id]), 0); // already delivered: nothing happens twice
 });
