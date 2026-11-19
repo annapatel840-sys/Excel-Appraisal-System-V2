@@ -1170,6 +1170,7 @@ export function useDistributionBudget() {
       )
         return;
       const rawManager =
+        employee.delegation_comp_manager ||
         employee.comp_manager ||
         employee.comp_manager_id ||
         employee.compManager ||
