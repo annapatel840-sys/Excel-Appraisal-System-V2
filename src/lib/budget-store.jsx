@@ -252,6 +252,8 @@ export function BudgetProvider({ children }) {
     useState(initialTechEd);
   const [budgetCompManagerRows, setBudgetCompManagerRows] =
     useState(initialComp);
+  const [budgetCompManagerTransferOptions, setBudgetCompManagerTransferOptions] =
+    useState(Array.isArray(initialBudget?.compManagerTransferOptions) ? initialBudget.compManagerTransferOptions : []);
   const [employeeRows, setEmployeeRows] = useState(
     Array.isArray(initialBudget?.employeeRoster)
       ? initialBudget.employeeRoster
@@ -283,6 +285,7 @@ export function BudgetProvider({ children }) {
       setBudgetMasterRows([]);
       setBudgetDistributionRows([]);
       setBudgetCompManagerRows([]);
+      setBudgetCompManagerTransferOptions([]);
       setEmployeeRows([]);
       setTechEdOwners([]);
       setBudgetWarning("");
@@ -346,6 +349,11 @@ export function BudgetProvider({ children }) {
     setBudgetMasterRows(master);
     setBudgetDistributionRows(techEd);
     setBudgetCompManagerRows(comp);
+    setBudgetCompManagerTransferOptions(
+      (Array.isArray(initialBudget.compManagerTransferOptions) ? initialBudget.compManagerTransferOptions : [])
+        .map((row) => ({ ...row, id: String(row.id || ""), appraisal_cycle_id: String(row.appraisal_cycle_id || ""), budget_distribution_id: String(row.budget_distribution_id || ""), comp_manager: String(row.comp_manager || ""), percentage: number(row.percentage), calculated_budget: number(row.calculated_budget), total_utilization: number(row.total_utilization), applied_budget: number(row.applied_budget) }))
+        .filter((row) => !cycleId || !row.appraisal_cycle_id || row.appraisal_cycle_id === cycleId || techEd.some((parent) => String(parent.id) === String(row.budget_distribution_id))),
+    );
     setEmployeeRows(
       Array.isArray(initialBudget.employeeRoster)
         ? initialBudget.employeeRoster
@@ -486,6 +494,11 @@ export function BudgetProvider({ children }) {
       setBudgetMasterRows(normalizedMaster);
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
+      setBudgetCompManagerTransferOptions(
+        (Array.isArray(budgetJson && budgetJson.compManagerTransferOptions) ? budgetJson.compManagerTransferOptions : [])
+          .map((row) => ({ ...row, id: String(row.id || ""), appraisal_cycle_id: String(row.appraisal_cycle_id || ""), budget_distribution_id: String(row.budget_distribution_id || ""), comp_manager: String(row.comp_manager || ""), percentage: number(row.percentage), calculated_budget: number(row.calculated_budget), total_utilization: number(row.total_utilization), applied_budget: number(row.applied_budget) }))
+          .filter((row) => !activeCycleId || !row.appraisal_cycle_id || row.appraisal_cycle_id === activeCycleId || normalizedTechEd.some((parent) => String(parent.id) === String(row.budget_distribution_id))),
+      );
 
       // The budget response is complete. Release the Budget loading state now;
       // employee enrichment below must not hold up Budget Allocated.
@@ -1386,6 +1399,7 @@ export function BudgetProvider({ children }) {
         activeBudgetCycleId,
         budgetDistributionRows,
         budgetCompManagerRows,
+        budgetCompManagerTransferOptions,
         employeeRows,
         locationEmployeeRows,
         selectedLocation,
