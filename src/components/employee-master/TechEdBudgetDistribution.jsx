@@ -1852,11 +1852,20 @@ export function TechEdBudgetDistribution() {
   }
   // COMP_MANAGER_TRANSFER END
 
+  // My Budget must represent the authenticated manager's complete active-cycle
+  // allocation, which may span multiple Tech-Ed parents. Transfer selection is
+  // deliberately separate and must never blank or replace the normal budget card.
   const selectedCompManager = isCompManagerView
-    ? transferSource || selectedManagerNode?.name || ""
+    ? selectedManagerNode?.name || ""
     : "";
-  const selectedCompManagerBudgetRow = isCompManagerView
-    ? selectedTransferSourceRow
+  const selectedCompManagerBudgetRow = isCompManagerView && selectedManagerNode
+    ? {
+        id: selectedManagerNode.liveId,
+        calculated_budget: selectedManagerNode.original,
+        applied_budget: selectedManagerNode.updated,
+        original_headcount: selectedManagerNode.team0,
+        total_utilization: selectedManagerNode.liveUtilized,
+      }
     : null;
 
   const assignedTeam = useMemo(() => {
@@ -1886,37 +1895,8 @@ export function TechEdBudgetDistribution() {
           .some((alias) => ownerMatches(alias, raw)),
       );
       const assignment = String(linked?.assignment || raw).trim();
-      // Comp Manager totals are for the selected Tech-Ed allocation only.
-      // This avoids showing employees and budget belonging to another
-      // Tech-Ed where the same Comp Manager also has an allocation.
-      if (isCompManagerView) {
-        if (!selectedTransferParent) return false;
-        const selectedTechEdRaw =
-          selectedTransferParent.appraiser_tech_ed_id ||
-          selectedTransferParent.tech_ed_id ||
-          selectedTransferParent.tech_ed ||
-          "";
-        const selectedTechEdOwner = techEdOwners.find((owner) =>
-          [
-            owner?.employee_id,
-            owner?.row_id,
-            owner?.ROWID,
-            owner?.assignment,
-            owner?.name,
-            owner?.email,
-            owner?.email_id,
-          ]
-            .filter(Boolean)
-            .some((alias) => ownerMatches(alias, selectedTechEdRaw)),
-        );
-        const selectedTechEd = selectedTechEdOwner?.assignment || selectedTechEdRaw;
-        if (!ownerMatches(assignment, selectedTechEd)) return false;
-      }
-      // Team Size is the current generated Appraisal_Sheet roster, not
-      // the eligible payroll/budget subset. Inactive or Not Eligible employees
-      // remain in the team count while they are still on this cycle's sheet.
-      // A Comp Manager login is scoped server-side to its own team (possibly
-      // across several Tech-Eds), so do not restrict it to one Tech-Ed.
+      // Team Size for a Comp Manager is across all of their Tech-Ed allocations.
+      // Transfer dropdown selection only scopes a single transfer operation.
       if (
         !isCompManagerLogin &&
         !(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey)
@@ -1944,7 +1924,6 @@ export function TechEdBudgetDistribution() {
     isCompManagerView,
     isCompManagerLogin,
     selectedCompManager,
-    selectedTransferParent,
   ]);
   // Hide Comp Manager allocations that have no Appraisal Sheet employees
   // in the currently selected location. Keep the underlying allocation data
