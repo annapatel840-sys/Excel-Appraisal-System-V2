@@ -481,21 +481,18 @@ const BulkOperations = forwardRef(function BulkOperations(
             <strong>{rupees(b0.tpb)}</strong>
           </div>
         </div>
-        {/* "Menu" button (was "More"): same ids the screen's engine already wires (replaces the old "Mock screen" label) */}
+        {/* Reset sits where the old Menu button was. Scenarios and History are tabs now; Save as Scenario is inside the
+            Scenarios tab. The hidden stubs below only keep the ids the engine still looks up (nothing is shown). */}
         <div className="more tb-more">
-          <button className="btn" id="bMore" type="button" title="Menu" aria-label="Menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            <span>Menu</span>
+          <button className="btn" id="bReset" type="button" title="Reset the rule, the filters and the preview">
+            <span>Reset</span>
           </button>
-          <div className="menu" id="moreM">
-            <button id="bScnSave" type="button">Save as Scenario</button>
-            <button id="bScnOpen" type="button">Scenarios &amp; History ›</button>
-            <button id="bRestoreLast" type="button">Restore Last Apply</button>
-            <hr />
-            <button id="bExport" type="button">Export to Excel</button>
-            <button id="bReset" type="button">Reset</button>
+          <div hidden aria-hidden="true">
+            <button id="bMore" type="button" tabIndex={-1} />
+            <div id="moreM" />
+            <button id="bScnOpen" type="button" tabIndex={-1} />
+            <button id="bRestoreLast" type="button" tabIndex={-1} />
+            <button id="bExport" type="button" tabIndex={-1} />
           </div>
         </div>
       </div>

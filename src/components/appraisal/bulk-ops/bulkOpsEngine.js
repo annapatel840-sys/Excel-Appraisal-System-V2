@@ -2152,7 +2152,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   head.classList.add("wshead");ws.appendChild(head);
   /* left: inputs */
   var pl=mk("section","pL","pane"),lt=mk("div","lTabs","ptabs",'<button type="button" data-p="rules">What to Change</button><button type="button" data-p="who">For Whom</button><span class="sp"></span><button type="button" class="pfold" id="lFold" title="Fold This Pane">‹</button>'),lb=mk("div","lBody","pbody"),lf=mk("div","lFoot","pfoot");
-  if(scnForm)lb.appendChild(scnForm);
+  /* the scenario name form now lives inside the Scenarios tab */
   lb.appendChild(two);
   lf.appendChild(colR.querySelector("label.opt"));lf.appendChild(actRow);
   pl.appendChild(lt);pl.appendChild(lb);pl.appendChild(lf);
@@ -2244,6 +2244,98 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   apply();renderWatch();
 })();
 
+
+/* ===== Dummy v53 to v65: Summary = budget impact first; Charts = rating chart + rating bell;
+   Exceptions, History and Scenarios are tabs of their own (no "Analyse further", no Menu). Pivot, What-If and Checks tabs are gone. ===== */
+function bandOn(){return EMP.some(function(e){return e.band})}
+pvOK=function(){return false};
+var FIT_VIEW="chart";
+function fitBlock(p){
+  var b0=p.before,b1=p.after,al=b1.budget,over=b1.used>al,mx=Math.max(al,b0.used,b1.used)*1.04||1;
+  function pc(v){return al?(v/al*100).toFixed(1)+"%":"—"}
+  function hb(l,v,col){return '<div class="hb"><span class="l">'+l+'</span><span class="t"><i style="width:'+(v/mx*100)+'%;background:'+col+'"></i></span><b>'+big(v)+' · '+pc(v)+'</b></div>'}
+  var body=FIT_VIEW==="table"
+    ?'<table class="fitt"><thead><tr><th></th><th>Amount</th><th>% of Allocated</th></tr></thead><tbody>'
+      +[["Allocated",al],["Used Now",b0.used],["Used After",b1.used],["Left After",al-b1.used]].map(function(r){return '<tr><td>'+r[0]+'</td><td class="r">'+big(r[1])+'</td><td class="r">'+pc(r[1])+'</td></tr>'}).join("")+'</tbody></table>'
+    :hb("Allocated",al,CCOL.alloc)+hb("Used Now",b0.used,CCOL.before)+hb("Used After",b1.used,over?CCOL.warn:CCOL.after);
+  return '<div class="wi fitbox"><div class="fith"><span class="sm-h" style="margin:0">Budget Fit · Can We Afford This?</span><span class="fitsw"><button type="button" data-fit="chart" class="'+(FIT_VIEW==="chart"?"on":"")+'">Chart</button><button type="button" data-fit="table" class="'+(FIT_VIEW==="table"?"on":"")+'">Table</button></span></div>'
+    +body+(over?'<div class="wm" style="color:#B7791F">Over the allocation by '+big(b1.used-al)+' · warning only</div>':'<div class="wm">'+big(al-b1.used)+' left after this change.</div>')+'</div>';
+}
+function cmTable(sc,p){
+  if(SB)return [];
+  var m={};sc.forEach(function(e){var k=e.compManager||"(none)";(m[k]=m[k]||[]).push(e)});
+  return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
+    a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
+}
+var _ted57=tedTable;tedTable=function(){return []};
+var _hero=heroHtml;
+heroHtml=function(vr,p){
+  var h=fitBlock(p)+wiHtml();
+  if(S.role==="CM")return h;
+  if(S.role==="HR"){
+    var TT=_ted57(scope(),p);if(TT.length<2)return h;
+    var u='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Skipped</span><span>Status</span></div>';
+    TT.forEach(function(t){u+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
+    u+='</div></div>';var k=h.indexOf('<div class="wi wp">');return k>=0?h.slice(0,k)+u+h.slice(k):h+u}
+  var CT=cmTable(scope(),p);if(CT.length<2)return h;
+  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Comp Manager</div><div class="tedt"><div class="tedr th"><b>Comp Manager</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Changing</span><span>Status</span></div>';
+  CT.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x.chg+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
+  t+='</div></div>';
+  var i=h.indexOf('<div class="wi wp">');
+  return i>=0?h.slice(0,i)+t+h.slice(i):h+t;
+};
+var _smY=smYears;smYears=function(){return ""};
+/* Rating bell: people at each rating against a target bell, with the average Hike % or Total Reward % per rating */
+var BELL_TG={5:10,4:20,3:50,2:15,1:5};
+S.bcPlot=S.bcPlot||"";S.bcCmp=S.bcCmp||"both";
+function bellRound(x){var n=Number(x);if(!isFinite(n)||x==null||x==="")return 0;n=Math.floor(n+0.5);return n<1?1:n>5?5:n}
+function hikeDist(vr,p,K0){
+  var plot=S.bcPlot||(K0==="hikeAmt"?"hike":"total"),both=S.bcCmp==="both",rs=[5,4,3,2,1];
+  var cnt={},sn={},sa={},nr=0,tot=0;rs.forEach(function(r){cnt[r]=0;sn[r]=0;sa[r]=0});
+  function pct(e,a,pl){if(!e.basePay)return null;var v=pl==="hike"?(Number(a.hikeAmt)||0):(Number(a.hikeAmt)||0)+(Number(a.newPB)||0)+(Number(a.newRB)||0);return v/e.basePay*100}
+  vr.forEach(function(e){var r=bellRound(e.rating);if(!r){nr++;return}
+    var res=p.res[e.empId],a=res&&res.st==="chg"?res.after:e,b=pct(e,e,plot),c=pct(e,a,plot);if(b==null||c==null)return;
+    cnt[r]++;tot++;sn[r]+=b;sa[r]+=c});
+  if(!tot)return '<div class="wi wp hdist"><div class="wm">No rated people in view.</div></div>';
+  var pp={},bn={},ba={},mxl=0,mxr=0;
+  rs.forEach(function(r){pp[r]=cnt[r]*100/tot;bn[r]=cnt[r]?sn[r]/cnt[r]:null;ba[r]=cnt[r]?sa[r]/cnt[r]:null;
+    mxl=Math.max(mxl,pp[r],BELL_TG[r]);if(bn[r]!=null)mxr=Math.max(mxr,ba[r],both?bn[r]:0)});
+  mxl=Math.max(20,Math.ceil(mxl/10)*10);mxr=Math.max(2,niceMax(mxr*1.1||1));
+  var W=760,H=262,Lm=40,Rm=44,T=24,B=46,iw=W-Lm-Rm,ih=H-T-B,gw=iw/5;
+  function X(i){return Lm+gw*i+gw/2}function YL(v){return T+ih-v/mxl*ih}function YR(v){return T+ih-v/mxr*ih}
+  function smooth(pts){var d="M"+pts[0][0]+","+pts[0][1];for(var i=1;i<pts.length;i++){var m=(pts[i-1][0]+pts[i][0])/2;d+=" C"+m+","+pts[i-1][1]+" "+m+","+pts[i][1]+" "+pts[i][0]+","+pts[i][1]}return d}
+  var o='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Rating bell">';
+  for(var g=0;g<=4;g++){var y=T+ih-ih*g/4;o+='<line x1="'+Lm+'" x2="'+(W-Rm)+'" y1="'+y+'" y2="'+y+'" stroke="#E5E7EB"/><text x="'+(Lm-6)+'" y="'+(y+3)+'" font-size="10" fill="#6B7280" text-anchor="end">'+Math.round(mxl*g/4)+'%</text><text x="'+(W-Rm+6)+'" y="'+(y+3)+'" font-size="10" fill="#4B6C9C">'+(mxr*g/4).toFixed(mxr<10?1:0)+'%</text>'}
+  var ap=rs.map(function(r,i){return [X(i),YL(pp[r])]}),tp=rs.map(function(r,i){return [X(i),YL(BELL_TG[r])]});
+  o+='<path d="'+smooth(ap)+' L'+X(4)+','+YL(0)+' L'+X(0)+','+YL(0)+' Z" fill="#C9D8EC" fill-opacity=".7" stroke="#9DBDEB" stroke-width="1.5"/>';
+  o+='<path d="'+smooth(tp)+'" fill="none" stroke="#6B7280" stroke-width="1.8" stroke-dasharray="5 4"/>';
+  rs.forEach(function(r,i){o+='<circle cx="'+X(i)+'" cy="'+YL(pp[r])+'" r="3" fill="#9DBDEB"/><text x="'+X(i)+'" y="'+(H-20)+'" font-size="11" fill="#374151" text-anchor="middle" font-weight="600">Rating '+r+'</text><text x="'+X(i)+'" y="'+(H-6)+'" font-size="10" fill="#6B7280" text-anchor="middle">'+cnt[r]+' people · '+Math.round(pp[r])+'% (target '+BELL_TG[r]+'%)</text>'});
+  function line(a,col,dash){var pts=[];rs.forEach(function(r,i){if(a[r]!=null)pts.push([X(i),YR(a[r])])});if(!pts.length)return '';
+    var s='<path d="'+(pts.length>1?smooth(pts):'M'+pts[0][0]+','+pts[0][1])+'" fill="none" stroke="'+col+'" stroke-width="2.4"'+(dash?' stroke-dasharray="6 4"':'')+'/>';
+    pts.forEach(function(q){s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="3.6" fill="'+col+'"/>'});return s}
+  if(both)o+=line(bn,CCOL.before,true);o+=line(ba,CCOL.after,false);
+  rs.forEach(function(r,i){if(ba[r]!=null)o+='<text x="'+X(i)+'" y="'+(YR(ba[r])-9)+'" font-size="10.5" fill="'+CCOL.after+'" text-anchor="middle" font-weight="700">'+ba[r].toFixed(1)+'%</text>'});
+  o+='</svg>';
+  var PL=plot==="hike"?"Hike %":"Total Reward %";
+  function opt(v,l,cur){return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+l+'</option>'}
+  var pick='<div class="bpick"><label>Plot <select id="bcPlot">'+opt("hike","Hike % of Base Pay",plot)+opt("total","Total Reward % (Hike + PB + RB)",plot)+'</select></label>'
+    +'<label>Compare <select id="bcCmp">'+opt("after","After Only",S.bcCmp)+opt("both","Now and After",S.bcCmp)+'</select></label></div>';
+  var lg=[["People at Each Rating (Left Axis)","#C9D8EC"],["Target Bell","#6B7280"],["Avg "+PL+" After (Right Axis)",CCOL.after]];if(both)lg.splice(3,0,["Avg "+PL+" Now",CCOL.before]);
+  return '<div class="wi wp hdist"><span class="wch">Rating Bell · People at Each Rating and the Average '+PL+' They Get</span>'+pick+lgd(lg)+o
+    +'<div class="wm">'+tot+' rated people in view'+(nr?' · '+nr+' without a rating left out':'')+'. Ratings are rounded to the nearest whole number (x.5 rounds up). Target is 10 / 20 / 50 / 15 / 5 %. A healthy result: the reward line rises with the rating.</div></div>';
+}
+chartsTab=function(c){
+  var p=c.pv;
+  if(!p)return '<div class="sm"><div class="wm" style="padding:8px 2px">Click <b>Preview</b> to see the charts.</div></div>';
+  var vr=viewRows().filter(function(e){var r=p.res[e.empId];return r&&r.st!=="off"}),K0=ruleKeys(p)[0];
+  var LYK=!!S.ly&&K0==="hikeAmt"&&EMP.some(function(e){return e.hikeLY!=null});
+  return '<div class="sm">'+_hero(vr,p)+(LYK?_smY(vr,p,K0):'')+'</div>'+hikeDist(vr,p,K0);
+};
+/* old What-If / Checks places now land on Summary (the drill-down lives there) */
+var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot")t="summary";_setPT54(t)};
+$("imp").addEventListener("click",function(ev){var f=ev.target.closest&&ev.target.closest("[data-fit]");if(!f)return;ev.stopImmediatePropagation();FIT_VIEW=f.getAttribute("data-fit");renderImpact()},true);
+$("imp").addEventListener("change",function(ev){var t=ev.target;if(!t||!t.id)return;if(t.id==="bcPlot"){S.bcPlot=t.value;renderImpact()}else if(t.id==="bcCmp"){S.bcCmp=t.value;renderImpact()}});
 
 var _renderHost=render;
 render=function(){_renderHost();updateBusy();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
