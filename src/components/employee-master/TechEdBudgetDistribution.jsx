@@ -1924,7 +1924,8 @@ export function TechEdBudgetDistribution() {
       cmNodes.filter((node) =>
         assignedTeam.some((employee) =>
           managerIdentityMatches(
-            employee.comp_manager ||
+            employee.delegation_comp_manager ||
+              employee.comp_manager ||
               employee.comp_manager_id ||
               employee.compManager ||
               employee.comp_manager_name ||
