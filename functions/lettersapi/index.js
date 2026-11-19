@@ -522,7 +522,7 @@ async function handle(req, res) {
    limit ends the request without one (that is the endless "pending" in the
    Network tab). The browser can then retry or show the message. */
 const REQUEST_LIMIT_MS = 24000;
-const BUILD = "letters-guard-2026-11-19";
+const BUILD = "letters-gate2-2026-11-19";
 const BOOTED_AT = Date.now();
 let served = 0;
 module.exports = async function lettersApi(req, res) {

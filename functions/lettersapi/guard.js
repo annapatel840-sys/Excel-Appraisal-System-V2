@@ -15,7 +15,7 @@
  *              Catalyst kills it (~30 s) with no explanation.
  */
 
-const MAX_IN_FLIGHT = 3;
+const MAX_IN_FLIGHT = 2; // this project's Catalyst Data Store limit: two calls at a time (every read of the function, the access check included)
 const DEFAULT_TIMEOUT_MS = 9000;
 const MAX_RETRIES = 3;
 

@@ -47,6 +47,7 @@
    HTTP 200 { ok:false, status, error, enforced }.
    ===================================================================== */
 'use strict';
+const { guarded } = require('./guard');
 
 /* ---------------------------------------------------------------------
    SETTINGS
@@ -236,13 +237,10 @@ const PAGE = 300;
 // Catalyst answers 429 "Concurrency limit reached" when too many Data Store
 // calls run at once; wait briefly and retry instead of failing the request.
 async function whenNotBusy(fn) {
-  for (let attempt = 0; ; attempt++) {
-    try { return await fn(); } catch (err) {
-      const busy = err && (err.statusCode === 429 || err.code === 'TOO_MANY_REQUESTS');
-      if (!busy || attempt >= 3) throw err;
-      await new Promise((r) => setTimeout(r, 250 * (attempt + 1) + Math.random() * 250));
-    }
-  }
+  // One shared gate for the whole function (guard.js): at most two reads at once,
+  // a 429 is retried, and a read that never answers fails after 12 s instead of
+  // leaving every request waiting on the shared cache load below.
+  return guarded(fn, 'Reading the access settings', 12000);
 }
 async function selectAll(zcql, table, where) {
   const out = [], seen = new Set();
@@ -610,8 +608,14 @@ async function getVersion(zcql) {
   return rows[0] ? { version: Number(rows[0].version) || 1, rowid: rows[0].ROWID } : { version: 1, rowid: null };
 }
 async function loadBase(z, version) {
-  const [C, roles, cycleId, ovRows] = await Promise.all([loadCatalog(z), loadRoles(z), activeCycleId(z), selectAll(z, T.override)]);
-  const [deleg, m] = await Promise.all([loadDelegation(z, cycleId), loadMatrix(z, C, roles)]);
+  // One read after the other (not four at once): this project's Catalyst limit is two
+  // Data Store calls at a time, and the gate in guard.js enforces it.
+  const C = await loadCatalog(z);
+  const roles = await loadRoles(z);
+  const cycleId = await activeCycleId(z);
+  const ovRows = await selectAll(z, T.override);
+  const deleg = await loadDelegation(z, cycleId);
+  const m = await loadMatrix(z, C, roles);
   const overridesBy = {};
   ovRows.filter((o) => !bool(o.removed)).map(overrideRow).forEach((o) => { const k = norm(o.empId); (overridesBy[k] = overridesBy[k] || []).push(o); });
   return { version, C, roles, cycleId, deleg, m, overridesBy };
