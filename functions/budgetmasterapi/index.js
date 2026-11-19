@@ -1574,14 +1574,13 @@ function filterOwn(
         )
       : [];
 
-    // The signed-in Comp Manager may see sibling manager allocations only
-    // under Tech-Ed parents where they have their own saved allocation. This
-    // supplies the transfer destination list without exposing other teams.
-    // Employee roster and normal budget calculations remain restricted to
-    // the signed-in manager's own employees/allocation in the frontend.
-    let compManager = bundle.compManager.filter((row) =>
+    // Normal budget data remains limited to this manager's own allocation.
+    // Sibling rows are exposed separately and only under parent Tech-Eds where
+    // this manager has an allocation, solely for the transfer destination list.
+    const transferCompManager = bundle.compManager.filter((row) =>
       savedParentIds.has(String(row.budget_distribution_id || "").trim()),
     );
+    let compManager = ownSavedCompRows;
 
     // Compatibility fallback for older rows without a usable parent link.
     if (!techEd.length) {
@@ -1635,7 +1634,7 @@ function filterOwn(
     const master = bundle.master.filter((row) =>
       cycleIds.has(row.appraisal_cycle_id),
     );
-    return { master, techEd, compManager, employeeRoster: ownEmployees };
+    return { master, techEd, compManager, transferCompManager, employeeRoster: ownEmployees };
   }
 
   const techEd = bundle.techEd.filter((row) =>
@@ -4270,6 +4269,7 @@ module.exports = async function (req, res) {
         master: bundle.master,
         techEd: bundle.techEd,
         compManager: bundle.compManager,
+        compManagerTransferOptions: bundle.transferCompManager || [],
         techEdOwners,
         employeeRoster: bundle.employeeRoster || [],
         techEdCount: techEdOwners.length,
