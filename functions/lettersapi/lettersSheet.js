@@ -14,9 +14,9 @@
  *      `appraisal_cycle_id = X` is already close to "this location's people".
  *      Appraisal_Sheet keeps every cycle ever generated, so it is never read whole.
  *      The location is then still checked on every row (against Employee_Master).
- *   2. Only the columns the letters use are selected (SHEET_COLUMNS). If the table
- *      does not have one of them, the read falls back to SELECT * once and
- *      remembers it.
+ *   2. cycle_id is a LOOKUP (bigint) column, so the cycle is compared as a number
+ *      first and as quoted text second: the same two forms payrollcycleapi uses in
+ *      its sheet-status read. The form that works is remembered.
  *   3. Employee_Master (name, e-mail, status) is read for the cycle's location only
  *      and kept for a minute.
  *   4. Every call works inside a time budget. When it is used up the call returns
@@ -38,24 +38,8 @@ const SHEET_BUDGET_MS = 14000; // the whole request is cut off at 24 s (index.js
 const MASTER_BUDGET_MS = 10000;
 const MASTER_CACHE_MS = 60 * 1000;
 const ID_RE = /^\d{1,30}$/;
-const CYCLE_COLUMNS = ["appraisal_cycle_id", "cycle_id"];
+const CYCLE_COLUMNS = ["cycle_id", "appraisal_cycle_id"]; // cycle_id first, as in payrollcycleapi / employeesapi
 const LOCATION_COLUMNS = ["location", "work_location"];
-// Appraisal_Sheet columns the letters use. Change a name here if your table differs.
-const SHEET_COLUMNS = [
-  "emp_id",
-  "current_annual_base_pay",
-  "hike_amount",
-  "hike_pct",
-  "new_pb_to_be_offered",
-  "new_pb_installment",
-  "new_rb",
-  "month_rb",
-  "target_pb_next_year",
-  "eligible_for_promotion",
-  "new_title",
-  "manager_rating",
-  "comp_manager_rewards",
-];
 
 const isAll = (v) => ["", "all", "all locations", "alllocations"].includes(String(v ?? "").trim().toLowerCase());
 const q = (v) => String(v ?? "").replace(/\\/g, "\\\\").replace(/'/g, "''");
@@ -67,8 +51,7 @@ module.exports = function makeLettersSheet(h) {
   // 429, time-limited). Tests may omit it.
   const guarded = h.guarded || ((fn) => fn());
   const masterCache = new Map(); // location key -> { at, map }
-  let knownCycleColumn = null; // the Appraisal_Sheet column that holds the cycle, once found
-  let narrowOk = true; // false once SELECT <columns> was refused: use SELECT *
+  let knownWhere = null; // { col, quoted } that worked for Appraisal_Sheet
 
   const positiveInteger = (v, fallback) => {
     const n = Number(v);
@@ -81,6 +64,12 @@ module.exports = function makeLettersSheet(h) {
       if (v !== undefined && v !== null && String(v).trim() !== "") return v;
     }
     return "";
+  };
+  // A lookup column can come back as a ROWID or as an object.
+  const lookupText = (v) => {
+    if (v == null) return "";
+    if (typeof v === "object") return lookupText(v.ROWID ?? v.rowid ?? v.emp_id ?? v.id ?? v.value ?? v.name ?? "");
+    return String(v).trim();
   };
   const num = (v) => {
     const n = Number(String(v ?? "").replace(/,/g, ""));
@@ -166,10 +155,14 @@ module.exports = function makeLettersSheet(h) {
     }
     if (rows === null) rows = await readWith(""); // All Locations, or no location column
 
+    // Indexed by the employee ID and by the Catalyst ROWID, like employeesapi's
+    // buildEmployeeMasterMap: Appraisal_Sheet.emp_id may hold either.
     const map = new Map();
     rows.forEach((r) => {
       const id = text(r.emp_id).toLowerCase();
+      const rid = rowId(r).toLowerCase();
       if (id) map.set(id, r);
+      if (rid) map.set(rid, r);
     });
     masterCache.set(key, { at: Date.now(), map });
     return map;
@@ -178,6 +171,18 @@ module.exports = function makeLettersSheet(h) {
   const masterLocation = (m) => text(pick(m, "location", "work_location", "location_name"));
 
   /* ---------- one chunk of sheet rows ---------- */
+  // WHERE for one cycle on Appraisal_Sheet. cycle_id is a lookup (bigint) column on
+  // this project, so the number form goes first and the quoted form second.
+  function cycleWheres(cycleId) {
+    const cols = knownWhere ? [knownWhere.col] : CYCLE_COLUMNS;
+    const out = [];
+    cols.forEach((col) => {
+      const forms = knownWhere ? [knownWhere.quoted] : [false, true];
+      forms.forEach((quoted) => out.push({ col, quoted, sql: `${col} = ${quoted ? `'${q(cycleId)}'` : cycleId}` }));
+    });
+    return out;
+  }
+
   /* Same contract as employeesapi: page + limit in, { data, pagination } out. */
   async function loadSheet(app, params) {
     const cycleId = text(params.cycleId);
@@ -189,72 +194,74 @@ module.exports = function makeLettersSheet(h) {
     const cycle = await readCycle(app, cycleId);
     const location = text(params.location) || cycle.location;
     const wantAll = isAll(location);
+    const master = await masterFor(app, location, started + MASTER_BUDGET_MS);
 
-    const columns = knownCycleColumn ? [knownCycleColumn] : CYCLE_COLUMNS;
+    // This cycle's rows only (never the whole table), 300 at a time by ROWID.
+    const rows = [];
+    let last = "0";
+    let where = null;
+    let page1 = null;
     let lastError = null;
-
-    for (const col of columns) {
+    let answered = false; // some form of the query ran (even with no rows)
+    for (const w of cycleWheres(cycleId)) {
       try {
-        const where = `${col} = '${q(cycleId)}'`;
-        const master = await masterFor(app, location, started + MASTER_BUDGET_MS);
-        const select = narrowOk ? `ROWID, ${SHEET_COLUMNS.join(", ")}` : "*";
-
-        // This cycle's rows only (never the whole table), 300 at a time by ROWID.
-        const rows = [];
-        let last = "0";
-        for (let guard = 0; guard < 200; guard += 1) {
-          let p;
-          try {
-            p = await page(app, SHEET_TABLE, where, last, select);
-          } catch (e) {
-            if (!narrowOk || guard > 0) throw e;
-            narrowOk = false; // a listed column does not exist: read every column from now on
-            p = await page(app, SHEET_TABLE, where, last, "*");
-          }
-          knownCycleColumn = col;
-          p.forEach((r) => {
-            const m = master.get(text(r.emp_id).toLowerCase());
-            if (!wantAll) {
-              // The person's own location decides (Employee_Master first, then the sheet row).
-              const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
-              if (loc.toLowerCase() !== location.toLowerCase()) return;
-            }
-            rows.push(shape(r, m));
-          });
-          if (p.length < PAGE) break;
-          last = rowId(p[p.length - 1]);
-          if (!last) break;
-          if (Date.now() - started > SHEET_BUDGET_MS) {
-            throw fail(504, "The Appraisal Sheet took too long to read. Please try again.");
-          }
-        }
-
-        // Pagination, as in employeesapi.
-        const totalCount = rows.length;
-        const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / limit);
-        const safePage = Math.min(requestedPage, totalPages);
-        const offset = (safePage - 1) * limit;
-        const data = rows.slice(offset, offset + limit);
-        return {
-          cycle: { id: cycle.id, name: cycle.name, location: cycle.location },
-          location: wantAll ? "All" : location,
-          data,
-          pagination: { page: safePage, limit, totalCount, totalPages, returnedCount: data.length },
-        };
+        const p = await page(app, SHEET_TABLE, w.sql, "0");
+        answered = true;
+        if (!p.length && !knownWhere) continue; // this column or form matched nothing: try the next
+        where = w;
+        page1 = p;
+        break;
       } catch (e) {
-        if (e && (e.status || e.timeout)) throw fail(e.status || 504, `The Appraisal Sheet read stopped: ${e.message}`); // names the query that stalled
-        lastError = e;
+        if (e && (e.status || e.timeout)) throw fail(e.status || 504, `The Appraisal Sheet read stopped: ${e.message}`);
+        lastError = e; // this column does not exist, or it is the other type: try the next
       }
     }
-    throw fail(500, `The Appraisal Sheet could not be read: ${(lastError && lastError.message) || lastError}`);
+    if (!where && !answered && lastError) throw fail(500, `The Appraisal Sheet could not be read: ${(lastError && lastError.message) || lastError}`);
+    if (where) {
+      knownWhere = { col: where.col, quoted: where.quoted };
+      let p = page1;
+      for (let guard = 0; guard < 200; guard += 1) {
+        p.forEach((r) => {
+          const empRef = lookupText(r.emp_id);
+          const m = master.get(empRef.toLowerCase());
+          if (!wantAll) {
+            // The person's own location decides (Employee_Master first, then the sheet row).
+            const loc = (m ? masterLocation(m) : "") || text(pick(r, "location", "work_location"));
+            if (loc.toLowerCase() !== location.toLowerCase()) return;
+          }
+          rows.push(shape(r, m));
+        });
+        if (p.length < PAGE) break;
+        last = rowId(p[p.length - 1]);
+        if (!last) break;
+        if (Date.now() - started > SHEET_BUDGET_MS) {
+          throw fail(504, "The Appraisal Sheet took too long to read. Please try again.");
+        }
+        p = await page(app, SHEET_TABLE, where.sql, last);
+      }
+    }
+
+    // Pagination, as in employeesapi.
+    const totalCount = rows.length;
+    const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / limit);
+    const safePage = Math.min(requestedPage, totalPages);
+    const offset = (safePage - 1) * limit;
+    const data = rows.slice(offset, offset + limit);
+    return {
+      cycle: { id: cycle.id, name: cycle.name, location: cycle.location },
+      location: wantAll ? "All" : location,
+      data,
+      pagination: { page: safePage, limit, totalCount, totalPages, returnedCount: data.length },
+    };
   }
 
   /* Appraisal_Sheet row + Employee_Master row -> the field names of the Appraisal Sheet screen. */
   function shape(r, m) {
     const mm = m || {};
+    const empId = text(mm.emp_id) || lookupText(r.emp_id);
     return {
-      id: text(r.emp_id),
-      empId: text(r.emp_id),
+      id: empId,
+      empId,
       name: text(pick(mm, "emp_name", "name") || pick(r, "name", "emp_name")),
       email: text(pick(mm, "email_id", "email") || pick(r, "email_id", "email")),
       status: text(pick(mm, "emp_status", "status") || "Active"),

@@ -14,8 +14,8 @@ function fakeApp() {
     master.push({ ROWID: String(1000 + i), emp_id: "E" + i, emp_name: "N" + i, email_id: `e${i}@x`, location: i <= 500 ? "Dubai" : "India", emp_status: "Active" });
   }
   let rid = 1;
-  for (let i = 1; i <= 700; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + i, appraisal_cycle_id: "5", hike_amount: 100 });
-  for (let i = 1; i <= 900; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + ((i % 700) + 1), appraisal_cycle_id: "4" });
+  for (let i = 1; i <= 700; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + i, cycle_id: "5", hike_amount: 100 });
+  for (let i = 1; i <= 900; i += 1) sheet.push({ ROWID: String(rid++), emp_id: "E" + ((i % 700) + 1), cycle_id: "4" });
   const queries = [];
   const app = {
     zcql: () => ({
@@ -35,8 +35,12 @@ function fakeApp() {
         const table = /FROM (\w+)/.exec(sql)[1];
         const last = Number(/ROWID > (\d+)/.exec(sql)[1]);
         let rows = (table === "Employee_Master" ? master : sheet).filter((r) => Number(r.ROWID) > last);
-        const c = /AND appraisal_cycle_id = '(\d+)'/.exec(sql);
-        if (c) rows = rows.filter((r) => r.appraisal_cycle_id === c[1]);
+        // Like the real table: cycle_id is a BIGINT lookup (number form only), and
+        // there is no appraisal_cycle_id column.
+        if (/AND appraisal_cycle_id/.test(sql)) throw new Error("Invalid column appraisal_cycle_id");
+        if (/AND cycle_id = '/.test(sql)) throw new Error("cycle_id is a bigint: quoted value refused");
+        const c = /AND cycle_id = (\d+)/.exec(sql);
+        if (c) rows = rows.filter((r) => r.cycle_id === c[1]);
         const l = /AND location = '([^']+)'/.exec(sql);
         if (l) rows = rows.filter((r) => r.location === l[1]);
         return rows.slice(0, 300).map((r) => ({ [table]: r }));
@@ -56,15 +60,9 @@ test("sheet: only the cycle's rows of the location are returned, with the master
   assert.equal(d.data[0].name, "N1");
   assert.equal(d.data[0].location, "Dubai");
   assert.equal(d.data[0].hikeAmount, 100);
-  // Appraisal_Sheet is only ever asked for this cycle, never read whole.
-  queries.filter((q) => /FROM Appraisal_Sheet/.test(q)).forEach((q) => assert.match(q, /appraisal_cycle_id = '5'/));
-});
-
-test("sheet: only the needed columns are selected", async () => {
-  const { app, queries } = fakeApp();
-  await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "Dubai" });
-  const q = queries.find((x) => /FROM Appraisal_Sheet WHERE ROWID/.test(x));
-  assert.match(q, /^SELECT ROWID, emp_id, /);
+  // Appraisal_Sheet is only ever asked for this cycle (number form of cycle_id), never read whole.
+  queries.filter((q) => /FROM Appraisal_Sheet/.test(q)).forEach((q) => assert.match(q, /cycle_id = (5|'5')/));
+  assert.ok(queries.some((q) => /FROM Appraisal_Sheet WHERE ROWID > 0 AND cycle_id = 5 /.test(q)));
 });
 
 test("cycles: only Active, not hidden, cycles are listed", async () => {
@@ -90,6 +88,13 @@ test("sheet: page and limit slice the result like employeesapi", async () => {
   const last = await s.loadSheet(app, { cycleId: "5", location: "Dubai", page: "99", limit: "200" });
   assert.equal(last.pagination.page, 3);
   assert.equal(last.data.length, 100);
+});
+
+test("sheet: a cycle with no rows answers with an empty page, not an error", async () => {
+  const { app } = fakeApp();
+  const d = await make({ fail, text }).loadSheet(app, { cycleId: "5", location: "Nowhere" });
+  assert.equal(d.pagination.totalCount, 0);
+  assert.deepEqual(d.data, []);
 });
 
 test("sheet: a bad cycle id or paging position is refused", async () => {
