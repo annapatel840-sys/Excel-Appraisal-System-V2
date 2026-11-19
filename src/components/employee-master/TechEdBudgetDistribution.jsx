@@ -343,6 +343,29 @@
 //   const [auditFilter, setAuditFilter] = useState("all");
 //   const [drafts, setDrafts] = useState({});
 //   const [applyingPct, setApplyingPct] = useState(false);
+  // COMP_MANAGER_TRANSFER START
+  const [transferSource, setTransferSource] = useState("");
+  const [transferDestination, setTransferDestination] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  async function transferCompManagerTeam() {
+    if (!transferSource || !transferDestination || transferring) return;
+    setTransferring(true);
+    setErr("");
+    try {
+      await updateBudget("", {
+        tech_ed_id: liveTech?.appraiser_tech_ed_id || loginTechOwner || "",
+        source_comp_manager_id: transferSource,
+        destination_comp_manager_id: transferDestination,
+      }, "comp_manager_transfer");
+      setTransferSource("");
+      setTransferDestination("");
+    } catch (error) {
+      setErr(error?.message || "Comp Manager transfer failed.");
+    } finally {
+      setTransferring(false);
+    }
+  }
+  // COMP_MANAGER_TRANSFER END
 
 //   const selectedCompManager = selectedManagerNode?.name || "";
 
@@ -866,7 +889,30 @@
 //           {paneHead("alloc", "Allocation", cmNodes.length + " " + cmLabel)}
 //           {pane.alloc && (
 //             <>
-//               <div className="reason">
+//               {/* COMP_MANAGER_TRANSFER START */}
+              <div className="reason" style={{ alignItems: "end", flexWrap: "wrap" }}>
+                <label htmlFor="cmTransferSource">Transfer employees and budget</label>
+                <select id="cmTransferSource" value={transferSource} onChange={(event) => {
+                  setTransferSource(event.target.value);
+                  setTransferDestination("");
+                }}>
+                  <option value="">Source Comp Manager</option>
+                  {cmNodes.filter((node) => node.name).map((node) => (
+                    <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
+                  ))}
+                </select>
+                <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
+                  <option value="">Destination Comp Manager</option>
+                  {cmNodes.filter((node) => node.name && node.name !== transferSource).map((node) => (
+                    <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
+                  ))}
+                </select>
+                <button type="button" className="budget-save-btn" disabled={!transferSource || !transferDestination || transferring || !liveTech?.id} onClick={transferCompManagerTeam}>
+                  {transferring ? "Transferring…" : "Transfer Team"}
+                </button>
+              </div>
+              {/* COMP_MANAGER_TRANSFER END */}
+              <div className="reason">
 //                 <label htmlFor="tbdReason">Reason for Next % Change</label>
 //                 <input
 //                   id="tbdReason"
