@@ -1621,6 +1621,7 @@ export function TechEdBudgetDistribution() {
   const {
     budgetDistributionRows,
     budgetCompManagerRows,
+    budgetCompManagerTransferOptions = [],
     budgetMasterRows,
     employeeRows = [],
     locationEmployeeRows = [],
@@ -1683,7 +1684,7 @@ export function TechEdBudgetDistribution() {
   const transferParentRows = useMemo(() => {
     if (!isCompManagerView || !activeCycleId) return [];
     const linkedParentIds = new Set(
-      budgetCompManagerRows
+      budgetCompManagerTransferOptions
         .filter((row) => {
           const parent = budgetDistributionRows.find(
             (item) => String(item.id) === String(row.budget_distribution_id),
@@ -1701,18 +1702,18 @@ export function TechEdBudgetDistribution() {
       (!parent.appraisal_cycle_id ||
         String(parent.appraisal_cycle_id) === String(activeCycleId)),
     );
-  }, [isCompManagerView, activeCycleId, budgetCompManagerRows, budgetDistributionRows]);
+  }, [isCompManagerView, activeCycleId, budgetCompManagerTransferOptions, budgetDistributionRows]);
   const selectedTransferParent = transferParentRows.find(
     (parent) => String(parent.id) === String(transferParentId),
   ) || null;
   const transferManagerRows = useMemo(() => {
     if (!selectedTransferParent) return [];
-    return budgetCompManagerRows.filter((row) =>
+    return budgetCompManagerTransferOptions.filter((row) =>
       String(row.budget_distribution_id || "") === String(selectedTransferParent.id) &&
       (!row.appraisal_cycle_id ||
         String(row.appraisal_cycle_id) === String(activeCycleId)),
     );
-  }, [selectedTransferParent, budgetCompManagerRows, activeCycleId]);
+  }, [selectedTransferParent, budgetCompManagerTransferOptions, activeCycleId]);
   // The signed-in manager's own saved allocation rows are the source
   // choices. Sibling rows are destinations under this exact parent only.
   const transferSourceRows = transferManagerRows.filter((row) =>
