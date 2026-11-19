@@ -2236,34 +2236,43 @@ export function TechEdBudgetDistribution() {
         )}
       </div>
 
+      {/* COMP_MANAGER_TRANSFER START */}
+      {isCompManagerView && (
+        <div className="card">
+          <div className="pane-head" style={{ cursor: "default" }}>
+            <span>Comp Manager Team & Budget Transfer</span>
+            <span className="cnt">Active cycle · {cycleLabel || "—"}</span>
+          </div>
+          <div className="reason" style={{ alignItems: "end", flexWrap: "wrap" }}>
+            <label htmlFor="cmTransferSource">Transfer employees and budget</label>
+            <select id="cmTransferSource" value={transferSource} onChange={(event) => {
+              setTransferSource(event.target.value);
+              setTransferDestination("");
+            }}>
+              <option value="">Source Comp Manager</option>
+              {cmNodes.filter((node) => node.name).map((node) => (
+                <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
+              ))}
+            </select>
+            <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
+              <option value="">Destination Comp Manager</option>
+              {cmNodes.filter((node) => node.name && node.name !== transferSource).map((node) => (
+                <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
+              ))}
+            </select>
+            <button type="button" className="budget-save-btn" disabled={!transferSource || !transferDestination || transferring || !liveTech?.id} onClick={transferCompManagerTeam}>
+              {transferring ? "Transferring…" : "Transfer Team"}
+            </button>
+          </div>
+        </div>
+      )}
+      {/* COMP_MANAGER_TRANSFER END */}
+
       {!isCompManagerView && (
         <div className="card">
           {paneHead("alloc", "Allocation", cmNodes.length + " " + cmLabel)}
           {pane.alloc && (
             <>
-              {/* COMP_MANAGER_TRANSFER START */}
-              <div className="reason" style={{ alignItems: "end", flexWrap: "wrap" }}>
-                <label htmlFor="cmTransferSource">Transfer employees and budget</label>
-                <select id="cmTransferSource" value={transferSource} onChange={(event) => {
-                  setTransferSource(event.target.value);
-                  setTransferDestination("");
-                }}>
-                  <option value="">Source Comp Manager</option>
-                  {cmNodes.filter((node) => node.name).map((node) => (
-                    <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
-                  ))}
-                </select>
-                <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
-                  <option value="">Destination Comp Manager</option>
-                  {cmNodes.filter((node) => node.name && node.name !== transferSource).map((node) => (
-                    <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
-                  ))}
-                </select>
-                <button type="button" className="budget-save-btn" disabled={!transferSource || !transferDestination || transferring || !liveTech?.id} onClick={transferCompManagerTeam}>
-                  {transferring ? "Transferring…" : "Transfer Team"}
-                </button>
-              </div>
-              {/* COMP_MANAGER_TRANSFER END */}
               <div className="reason">
                 <label htmlFor="tbdReason">Reason for Next % Change</label>
                 <input
