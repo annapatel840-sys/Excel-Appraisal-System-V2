@@ -3585,7 +3585,7 @@ async function calculateBudgetBases(
           // intentionally lower-case for comparisons, but UI/test lookups and
           // existing allocation rows use the canonical Employee ID casing.
           appraiser_tech_ed_id: String(
-            String(ownerName || techKey).split(/\\s+-\\s+/)[0].trim() || techKey,
+            String(ownerName || techKey).split(/\s+-\s+/)[0].trim() || techKey,
           ).slice(0, 20),
           percentage: null,
           budget_base: 0,
@@ -4211,7 +4211,7 @@ module.exports = async function (req, res) {
         (row) => {
           const rawManager = String(row.comp_manager || "").trim();
           if (!rawManager) return row;
-          const parts = rawManager.split(/\\s+-\\s+/);
+          const parts = rawManager.split(/\s+-\s+/);
           const managerKey = parts[0].trim().toLowerCase();
           const manager = managerByEmployeeId.get(managerKey) ||
             managerByRowId.get(parts[0].trim()) ||
@@ -4352,9 +4352,9 @@ module.exports = async function (req, res) {
     // selected cycle + Tech-Ed parent. The history row preserves the source
     // manager's edit access without changing Delegation records.
     if (resource === "comp_manager_transfer") {
-      const techEdId = String(body.tech_ed_id || "").trim().split(/\\s+-\\s+/)[0];
-      const sourceId = String(body.source_comp_manager_id || "").trim().split(/\\s+-\\s+/)[0];
-      const destinationId = String(body.destination_comp_manager_id || "").trim().split(/\\s+-\\s+/)[0];
+      const techEdId = String(body.tech_ed_id || "").trim().split(/\s+-\s+/)[0];
+      const sourceId = String(body.source_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
+      const destinationId = String(body.destination_comp_manager_id || "").trim().split(/\s+-\s+/)[0];
       if (!techEdId || !sourceId || !destinationId || sourceId.toLowerCase() === destinationId.toLowerCase()) {
         throw new access.HttpError(400, "Select a Tech-Ed, source Comp Manager and a different destination Comp Manager.");
       }
@@ -4390,7 +4390,7 @@ module.exports = async function (req, res) {
       const resolvedOwner = (raw) => {
         const text = referenceText(raw);
         if (!text) return "";
-        const first = text.split(/\\s+-\\s+/)[0].trim();
+        const first = text.split(/\s+-\s+/)[0].trim();
         return masterByRowId.get(first) || masterById.get(first.toLowerCase()) || first;
       };
       const cycleOfSheet = (row) => referenceText(
