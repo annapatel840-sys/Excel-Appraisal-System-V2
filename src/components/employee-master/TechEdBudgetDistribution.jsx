@@ -343,6 +343,7 @@
 //   const [auditFilter, setAuditFilter] = useState("all");
 //   const [drafts, setDrafts] = useState({});
 //   const [applyingPct, setApplyingPct] = useState(false);
+
   // COMP_MANAGER_TRANSFER START
   const [transferSource, setTransferSource] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
@@ -366,7 +367,6 @@
     }
   }
   // COMP_MANAGER_TRANSFER END
-
 //   const selectedCompManager = selectedManagerNode?.name || "";
 
 //   const assignedTeam = useMemo(() => {
