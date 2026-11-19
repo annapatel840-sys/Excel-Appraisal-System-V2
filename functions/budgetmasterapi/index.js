@@ -4608,8 +4608,34 @@ module.exports = async function (req, res) {
         !employeeIdentityKeys(id).some((key) => matchedRequestedKeys.has(key))
       ).length;
       if (!employeeSheetRows.length || unmatchedCount > 0) {
+        const selectedIdentitySummary = requestedEmployeeIds.map((id) => ({
+          selected: id,
+          normalized: employeeIdentityKeys(id),
+          cycleRowsWithSameIdentity: sheetRows.filter((row) =>
+            (cycleOfSheet(row) === activeCycleIdForWrite ||
+              cycleOfSheet(row).toLowerCase() === activeCycleNameForWrite) &&
+            rowIdentityKeys(row).some((key) => employeeIdentityKeys(id).includes(key))
+          ).map((row) => ({
+            rowid: idOf(row),
+            emp_id: referenceText(row.emp_id),
+            employee_id: referenceText(row.employee_id),
+            emp_code: referenceText(row.emp_code),
+            tech_ed: referenceText(row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed || row.tech_ed_id || row.tech_ed),
+            comp_manager: referenceText(row.comp_manager || row.comp_manager_id || row.compManager || row.comp_manager_name || row.comp_manager_display),
+            effective_comp_manager: compOfSheet(row),
+          })).slice(0, 3),
+        }));
         throw new access.HttpError(409,
-          "The selected employee IDs could not all be matched to Appraisal Sheet rows for this source allocation. Refresh the page and select employees again. Unmatched: " + unmatchedCount
+          "Transfer validation diagnostic: selected=" + requestedEmployeeIds.length +
+          ", sourceTeamRows=" + sourceTeamRows.length +
+          ", cycleSheetRows=" + sheetRows.filter((row) =>
+            cycleOfSheet(row) === activeCycleIdForWrite ||
+            cycleOfSheet(row).toLowerCase() === activeCycleNameForWrite
+          ).length +
+          ", matched=" + employeeSheetRows.length +
+          ", unmatched=" + unmatchedCount +
+          ", source=" + sourceId + ", techEd=" + techEdId +
+          ". Row matches: " + JSON.stringify(selectedIdentitySummary)
         );
       }
 
