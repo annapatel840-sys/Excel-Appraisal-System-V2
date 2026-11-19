@@ -4433,10 +4433,10 @@ module.exports = async function (req, res) {
       const sheetTable = app.datastore().table("74008000000039094");
       for (const row of employeeSheetRows) {
         const patch = { ROWID: idOf(row) };
-        const assignmentField = ["comp_manager", "comp_manager_id", "compManager", "comp_manager_name", "comp_manager_display"]
-          .find((field) => Object.prototype.hasOwnProperty.call(row, field));
-        if (!assignmentField) throw new Error("Appraisal_Sheet has no Comp Manager assignment field.");
-        patch[assignmentField] = destinationId;
+        const assignmentFields = ["comp_manager", "comp_manager_id", "compManager", "comp_manager_name", "comp_manager_display"]
+          .filter((field) => Object.prototype.hasOwnProperty.call(row, field));
+        if (!assignmentFields.length) throw new Error("Appraisal_Sheet has no Comp Manager assignment field.");
+        assignmentFields.forEach((field) => { patch[field] = destinationId; });
         await sheetTable.updateRow(patch);
       }
 
