@@ -345,16 +345,6 @@
 //   const [applyingPct, setApplyingPct] = useState(false);
 
 
-//   // In a Comp Manager view, all totals must be scoped to the Tech-Ed
-  // currently selected for transfer. The same manager can have separate
-  // allocations under multiple Tech-Eds; never add those rows together here.
-  const selectedCompManager = isCompManagerView
-    ? transferSource || selectedManagerNode?.name || ""
-    : "";
-  const selectedCompManagerBudgetRow = isCompManagerView
-    ? selectedTransferSourceRow
-    : null;
-
 //   const assignedTeam = useMemo(() => {
 //     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
 //     return employeeRows.filter((employee) => {
