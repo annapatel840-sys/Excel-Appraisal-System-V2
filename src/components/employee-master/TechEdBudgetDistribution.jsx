@@ -2416,7 +2416,12 @@ export function TechEdBudgetDistribution() {
       </div>
 
       {/* COMP_MANAGER_TRANSFER START */}
-      {isCompManagerView && (
+      {isCompManagerPreview && (
+        <div style={{ marginTop: 10, padding: "10px 14px", border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", color: "#1e40af", fontSize: 13 }}>
+          Comp Manager View As is a preview only. Team and budget transfer actions are available after signing in with the actual Comp Manager account.
+        </div>
+      )}
+      {isCompManagerLogin && (
         <section className="cm-transfer-compact" style={{ marginTop: 10, overflow: "hidden", border: "1px solid #dbe5f0", borderRadius: 13, background: "#fff", boxShadow: "0 5px 16px rgba(15, 42, 70, .06)" }}>
           <div style={{ padding: "10px 16px", background: "linear-gradient(115deg, #102f4f 0%, #1d5279 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
