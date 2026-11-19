@@ -1676,16 +1676,65 @@ export function TechEdBudgetDistribution() {
   const [applyingPct, setApplyingPct] = useState(false);
 
   // COMP_MANAGER_TRANSFER START
+  const [transferParentId, setTransferParentId] = useState("");
   const [transferSource, setTransferSource] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const transferParentRows = useMemo(() => {
+    if (!isCompManagerView || !activeCycleId) return [];
+    const linkedParentIds = new Set(
+      budgetCompManagerRows
+        .filter((row) => {
+          const parent = budgetDistributionRows.find(
+            (item) => String(item.id) === String(row.budget_distribution_id),
+          );
+          const rowCycle = String(
+            row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
+          ).trim();
+          return !rowCycle || rowCycle === String(activeCycleId);
+        })
+        .map((row) => String(row.budget_distribution_id || "").trim())
+        .filter(Boolean),
+    );
+    return budgetDistributionRows.filter((parent) =>
+      linkedParentIds.has(String(parent.id || "").trim()) &&
+      (!parent.appraisal_cycle_id ||
+        String(parent.appraisal_cycle_id) === String(activeCycleId)),
+    );
+  }, [isCompManagerView, activeCycleId, budgetCompManagerRows, budgetDistributionRows]);
+  const selectedTransferParent = transferParentRows.find(
+    (parent) => String(parent.id) === String(transferParentId),
+  ) || null;
+  const transferManagerRows = useMemo(() => {
+    if (!selectedTransferParent) return [];
+    return budgetCompManagerRows.filter((row) =>
+      String(row.budget_distribution_id || "") === String(selectedTransferParent.id) &&
+      (!row.appraisal_cycle_id ||
+        String(row.appraisal_cycle_id) === String(activeCycleId)),
+    );
+  }, [selectedTransferParent, budgetCompManagerRows, activeCycleId]);
+  const transferSourceRows = transferManagerRows.filter((row) =>
+    currentUserMatchesManager(
+      row.comp_manager_display || row.comp_manager || row.comp_manager_id,
+      user,
+      employeeRows,
+    ),
+  );
+  const transferDestinationRows = transferManagerRows.filter((row) => {
+    const identity = String(row.comp_manager_display || row.comp_manager || row.comp_manager_id || "").trim();
+    return identity && identity !== transferSource &&
+      !currentUserMatchesManager(identity, user, employeeRows);
+  });
   async function transferCompManagerTeam() {
-    if (!transferSource || !transferDestination || transferring) return;
+    if (!transferParentId || !transferSource || !transferDestination || transferring) return;
     setTransferring(true);
     setErr("");
     try {
       await updateBudget("", {
-        tech_ed_id: liveTech?.appraiser_tech_ed_id || loginTechOwner || "",
+        tech_ed_id: selectedTransferParent?.appraiser_tech_ed_id ||
+          selectedTransferParent?.tech_ed_id ||
+          selectedTransferParent?.tech_ed || "",
+        appraisal_cycle_id: activeCycleId,
         source_comp_manager_id: transferSource,
         destination_comp_manager_id: transferDestination,
       }, "comp_manager_transfer");
@@ -2244,23 +2293,43 @@ export function TechEdBudgetDistribution() {
             <span className="cnt">Active cycle · {cycleLabel || "—"}</span>
           </div>
           <div className="reason" style={{ alignItems: "end", flexWrap: "wrap" }}>
-            <label htmlFor="cmTransferSource">Transfer employees and budget</label>
+            <label htmlFor="cmTransferTechEd">Tech-Ed</label>
+            <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
+              setTransferParentId(event.target.value);
+              setTransferSource("");
+              setTransferDestination("");
+            }}>
+              <option value="">Select Tech-Ed</option>
+              {transferParentRows.map((parent) => {
+                const raw = parent.appraiser_tech_ed_id || parent.tech_ed_id || parent.tech_ed || "";
+                const linked = techEdOwners.find((owner) =>
+                  [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
+                    .filter(Boolean).some((alias) => ownerMatches(alias, raw)),
+                );
+                const label = linked?.assignment || raw || "Tech-Ed";
+                return <option key={parent.id} value={parent.id}>{label}</option>;
+              })}
+            </select>
+            <label htmlFor="cmTransferSource">Source Comp Manager</label>
             <select id="cmTransferSource" value={transferSource} onChange={(event) => {
               setTransferSource(event.target.value);
               setTransferDestination("");
-            }}>
+            }} disabled={!selectedTransferParent}>
               <option value="">Source Comp Manager</option>
-              {cmNodes.filter((node) => node.name).map((node) => (
-                <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
-              ))}
+              {transferSourceRows.map((row) => {
+                const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
+                return <option key={row.id || label} value={label}>{label}</option>;
+              })}
             </select>
+            <label htmlFor="cmTransferDestination">Destination Comp Manager</label>
             <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource}>
               <option value="">Destination Comp Manager</option>
-              {cmNodes.filter((node) => node.name && node.name !== transferSource).map((node) => (
-                <option key={node.liveId || node.name} value={node.name}>{node.name}</option>
-              ))}
+              {transferDestinationRows.map((row) => {
+                const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
+                return <option key={row.id || label} value={label}>{label}</option>;
+              })}
             </select>
-            <button type="button" className="budget-save-btn" disabled={!transferSource || !transferDestination || transferring || !liveTech?.id} onClick={transferCompManagerTeam}>
+            <button type="button" className="budget-save-btn" disabled={!transferParentId || !transferSource || !transferDestination || transferring} onClick={transferCompManagerTeam}>
               {transferring ? "Transferring…" : "Transfer Team"}
             </button>
           </div>
