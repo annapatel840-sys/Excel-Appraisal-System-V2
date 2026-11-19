@@ -1895,6 +1895,7 @@ export function TechEdBudgetDistribution() {
         return false;
       if (!isCompManagerView) return true;
       const manager =
+        employee.delegation_comp_manager ||
         employee.comp_manager ||
         employee.comp_manager_id ||
         employee.compManager ||
