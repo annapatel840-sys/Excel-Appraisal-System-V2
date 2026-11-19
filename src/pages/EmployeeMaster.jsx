@@ -58,7 +58,6 @@
 // import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 // import { ProcessingOverlay } from "@/components/ui/processing-overlay";
 // import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
-import { useBudget } from "@/lib/budget-store";
 // import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
 // import "@/styles/employee-master.css";
@@ -606,7 +605,6 @@ import { useBudget } from "@/lib/budget-store";
 //    ============================================================ */
 
 // export function EmployeeMaster() {
-  const { requestData: requestBudgetData } = useBudget({ requestOnMount: false });
 //   const catalystUser = useCatalystUser();
 //   const { refreshEmployees } = useAppraisalRefresh();
 //   const role = String(catalystUser?.role || "")
@@ -619,10 +617,6 @@ import { useBudget } from "@/lib/budget-store";
 //   const access = useAccess();
 //   const isRoleHR = role === "hr" || role === "appadministrator";
   useEffect(() => {
-    // Prefetch the shared cycle-wise budget data while HR is in Operations.
-    if (isRoleHR) requestBudgetData?.();
-  }, [isRoleHR, requestBudgetData]);
-
 //   // With access rules (/me ok) a 'view' level makes the screen read-only.
 //   const canEditEmployees =
 //     isRoleHR && access.canScreen("employeeMaster", "edit");
