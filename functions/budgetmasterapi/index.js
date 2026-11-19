@@ -4368,7 +4368,7 @@ module.exports = async function (req, res) {
           !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
         throw new access.HttpError(403, "You can only transfer Comp Managers under your own Tech-Ed allocation.");
       }
-      access.guard(a, () => access.requireAction(a, "allotNextLevel"));
+      access.guard(a, () => access.requireAction(a, "changeBudgetConfig"));
 
       const compRows = await getAllRows(app, "Budget_Distribution_Comp");
       const sourceRow = compRows.find((row) =>
