@@ -102,6 +102,9 @@ const FEEDBACK_RATING_TABLE_ID = "74008000000022041";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 const ELIGIBILITY_TABLE_ID = "74008000000057046";
 const DELEGATION_TABLE_ID = "74008000000036124";
+// COMP_MANAGER_TRANSFER START
+const COMP_MANAGER_TRANSFER_HISTORY_TABLE_ID = "74008000000462004";
+// COMP_MANAGER_TRANSFER END
 // Past cycles' Delegation, loaded through Historical Import.
 const PREVIOUS_DELEGATION_TABLE_ID = "74008000000096255";
 
@@ -1728,6 +1731,9 @@ async function enrichPreviousAppraisalValues(
   addReader("eligibilityRows", ELIGIBILITY_TABLE_ID, true);
   addReader("feedbackRows", FEEDBACK_RATING_TABLE_ID, true);
   addReader("appraisalHistoryRows", EMPLOYEES_TABLE_ID, true);
+  // COMP_MANAGER_TRANSFER START
+  addReader("compManagerTransferRows", COMP_MANAGER_TRANSFER_HISTORY_TABLE_ID, true);
+  // COMP_MANAGER_TRANSFER END
   // Saved current-cycle Delegation snapshots are only consumed by the
   // Delegation view. The normal Appraisal Sheet gets current assignments from
   // Appraisal_Sheet / Employee_Master and must not scan this extra table.
@@ -1772,6 +1778,9 @@ async function enrichPreviousAppraisalValues(
   const feedbackRows = preloaded.feedbackRows || loaded.feedbackRows || [];
   const appraisalHistoryRows =
     preloaded.appraisalHistoryRows || loaded.appraisalHistoryRows || [];
+  // COMP_MANAGER_TRANSFER START
+  const compManagerTransferRows = loaded.compManagerTransferRows || [];
+  // COMP_MANAGER_TRANSFER END
   const delegationRows =
     preloaded.delegationRows || loaded.delegationRows || [];
   const previousDelegationRows =
@@ -2320,6 +2329,24 @@ async function enrichPreviousAppraisalValues(
       ]);
   });
   // This cycle's saved Delegation rows: the first row for each emp_id value.
+  // COMP_MANAGER_TRANSFER START
+  // The latest transfer is the current-cycle assignment override; Delegation
+  // itself remains untouched so the existing Delegation workflow is preserved.
+  const transferredCompManagerByEmployee = new Map();
+  compManagerTransferRows
+    .filter((row) => historyReference(row?.appraisal_cycle_id).toLowerCase() === String(currentCycleId).toLowerCase())
+    .sort((a, b) => String(a.transferred_at || a.ROWID || "").localeCompare(String(b.transferred_at || b.ROWID || "")))
+    .forEach((row) => {
+      let ids = [];
+      try { ids = JSON.parse(String(row.employee_ids || "[]")); } catch (_) {}
+      const destination = String(row.destination_comp_manager_id || "").trim();
+      if (!destination) return;
+      (Array.isArray(ids) ? ids : []).forEach((id) => {
+        const key = String(id || "").trim().toLowerCase();
+        if (key) transferredCompManagerByEmployee.set(key, destination);
+      });
+    });
+  // COMP_MANAGER_TRANSFER END
   const currentDelegationByEmployee = new Map();
   delegationRows.forEach((record, index) => {
     if (
@@ -2881,7 +2908,9 @@ async function enrichPreviousAppraisalValues(
       // saved / previous / master value is not valid it is skipped, and the
       // last default is the Tech-ED. If nothing is valid it is blank and the
       // Delegation screen asks for a Comp Manager to be set.
+      // COMP_MANAGER_TRANSFER START
       delegation_comp_manager:
+        strictPersonLabel(transferredCompManagerByEmployee.get(String(empKey || "").toLowerCase()), employeeMasterMap) ||
         strictPersonLabel(savedDelegation?.comp_manager, employeeMasterMap) ||
         strictPersonLabel(previousCompManager, employeeMasterMap) ||
         strictPersonLabel(employee.comp_manager, employeeMasterMap) ||
