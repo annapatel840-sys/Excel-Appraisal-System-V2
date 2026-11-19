@@ -4238,6 +4238,24 @@ module.exports = async function (req, res) {
         sourceRows.masterEmployeeRows || [],
         sourceRows.appraisalRows || [],
       );
+      bundle.transferCompManager = (bundle.transferCompManager || []).map((row) => {
+        const rawManager = String(row.comp_manager || "").trim();
+        if (!rawManager) return row;
+        const parts = rawManager.split(/\s+-\s+/);
+        const managerKey = parts[0].trim().toLowerCase();
+        const manager = managerByEmployeeId.get(managerKey) ||
+          managerByRowId.get(parts[0].trim()) ||
+          managerByName.get(rawManager.toLowerCase()) ||
+          (parts.length > 1
+            ? managerByName.get(parts.slice(1).join(" - ").toLowerCase())
+            : null);
+        if (!manager) return row;
+        const employeeId = String(firstValue(manager, ["emp_id", "empId", "employee_id"]) || "").trim();
+        const employeeName = String(firstValue(manager, ["emp_name", "employee_name", "name"]) || "").trim();
+        return employeeId && employeeName
+          ? { ...row, comp_manager_display: employeeId + " - " + employeeName }
+          : row;
+      });
       const budgetCycleRefs = new Set(
         (bundle.master || []).map((row) => String(row.appraisal_cycle_id || "").trim().toLowerCase()).filter(Boolean),
       );
