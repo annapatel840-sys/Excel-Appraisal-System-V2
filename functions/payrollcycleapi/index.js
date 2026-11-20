@@ -4228,14 +4228,18 @@ async function routeRequest(req, res, identity, resource, a) {
         data: { blocked: true, message: "Copy stopped without changing any rows. Resolve the listed data issues first.", totalRows: rows.length, readyToCopy: prepared.length, alreadyCopied, missingOld, conflicts: conflicts.slice(0, 50), conflictCount: conflicts.length },
       });
     }
-    let copied = 0;
-    for (const update of prepared) {
-      await tables.eligibility.updateRow(update);
-      copied += 1;
-    }
+    const writeResults = await writeRowsInBatches(tables.eligibility, prepared, "update", writeDeadline);
+    const copied = writeResults.filter((item) => item.ok).length;
+    const failed = writeResults.filter((item) => !item.ok && !item.skipped).length;
+    const remaining = writeResults.filter((item) => item.skipped).length;
     return sendJson(res, 200, {
       success: true,
-      data: { totalRows: rows.length, copied, alreadyCopied, missingOld: 0, message: "Employee IDs copied using each Eligibility List row's ROWID." },
+      data: {
+        totalRows: rows.length, copied, alreadyCopied, failed, remaining,
+        message: remaining ? "Copy paused safely at the request time limit. Click again to continue; matching rows will be skipped." :
+          failed ? "Some rows could not be updated. Review the Catalyst errors and retry; matching rows will be skipped." :
+          "Employee IDs copied using each Eligibility List row's ROWID.",
+      },
     });
   }
 
