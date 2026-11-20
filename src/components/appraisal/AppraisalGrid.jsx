@@ -14,6 +14,8 @@ import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { buildInfo } from "./DetailSidePanel";
+import { loadRules } from "@/lib/detail-highlight-rules";
 import { ColumnFilter } from "./ColumnFilter";
 import { ColumnOrderMenu } from "./ColumnOrderMenu";
 import { mergeColumnOrder, moveColumn, useSharedColumnOrder } from "@/lib/sheet-column-order";
@@ -456,6 +458,7 @@ const computeHistoryChange = (currentValue, previousValue) => {
 // ============================================================
 
 const PANEL_TABS = [
+  ["info", "Info"],
   ["feedback", "Feedback"],
   ["request", "Request"],
   ["more", "Config"],
@@ -910,9 +913,18 @@ function NotesPopover({ contextLabel }) {
   const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
+  const [justSaved, setJustSaved] = useState(false);
+  const canSave = text.trim().length > 0;
+
+  useEffect(() => {
+    if (!justSaved) return undefined;
+    const timer = setTimeout(() => setJustSaved(false), 1800);
+    return () => clearTimeout(timer);
+  }, [justSaved]);
 
   const onTextChange = (value) => {
     setText(value);
+    setJustSaved(false);
     writeStore(NOTE_DRAFT_KEY, value);
   };
 
@@ -937,6 +949,7 @@ function NotesPopover({ contextLabel }) {
     writeStore(NOTES_KEY, next);
     setText("");
     writeStore(NOTE_DRAFT_KEY, "");
+    setJustSaved(true);
   };
 
   const clearDraft = () => {
@@ -966,29 +979,42 @@ function NotesPopover({ contextLabel }) {
       <textarea
         value={text}
         onChange={(event) => onTextChange(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            event.preventDefault();
+            saveNote();
+          }
+        }}
         placeholder="Write a note…"
         className="min-h-[90px] w-full resize-y rounded-md border border-[#d1d5db] p-2 text-[12.5px] outline-none focus:border-[#102a43]"
       />
 
-      <div className="mt-2 flex items-center gap-1.5">
-        <label className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#374151]">
-          <input
-            type="checkbox"
-            checked={tie}
-            onChange={(event) => setTie(event.target.checked)}
-            className="accent-[#102a43]"
-          />
-          Mention the employee on screen
-        </label>
+      <label className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-[#374151]">
+        <input
+          type="checkbox"
+          checked={tie}
+          onChange={(event) => setTie(event.target.checked)}
+          className="accent-[#102a43]"
+        />
+        Mention the employee on screen
+      </label>
 
-        <span className="flex-1" />
-
-        {text && <span className="text-[11px] text-[#6b7280]">Draft kept</span>}
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <span
+          aria-live="polite"
+          className={cn(
+            "mr-auto text-[11px] font-semibold",
+            justSaved ? "text-[#166534]" : "text-[#6b7280]",
+          )}
+        >
+          {justSaved ? "✓ Note saved" : canSave ? "Draft kept · Ctrl+Enter to save" : ""}
+        </span>
 
         <button
           type="button"
           onClick={clearDraft}
-          className="rounded-md border border-[#d1d5db] bg-white px-3 py-1 text-[12px] font-bold"
+          disabled={!canSave}
+          className="h-8 whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-3 text-[12px] font-bold text-[#374151] transition-colors hover:border-[#102a43] hover:text-[#102a43] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#d1d5db] disabled:hover:text-[#374151]"
         >
           Clear
         </button>
@@ -996,7 +1022,8 @@ function NotesPopover({ contextLabel }) {
         <button
           type="button"
           onClick={saveNote}
-          className="rounded-md border border-[#102a43] bg-[#102a43] px-3 py-1 text-[12px] font-bold text-white"
+          disabled={!canSave}
+          className="h-8 whitespace-nowrap rounded-md border border-[#102a43] bg-[#102a43] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#1b3f63] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f6fed] active:bg-[#0b1f33] disabled:cursor-not-allowed disabled:border-[#d1d5db] disabled:bg-[#e5e7eb] disabled:text-[#9ca3af]"
         >
           Save note
         </button>
@@ -1061,7 +1088,7 @@ function EmployeePanel({
   currentCycleName,
 }) {
   const feedbackData = useEmployeeFeedback(employee.empId);
-  const [tab, setTab] = useState("feedback");
+  const [tab, setTab] = useState("info");
   const [subs, setSubs] = useState({ feedback: "manager" });
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
@@ -1199,6 +1226,102 @@ function EmployeePanel({
         }`
       : "",
   ].filter(Boolean);
+
+  // ---------- INFO (same content as the Detail screen panel's Info tab) ----------
+  const infoRules = useMemo(() => loadRules(), []);
+  const info = useMemo(() => {
+    const older = (history.rows || [])
+      .slice(1)
+      .filter((record) => !isExceptionRecord(record));
+    const live = {
+      pb:
+        (Number(employee.allocatedPBAmount) || 0) +
+        (Number(employee.newPBToBeOffered) || 0),
+      rb: Number(employee.newRB) || 0,
+    };
+
+    return buildInfo(employee, older, live, infoRules);
+  }, [employee, history.rows, infoRules]);
+
+  const infoAlerts = info.flags.filter((f) => f.level !== "green").length;
+  const infoBadgeTone = info.flags.some((f) => f.level === "red")
+    ? "bg-[#d64545]"
+    : "bg-[#e8a317]";
+
+  const INFO_TILE = {
+    red: "border-[#d64545] bg-[#fdecec] border-l-4",
+    amber: "border-[#e8a317] bg-[#fff1d6] border-l-4",
+    green: "border-[#2e9b6a] bg-[#e8f6ee] border-l-4",
+  };
+  const INFO_TILE_VALUE = {
+    red: "text-[#9b1c1c]",
+    amber: "text-[#7a4a00]",
+    green: "text-[#14663f]",
+  };
+  const INFO_FLAG = {
+    red: "border-[#d64545] bg-[#fdecec]",
+    amber: "border-[#e8a317] bg-[#fff6e0]",
+    green: "border-[#2e9b6a] bg-[#e8f6ee]",
+  };
+
+  const renderInfo = () => {
+    const order = { red: 0, amber: 1, green: 2 };
+    const flags = [...info.flags].sort((a, b) => order[a.level] - order[b.level]);
+
+    return (
+      <div className="pt-1">
+        <div className="grid grid-cols-2 gap-1.5">
+          {info.items.map((item) => (
+            <div
+              key={item.label}
+              className={cn(
+                "flex min-w-0 flex-col gap-px rounded-lg border px-2.5 py-1.5",
+                item.lv ? INFO_TILE[item.lv] : "border-[#e5e7eb] bg-white",
+              )}
+            >
+              <span className="text-[10px] font-bold capitalize leading-tight tracking-[.03em] text-[#6b7280]">
+                {item.label}
+              </span>
+              <b
+                className={cn(
+                  "break-words text-[13px]",
+                  item.lv ? INFO_TILE_VALUE[item.lv] : "text-[#102a43]",
+                )}
+              >
+                {item.value === undefined || item.value === null || item.value === ""
+                  ? "—"
+                  : String(item.value)}
+              </b>
+            </div>
+          ))}
+        </div>
+
+        <h5 className="mb-1.5 mt-3.5 text-[10.5px] font-extrabold capitalize tracking-[.06em] text-[#6b7280]">
+          Flags · {infoAlerts} to check
+        </h5>
+
+        {flags.length ? (
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {flags.map((flag, index) => (
+              <li
+                key={`${flag.title}-${index}`}
+                className={cn(
+                  "rounded-[7px] border-l-4 px-2.5 py-[5px] text-[11.5px]",
+                  INFO_FLAG[flag.level],
+                  flag.level === "green" && "opacity-90",
+                )}
+              >
+                <b className="text-[#111827]">{flag.title}</b>
+                {flag.text && <span className="ml-1.5 text-[#4a5868]">{flag.text}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-[11.5px] text-[#6b7280]">Nothing to flag.</div>
+        )}
+      </div>
+    );
+  };
 
   // ---------- FEEDBACK ----------
   const renderHistoryState = () => {
@@ -1764,6 +1887,16 @@ function EmployeePanel({
           >
             <span className="size-2 shrink-0 rounded-full bg-[#2f6fed]" />
             {label}
+            {key === "info" && infoAlerts > 0 && (
+              <span
+                className={cn(
+                  "inline-block min-w-4 rounded-full px-[5px] text-center text-[10.5px] font-bold leading-4 text-white",
+                  infoBadgeTone,
+                )}
+              >
+                {infoAlerts}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -1794,7 +1927,9 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {activeTab === "feedback"
+        {activeTab === "info"
+          ? renderInfo()
+          : activeTab === "feedback"
           ? renderFeedback()
           : activeTab === "request"
             ? renderRequest()

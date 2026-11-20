@@ -124,25 +124,39 @@ function NotesPopover({ contextLabel, floating = false }) {
   const [saveProblem, setSaveProblem] = useState("");
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const canSave = text.trim().length > 0 && !saving;
+
+  useEffect(() => {
+    if (!justSaved) return undefined;
+    const timer = setTimeout(() => setJustSaved(false), 1800);
+    return () => clearTimeout(timer);
+  }, [justSaved]);
 
   const onTextChange = (value) => {
     setText(value);
+    setJustSaved(false);
     writeStore(NOTE_DRAFT_KEY, value);
   };
 
   const saveNote = async () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || saving) return;
 
     if (remote) {
       setSaveProblem("");
+      setSaving(true);
       try {
         await remote.add({ text: trimmed, ctx: tie ? contextLabel : "" });
         setText("");
         writeStore(NOTE_DRAFT_KEY, "");
+        setJustSaved(true);
       } catch (error) {
         // The draft stays in the box so nothing is lost.
         setSaveProblem(error?.message || "The note could not be saved.");
+      } finally {
+        setSaving(false);
       }
       return;
     }
@@ -161,6 +175,7 @@ function NotesPopover({ contextLabel, floating = false }) {
     writeStore(NOTES_KEY, next);
     setText("");
     writeStore(NOTE_DRAFT_KEY, "");
+    setJustSaved(true);
   };
 
   const clearDraft = () => {
@@ -207,37 +222,50 @@ function NotesPopover({ contextLabel, floating = false }) {
       <textarea
         value={text}
         onChange={(event) => onTextChange(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            event.preventDefault();
+            saveNote();
+          }
+        }}
         placeholder="Write a note…"
-        className="min-h-[90px] w-full resize-y rounded-md border p-2 text-[12.5px] outline-none"
+        className="min-h-[90px] w-full resize-y rounded-md border p-2 text-[12.5px] outline-none focus:border-[#102a43]"
         style={{ borderColor: "#d1d5db" }}
       />
 
-      <div className="mt-2 flex items-center gap-1.5">
-        <label
-          className="flex items-center gap-1.5 text-[11.5px] font-semibold"
-          style={{ color: "#374151" }}
-        >
-          <input
-            type="checkbox"
-            checked={tie}
-            onChange={(event) => setTie(event.target.checked)}
-            className="accent-[#102a43]"
-          />
-          Mention the employee on screen
-        </label>
+      <label
+        className="mt-2 flex items-center gap-1.5 text-[11.5px] font-semibold"
+        style={{ color: "#374151" }}
+      >
+        <input
+          type="checkbox"
+          checked={tie}
+          onChange={(event) => setTie(event.target.checked)}
+          className="accent-[#102a43]"
+        />
+        Mention the employee on screen
+      </label>
 
-        <span className="flex-1" />
-        {text && (
-          <span className="text-[11px]" style={{ color: MUTED }}>
-            Draft kept
-          </span>
-        )}
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <span
+          aria-live="polite"
+          className="mr-auto text-[11px] font-semibold"
+          style={{ color: justSaved ? "#166534" : MUTED }}
+        >
+          {saving
+            ? "Saving…"
+            : justSaved
+              ? "✓ Note saved"
+              : text.trim()
+                ? "Draft kept · Ctrl+Enter to save"
+                : ""}
+        </span>
 
         <button
           type="button"
           onClick={clearDraft}
-          className="rounded-md border bg-white px-3 py-1 text-[12px] font-bold"
-          style={{ borderColor: "#d1d5db" }}
+          disabled={!text.trim() || saving}
+          className="h-8 whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-3 text-[12px] font-bold text-[#374151] transition-colors hover:border-[#102a43] hover:text-[#102a43] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#d1d5db] disabled:hover:text-[#374151]"
         >
           Clear
         </button>
@@ -245,10 +273,10 @@ function NotesPopover({ contextLabel, floating = false }) {
         <button
           type="button"
           onClick={saveNote}
-          className="rounded-md border px-3 py-1 text-[12px] font-bold text-white"
-          style={{ borderColor: NAVY, background: NAVY }}
+          disabled={!canSave}
+          className="h-8 whitespace-nowrap rounded-md border border-[#102a43] bg-[#102a43] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#1b3f63] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f6fed] active:bg-[#0b1f33] disabled:cursor-not-allowed disabled:border-[#d1d5db] disabled:bg-[#e5e7eb] disabled:text-[#9ca3af]"
         >
-          Save note
+          {saving ? "Saving…" : "Save note"}
         </button>
       </div>
 

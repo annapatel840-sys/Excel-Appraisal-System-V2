@@ -97,7 +97,7 @@ const WIDE_AT = 500; // at/after this width the split layout is used
 
 /* ---------- Info tab data ---------- */
 
-function buildInfo(e, history, live, rules) {
+export function buildInfo(e, history, live, rules) {
   const orgYrs = parseFloat(e.wissenExperience) || 0;
   const proRata = orgYrs > 0 && orgYrs < 1 ? orgYrs : 1;
   const ctx = {
