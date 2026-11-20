@@ -275,7 +275,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       w: 150,
       get: () => "Preview",
       render: (l) => (
-        <span style={{ whiteSpace: "nowrap" }}>
+        <span className="lt-row-actions">
           <button type="button" className="lt-btn sm pri" onClick={() => openPreview(l.id)}>Preview</button>
           {sendable(l) && (
             <button type="button" className="lt-btn sm success" disabled={sending} onClick={() => rowSend(l.id)}>{sending ? "Sending…" : "Send"}</button>
