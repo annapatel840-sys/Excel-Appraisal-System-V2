@@ -115,6 +115,18 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(f.status, 200, 'number formats compare by value');
   });
 
+  await t('clearing Target PB for Next Year stores numeric zero instead of an empty string', async () => {
+    const cleared = await save({ target_pb_next_year: '', expected: { target_pb_next_year: 0 } });
+    assert.strictEqual(cleared.status, 200, JSON.stringify(cleared.json));
+    assert.strictEqual(row().target_pb_next_year, 0);
+    const clearedAgain = await save({ target_pb_next_year: null, expected: { target_pb_next_year: 0 } });
+    assert.strictEqual(clearedAgain.status, 200, JSON.stringify(clearedAgain.json));
+    assert.strictEqual(row().target_pb_next_year, 0);
+    const numericString = await save({ target_pb_next_year: '12500.5', expected: { target_pb_next_year: 0 } });
+    assert.strictEqual(numericString.status, 200, JSON.stringify(numericString.json));
+    assert.strictEqual(row().target_pb_next_year, 12500.5);
+  });
+
   await t('fields the grid derives on load are not checked', async () => {
     const r = await save({ current_annual_base_pay: 510000, expected: { current_annual_base_pay: 999 } });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));

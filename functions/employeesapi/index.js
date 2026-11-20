@@ -5243,7 +5243,23 @@ async function updateEmployee(req, res) {
 
     const appraisalColumn = appraisalFieldMap[column];
     if (appraisalColumn) {
-      appraisalUpdate[appraisalColumn] = value;
+      // Catalyst Appraisal_Sheet.target_pb_next_year is a Double column.
+      // A cleared numeric input arrives as "" (or occasionally null); neither
+      // is a valid Double. Store 0 so clearing the cell is a successful save.
+      if (appraisalColumn === "target_pb_next_year") {
+        const rawNumber = value === null || value === undefined ? "" : String(value).trim();
+        if (rawNumber === "") {
+          appraisalUpdate[appraisalColumn] = 0;
+        } else {
+          const numericValue = Number(rawNumber);
+          if (!Number.isFinite(numericValue)) {
+            throw new access.HttpError(400, "Target PB for Next Year must be a valid number.");
+          }
+          appraisalUpdate[appraisalColumn] = numericValue;
+        }
+      } else {
+        appraisalUpdate[appraisalColumn] = value;
+      }
     }
   });
 
