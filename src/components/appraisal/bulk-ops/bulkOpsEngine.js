@@ -2193,7 +2193,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   lt.addEventListener("click",function(ev){var p=ev.target.getAttribute&&ev.target.getAttribute("data-p");if(p){st.lt=p;apply()}});
   $("lFold").onclick=function(){st.lc=true;apply()};$("rFold").onclick=function(){st.rc=true;apply()};
   /* centre tabs: Employees and Scenarios sit with the result tabs */
-  var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios");
+  var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios &amp; History");
   tEmp.type="button";tEmp.setAttribute("data-x","emp");tScn.type="button";tScn.setAttribute("data-x","scn");
   mpTabs.insertBefore(tEmp,mpTabs.firstChild.nextSibling);mpTabs.insertBefore(tScn,lyTog);
   /* "+" chooses which tabs show */
