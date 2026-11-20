@@ -95,8 +95,8 @@ async function setup() {
   const master = store.table(MASTER_T, null);
   await master.insertRow({ emp_id: 'E1', emp_name: 'A', emp_status: 'Active' });
   await master.insertRow({ emp_id: 'E2', emp_name: 'B', emp_status: 'Active' });
-  const mk = async (name) => {
-    assert.strictEqual((await post('cycles/create', { name, type: 'Annual', process: 'Annual', effective: iso(9), start: iso(10), end: iso(40) })).status, 201);
+  const mk = async (name, location = 'All') => {
+    assert.strictEqual((await post('cycles/create', { name, type: 'Annual', process: 'Annual', location, effective: iso(9), start: iso(10), end: iso(40) })).status, 201);
     return (await call(api, 'GET', 'cycles')).json.data.find((c) => c.name === name);
   };
   return { store, api, post, mk, elig: store.table(ELIG_T, null) };
