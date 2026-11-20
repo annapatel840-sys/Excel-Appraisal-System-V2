@@ -1,9 +1,8 @@
 import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
-import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
+import { useScopedRows } from "./useScopedRows";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useCurrentCycleInfo } from "@/lib/current-cycle";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
@@ -18,6 +17,7 @@ import {
   balanceRows,
   barNum,
   calcHikePct,
+  compManagersUnder,
   cycleKeyOf,
   daysUntil,
   fmAmt,
@@ -33,6 +33,7 @@ import {
   pctOfBase,
   ratingOf,
   recordHikePct,
+  sameOwnerAs,
   screenOfSource,
   targetPair,
 } from "@/lib/dashboard-overview";
@@ -49,7 +50,7 @@ const RATING_COLORS = ["#DCE1E7", "#A9C4E4", "#6F9BD0", "#3E6FA8", "#1D3B5E"];
 const LIGHT = new Set(["#DCE1E7", "#A9C4E4", "#EEF1F4", "#B8C0CC"]);
 const MAX_PEOPLE_SHOWN = 500;
 
-const go = (to) => {
+export const go = (to) => {
   window.history.pushState({}, "", to);
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
@@ -58,7 +59,7 @@ const tipMoney = (v) => formatMoney(Math.round(num(v)));
 
 /* ---------------- small building blocks ---------------- */
 
-function Toggle({ value, options, onChange }) {
+export function Toggle({ value, options, onChange }) {
   return (
     <div className="ctog">
       {options.map(([k, label]) => (
@@ -151,7 +152,7 @@ function Donut({ parts, total }) {
   );
 }
 
-function Arrow({ d, txt, good = true }) {
+export function Arrow({ d, txt, good = true }) {
   if (Math.abs(d) < 0.0005) return <span>no change</span>;
   const up = d > 0;
   return <span className={up === good ? "up" : "dn"}>{up ? "▲ " : "▼ "}{txt}</span>;
@@ -159,7 +160,7 @@ function Arrow({ d, txt, good = true }) {
 
 /* ---------------- "Compare with" years ---------------- */
 
-function YearMenu({ cycles, selected, onChange }) {
+export function YearMenu({ cycles, selected, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -309,7 +310,7 @@ function passes(col, item, f) {
   return true;
 }
 
-function PeopleList({ list, onClose, canOpenSheet }) {
+export function PeopleList({ list, onClose, canOpenSheet }) {
   const [sort, setSort] = useState(null);
   const [filters, setFilters] = useState({});
   const [menu, setMenu] = useState(null); // { k, left, top }
@@ -428,28 +429,12 @@ const Cell = ({ col, row }) => col.cell(row);
 
 /* ---------------- main ---------------- */
 
-export function DashboardOverview() {
-  const { rows: allRows, audit } = useAppraisal();
+export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
+  const { rows, audit, effectiveId } = useScopedRows();
   const budgetCtx = useBudget();
-  const { effectiveId, actualId } = useViewAs();
   const catalystUser = useCatalystUser();
   const { name: cycleName, info: cycleInfo } = useCurrentCycleInfo();
   const access = useAccess();
-
-  // Same reporting scope as before: Active + Eligible employees only.
-  const rows = useMemo(
-    () =>
-      allRows.filter(
-        (r) =>
-          String(r.status || "").trim().toLowerCase() === "active" &&
-          String(r.eligibility || "").trim().toLowerCase() === "eligible" &&
-          // Tech-ED previewing as a Comp Manager: only that Comp Manager's own team,
-          // same rule as the Appraisal Sheet.
-          (!(effectiveId === "compmanager" && actualId === "teched") ||
-            currentUserMatchesManager(r.compManagerDisplay || r.compManager, catalystUser, allRows)),
-      ),
-    [allRows, effectiveId, actualId, catalystUser],
-  );
 
   const [unit, setUnit] = useState("n"); // n = numbers, p = percent
   const [tab, setTab] = useState("s"); // s = summary, a = recent activity
@@ -457,7 +442,10 @@ export function DashboardOverview() {
   const [budgetView, setBudgetView] = useState("t"); // t table, b bars, c columns
   const [open, setOpen] = useState({}); // expanded budget rows
   const [list, setList] = useState(null); // { title, rows }
-  const [cmp, setCmp] = useState([]); // compared cycle keys
+  // Compared cycle keys. The Dashboard tab shares this choice when it is passed in.
+  const [cmpLocal, setCmpLocal] = useState([]);
+  const cmp = cmpProp ?? cmpLocal;
+  const setCmp = onCmpChange ?? setCmpLocal;
 
   const tipRef = useRef(null);
   const onMove = (e) => {
@@ -537,9 +525,9 @@ export function DashboardOverview() {
   const L1 = levels[1];
 
   /* ---- budget rows (level 1, optionally opened into level 2) ---- */
-  const mkBudgetRow = (lvl, g, d, kids, key) => {
+  const mkBudgetRow = (lvl, g, d, kids, key, alOverride) => {
     const pt = partsOf(g.rows);
-    const al = allocationFor(lvl.k, g.key, budgetCtx);
+    const al = alOverride === undefined ? allocationFor(lvl.k, g.key, budgetCtx) : alOverride;
     return { key, k: g.key, rows: g.rows, n: g.rows.length, pt, al, hasAl: al > 0, u: al > 0 ? (pt.total / al) * 100 : null, rem: al > 0 ? al - pt.total : null, d, kids, lvl };
   };
   const budRows = useMemo(() => {
@@ -559,14 +547,29 @@ export function DashboardOverview() {
       const key = `${L0.k}:${g.key}`;
       out.push(mkBudgetRow(L0, g, 0, Boolean(L1), key));
       if (L1 && open[key]) {
-        groupRows(g.rows, L1.of).forEach((c) => out.push(mkBudgetRow(L1, c, 1, false, `${L1.k}:${key}:${c.key}`)));
+        if (L0.k === "te" && L1.k === "cm") {
+          // Comp Managers allocated under THIS Tech-ED (Budget Distribution), with their
+          // budget under it and the people of this Tech-ED's team they are Comp Manager for.
+          const sheetLabels = Array.from(new Set(g.rows.map((r) => r.compManager).filter(Boolean)));
+          const kids = compManagersUnder(g.key, budgetCtx, sheetLabels);
+          if (kids.length === 0) {
+            out.push({ key: `none:${key}`, none: true, d: 1, k: "No comp manager allocated", rows: [], n: 0 });
+          } else {
+            kids.forEach((c) => {
+              const mine = g.rows.filter((r) => sameOwnerAs(c.label, r.compManager));
+              out.push(mkBudgetRow(L1, { key: c.label, rows: mine }, 1, false, `${L1.k}:${key}:${c.label}`, c.allocated));
+            });
+          }
+        } else {
+          groupRows(g.rows, L1.of).forEach((c) => out.push(mkBudgetRow(L1, c, 1, false, `${L1.k}:${key}:${c.key}`)));
+        }
       }
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, L0, L1, open, budgetCtx, parts, allocated, selfLabel]);
   const CMM = !L0; // Comp Manager login: one row, no total line
-  const overCount = budRows.filter((r) => r.d === 0 && r.hasAl && r.pt.total > r.al).length;
+  const overCount = budRows.filter((r) => !r.none && r.d === 0 && r.hasAl && r.pt.total > r.al).length;
 
   /* ---- ratings ---- */
   const ratingCounts = [1, 2, 3, 4, 5].map((r) => rows.filter((x) => ratingOf(x) === r).length);
@@ -718,7 +721,7 @@ export function DashboardOverview() {
     );
 
   /* ---- budget by level ---- */
-  const mx = Math.max(1, ...budRows.map((r) => Math.max(r.al, r.pt.total))) * 1.08;
+  const mx = Math.max(1, ...budRows.filter((r) => !r.none).map((r) => Math.max(r.al, r.pt.total))) * 1.08;
   const remText = (r) =>
     !r.hasAl ? "0" : r.rem < 0 ? <span style={{ color: "var(--err)", fontWeight: 700 }}>Over by {fmAmt(-r.rem)}</span> : fmAmt(r.rem);
   const utilText = (u) =>
@@ -730,6 +733,9 @@ export function DashboardOverview() {
       ) : <span style={{ width: 14 }} />}
       <span style={{ fontWeight: r.d ? 500 : 700 }}>{r.k}</span>
     </span>
+  );
+  const noCmName = (r) => (
+    <span className="mut" style={{ display: "inline-block", paddingLeft: r.d * 22 + 20, fontStyle: "italic", fontWeight: 600 }}>{r.k}</span>
   );
   const peopleLink = (r) => (
     <button className="lnk" type="button" style={{ padding: 0 }} onClick={(e) => { e.stopPropagation(); openList(`${r.k} · people`, r.rows); }}>People ›</button>
@@ -775,7 +781,11 @@ export function DashboardOverview() {
               </tr>
             </thead>
             <tbody>
-              {budRows.map((r) => (
+              {budRows.map((r) => r.none ? (
+                <tr key={r.key} className="data">
+                  <td className="rl" colSpan={9}>{noCmName(r)}</td>
+                </tr>
+              ) : (
                 <tr key={r.key} className={`data${r.kids ? " click" : ""}`} onClick={r.kids ? () => setOpen((p) => ({ ...p, [r.key]: !p[r.key] })) : undefined}>
                   <td className="rl">{rowName(r)}</td>
                   <td className="n">{inr(r.n)}</td>
@@ -800,7 +810,11 @@ export function DashboardOverview() {
       const pw = (v) => `${(v / mx) * 100}%`;
       budgetBody = (
         <>
-          {budRows.map((r) => (
+          {budRows.map((r) => r.none ? (
+            <div className="brow" key={r.key} style={{ paddingLeft: r.d * 22 }}>
+              <div className="h">{noCmName(r)}</div>
+            </div>
+          ) : (
             <div className="brow" key={r.key} style={{ paddingLeft: r.d * 22 }}>
               <div className="h">{rowName({ ...r, d: 0 })}<span className="mut" style={{ fontSize: 11 }}>{inr(r.n)} people</span>{peopleLink(r)}</div>
               <div className="t">
@@ -829,7 +843,7 @@ export function DashboardOverview() {
         <>
           <div className="bcols">
             <div>
-              {budRows.map((r) => (
+              {budRows.filter((r) => !r.none).map((r) => (
                 <div className="bcol" key={r.key}>
                   <div style={{ fontSize: 12, marginBottom: 4 }}>{utilText(r.u)}</div>
                   <div className="stk" style={{ height: H, opacity: r.d ? 0.8 : 1 }}>

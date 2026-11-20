@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/appraisal/AppShell";
-import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { DashboardHome } from "@/components/dashboard/DashboardHome";
 
 export function Dashboard() {
   return (
     <AppShell>
-      <DashboardOverview />
+      <DashboardHome />
     </AppShell>
   );
 }

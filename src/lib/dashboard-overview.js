@@ -144,6 +144,69 @@ export const allocationFor = (level, key, budget) => {
   );
 };
 
+// Does this raw owner value (ROWID, id, name or "ID - Name") name the same
+// person as the label? Exposed so the Dashboard can match sheet rows to budget rows.
+export const sameOwnerAs = (a, b) => sameOwner(a, b);
+
+// Budget_Distribution rows (the Tech-ED level) that belong to one Tech-ED group key.
+// Same matching rule allocationFor() uses, but it returns the rows themselves.
+export const techEdDistributionRows = (key, budget) => {
+  if (!String(key ?? "").trim()) return [];
+  const fk = fkMap(budget);
+  const resolve = (raw) => fk.get(String(raw ?? "").trim().toLowerCase()) || String(raw ?? "").trim();
+  return (budget.budgetDistributionRows || []).filter((r) =>
+    [r.tech_ed_id, r.appraiser_tech_ed_id, r.tech_ed, r.appraiser_tech_ed, r.tech_ed_name]
+      .map(resolve)
+      .some((owner) => sameOwner(owner, key)),
+  );
+};
+
+// "ID - Name" for a Comp Manager as stored on a Budget_Distribution_Comp row
+// (may be a ROWID, an employee id, a name or already "ID - Name"). `sheetLabels`
+// are the "ID - Name" labels the Appraisal Sheet already shows, tried last.
+const compManagerLabel = (raw, budget, fk, sheetLabels) => {
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  const viaFk = fk.get(text.toLowerCase());
+  if (viaFk) return viaFk;
+  const roster = [...(budget.employeeRows || []), ...(budget.locationEmployeeRows || [])];
+  const emp = roster.find((e) =>
+    [e?.emp_id, e?.employee_id, e?.employeeId, e?.emp_name, e?.employee_name, e?.name, e?.email, e?.email_id]
+      .some((x) => x && sameOwner(x, text)),
+  );
+  if (emp) {
+    const id = String(emp.emp_id || emp.employee_id || emp.employeeId || "").trim();
+    const name = String(emp.emp_name || emp.employee_name || emp.name || "").trim();
+    if (id && name) return `${id} - ${name}`;
+  }
+  const seen = (sheetLabels || []).find((l) => sameOwner(l, text));
+  return seen || text;
+};
+
+// The Comp Managers allocated under ONE Tech-ED, from Budget_Distribution_Comp
+// (child.budget_distribution_id -> the Tech-ED's Budget_Distribution row).
+// Returns [] when the Tech-ED has none, and never mixes in another Tech-ED's.
+export const compManagersUnder = (techEdKey, budget, sheetLabels = []) => {
+  const parents = new Set(
+    techEdDistributionRows(techEdKey, budget)
+      .map((r) => String(r.id ?? r.ROWID ?? "").trim())
+      .filter(Boolean),
+  );
+  if (!parents.size) return [];
+  const fk = fkMap(budget);
+  const out = new Map();
+  (budget.budgetCompManagerRows || []).forEach((c) => {
+    if (!parents.has(String(c.budget_distribution_id ?? "").trim())) return;
+    const label = compManagerLabel(c.comp_manager, budget, fk, sheetLabels);
+    if (!label) return;
+    const id = ownerOf(label)?.id || label.toLowerCase();
+    const hit = out.get(id);
+    if (hit) hit.allocated += num(c.applied_budget);
+    else out.set(id, { label, allocated: num(c.applied_budget) });
+  });
+  return Array.from(out.values()).sort((a, b) => a.label.localeCompare(b.label));
+};
+
 export const ratingOf = (r) => {
   const v = Number(String(r.managerRating ?? "").trim());
   return Number.isInteger(v) && v >= 1 && v <= 5 ? v : 0;
