@@ -925,8 +925,8 @@
 /* Employees is not a tab: Summary links to it, this bar leads back */
 .bo .bkbar{display:none;padding:6px 10px;border-bottom:1px solid #E5E7EB;background:#fff}
 .bo[data-ct=emp] .bkbar{display:block}
-/* Employees (and Scenarios) are not always-on tabs: they show in the tab row only while open, like the dummy. */
-.bo #pC .mp-tabs button[data-x]:not(.on){display:none!important}
+/* Employees is not an always-on tab: it shows in the tab row only while open (Scenarios stays a normal tab). */
+.bo #pC .mp-tabs button[data-x="emp"]:not(.on){display:none!important}
 /* Summary sections alternate: white with a blue marker, then grey with a black marker. */
 .bo #imp .sm>.wi{background:#fff!important}
 .bo #imp .sm>.wi::before{background:#2F6FED!important}
