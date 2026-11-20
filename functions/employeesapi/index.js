@@ -347,6 +347,46 @@ function shapeEmployee(a, row) {
   return out;
 }
 
+// Access -> Fields -> Employee Master: values of a field set to Hidden are not sent with the roster
+// (the screen hides them too, this keeps them out of the response). Employee ID is the row key and
+// Employee Status drives the Active / Inactive filter, so both are only hidden on the screen.
+const MASTER_FIELD_KEYS = {
+  "Employee Name": ["emp_name", "name", "empName", "employeeName"],
+  Designation: ["designation"],
+  Department: ["department", "organization", "orgtn"],
+  "Reporting Manager": ["reporting_manager", "repo_manager", "reportingManager", "manager"],
+  Director: ["director", "director_name"],
+  "Appraiser Tech-ED": ["appraiser_tech_ed", "appraiser", "appraiser_name"],
+  "Employee Type": ["emp_type", "employee_type", "employment_type", "type"],
+  "Email ID": ["email_id", "email", "emailId"],
+  "Date of Joining": ["date_of_join", "joining_date", "doj"],
+  Location: ["location", "work_location"],
+  "Cost Center": ["cost_center", "costCenter"],
+  "Organization Experience": ["wissen_experience", "wissenExperience", "orgExp"],
+  "Total Experience": ["total_experience", "totalExp"],
+  "Current Salary": ["current_salary", "currentSalary"],
+  "Last Appraisal Month/Year": ["last_appraisal_month_year", "last_appraisal", "lastAppraisal"],
+  "Exit Date": ["exit_date", "exitDate", "resignation_date"],
+  Remark: ["remark", "remarks"],
+};
+
+function shapeMasterFields(a, row) {
+  const hidden = Object.keys(MASTER_FIELD_KEYS).filter(function (label) {
+    return access.fieldLimitOf(a, "employeeMaster", label) === "hidden";
+  });
+  if (!hidden.length || !row) return row;
+  const out = { ...row };
+  const raw = row.rawEmployee && typeof row.rawEmployee === "object" ? { ...row.rawEmployee } : null;
+  hidden.forEach(function (label) {
+    MASTER_FIELD_KEYS[label].forEach(function (key) {
+      delete out[key];
+      if (raw) delete raw[key];
+    });
+  });
+  if (raw) out.rawEmployee = raw;
+  return out;
+}
+
 async function bumpAccessVersion(req, a, why) {
   try {
     await access.bumpVersion(
@@ -4621,7 +4661,9 @@ async function getEmployees(req, res) {
     .slice(offset, offset + limit)
     .map(function (employee) {
       const normalized = normalizeEmployeeResponse(employee);
-      return enforced ? shapeEmployee(a, normalized) : normalized;
+      if (!enforced) return normalized;
+      const shaped = shapeEmployee(a, normalized);
+      return requestedView === "master" ? shapeMasterFields(a, shaped) : shaped;
     });
 
   /* ==========================================================

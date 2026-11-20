@@ -179,7 +179,21 @@ const FIELD_ACCESS_LABEL = {
   location: "Location",
   last_appraisal_month_year: "Last Appraisal Month/Year",
   exit_date: "Exit Date",
+  remark: "Remark",
+  remarks: "Remark",
 };
+
+// Access -> Fields -> Employee Master: a column set to Hidden is not sent. emp_id (row key) and the
+// status columns (Active / Inactive filter) stay; the screen hides those itself.
+function hideHiddenFields(a, row) {
+  if (!a || !a.enforced || !row) return row;
+  const out = { ...row };
+  Object.keys(FIELD_ACCESS_LABEL).forEach(function (column) {
+    if (column === "emp_status" || column === "status") return;
+    if (access.fieldLimitOf(a, "employeeMaster", FIELD_ACCESS_LABEL[column]) === "hidden") delete out[column];
+  });
+  return out;
+}
 
 const NUMERIC_FIELDS = new Set([
   "wissen_experience",
@@ -572,7 +586,7 @@ function extractCount(result) {
 // Counts are calculated separately.
 // ============================================================
 
-async function getRoster(req, res, table) {
+async function getRoster(req, res, table, a) {
   const url = new URL(req.url, "https://" + (req.headers.host || "localhost"));
   const pageValue = parseInt(url.searchParams.get("page"), 10);
   const limitValue = parseInt(url.searchParams.get("limit"), 10);
@@ -627,7 +641,9 @@ async function getRoster(req, res, table) {
   const filteredCount = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(filteredCount / limit));
   const safePage = Math.min(page, totalPages);
-  const finalData = filteredRows.slice((safePage - 1) * limit, safePage * limit);
+  const finalData = filteredRows
+    .slice((safePage - 1) * limit, safePage * limit)
+    .map((row) => hideHiddenFields(a, row));
 
   sendJson(res, 200, {
     success: true,
@@ -1135,7 +1151,7 @@ module.exports = async function (req, res) {
 
     // GET reads only from Employee_Master.
     if (req.method === "GET") {
-      await getRoster(req, res, table);
+      await getRoster(req, res, table, a);
       return;
     }
 
