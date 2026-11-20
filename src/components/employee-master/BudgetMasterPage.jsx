@@ -3725,24 +3725,70 @@ function HRApplyBudget() {
     ) || null;
 
 
-  // The shared Budget Provider already resolves the selected cycle and its
-  // cycle-wise calculations. Use that snapshot immediately; only query the
-  // cycle API when there is no active cycle (for the latest closed-cycle fallback).
+  // Keep the provider's cycle ID for all budget calculations, but resolve
+  // its display name from Cycle Master so the card never exposes a raw ID.
   useEffect(() => {
     let mounted = true;
     if (activeBudgetCycleId) {
-      const master = budgetMasterRows.find(
-        (row) => String(row.appraisal_cycle_id || "") === String(activeBudgetCycleId),
-      );
       const cycleId = String(activeBudgetCycleId);
+      const master = budgetMasterRows.find(
+        (row) => String(row.appraisal_cycle_id || "") === cycleId,
+      );
+      const fallbackName = String(
+        master?.appraisal_cycle_name || master?.cycle_name || "",
+      );
+
       setActiveCycle({
         id: cycleId,
         appraisal_cycle_id: cycleId,
-        name: String(master?.appraisal_cycle_name || master?.cycle_name || cycleId),
+        name: fallbackName || "Loading cycle name…",
         status: "Active",
       });
       setSelectedCycle(cycleId);
-      setCycleLoading(false);
+      setCycleLoading(!fallbackName);
+
+      payrollCycleRequest("cycles")
+        .then((cycles) => {
+          if (!mounted) return;
+          const matchingCycle = (Array.isArray(cycles) ? cycles : []).find(
+            (cycle) =>
+              String(
+                cycle.id ??
+                  cycle.appraisal_cycle_id ??
+                  cycle.cycle_id ??
+                  cycle.ROWID ??
+                  "",
+              ) === cycleId,
+          );
+          if (!matchingCycle) return;
+
+          const cycleName = String(
+            matchingCycle.name ||
+              matchingCycle.cycle_name ||
+              matchingCycle.appraisal_cycle_name ||
+              matchingCycle.label ||
+              fallbackName ||
+              "Unknown cycle",
+          );
+          setActiveCycle({
+            ...matchingCycle,
+            id: cycleId,
+            appraisal_cycle_id: cycleId,
+            name: cycleName,
+          });
+        })
+        .catch((cycleError) => {
+          console.error("Failed to resolve Budget Master cycle name:", cycleError);
+          if (mounted && !fallbackName) {
+            setActiveCycle((current) =>
+              current ? { ...current, name: "Unknown cycle" } : current,
+            );
+          }
+        })
+        .finally(() => {
+          if (mounted) setCycleLoading(false);
+        });
+
       return () => {
         mounted = false;
       };
