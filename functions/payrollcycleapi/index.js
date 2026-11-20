@@ -1297,8 +1297,23 @@ async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
     return { criteria: own[own.length - 1].details.criteria, criteriaHistory, inherited: false };
   }
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  // Criteria are reusable only inside the same appraisal-cycle family:
+  // same location, cycle type, year, and location-free cycle name.
+  // Matching only by location made Annual 2026 criteria leak into Annual 2027,
+  // Mid-Year, Exceptional, and other cycles at that location.
+  const cycleFamilyKey = (item) => [
+    cycleNameWithoutLocation(item?.name).trim().toLowerCase(),
+    cycleTypeOf(item?.name).toLowerCase(),
+    cycleYear(item),
+  ].join("|");
+  const requestedFamily = cycleFamilyKey(cycle);
   const sameLocation = new Set(
-    cycles.filter((item) => cycleLocationKey(item) === cycleLocationKey(cycle)).map((item) => item.id),
+    cycles
+      .filter((item) =>
+        cycleLocationKey(item) === cycleLocationKey(cycle) &&
+        cycleFamilyKey(item) === requestedFamily,
+      )
+      .map((item) => item.id),
   );
   // A location child inherits the existing org-wide source cycle's criteria
   // when it has not yet had its own Apply. This preserves the configured
