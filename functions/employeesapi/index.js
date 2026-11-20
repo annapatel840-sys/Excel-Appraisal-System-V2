@@ -833,6 +833,44 @@ function normalizeEmployeeResponse(employee) {
    ALLOWED FIELDS
    ============================================================ */
 
+// Numeric columns editable from the Appraisal Sheet. Catalyst Data Store
+// rejects empty strings/null for Double and Int columns, so normalize every
+// cleared numeric cell to 0 before either Employee_Master or Appraisal_Sheet writes.
+const NUMERIC_EDIT_FIELDS = new Set([
+  "wissen_experience",
+  "total_experience",
+  "manager_rating",
+  "interview_count",
+  "rr_percent",
+  "gross_margin",
+  "rb_to_be_paid",
+  "month_rb",
+  "pb_to_be_paid",
+  "month_pb",
+  "current_annual_base_pay",
+  "target_pb_allocated_for_may",
+  "allocated_pb_amount",
+  "pb_installment",
+  "new_pb_to_be_offered",
+  "new_pb_installment",
+  "new_rb",
+  "hike_amount",
+  "hike_pct",
+  "target_pb_next_year",
+  "rating",
+  "joining_bonus",
+]);
+
+function normalizeNumericEditValue(field, value) {
+  if (!NUMERIC_EDIT_FIELDS.has(field)) return value;
+  if (value === null || value === undefined || String(value).trim() === "") return 0;
+  const numericValue = Number(String(value).replace(/[₹,\\s]/g, ""));
+  if (!Number.isFinite(numericValue)) {
+    throw new access.HttpError(400, field + " must be a valid number.");
+  }
+  return numericValue;
+}
+
 const ALLOWED_FIELDS = [
   "name",
   "designation",
@@ -5225,7 +5263,7 @@ async function updateEmployee(req, res) {
 
     const masterColumn = masterFieldMap[column];
     if (masterColumn) {
-      masterUpdate[masterColumn] = value;
+      masterUpdate[masterColumn] = normalizeNumericEditValue(column, value);
       // Appraisal_Sheet.appraiser_tech_ed is a lookup to Employee_Master;
       // keep the generated sheet row on the same Tech-ED.
       if (column === "appraiser_tech_ed" && appraisalRow) {
@@ -5243,23 +5281,7 @@ async function updateEmployee(req, res) {
 
     const appraisalColumn = appraisalFieldMap[column];
     if (appraisalColumn) {
-      // Catalyst Appraisal_Sheet.target_pb_next_year is a Double column.
-      // A cleared numeric input arrives as "" (or occasionally null); neither
-      // is a valid Double. Store 0 so clearing the cell is a successful save.
-      if (appraisalColumn === "target_pb_next_year") {
-        const rawNumber = value === null || value === undefined ? "" : String(value).trim();
-        if (rawNumber === "") {
-          appraisalUpdate[appraisalColumn] = 0;
-        } else {
-          const numericValue = Number(rawNumber);
-          if (!Number.isFinite(numericValue)) {
-            throw new access.HttpError(400, "Target PB for Next Year must be a valid number.");
-          }
-          appraisalUpdate[appraisalColumn] = numericValue;
-        }
-      } else {
-        appraisalUpdate[appraisalColumn] = value;
-      }
+      appraisalUpdate[appraisalColumn] = normalizeNumericEditValue(column, value);
     }
   });
 

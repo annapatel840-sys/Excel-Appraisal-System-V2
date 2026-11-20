@@ -127,6 +127,25 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(row().target_pb_next_year, 12500.5);
   });
 
+  await t('all editable numeric fields accept cleared values as zero', async () => {
+    const numericFields = [
+      'wissen_experience', 'total_experience', 'manager_rating', 'interview_count',
+      'rr_percent', 'gross_margin', 'rb_to_be_paid', 'month_rb', 'pb_to_be_paid',
+      'month_pb', 'current_annual_base_pay', 'target_pb_allocated_for_may',
+      'allocated_pb_amount', 'pb_installment', 'new_pb_to_be_offered',
+      'new_pb_installment', 'new_rb', 'hike_amount', 'hike_pct',
+      'target_pb_next_year', 'rating', 'joining_bonus',
+    ];
+    for (const field of numericFields) {
+      const result = await save({ [field]: '', expected: { [field]: 0 } });
+      assert.strictEqual(result.status, 200, field + ': ' + JSON.stringify(result.json));
+      assert.strictEqual(row()[field], 0, field + ' should be stored as numeric zero');
+    }
+    const decimal = await save({ target_pb_next_year: '12500.75', expected: { target_pb_next_year: 0 } });
+    assert.strictEqual(decimal.status, 200, JSON.stringify(decimal.json));
+    assert.strictEqual(row().target_pb_next_year, 12500.75);
+  });
+
   await t('fields the grid derives on load are not checked', async () => {
     const r = await save({ current_annual_base_pay: 510000, expected: { current_annual_base_pay: 999 } });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
