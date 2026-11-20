@@ -4,15 +4,31 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 import { useCatalystSignOut } from "@/lib/catalyst-auth";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
   const [draft, setDraft] = useState(settings);
+  const [copyingIds, setCopyingIds] = useState(false);
+  const [copyResult, setCopyResult] = useState(null);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const save = () => saveSettings(draft);
   const reset = () => { resetSettings(); setDraft(DEFAULT_SETTINGS); };
+  const copyEligibilityEmployeeIds = async () => {
+    if (!window.confirm("Copy each existing emp_id1 value into the new emp_id column using ROWID matching? No rows will be inserted or deleted. Continue?")) return;
+    setCopyingIds(true);
+    setCopyResult(null);
+    try {
+      const result = await payrollCycleRequest("eligibility-copy-emp-ids", { method: "POST", body: {} });
+      setCopyResult(result || { message: "Copy request completed." });
+    } catch (error) {
+      setCopyResult({ error: error?.message || "Could not copy Eligibility List employee IDs." });
+    } finally {
+      setCopyingIds(false);
+    }
+  };
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl space-y-4">
@@ -25,6 +41,37 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+        <section className="rounded-lg border border-amber-300 bg-card p-4">
+          <h3 className="text-sm font-semibold">Temporary Data Migration</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            One-time helper for the Eligibility_List emp_id column migration. It copies emp_id1 to emp_id on existing rows by ROWID; it does not insert or delete rows.
+          </p>
+          <button type="button" disabled={copyingIds} onClick={copyEligibilityEmployeeIds}
+            className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-500 px-3 py-2 text-xs font-semibold hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60">
+            {copyingIds ? "Copying employee IDs..." : "Copy Eligibility emp_id1 to emp_id"}
+          </button>
+          {copyResult && (
+            <div className="mt-3 rounded-md bg-muted/50 p-3 text-xs">
+              {copyResult.error ? (
+                <p className="text-red-700">{copyResult.error}</p>
+              ) : (
+                <>
+                  <p className="font-semibold">{copyResult.blocked ? "Copy stopped — no rows changed" : "Copy operation completed"}</p>
+                  <p className="mt-1">Rows checked: {copyResult.totalRows ?? "—"} · Copied: {copyResult.copied ?? 0} · Already matching: {copyResult.alreadyCopied ?? 0} · Failed: {copyResult.failed ?? 0} · Remaining: {copyResult.remaining ?? 0}</p>
+                  {copyResult.conflictCount > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p>Conflicts: {copyResult.conflictCount}. First {copyResult.conflicts?.length || 0} shown:</p>
+                      {copyResult.conflicts?.map((item, index) => (
+                        <p key={item.rowId || index}>ROWID {item.rowId || "unknown"}: {item.reason}</p>
+                      ))}
+                    </div>
+                  )}
+                  {copyResult.message && <p className="mt-1">{copyResult.message}</p>}
+                </>
+              )}
+            </div>
+          )}
+        </section>
         <section className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-semibold">Navigation</h3>
           <p className="mt-1 text-xs text-muted-foreground">Select where the main project navigation should appear.</p>
