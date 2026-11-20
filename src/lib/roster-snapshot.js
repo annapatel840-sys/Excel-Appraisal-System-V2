@@ -73,8 +73,11 @@ export function writeMasterSnapshot(key, snapshot) {
 // Eligibility List snapshot uses the same IndexedDB store and is scoped to
 // the signed-in user. The snapshot is display-only until the fresh API result
 // arrives; Employee Master disables edits during that short refresh window.
-export const eligibilitySnapshotKey = (scope) =>
-  "eligibility:" + String(scope || "anonymous").trim().toLowerCase();
+// Keep the cached roster separate for each selected location. Cycle changes
+// clear this location's snapshot before the next fresh Eligibility API read.
+export const eligibilitySnapshotKey = (scope, location = "") =>
+  "eligibility:" + String(scope || "anonymous").trim().toLowerCase() +
+  ":" + String(location || "All Locations").trim().toLowerCase();
 
 export function readEligibilitySnapshot(key) {
   return run("readonly", (store) => store.get(key))

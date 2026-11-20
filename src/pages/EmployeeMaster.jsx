@@ -3967,7 +3967,7 @@ export function EmployeeMaster() {
   const goToTab = (tab) => {
     if (tab === "eligibility" || tab === "change-mismatch") {
       // Start the shared read at click time; the tab effect joins this request.
-      void prefetchEligibilityEmployees();
+      void prefetchEligibilityEmployees(locationFilter);
     }
     const current = new URLSearchParams(window.location.search).get("tab");
     if (window.location.pathname === "/employee-master" && current !== tab) {
@@ -4072,7 +4072,7 @@ export function EmployeeMaster() {
   )
     .trim()
     .toLowerCase();
-  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope);
+  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope, locationFilter);
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] =
     useState("");
 
@@ -4528,7 +4528,7 @@ export function EmployeeMaster() {
       return;
     }
 
-    const eligibilityRequestKey = String(locationFilter || "All Locations").trim().toLowerCase();
+    const eligibilityRequestKey = `${String(locationFilter || "All Locations").trim().toLowerCase()}::${eligibilityReloadKey}`;
     if (eligibilityLoadedKeyRef.current === eligibilityRequestKey) {
       return;
     }

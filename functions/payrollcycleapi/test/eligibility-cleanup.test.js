@@ -20,21 +20,15 @@ function makeStore() {
     const check = (row) => Object.keys(row).forEach((k) => {
       if (k !== 'ROWID' && cols && !cols.includes(k)) throw new Error(`Invalid column ${k}`);
     });
-    const unique = (batch) => {
-      if (id !== ELIG_T) return;
-      const seen = new Set(rows.map((r) => r.emp_id));
-      for (const r of batch) {
-        if (seen.has(r.emp_id)) throw new Error('Duplicate value for emp_id. Please give a different value');
-        seen.add(r.emp_id);
-      }
-    };
+    // Eligibility_List.emp_id is intentionally non-unique. The same employee
+    // may have one row per appraisal_cycle_id.
     const add = (row) => { const r = { ...row, ROWID: String(++seq) }; rows.push(r); return { ...r }; };
     tables[id] = {
       rows,
       getAllColumns: async () => (cols || []).map((c) => ({ column_name: c })),
       getPagedRows: async () => ({ data: rows.map((r) => ({ ...r })), more_records: false }),
-      insertRow: async (row) => { check(row); unique([row]); return add(row); },
-      insertRows: async (batch) => { unique(batch); return batch.map(add); },
+      insertRow: async (row) => { check(row); return add(row); },
+      insertRows: async (batch) => batch.map(add),
       updateRow: async (row) => { check(row); const r = rows.find((x) => x.ROWID === String(row.ROWID)); Object.assign(r, row); return { ...r }; },
       deleteRow: async (id2) => { const i = rows.findIndex((x) => x.ROWID === String(id2)); rows.splice(i, 1); return true; },
       deleteRows: async (ids) => {
@@ -95,6 +89,9 @@ async function setup() {
   const master = store.table(MASTER_T, null);
   await master.insertRow({ emp_id: 'E1', emp_name: 'A', emp_status: 'Active' });
   await master.insertRow({ emp_id: 'E2', emp_name: 'B', emp_status: 'Active' });
+  const locations = store.table('74008000000022481', null);
+  await locations.insertRow({ location_name: 'India', location_code: 'IN', status: 'Active' });
+  await locations.insertRow({ location_name: 'Dubai', location_code: 'AE', status: 'Active' });
   const mk = async (name, location = 'All') => {
     assert.strictEqual((await post('cycles/create', { name, type: 'Annual', process: 'Annual', location, effective: iso(9), start: iso(10), end: iso(40) })).status, 201);
     return (await call(api, 'GET', 'cycles')).json.data.find((c) => c.name === name);
@@ -108,6 +105,8 @@ async function setup() {
   await t('criteria from a previous year never leak into another cycle at the same location', async () => {
     const { store, post, mk, api, elig } = await setup();
     const master = store.table(MASTER_T, null);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India' });
     const first = await mk('India - Annual 2026', 'India');
     assert.strictEqual((await post('cycles/status/' + first.id, { status: 'Active' })).status, 200);
     await master.updateRow({ ROWID: master.rows[0].ROWID, department: 'Sales' });
@@ -130,10 +129,62 @@ async function setup() {
     assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === next.id).length, 0);
   });
 
+  await t('location cycles keep independent Eligibility rows for the same employee IDs', async () => {
+    const { store, post, mk, elig } = await setup();
+    const master = store.table(MASTER_T, null);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India' });
+
+    const india = await mk('India - Annual 2028', 'India');
+    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Active' })).status, 200);
+    assert.strictEqual((await apply(post, india.id)).status, 200);
+
+    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Closed' })).status, 200);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'Dubai' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'Dubai' });
+
+    const dubai = await mk('Dubai - Annual 2028', 'Dubai');
+    assert.strictEqual((await post('cycles/status/' + dubai.id, { status: 'Active' })).status, 200);
+    assert.strictEqual((await apply(post, dubai.id)).status, 200);
+
+    const indiaRows = elig.rows.filter((row) => row.appraisal_cycle_id === india.id);
+    const dubaiRows = elig.rows.filter((row) => row.appraisal_cycle_id === dubai.id);
+    assert.deepStrictEqual(indiaRows.map((row) => row.emp_id).sort(), ['E1', 'E2']);
+    assert.deepStrictEqual(dubaiRows.map((row) => row.emp_id).sort(), ['E1', 'E2']);
+    assert.ok(indiaRows.every((row) => row.appraisal_cycle_id === india.id));
+    assert.ok(dubaiRows.every((row) => row.appraisal_cycle_id === dubai.id));
+    assert.strictEqual(elig.rows.length, 4, 'the same emp_id must be stored once per cycle');
+  });
+
+  await t('a location cycle does not inherit criteria from the All Locations cycle', async () => {
+    const { store, post, mk, api, elig } = await setup();
+    const master = store.table(MASTER_T, null);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India', department: 'Sales' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India', department: 'Engineering' });
+
+    const global = await mk('Annual 2029', 'All');
+    assert.strictEqual((await post('cycles/status/' + global.id, { status: 'Active' })).status, 200);
+    assert.strictEqual((await apply(post, global.id, { departments: ['Sales'] })).status, 200);
+    assert.strictEqual((await post('cycles/status/' + global.id, { status: 'Closed' })).status, 200);
+
+    const india = await mk('India - Annual 2029', 'India');
+    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Active' })).status, 200);
+    const response = await new Promise((resolve, reject) => {
+      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(india.id), on() {} };
+      const res = { status: 0, writeHead(status) { this.status = status; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
+      api(req, res).catch(reject);
+    });
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.data.meta.criteriaApplied, false);
+    assert.strictEqual(response.json.data.meta.criteria, null);
+    assert.deepStrictEqual(response.json.data.records, []);
+    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === india.id).length, 0);
+  });
+
   await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
     const { store, post, mk, elig } = await setup();
     // Historical employees are not part of the new cycle's Employee_Master
-    // roster. Keep their business IDs distinct because emp_id is globally unique.
+    // roster. The same emp_id may be reused in another appraisal cycle.
     await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '9001', emp_id: 'HIST1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '9002', emp_id: 'HIST2' }]);
     const c = await mk('Annual NEW');
     // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
