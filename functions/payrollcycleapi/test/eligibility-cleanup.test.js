@@ -257,6 +257,36 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 0);
   });
 
+  await t('location cycle removes legacy Eligibility rows for employees in another location', async () => {
+    const { store, api, post, mk, elig } = await setup();
+    const master = store.table(MASTER_T, null);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'Dubai' });
+    const cycle = await mk('India - Annual 2027', 'India');
+    const indiaMaster = master.rows.find((row) => row.emp_id === 'E1');
+    const dubaiMaster = master.rows.find((row) => row.emp_id === 'E2');
+    await elig.insertRow({
+      appraisal_cycle_id: cycle.id,
+      employee_master_id: indiaMaster.ROWID,
+      emp_id: 'E1',
+      eligibility_status: 'Eligible',
+      eligibility_source: 'Criteria',
+    });
+    await elig.insertRow({
+      appraisal_cycle_id: cycle.id,
+      employee_master_id: dubaiMaster.ROWID,
+      emp_id: 'E2',
+      eligibility_status: 'Eligible',
+      eligibility_source: 'Criteria',
+    });
+    const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(cycle.id), on() {} };
+    const res = { status: 0, writeHead(s) { this.status = s; }, end(body) { this.json = JSON.parse(body); } };
+    await api(req, res);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.json));
+    assert.deepStrictEqual(res.json.data.records.map((row) => row.emp_id), ['E1']);
+    assert.deepStrictEqual(elig.rows.map((row) => row.emp_id), ['E1']);
+  });
+
   await t('GET eligibility does not seed employees before criteria are applied', async () => {
     const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
