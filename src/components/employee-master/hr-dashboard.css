@@ -10,7 +10,7 @@
 .hrd-dl small{display:block;color:#6b7280;font-size:10px;font-weight:700;letter-spacing:.04em}
 .hrd-dl b{color:#102a43;font-size:14px}
 .hrd-warn{color:#92400e;background:#fef6e7;border:1px solid #f1dcae;border-radius:8px;margin-bottom:12px;padding:7px 12px;font-weight:600;font-size:12px}
-.hrd-cols{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:12px;align-items:start}
+.hrd-cols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px;align-items:start}
 .hrd-stack{display:flex;flex-direction:column;gap:12px;min-width:0}
 .hrd-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
 .hrd-ch{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #eef0f3;background:#fafbfc}
@@ -79,6 +79,7 @@
 .hrd-t tbody tr:nth-child(even) td{background:#f2f5f9}
 .hrd-t tbody tr:hover td{background:#eaf2ff}
 .hrd-t td:first-child{color:#102a43;font-weight:700}
+.hrd-t th:first-child,.hrd-t td:first-child{min-width:128px;white-space:nowrap;word-break:normal}
 .hrd-t tfoot td{background:#e6eef8;color:#102a43;font-weight:800;border-top:1px solid #c9d8ec}
 .hrd-t .n{text-align:right;font-variant-numeric:tabular-nums}
 .hrd-th{display:flex;align-items:center;justify-content:space-between;gap:6px}

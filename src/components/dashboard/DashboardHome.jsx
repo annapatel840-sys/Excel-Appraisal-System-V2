@@ -201,11 +201,11 @@ export function DashboardHome() {
           {msg ? <span className="dhx-msg">{msg}</span> : null}
           <div className="dhx-wrap">
             <button type="button" className="dhx-btn" aria-expanded={pop === "notes"} onClick={() => setPop(pop === "notes" ? null : "notes")}>
-              My notes
+              My Notes
             </button>
             {pop === "notes" ? (
               <div className="dhx-pop dhx-notes">
-                <h4>My notes</h4>
+                <h4>My Notes</h4>
                 <textarea
                   autoFocus
                   value={notes}

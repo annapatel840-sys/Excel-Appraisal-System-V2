@@ -57,7 +57,7 @@ export const SPREAD_MODES = [["spread", "Range"], ["avg", "Average"], ["med", "M
 export const OUTPUTS = [
   {
     k: "inc",
-    label: "Pay increase",
+    label: "Pay Increase",
     measures: [{ k: "hk", label: "Hike %", parts: [HIKE] }],
   },
   {
@@ -66,7 +66,7 @@ export const OUTPUTS = [
     measures: [
       {
         k: "prt",
-        label: "Promotion rate",
+        label: "Promotion Rate",
         parts: [{ k: "prt", label: "Promoted %", kind: "p", of: (r) => (isPromoted(r) ? 100 : 0), hist: null }],
         modes: [["avg", "Average"], ["cnt", "People"]],
         mode: "avg",
@@ -76,7 +76,7 @@ export const OUTPUTS = [
         label: "Hike: promoted vs not promoted",
         parts: [
           { k: "prh", label: "Promoted", kind: "p", of: (r) => (isPromoted(r) ? calcHikePct(r) : null), hist: null },
-          { k: "pnh", label: "Not promoted", kind: "p", of: (r) => (isPromoted(r) ? null : calcHikePct(r)), hist: null },
+          { k: "pnh", label: "Not Promoted", kind: "p", of: (r) => (isPromoted(r) ? null : calcHikePct(r)), hist: null },
         ],
       },
     ],
@@ -93,7 +93,7 @@ export const OUTPUTS = [
         label: "PB vs target agreed last year",
         parts: [
           { k: "tpl", label: "Target PB", kind: "a", of: (r) => (hasTarget(r) ? num(r.targetPBAllocatedForMay) : null), hist: null },
-          { k: "pbl", label: "PB paid", kind: "a", of: (r) => (hasTarget(r) ? num(r.allocatedPBAmount) : null), hist: null },
+          { k: "pbl", label: "PB Paid", kind: "a", of: (r) => (hasTarget(r) ? num(r.allocatedPBAmount) : null), hist: null },
         ],
         modes: [["sum", "Total"], ["avg", "Average"], ["med", "Median"]],
         mode: "sum",
@@ -149,7 +149,7 @@ const numBuckets = (of, unit) => (rows, cuts) => {
     const last = c[c.length - 1];
     out.push({ label: `${cutLabel(last, unit)} and more`, test: (r) => of(r) !== null && of(r) >= last });
   }
-  if (rows.some((r) => of(r) === null)) out.push({ label: "No data", test: (r) => of(r) === null });
+  if (rows.some((r) => of(r) === null)) out.push({ label: "No Data", test: (r) => of(r) === null });
   return out;
 };
 
@@ -167,21 +167,21 @@ export const DIMENSIONS = [
     g: 2,
     label: "Manager Rating",
     buckets: (rows) =>
-      rows.some((r) => !ratingOf(r)) ? [...RATING_BUCKETS, { label: "Not rated", test: (r) => !ratingOf(r) }] : RATING_BUCKETS,
+      rows.some((r) => !ratingOf(r)) ? [...RATING_BUCKETS, { label: "Not Rated", test: (r) => !ratingOf(r) }] : RATING_BUCKETS,
   },
   { k: "cr", g: 2, label: "Client Rating", cuts: [3, 4], unit: "", of: (r) => toNum(r.clientRating) },
   { k: "tx", g: 3, label: "Total experience (years)", cuts: [2, 5, 10], unit: "", of: (r) => toNum(r.totalExperience) },
   { k: "wx", g: 3, label: "Wissen experience (years)", cuts: [2, 5, 10], unit: "", of: (r) => toNum(r.wissenExperience) },
-  { k: "yr", g: 3, label: "YoE ratio", cuts: [0.25, 0.5, 0.75], unit: "", of: (r) => toNum(r.yoeRatio) },
+  { k: "yr", g: 3, label: "YoE Ratio", cuts: [0.25, 0.5, 0.75], unit: "", of: (r) => toNum(r.yoeRatio) },
   { k: "rr", g: 4, label: "RR %", cuts: [70, 85, 100], unit: "%", of: (r) => toNum(r.rrPercent) },
-  { k: "gm", g: 4, label: "Gross margin", cuts: [20, 35, 50], unit: "%", of: (r) => toNum(r.grossMargin) },
-  { k: "iv", g: 5, label: "Interview count", cuts: [3, 6, 9], unit: "", of: (r) => toNum(r.interviewCount) },
-  { k: "pr", g: 5, label: "Promotion", buckets: yesNo(isPromoted, "Promoted", "Not promoted") },
+  { k: "gm", g: 4, label: "Gross Margin", cuts: [20, 35, 50], unit: "%", of: (r) => toNum(r.grossMargin) },
+  { k: "iv", g: 5, label: "Interview Count", cuts: [3, 6, 9], unit: "", of: (r) => toNum(r.interviewCount) },
+  { k: "pr", g: 5, label: "Promotion", buckets: yesNo(isPromoted, "Promoted", "Not Promoted") },
   {
     k: "rk",
     g: 5,
-    label: "At risk",
-    buckets: yesNo((r) => cleanText(r.atRisk) !== "", "At risk", "Not at risk"),
+    label: "At Risk",
+    buckets: yesNo((r) => cleanText(r.atRisk) !== "", "At Risk", "Not At Risk"),
   },
 ].map((d) => (d.of ? { ...d, numeric: true, buckets: numBuckets(d.of, d.unit) } : d));
 

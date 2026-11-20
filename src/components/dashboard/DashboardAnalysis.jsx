@@ -73,7 +73,7 @@ function BarLine({ st, mode, kind, scale, color, tick, thin, label, tip }) {
 export function DashboardAnalysis({ cmp, onCmpChange }) {
   const { rows, effectiveId } = useScopedRows();
   const { name: cycleName } = useCurrentCycleInfo();
-  const thisCycle = bareCycleName(cycleName) || "This cycle";
+  const thisCycle = bareCycleName(cycleName) || "This Cycle";
   const access = useAccess();
   const canOpenSheet = access.canScreen("appraisalSheet");
 
@@ -247,7 +247,7 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
           <div className="dax-head">
             <b className={d.depth ? "sub" : undefined}>{d.label}</b>
             <span className="mut">{inr(d.rows.length)} {d.rows.length === 1 ? "person" : "people"}</span>
-            {d.few ? <span className="mut dax-few">{d.rows.length === 0 ? "no people" : `fewer than ${MIN_GROUP} people, not shown`}</span> : null}
+            {d.few ? <span className="mut dax-few">{d.rows.length === 0 ? "No People" : `fewer than ${MIN_GROUP} people, not shown`}</span> : null}
           </div>
           {d.few
             ? null
@@ -404,9 +404,9 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
         <>
           <div className="balrow" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
             {[
-              ["All outliers", outliers, "Anyone caught by either rule below", "Outliers to review"],
-              ["High rating, low hike", highLow, `Rating 4 or 5 with hike more than 2 points under the average (${avgHike.toFixed(2)}%)`, "High rating with low hike"],
-              ["Promoted, low rating", promoLow, "Promoted with a rating of 1 or 2", "Promoted with a low rating"],
+              ["All Outliers", outliers, "Anyone caught by either rule below", "Outliers to review"],
+              ["High Rating, Low Hike", highLow, `Rating 4 or 5 with hike more than 2 points under the average (${avgHike.toFixed(2)}%)`, "High rating with low hike"],
+              ["Promoted, Low Rating", promoLow, "Promoted with a rating of 1 or 2", "Promoted with a low rating"],
             ].map(([title, set, sub, listTitle]) => (
               <div
                 key={title}
@@ -433,7 +433,7 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
           <div className="dax-ctl">
             <span className="mut">Against</span>
             {dimSelect(dim1.k, (k) => { setG1(k); if (g2 === k) setG2(""); }, false)}
-            <span className="mut">then by</span>
+            <span className="mut">Then By</span>
             {dimSelect(dim2 ? dim2.k : "", setG2, true)}
             <span className="sp" />
             <Toggle value={mode} options={modes} onChange={(k) => setModeBy((p) => ({ ...p, [measure.k]: k }))} />
