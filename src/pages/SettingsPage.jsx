@@ -57,7 +57,7 @@ export function SettingsPage() {
               ) : (
                 <>
                   <p className="font-semibold">{copyResult.blocked ? "Copy stopped — no rows changed" : "Copy operation completed"}</p>
-                  <p className="mt-1">Rows checked: {copyResult.totalRows ?? "—"} · Copied: {copyResult.copied ?? 0} · Already matching: {copyResult.alreadyCopied ?? 0}</p>
+                  <p className="mt-1">Rows checked: {copyResult.totalRows ?? "—"} · Copied: {copyResult.copied ?? 0} · Already matching: {copyResult.alreadyCopied ?? 0} · Failed: {copyResult.failed ?? 0} · Remaining: {copyResult.remaining ?? 0}</p>
                   {copyResult.conflictCount > 0 && (
                     <div className="mt-2 space-y-1">
                       <p>Conflicts: {copyResult.conflictCount}. First {copyResult.conflicts?.length || 0} shown:</p>
