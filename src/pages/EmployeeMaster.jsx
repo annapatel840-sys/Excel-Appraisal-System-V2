@@ -6211,13 +6211,12 @@ export function EmployeeMaster() {
             TABS
             ====================================================== */}
 
-        {!isTechEd && (
-          <HrOperationsNav
-            activeTab={activeTab}
-            isTabVisible={isTabVisible}
-            onSelect={goToTab}
-          />
-        )}
+        <HrOperationsNav
+          bare={isTechEd}
+          activeTab={activeTab}
+          isTabVisible={isTabVisible}
+          onSelect={goToTab}
+        >
 
         {/* ======================================================
             BANNER
@@ -6669,6 +6668,7 @@ export function EmployeeMaster() {
           entries={mergeAuditEntries(remoteEligibilityAudit, eligibilityAudit)}
           onClose={() => setEligibilityAuditOpen(false)}
         />
+        </HrOperationsNav>
       </div>
     </AppShell>
   );
