@@ -1210,9 +1210,7 @@ function criteriaChanges(prev, next) {
   return changes;
 }
 
-// Latest criteria of this cycle + the history of every Apply. A cycle that has
-// never been applied starts from the last criteria used by another cycle of the
-// same location (cutoff date is per cycle, so it is not carried over).
+// Latest criteria and history for this exact appraisal cycle ID only.
 async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
   const rows = auditRows || await getAllRows(tables.audit);
   const applies = rows
@@ -1280,122 +1278,8 @@ function shapeEligibilityRow(row, master) {
   };
 }
 
-async function restoreEligibilityFromAppliedCriteria(tables, cycle, masterRows, eligibilityRows, locations) {
-  const cycleId = String(cycle?.id || "");
-  if (!cycleId) return eligibilityRows;
-  const meta = await readEligibilityCriteriaMeta(tables, cycle);
-  const criteria = meta?.criteria;
-  if (!criteria || typeof criteria !== "object") return eligibilityRows;
-
-  const lowerList = (value) => (Array.isArray(value) ? value : [])
-    .map((item) => String(item ?? "").trim().toLowerCase()).filter(Boolean);
-  const departments = lowerList(criteria.departments);
-  const designations = lowerList(criteria.designations);
-  const excludedEmployees = lowerList(criteria.excludedEmployees);
-  const statuses = lowerList(criteria.statuses);
-  const cutoff = isoDateOf(criteria.cutoffDate);
-  const extraParameters = Array.isArray(criteria.extraParameters) ? criteria.extraParameters : [];
-  const existingByEmpId = new Map(
-    eligibilityRows
-      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
-      .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
-  );
-  const inserts = [];
-  for (const master of masterRows) {
-    const empId = String(master.emp_id || master.employee_id || "").trim();
-    const key = empId.toLowerCase();
-    const masterId = String(master.ROWID || master.rowid || "");
-    if (!empId || !masterId || existingByEmpId.has(key) || !inCycleLocation(cycle, master, locations)) continue;
-    if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") continue;
-
-    const reasons = [];
-    if (departments.includes(String(master.department || master.organization || "").trim().toLowerCase())) reasons.push("Department excluded");
-    if (designations.includes(String(master.designation || "").trim().toLowerCase())) reasons.push("Designation excluded");
-    if (excludedEmployees.includes(key)) reasons.push("Employee excluded");
-    if (statuses.includes(String(master.emp_status || master.status || "Active").trim().toLowerCase())) reasons.push("Status excluded");
-    for (const param of extraParameters) {
-      if (failsCriteriaParam(param, master)) {
-        reasons.push(`${param.label || param.field} excluded`);
-        break;
-      }
-    }
-    if (cutoff) {
-      const doj = isoDateOf(master.joining_date || master.date_of_join);
-      if (!doj || doj > cutoff) reasons.push(!doj ? "Missing DOJ" : "Joined after cutoff date");
-    }
-    if (reasons.length) continue;
-    inserts.push({
-      appraisal_cycle_id: cycleId,
-      employee_master_id: masterId,
-      emp_id: empId,
-      eligibility_status: "Eligible",
-      eligibility_reason: "",
-      eligibility_source: "Criteria",
-      change_tag: "Recovered",
-      evaluated_at: nowLocal(),
-      updated_by: "Applied-criteria recovery",
-      eligibility_updated_at: nowLocal(),
-    });
-    existingByEmpId.set(key, true);
-  }
-  for (let index = 0; index < inserts.length; index += 100) {
-    await tables.eligibility.insertRows(inserts.slice(index, index + 100));
-  }
-  return inserts.length ? [...eligibilityRows, ...inserts] : eligibilityRows;
-}
-
-async function restoreClosedEligibilityFromSheet(tables, cycle, masterRows, eligibilityRows, locations) {
-  const cycleId = String(cycle?.id || "");
-  if (!cycleId || !tables.appraisalSheet) return eligibilityRows;
-  const existingEmpIds = new Set(
-    eligibilityRows
-      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
-      .map((row) => String(row.emp_id || "").trim().toLowerCase())
-      .filter(Boolean),
-  );
-  const masterByEmpId = new Map(
-    masterRows.map((master) => [
-      String(master.emp_id || master.employee_id || "").trim().toLowerCase(),
-      master,
-    ]),
-  );
-  const masterByRowId = new Map(
-    masterRows.map((master) => [String(master.ROWID || master.rowid || ""), master]),
-  );
-  const sheetRows = await getAllRows(tables.appraisalSheet);
-  const exactCycleRows = sheetRows.filter((sheet) => sheetBelongsToCycle(sheet, cycle));
-  const restored = [];
-  for (const sheet of exactCycleRows) {
-    const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
-    const empId = String(master?.emp_id || master?.employee_id || "").trim();
-    const key = empId.toLowerCase();
-    if (!key || existingEmpIds.has(key)) continue;
-    if (!master || !inCycleLocation(cycle, master, locations)) continue;
-    const statusRaw = String(
-      sheet.eligible_status || sheet.eligibility_status || sheet.eligibility || "Eligible",
-    ).trim().toLowerCase().replace(/[ _-]+/g, "");
-    const status = ["noteligible", "no", "false"].includes(statusRaw)
-      ? "Not Eligible"
-      : "Eligible";
-    restored.push({
-      appraisal_cycle_id: cycleId,
-      employee_master_id: String(master.ROWID || master.rowid || ""),
-      emp_id: empId,
-      eligibility_status: status,
-      eligibility_reason: "Recovered from existing Appraisal Sheet roster",
-      eligibility_source: "System",
-      change_tag: "Recovered",
-      evaluated_at: nowLocal(),
-      updated_by: "Closed-cycle recovery",
-      eligibility_updated_at: nowLocal(),
-    });
-    existingEmpIds.add(key);
-  }
-  for (let index = 0; index < restored.length; index += 100) {
-    await tables.eligibility.insertRows(restored.slice(index, index + 100));
-  }
-  return restored.length ? [...eligibilityRows, ...restored] : eligibilityRows;
-}
+// Eligibility records are never reconstructed from audit or Appraisal_Sheet.
+// Apply Criteria is the explicit operation that creates cycle roster rows.
 
 async function getEligibilityRows(tables, cycle, actor = "") {
   const synced = {};
