@@ -9,7 +9,7 @@ const MASTER_T = '74008000000035727';
 const ELIG_T = '74008000000057046';
 const PAYROLL_T = '74008000000035326';
 const FEEDBACK_T = '74008000000022041';
-const CYCLE_COLS = ['cycle_name', 'start_date', 'end_date', 'status', 'remarks', 'changed_by', 'changed_at', 'archived', 'cycle_type', 'process', 'effective_date', 'cancel_reason'];
+const CYCLE_COLS = ['cycle_name', 'start_date', 'end_date', 'status', 'remarks', 'changed_by', 'changed_at', 'archived', 'cycle_type', 'process', 'effective_date', 'cancel_reason', 'location'];
 
 function makeStore() {
   let seq = 1000;
@@ -104,6 +104,31 @@ async function setup() {
 
 (async () => {
   const apply = (post, cycleId, criteria = {}) => post('eligibility', { action: 'apply-criteria', cycleId, ...criteria });
+
+  await t('criteria from a previous year never leak into another cycle at the same location', async () => {
+    const { store, post, mk, api, elig } = await setup();
+    const master = store.table(MASTER_T, null);
+    const first = await mk('India - Annual 2026', 'India');
+    assert.strictEqual((await post('cycles/status/' + first.id, { status: 'Active' })).status, 200);
+    await master.updateRow({ ROWID: master.rows[0].ROWID, department: 'Sales' });
+    await master.updateRow({ ROWID: master.rows[1].ROWID, department: 'Engineering' });
+    const applied = await apply(post, first.id, { departments: ['Sales'] });
+    assert.strictEqual(applied.status, 200, JSON.stringify(applied.json));
+    assert.deepStrictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === first.id).map((row) => row.emp_id), ['E2']);
+
+    assert.strictEqual((await post('cycles/status/' + first.id, { status: 'Closed' })).status, 200);
+    const next = await mk('India - Annual 2027', 'India');
+    assert.strictEqual((await post('cycles/status/' + next.id, { status: 'Active' })).status, 200);
+    const response = await new Promise((resolve, reject) => {
+      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + next.id, on() {} };
+      const res = { status: 0, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
+      api(req, res).catch(reject);
+    });
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.data.meta.criteriaApplied, false);
+    assert.deepStrictEqual(response.json.data.records, []);
+    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === next.id).length, 0);
+  });
 
   await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
     const { store, post, mk, elig } = await setup();
