@@ -3933,7 +3933,23 @@ async function routeRequest(req, res, identity, resource, a) {
     const requestedLocation = String(query.location || "").trim().toLowerCase();
     const allLocationsSelected =
       !requestedLocation || ["all", "all locations"].includes(requestedLocation);
-    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const [cycleRows, locationRows] = await Promise.all([
+      getAllRows(tables.cycles),
+      getAllRows(tables.locations),
+    ]);
+    const cycles = cycleRows.map(normalizeCycle);
+    // The header can supply either a Location Master name or code, while older
+    // cycles may have stored the other representation. Resolve both through
+    // Location Master before selecting the cycle; a raw string comparison can
+    // otherwise return an empty/wrong Eligibility List for the same location.
+    const requestedLocationAliases = allLocationsSelected
+      ? new Set()
+      : locationAliases(requestedLocation, locationRows);
+    const cycleMatchesRequestedLocation = (item) => {
+      if (allLocationsSelected) return !cycleLocationKey(item);
+      const cycleAliases = locationAliases(item.location, locationRows);
+      return [...requestedLocationAliases].some((value) => cycleAliases.has(value));
+    };
     const isAvailableCycle = (item) =>
       ["active", "closed"].includes(String(item.status || "").trim().toLowerCase()) &&
       ![true, 1, "true", "1", "yes"].includes(
@@ -3948,13 +3964,7 @@ async function routeRequest(req, res, identity, resource, a) {
       .filter((item) => String(item.status || "").trim().toLowerCase() === "closed" && isAvailableCycle(item))
       .sort((a, b) => String(b.end || b.end_date || b.effective_date || b.start_date || "")
         .localeCompare(String(a.end || a.end_date || a.effective_date || a.start_date || "")))[0] || null;
-    const matchesRequestedLocation = (item) => {
-      const raw = String(item.location || "").trim().toLowerCase();
-      const cycleLocation = !raw || ["all", "all locations"].includes(raw) ? "all" : raw;
-      return allLocationsSelected
-        ? cycleLocation === "all"
-        : cycleLocation === requestedLocation;
-    };
+    const matchesRequestedLocation = cycleMatchesRequestedLocation;
     // A supplied cycle ID is authoritative. All Locations selects its own
     // Active global cycle; it is not a roll-up of the location-specific cycles.
     let targetCycles = [];
