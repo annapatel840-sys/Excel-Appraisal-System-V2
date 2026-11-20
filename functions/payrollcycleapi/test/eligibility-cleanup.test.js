@@ -184,7 +184,7 @@ async function setup() {
   await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
     const { store, post, mk, elig } = await setup();
     // Historical employees are not part of the new cycle's Employee_Master
-    // roster. Keep their business IDs distinct because emp_id is globally unique.
+    // roster. The same emp_id may be reused in another appraisal cycle.
     await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '9001', emp_id: 'HIST1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '9002', emp_id: 'HIST2' }]);
     const c = await mk('Annual NEW');
     // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
