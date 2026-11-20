@@ -90,14 +90,10 @@ const scr = (key, label, group, hrOnly, d) => ({ type: 'screen', key, label, gro
 const act = (key, label, group, fixed, d) => ({ type: 'action', key, label, group, hrOnly: false, fixed: fixed || '', note: '', d });
 const fld = (key, label, kind, extra) => Object.assign({ type: 'field', key, label, group: '', hrOnly: false, fixed: '', note: '', kind, deps: [], pairOf: '' }, extra || {});
 const CMP = 'Compensation', HRO = 'HR Operations';
-/* Fields of the other screens (group = screen key). m = shown/system value (read-only), u = loaded by an
-   upload (Read / Hidden only), otherwise an input. */
+/* Fields of the other screens (group = screen key). m = shown/system value (read-only), otherwise an input. */
 const fslug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 const SCREEN_FIELD_SPEC = {
-  // Employee Master: every column except Status is loaded by the HR upload ('u' = upload only: Read / Hidden,
-  // never Edit on the screen). Employee Status, Exit Date and Remark are changed from the screen (Set Inactive /
-  // Change), so they are inputs.
-  employeeMaster: [['Employee ID', 'm'], ['Employee Name', 'u'], ['Designation', 'u'], ['Department', 'u'], ['Reporting Manager', 'u'], ['Director', 'u'], ['Appraiser Tech-ED', 'u'], ['Employee Type', 'u'], ['Email ID', 'u'], ['Date of Joining', 'u'], ['Location', 'u'], ['Cost Center', 'u'], ['Organization Experience', 'u'], ['Total Experience', 'u'], ['Current Salary', 'u'], ['Last Appraisal Month/Year', 'u'], 'Employee Status', 'Exit Date', 'Remark'],
+  employeeMaster: [['Employee ID', 'm'], 'Employee Name', 'Designation', 'Department', 'Reporting Manager', 'Director', 'Appraiser Tech-ED', 'Employee Type', 'Email ID', 'Date of Joining', 'Location', 'Cost Center', 'Organization Experience', 'Total Experience', 'Current Salary', 'Last Appraisal Month/Year', 'Employee Status', 'Exit Date', 'Remark'],
   cycleMaster: ['Cycle Name', 'Cycle Type', 'Year', 'Process', 'Start Date', 'Close Date', 'Effective Date', ['Status', 'm'], 'Letters to Send', ['Mismatch', 'm'], 'Remarks'],
   locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Status'],
   budgetMaster: [['Tech-ED', 'm'], 'Budget %', 'Reason for Change', ['Allocated', 'm'], ['Updated', 'm'], ['Team Size', 'm'], 'Allotted to Comp Managers', ['Buffer', 'm']],
@@ -115,8 +111,8 @@ const SCREEN_FIELD_SPEC = {
 /* Screens only HR can open: other roles get Hidden on their fields by default. */
 const HR_FIELD_GROUPS = new Set(['employeeMaster', 'cycleMaster', 'locationMaster', 'budgetMaster', 'payrollMaster', 'feedbackRating', 'designationMaster', 'eligibility', 'payrollUpload', 'historicalImport']);
 const SCREEN_FIELD_CATALOG = [].concat(...Object.keys(SCREEN_FIELD_SPEC).map((scr) => SCREEN_FIELD_SPEC[scr].map((it) => {
-  const label = Array.isArray(it) ? it[0] : it, t = Array.isArray(it) ? it[1] : '';
-  return fld(scr + '_' + fslug(label), label, t === 'm' ? 'master' : t === 'u' ? 'upload' : 'input', { group: scr });
+  const label = Array.isArray(it) ? it[0] : it, m = Array.isArray(it) && it[1] === 'm';
+  return fld(scr + '_' + fslug(label), label, m ? 'master' : 'input', { group: scr });
 })));
 
 const START_CATALOG = [
@@ -297,10 +293,6 @@ async function loadCatalog(zcql) {
     // Add newly introduced built-in fields when the catalogue was seeded earlier.
     // Existing inactive entries stay inactive because their keys are still known.
     const missingDefaults = START_CATALOG.filter((item) => !knownKeys.has(item.type + '|' + item.key));
-    // Employee Master fields were first seeded as inputs; they are upload-only now. The kind of a
-    // catalogue row of this screen follows the built-in definition (never allows Edit on upload fields).
-    const startKind = Object.fromEntries(START_CATALOG.filter((x) => x.type === 'field' && x.group === 'employeeMaster').map((x) => [x.key, x.kind]));
-    activeRows.forEach((r) => { if (r.type === 'field' && r.group === 'employeeMaster' && startKind[r.key]) r.kind = startKind[r.key]; });
     src = activeRows.concat(missingDefaults).sort((a, b) => a.sort - b.sort);
   } else {
     src = START_CATALOG;

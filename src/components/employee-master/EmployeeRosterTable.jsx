@@ -142,27 +142,22 @@ const PLAIN = [
   ["exitDate", "Exit Date", 110],
 ];
 
-// The Employee column shows ID, Name and Designation (Access -> Fields -> Employee Master has one
-// field for each). A part set to Hidden is left out; the column goes when all three are hidden.
-function employeeColumn(show = { id: true, name: true, designation: true }) {
-  const line1 = (e) =>
-    [show.id ? getEmployeeId(e) || "-" : "", show.name ? getEmployeeName(e) : ""].filter(Boolean).join(" - ");
-  return {
+const DEFS = [
+  {
     key: "employee",
     label: "Employee",
     w: 260,
-    get: (e) => [line1(e), show.designation ? getDesignation(e) : ""].filter(Boolean).join(" \u00b7 "),
+    get: (e) =>
+      `${getEmployeeId(e) || "-"} - ${getEmployeeName(e)} · ${getDesignation(e)}`,
     render: (e) => (
       <>
-        <div className="emx-e1">{line1(e)}</div>
-        {show.designation && <div className="emx-e2">{getDesignation(e)}</div>}
+        <div className="emx-e1">
+          {getEmployeeId(e) || "-"} - {getEmployeeName(e)}
+        </div>
+        <div className="emx-e2">{getDesignation(e)}</div>
       </>
     ),
-  };
-}
-
-const DEFS = [
-  employeeColumn(),
+  },
   ...PLAIN.map(([key, label, w, info]) => ({
     key,
     label,
@@ -187,6 +182,7 @@ const LEGACY_KEYS = PLAIN.map((p) => p[0]);
 // Column → field name in Access → Fields → Employee Master. Columns not listed here are not
 // access-controlled fields and are always shown.
 const ROSTER_FIELD_LABEL = {
+  employee: "Employee Name",
   type: "Employee Type",
   dept: "Department",
   reportingManager: "Reporting Manager",
@@ -223,20 +219,9 @@ export function EmployeeRosterTable({
   // Access → Fields → Employee Master: Hidden columns are not shown; Read only fields cannot
   // be changed from this screen.
   const fieldAccess = useScreenFields("employeeMaster");
-  const show = useMemo(
-    () => ({
-      id: !fieldAccess.hidden("Employee ID"),
-      name: !fieldAccess.hidden("Employee Name"),
-      designation: !fieldAccess.hidden("Designation"),
-    }),
-    [fieldAccess],
-  );
   const defs = useMemo(
-    () =>
-      DEFS.filter((d) => !ROSTER_FIELD_LABEL[d.key] || !fieldAccess.hidden(ROSTER_FIELD_LABEL[d.key]))
-        .filter((d) => d.key !== "employee" || show.id || show.name || show.designation)
-        .map((d) => (d.key === "employee" ? employeeColumn(show) : d)),
-    [fieldAccess, show],
+    () => DEFS.filter((d) => !ROSTER_FIELD_LABEL[d.key] || !fieldAccess.hidden(ROSTER_FIELD_LABEL[d.key])),
+    [fieldAccess],
   );
   const canChangeStatus = fieldAccess.canEdit("Employee Status");
   const canChangeAny = Object.values(ROSTER_FIELD_LABEL).some((label) => fieldAccess.canEdit(label));
@@ -293,9 +278,11 @@ export function EmployeeRosterTable({
       const columns = [];
       defs.forEach((d) => {
         if (d.key === "employee") {
-          if (show.id) columns.push({ header: "Emp ID", value: (e) => getEmployeeId(e) });
-          if (show.name) columns.push({ header: "Employee Name", value: (e) => (getEmployeeName(e) === "-" ? "" : getEmployeeName(e)) });
-          if (show.designation) columns.push({ header: "Designation", value: (e) => (getDesignation(e) === "-" ? "" : getDesignation(e)) });
+          columns.push(
+            { header: "Emp ID", value: (e) => getEmployeeId(e) },
+            { header: "Employee Name", value: (e) => (getEmployeeName(e) === "-" ? "" : getEmployeeName(e)) },
+            { header: "Designation", value: (e) => (getDesignation(e) === "-" ? "" : getDesignation(e)) },
+          );
         } else {
           columns.push({
             header: d.label,
@@ -324,7 +311,7 @@ export function EmployeeRosterTable({
     return () => {
       exportRef.current = null;
     };
-  }, [exportRef, defs, show]);
+  }, [exportRef, defs]);
 
   const toggleRow = (id) =>
     setSelected((current) => {
