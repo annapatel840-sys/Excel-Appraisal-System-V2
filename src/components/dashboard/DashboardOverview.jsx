@@ -557,8 +557,9 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
             ...c,
             mine: g.rows.filter((r) => sameOwnerAs(c.label, r.compManager)),
           }));
-          // A Comp Manager row with no budget and nobody in this team is an empty placeholder, not an allocation.
-          const kids = found.filter((c) => c.allocated > 0 || c.mine.length > 0);
+          // "Allocated" means the Tech-ED gave this Comp Manager a budget. A row with 0 budget is an
+          // empty placeholder (even if the sheet lists him as Comp Manager of these people), so it is not shown.
+          const kids = found.filter((c) => c.allocated > 0);
           if (kids.length === 0) {
             out.push({ key: `none:${key}`, none: true, d: 1, k: "No comp manager allocated", rows: [], n: 0 });
           } else {
