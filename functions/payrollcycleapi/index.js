@@ -1046,11 +1046,19 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   let repairedReferences = 0;
   let inactiveMarked = 0;
   let rowsUpdated = 0;
+  const outOfLocationRows = [];
   for (const row of cycleRows) {
     const linkedMasterId = String(row.employee_master_id || "");
     const empId = String(row.emp_id || "").trim().toLowerCase();
     const master = masterByRowId.get(linkedMasterId) || masterByEmpId.get(empId);
     if (!master) continue;
+    // A cycle roster is constrained by the employee's CURRENT Employee_Master
+    // location. Old rows created before location-scoped cycles (or left behind
+    // after a transfer) must not leak into this cycle's Eligibility List.
+    if (!inCycleLocation(cycle, master, locations)) {
+      outOfLocationRows.push(row);
+      continue;
+    }
     const actualMasterId = String(master.ROWID || master.rowid || "");
     const inactive = String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active";
     const patch = { ROWID: rowId(row) };
@@ -1093,8 +1101,8 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     const empId = String(row.emp_id || "").trim().toLowerCase();
     return !masterByRowId.has(String(row.employee_master_id || "")) && !masterByEmpId.has(empId);
   });
-  const toDelete = [...orphanRows, ...unqualifiedSeedRows];
-  await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
+  const toDelete = [...orphanRows, ...unqualifiedSeedRows, ...outOfLocationRows];
+  await deleteEligibilityRowsById(tables, [...new Set(toDelete.map((row) => rowId(row)).filter(Boolean))]);
 
   // Do not reconstruct Eligibility_List from Appraisal_Sheet during activation
   // or page loads. Only Apply Criteria / explicit manual actions may create rows.
@@ -1539,7 +1547,11 @@ async function getEligibilityRows(tables, cycle, actor = "") {
     .map((row) => {
       const master = masterById.get(String(row.employee_master_id || "")) ||
         masterByEmpId.get(String(row.emp_id || "").trim().toLowerCase());
-      return master ? shapeEligibilityRow(row, master) : null;
+      // Defence in depth: never display a row whose linked Employee_Master
+      // record belongs to a different location than the selected cycle.
+      return master && inCycleLocation(cycle, master, locations)
+        ? shapeEligibilityRow(row, master)
+        : null;
     })
     .filter(Boolean);
   return {
