@@ -421,28 +421,46 @@ export function BudgetDistributionPage() {
   };
   const resolveTechRecordUncached = (text) => {
     const compact = normalize(text);
+    const directories = [employeeRows, locationEmployeeRows, masterEmployees || []];
+    const findDirectoryEmployee = (aliases) => {
+      const keys = (aliases || []).map((value) => String(value || "").trim()).filter(Boolean);
+      for (const directory of directories) {
+        const hit = (directory || []).find((row) => {
+          const rowId = String(row.row_id || row.ROWID || row.employee_master_row_id || "").trim();
+          const employeeId = String(row.emp_id || row.employee_id || row.empId || "").trim();
+          const name = String(row.name || row.emp_name || row.employee_name || "").trim();
+          return keys.some((key) =>
+            normalize(key) === normalize(rowId) ||
+            normalize(key) === normalize(employeeId) ||
+            normalize(key) === normalize(name) ||
+            ownerKey(key) === normalize(employeeId)
+          );
+        });
+        if (hit) return hit;
+      }
+      return null;
+    };
     const linked = techEdOwners.find((item) => {
       const aliases = [item?.row_id, item?.ROWID, item?.employee_id, item?.assignment, item?.name].filter(Boolean);
       return aliases.some((alias) => normalize(alias) === compact || ownerKey(alias) === ownerKey(text));
     });
-    if (linked) {
-      const id = String(linked.employee_id || "").trim();
-      const name = String(linked.name || "").trim();
-      const assignment = String(linked.assignment || "").trim();
-      const label = assignment.includes(" - ")
+    const employee = findDirectoryEmployee([
+      text, linked?.row_id, linked?.ROWID, linked?.employee_id,
+      linked?.assignment, linked?.name,
+    ]);
+    const id = String(linked?.employee_id || employee?.emp_id || employee?.employee_id || employee?.empId || "").trim();
+    const name = String(linked?.name || employee?.name || employee?.emp_name || employee?.employee_name || "").trim();
+    const assignment = String(linked?.assignment || "").trim();
+    const assignmentParts = assignment.split(/\\s+-\\s+/);
+    const assignmentName = assignmentParts.length > 1 ? assignmentParts.slice(1).join(" - ").trim() : "";
+    const label = id && name
+      ? id + " - " + name
+      : assignmentParts.length > 1
         ? assignment
-        : id && name
-          ? id + " - " + name
+        : id && assignmentName
+          ? id + " - " + assignmentName
           : assignment || id || name || text;
-      return { key: normalize(id || assignment || text), label };
-    }
-    const employee = employeeRows.find((row) =>
-      String(row.emp_id || row.employee_id || "").trim().toLowerCase() === compact ||
-      String(row.row_id || row.ROWID || "").trim() === text
-    );
-    const id = String(employee?.emp_id || employee?.employee_id || "").trim();
-    const name = String(employee?.name || employee?.emp_name || employee?.employee_name || "").trim();
-    return { key: normalize(id || text), label: id && name ? id + " - " + name : text };
+    return { key: normalize(id || assignment || text), label };
   };
   const resolveTechOwner = (raw) => resolveTechRecord(raw)?.label || String(raw || "").trim();
   // Use the same AppraisalContext rows and exact Active + Eligible filter
