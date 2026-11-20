@@ -902,8 +902,6 @@
 .bo #imp .sm>.wi::before{content:"";position:absolute;left:0;top:24px;width:3px;height:14px;background:#2F6FED;border-radius:2px}
 .bo #imp .sm>.wi:first-of-type::before{top:18px}
 .bo #imp .sm>.wi .wch,.bo #imp .sm>.wi .sm-h{margin:0 0 10px!important;padding-left:2px!important;font-size:12px!important;color:#102A43!important}
-.bo #imp .sm>.wi.wp{background:#F7F9FC!important;border-radius:0 0 8px 8px}
-.bo #imp .sm>.wi.wp::before{background:#102A43}
 .bo #imp .sm>.wm{padding:14px 20px!important;border-top:1px solid #D9DEE5}
 .bo #imp .sm>.sm-links{padding:10px 20px 18px!important}
 .bo #imp .sm>.wi .wch:not(:first-child){margin-top:26px!important;padding-top:20px!important;border-top:1px solid #D9DEE5!important}
@@ -927,3 +925,11 @@
 /* Employees is not a tab: Summary links to it, this bar leads back */
 .bo .bkbar{display:none;padding:6px 10px;border-bottom:1px solid #E5E7EB;background:#fff}
 .bo[data-ct=emp] .bkbar{display:block}
+/* Employees (and Scenarios) are not always-on tabs: they show in the tab row only while open, like the dummy. */
+.bo #pC .mp-tabs button[data-x]:not(.on){display:none!important}
+/* Summary sections alternate: white with a blue marker, then grey with a black marker. */
+.bo #imp .sm>.wi{background:#fff!important}
+.bo #imp .sm>.wi::before{background:#2F6FED!important}
+.bo #imp .sm>.wi:nth-child(even){background:#F3F5F9!important}
+.bo #imp .sm>.wi:nth-child(even)::before{background:#102A43!important}
+.bo #imp .sm>.wi .fith{margin-bottom:8px}

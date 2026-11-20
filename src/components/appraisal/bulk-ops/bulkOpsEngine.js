@@ -1429,7 +1429,7 @@ function wiHtml(){
   var LYON=!!S.ly&&EMP.some(function(e){return e.hikeLY!=null}),lyT=0;sc.forEach(function(e){lyT+=cmpAmt(e)});var lyA=base?lyT/base*100:0;
   function wth(){return '<thead><tr><th></th><th>Before</th><th>After</th><th>Change</th>'+(LYON?'<th>'+cmpLbl()+'</th>':'')+'</tr></thead>'}
   function row(l,x,y,d,ly){return '<tr><td>'+l+'</td><td>'+x+'</td><td>'+y+'</td><td>'+(d||'')+'</td>'+(LYON?'<td>'+(ly==null?'—':ly)+'</td>':'')+'</tr>'}
-  var t='<div class="wc"><div><div class="wchrow"><span class="wch">Before vs After</span>'+cmpSelHtml("cmpSelWi")+'</div><table class="wt'+'">'+wth()+'<tbody>'
+  var t='<div class="wi wp"><div class="wchrow"><span class="wch">Before vs After</span>'+cmpSelHtml("cmpSelWi")+'</div><table class="wt'+'">'+wth()+'<tbody>'
     +row('People Affected','—',n.chg,'<span style="color:#6B7280">of '+vr.length+' in view</span>')
     +RK.map(function(k){var t0=0,t1=0;sc.forEach(function(e){var r=p.res[e.empId],x=Number(e[k])||0;t0+=x;t1+=r&&r.st==="chg"?(Number(r.after[k])||0):x});
       var q0=base?t0/base*100:0,q1=base?t1/base*100:0,L=KLBL[k]||k,h=k==="hikeAmt";
@@ -1438,21 +1438,21 @@ function wiHtml(){
     +row('Budget Utilised',b0.util.toFixed(1)+'%',b1.util.toFixed(1)+'%',wiDelta(b1.util-b0.util,pp))
     +row('Budget '+(b0.left>=0?'left':'over'),big(Math.abs(b0.left)),(left>=0?'':'over ')+big(Math.abs(left)),'')
     +'</tbody></table>'
-    +'<div style="height:12px"></div><span class="wch">Outside the Budget · Target PB vs PB Paid</span><table class="wt">'+wth()+'<tbody>'
-    +row('Target PB',big(b0.tpb),big(b1.tpb),wiDelta(b1.tpb-b0.tpb,big))
-    +row('PB Paid',big(pbp),big(pbp),'')
-    +'</tbody></table>'
     +'<div class="wm">'+n.skip+' skipped (edited manually) · '+n.off+' left out (unticked) · '+n.same+' already at these values</div>'
     +(left>=0?'<div class="callout ok"><b>Within Budget</b><br>'+big(left)+' left of '+big(b1.budget)+' after this change.</div>'
       :'<div class="callout warn"><b>Over Budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>')
-    +'</div>';
+    +'</div>'
+    +'<div class="wi wp"><span class="wch">Outside the Budget · Target PB vs PB Paid</span><table class="wt">'+wth()+'<tbody>'
+    +row('Target PB',big(b0.tpb),big(b1.tpb),wiDelta(b1.tpb-b0.tpb,big))
+    +row('PB Paid',big(pbp),big(pbp),'')
+    +'</tbody></table></div>';
   /* by group */
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var g={};
   vr.forEach(function(e){var r=p.res[e.empId];if(!r||r.st!=="chg")return;var k=groupKey(e,GB),o=g[k]||(g[k]={n:0,h0:0,h1:0,b:0,ly:0});o.n++;o.ly+=cmpAmt(e);o.h0+=Number(e[K0])||0;o.h1+=Number(r.after[K0])||0;o.b+=e.basePay});
   var keys=Object.keys(g);
   keys.sort(function(a,b){if(GB==="rating"){var x=a==="No Rating"?-1:+a,y=b==="No Rating"?-1:+b;return y-x}return a<b?-1:a>b?1:0});
-  t+='<div><span class="wch">By Group</span><div class="wgb"><label for="wiGb">Group by</label><select id="wiGb">'+opts.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===GB?' selected':'')+'>'+esc(o.label)+'</option>'}).join("")+'</select></div>'
+  t+='<div class="wi wp"><span class="wch">By Group</span><div class="wgb"><label for="wiGb">Group by</label><select id="wiGb">'+opts.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===GB?' selected':'')+'>'+esc(o.label)+'</option>'}).join("")+'</select></div>'
     +(keys.length?'<table class="wt"><thead><tr><th>Group</th><th>People</th><th>'+L0+' before</th><th>'+L0+' after</th><th>Avg '+L0+' %</th>'+(LYON&&K0==='hikeAmt'?'<th>'+cmpLbl()+' %</th>':'')+'</tr></thead><tbody>'
       +keys.map(function(k){var o=g[k];return '<tr class="gdr'+(S.wiDr===k?' on':'')+'" data-g="'+esc(k)+'" title="Click to see the people in this group"><td>'+esc(k)+'</td><td>'+o.n+'</td><td>'+big(o.h0)+'</td><td>'+big(o.h1)+'</td><td>'+(o.b?(o.h1/o.b*100).toFixed(1):'0.0')+'%</td>'+(LYON&&K0==='hikeAmt'?'<td>'+(o.b?(o.ly/o.b*100).toFixed(1):'0.0')+'%</td>':'')+'</tr>'}).join("")+'</tbody></table>'
       :'<div class="wm">No rows change in this preview.</div>')
@@ -1463,9 +1463,9 @@ function wiHtml(){
         +cap.map(function(e){var r=p.res[e.empId],b=e[K0]/e.basePay*100,a=r.after[K0]/e.basePay*100;
           return '<div class="ex"><div class="n"><b>'+esc(e.empId)+' - '+esc(e.name)+'</b><i>'+esc(e.designation)+' · '+esc(e.band)+'</i></div><div>'+b.toFixed(2)+'% → <b>'+a.toFixed(2)+'%</b></div><span class="tag t-info">▲ '+big(r.after[K0]-e[K0])+'</span></div>'}).join("")
         +(rows.length>cap.length?'<div class="wm">Showing '+cap.length+' of '+rows.length+' · the rest is in the list below.</div>':'')+'</div>'})():'')
-    +'</div></div>';
-  t+='<div class="wg"></div><div class="wm">Before and after for every employee: <button class="btn lnk" id="bDlList2" type="button">Download List</button></div>';
-  return '<div class="wi wp">'+t+'</div>';
+    +'<div class="wm" style="margin-top:12px">Before and after for every employee: <button class="btn lnk" id="bDlList2" type="button">Download List</button></div>'
+    +'</div>';
+  return t;
 }
 function budgetTab(c){return wiHtml()}
 $("imp").addEventListener("click",function(ev){
@@ -1757,18 +1757,25 @@ function smYears(vr,p,K0){
   var lg='<div class="lg">'+lines.map(function(Ln){return '<span><i style="background:'+Ln.c+'"></i>'+Ln.l+'</span>'}).join("")+'</div>';
   return '<div class="sm-h">Average Hike % Over the Years</div><div class="wm" style="margin:0 0 4px">Dashed = this proposal. Demo history; the real figures come from the history table.</div>'+lg+o;
 }
+/* Budget of one group (a Tech ED or a Comp Manager): the allocated budget shared in proportion to Base pay,
+   used = what that group consumes (Hike + PB + RB). Same sheet / server figures as the header, nothing invented. */
+function grpBud(a,ov){
+  var H=cfg.getHdr?cfg.getHdr():null;
+  if(!H&&!SB)return budgetOf(a,ov);
+  var s0=sums(a,ov),t0=sums(a,null),tot=sums(scope(),null).base,alloc=(H?H.allocated:SB.updated)||0,bud=tot?alloc*t0.base/tot:0;
+  return {budget:bud,used:s0.used,util:bud?s0.used/bud*100:0,left:bud-s0.used};
+}
 function tedTable(sc,p){
-  if(SB)return [];   // with the server, each Tech ED budget comes from Budget Config
   var m={};sc.forEach(function(e){var k=e.superManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBud(a,null),b:grpBud(a,ov)}});
 }
 function sumTab(c){
   var p=c.pv;
   if(!p){var b=budgetOf(scope(),null);
     return '<div class="sm"><div class="sm-empty"><b>What Happens If You Apply</b><span>Choose what to change and for whom, then click <b>Preview</b>. The people affected, the cost, the average and the budget show here. Nothing is saved until Apply.</span></div>'
-      +'<div class="sm-h">Budget Now</div><div class="smbar"><i style="width:'+Math.min(100,b.util)+'%"></i></div><div class="wm">'+b.util.toFixed(1)+'% of '+big(b.budget)+' used · '+big(Math.max(0,b.left))+' left</div>'+smLinks()+'</div>'}
+      +'<div class="sm-h">Budget Now</div><div class="smbar"><i style="width:'+Math.min(100,b.util)+'%"></i></div><div class="wm">'+b.util.toFixed(1)+'% of '+big(b.budget)+' used · '+big(Math.max(0,b.left))+' left</div>'+viewEmpLink()+smLinks()+'</div>'}
   var RK=ruleKeys(p),K0=RK[0],L0=KLBL[K0]||K0,b0=p.before,b1=p.after,n=p.n,vr=viewRows().filter(function(e){var r=p.res[e.empId];return r&&r.st!=="off"}),sc=c.scope,left=b1.left,over=left<0;
   var base=0,t0=0,t1=0,lyT=0;sc.forEach(function(e){var r=p.res[e.empId];base+=e.basePay;t0+=Number(e[K0])||0;t1+=r&&r.st==="chg"?(Number(r.after[K0])||0):(Number(e[K0])||0);lyT+=cmpAmt(e)});
   var a0=base?t0/base*100:0,a1=base?t1/base*100:0,lyA=base?lyT/base*100:0,LYK=!!S.ly&&K0==="hikeAmt"&&EMP.some(function(e){return e.hikeLY!=null});
@@ -1783,8 +1790,9 @@ function sumTab(c){
     TT.forEach(function(t){h+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
     h+='</div><div class="wm">Skipped = already finalised or edited by a manager. Apply is saved as one batch; every row keeps its Tech ED in the history.</div>';
   }
-  return h+'</div>';
+  return h+viewEmpLink()+'</div>';
 }
+function viewEmpLink(){return '<div class="wm" style="margin:8px 0"><button class="btn lnk" id="bViewEmp" type="button">View Employees ›</button></div>'}
 $("imp").addEventListener("click",function(ev){
   var t=ev.target.closest&&ev.target.closest("[data-t],[data-sg],[data-sm],[data-fx]");if(!t||!$("imp").contains(t))return;
   if(t.getAttribute("data-t")){setPT(t.getAttribute("data-t"));return}
@@ -1937,7 +1945,7 @@ function mapRow(r){
 }
 function loadBudget(){
   return apiCall("GET","/budget?cycle_id="+encodeURIComponent(ACTIVE_CYCLE.id)+asQ()).then(function(b){
-    SB=b;SB0=sums(scope(),null);
+    if(b&&typeof b==="object"&&b.updated!=null){SB=b;SB0=sums(scope(),null)}else{SB=null;SB0=null}   // {} = no server budget: keep the sheet / demo figures so the Tech ED table still shows
   }).catch(function(){SB=null;SB0=null});
 }
 function asQ(){return S.as?"&as="+encodeURIComponent(S.as):""}
@@ -2263,28 +2271,26 @@ function fitBlock(p){
     +body+(over?'<div class="wm" style="color:#B7791F">Over the allocation by '+big(b1.used-al)+' · warning only</div>':'<div class="wm">'+big(al-b1.used)+' left after this change.</div>')+'</div>';
 }
 function cmTable(sc,p){
-  if(SB)return [];
   var m={};sc.forEach(function(e){var k=e.compManager||"(none)";(m[k]=m[k]||[]).push(e)});
   return Object.keys(m).sort().map(function(k){var a=m[k],ov={},chg=0,skip=0;
     a.forEach(function(e){var r=p.res[e.empId];if(!r)return;if(r.st==="chg"){ov[e.empId]=r.after;chg++}else if(r.st==="skip"||r.st==="off")skip++});
-    return {name:k,n:a.length,chg:chg,skip:skip,b0:budgetOf(a,null),b:budgetOf(a,ov)}});
+    return {name:k,n:a.length,chg:chg,skip:skip,b0:grpBud(a,null),b:grpBud(a,ov)}});
 }
 var _ted57=tedTable;tedTable=function(){return []};
 var _hero=heroHtml;
 heroHtml=function(vr,p){
   var h=fitBlock(p)+wiHtml();
-  if(S.role==="CM")return h;
-  if(S.role==="HR"){
-    var TT=_ted57(scope(),p);if(TT.length<2)return h;
-    var u='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Skipped</span><span>Status</span></div>';
-    TT.forEach(function(t){u+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
-    u+='</div></div>';var k=h.indexOf('<div class="wi wp">');return k>=0?h.slice(0,k)+u+h.slice(k):h+u}
-  var CT=cmTable(scope(),p);if(CT.length<2)return h;
-  var t='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">Budget Impact by Comp Manager</div><div class="tedt"><div class="tedr th"><b>Comp Manager</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Changing</span><span>Status</span></div>';
-  CT.forEach(function(x){t+='<div class="tedr"><b>'+esc(x.name)+'</b><span>'+x.n+'</span><span>'+big(x.b.budget)+'</span><span>'+x.b0.util.toFixed(0)+'%</span><span>'+x.b.util.toFixed(0)+'%</span><span>'+x.chg+'</span><span class="'+(x.b.left<0?'ov':'wi2')+'">'+(x.b.left<0?'Over by '+big(-x.b.left):'Within')+'</span></div>'});
-  t+='</div></div>';
-  var i=h.indexOf('<div class="wi wp">');
-  return i>=0?h.slice(0,i)+t+h.slice(i):h+t;
+  function tbl(title,first,rows,lastCol){
+    var u='<div class="wi fitbox"><div class="sm-h" style="margin:0 0 6px">'+title+'</div><div class="tedt"><div class="tedr th"><b>'+first+'</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>'+lastCol+'</span><span>Status</span></div>';
+    rows.forEach(function(t){u+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+(lastCol==="Skipped"?t.skip:t.chg)+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
+    return u+'</div></div>';
+  }
+  var sc=scope(),TT=_ted57(sc,p),u="";
+  if(TT.length>=2)u=tbl("Budget Impact by Tech ED","Tech ED",TT,"Skipped");
+  else{var CT=cmTable(sc,p);if(CT.length>=2)u=tbl("Budget Impact by Comp Manager","Comp Manager",CT,"Changing")}
+  if(!u)return h;
+  var i=h.indexOf('<div class="wi wp">');   // the Before vs After block follows Budget Fit
+  return i>=0?h.slice(0,i)+u+h.slice(i):h+u;
 };
 var _smY=smYears;smYears=function(){return ""};
 /* Rating bell: people at each rating against a target bell, with the average Hike % or Total Reward % per rating */
@@ -2337,6 +2343,15 @@ chartsTab=function(c){
 var _setPT54=setPT;setPT=function(t){if(t==="budget"||t==="checks"||t==="pivot")t="summary";_setPT54(t)};
 $("imp").addEventListener("click",function(ev){var f=ev.target.closest&&ev.target.closest("[data-fit]");if(!f)return;ev.stopImmediatePropagation();FIT_VIEW=f.getAttribute("data-fit");renderImpact()},true);
 $("imp").addEventListener("change",function(ev){var t=ev.target;if(!t||!t.id)return;if(t.id==="bcPlot"){S.bcPlot=t.value;renderImpact()}else if(t.id==="bcCmp"){S.bcCmp=t.value;renderImpact()}});
+
+/* Employees is not a tab: Summary has a "View Employees" link. It opens as a tab; "Back to Summary" removes it again. */
+(function(){
+  var mp=$("metPanel"),gc=root.querySelector(".grid-card");if(!mp||!gc)return;
+  var bar=document.createElement("div");bar.className="bkbar";bar.innerHTML='<button class="btn lnk" type="button" id="bBack">‹ Back to Summary</button>';
+  mp.insertBefore(bar,gc);
+  $("bBack").addEventListener("click",function(){setPT("summary");var b=root.querySelector('#mpTabs [data-t="summary"]');if(b)b.click()});
+  $("imp").addEventListener("click",function(ev){if(ev.target.closest&&ev.target.closest("#bViewEmp")){var b=root.querySelector('#mpTabs [data-x="emp"]');if(b)b.click()}});
+})();
 
 var _renderHost=render;
 render=function(){_renderHost();updateBusy();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
