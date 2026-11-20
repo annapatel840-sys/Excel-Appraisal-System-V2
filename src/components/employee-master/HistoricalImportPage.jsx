@@ -1,3 +1,4 @@
+import { activeSymbol } from "@/lib/currency-format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { historicalImportRequest } from "@/lib/historical-import-api";
@@ -14,7 +15,7 @@ import { historicalImportRequest } from "@/lib/historical-import-api";
 
 const PAGE = 20;
 const TYPE_INFO = {
-  payroll: { icon: "₹", note: "Saved to Payroll Data" },
+  payroll: { icon: "", note: "Saved to Payroll Data" },
   feedback: { icon: "★", note: "Saved to Review and Feedback" },
   delegation: { icon: "⇧", note: "Saved to Previous Delegation" },
 };
@@ -385,7 +386,7 @@ export function HistoricalImportPage({ readOnly = false }) {
               disabled={!!busy}
               onClick={() => chooseType(key)}
             >
-              <span className="hi-ico" aria-hidden="true">{TYPE_INFO[key]?.icon}</span>
+              <span className="hi-ico" aria-hidden="true">{key === "payroll" ? activeSymbol() : TYPE_INFO[key]?.icon}</span>
               <span>
                 <b>{def.label}</b>
                 <small>{TYPE_INFO[key]?.note}</small>

@@ -1,3 +1,4 @@
+import { money as formatMoney } from "./currency-format";
 import { useCallback, useMemo, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -42,8 +43,7 @@ const writeDismissed = (list) => {
   }
 };
 
-const money = (n) =>
-  Math.round(Number(n) || 0).toLocaleString("en-IN");
+const money = (n) => formatMoney(Math.round(Number(n) || 0));
 
 const when = (iso) => {
   const t = new Date(iso).getTime();

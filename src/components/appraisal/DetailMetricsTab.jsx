@@ -1,3 +1,4 @@
+import { money as formatMoney, moneyCompact, usesLakhGrouping, activeSymbol } from "@/lib/currency-format";
 import { Component, useMemo, useState } from "react";
 
 import { totalRewardsHikePct, yoeRatio } from "@/lib/appraisal-data";
@@ -49,8 +50,10 @@ const lakh = (v) =>
   v === null || v === undefined
     ? "—"
     : Math.abs(v) < 1e5
-      ? Math.round(v).toLocaleString("en-IN")
-      : `${(v / 1e5).toFixed(1)}L`;
+      ? formatMoney(Math.round(v))
+      : usesLakhGrouping()
+        ? `${(v / 1e5).toFixed(1)}L`
+        : moneyCompact(v, { withSymbol: false });
 const norm = (v) => String(v ?? "").trim().toLowerCase();
 const last = (arr) => arr[arr.length - 1];
 
@@ -404,8 +407,8 @@ function DetailMetricsTabInner({
             {hikeHistory.length ? ` — history ${hikeHistory.join(", ")}` : ""}
           </li>
           <li>
-            Bonus: ₹{lakh(live.pb + live.rb)}
-            {prevTotal ? `, ${live.pb + live.rb >= prevTotal ? "up" : "down"} from ₹${lakh(prevTotal)} last cycle` : ""}
+            Bonus: {activeSymbol()}{lakh(live.pb + live.rb)}
+            {prevTotal ? `, ${live.pb + live.rb >= prevTotal ? "up" : "down"} from ${activeSymbol()}${lakh(prevTotal)} last cycle` : ""}
             {pbPct !== null ? ` · PB paid ${fx(pbPct, 0)}% of target` : ""}
           </li>
           <li>

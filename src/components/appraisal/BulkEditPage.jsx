@@ -23,6 +23,7 @@
  *   readOnly   view-only: nothing can be applied
  *   ref        exposes { reload(), dirty(), refresh() }
  */
+import { money as formatMoney } from "@/lib/currency-format";
 import React, {
   forwardRef,
   useEffect,
@@ -50,7 +51,7 @@ import "@/styles/bulk-ops.css";
 const APPLY_ENABLED = true;
 
 /* ---------- header formatting ---------- */
-const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+const rupees = (n) => formatMoney(Math.round(Number(n) || 0));
 const pctOf = (x) =>
   x && Number(x.budget) ? ((Number(x.used) || 0) / Number(x.budget)) * 100 : 0;
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
@@ -464,7 +465,7 @@ const BulkOperations = forwardRef(function BulkOperations(
               {sheetHdr
                 ? sheetHdr.pending
                   ? "…"
-                  : Math.round(b0.budget).toLocaleString("en-IN")
+                  : formatMoney(Math.round(b0.budget))
                 : rupees(b0.budget)}
             </strong>
           </div>

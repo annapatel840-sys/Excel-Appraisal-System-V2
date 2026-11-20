@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { X } from "lucide-react";
@@ -39,21 +40,7 @@ const fmtDate = (iso) => {
   const p = String(iso).split("-");
   return p.length === 3 ? `${p[2]}-${MON[+p[1] - 1]}-${p[0]}` : String(iso);
 };
-const inr = (n, dp) => {
-  const s = Number(n).toFixed(dp);
-  const p = s.split(".");
-  let i = p[0];
-  let neg = "";
-  if (i.charAt(0) === "-") {
-    neg = "-";
-    i = i.slice(1);
-  }
-  let last = i.slice(-3);
-  let rest = i.slice(0, -3);
-  if (rest) last = "," + last;
-  rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
-  return neg + rest + last + (p[1] ? "." + p[1] : "");
-};
+const inr = (n, dp) => formatMoney(Number(n), { decimals: dp || 0 });
 const lsGet = (k, d) => {
   try {
     const v = localStorage.getItem(k);

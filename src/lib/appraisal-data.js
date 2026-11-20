@@ -2,6 +2,7 @@
 // APPRAISAL DATA
 // ============================================================
 
+import { money as formatMoney } from "./currency-format";
 import { parseDateValue } from "./employee-master-data";
 
 // Dropdown options
@@ -824,7 +825,7 @@ export function buildEmployees(count = 250) {
 // FORMATTING
 // ============================================================
 
-export const inr = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+export const inr = (n) => formatMoney(Math.round(Number(n) || 0));
 
 export const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 
@@ -868,17 +869,14 @@ export function formatValue(row, col) {
   }
 
   if (col.type === "decimal") {
-    return Number(value || 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatMoney(Number(value || 0), { decimals: 2 });
   }
 
   if (col.type === "number") {
     const number = Number(value);
     return value === "" || value === null || value === undefined || !Number.isFinite(number)
       ? String(value ?? "")
-      : number.toLocaleString("en-IN");
+      : formatMoney(number, { maxDecimals: 3 });
   }
 
   return String(value ?? "");

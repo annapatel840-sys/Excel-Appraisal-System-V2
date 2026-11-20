@@ -1,3 +1,4 @@
+import { money as formatMoney, plainNumberText, moneyLakhs, activeSymbol } from "@/lib/currency-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import {
@@ -18,14 +19,14 @@ const CYCLE = "Apr-26";
 
 const n = (v) => Number(v) || 0;
 const blank = (v) => v === "" || v == null;
-const fmt = (v) => Math.round(n(v)).toLocaleString("en-IN");
+const fmt = (v) => formatMoney(Math.round(n(v)));
 const fmtB = (v) => (blank(v) ? "" : fmt(v));
-const lakhs = (v) => `${(n(v) / 1e5).toFixed(2)} L`;
+const lakhs = (v) => moneyLakhs(n(v));
 const dash = (v) => (blank(v) ? "—" : v);
 const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
 const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
 const amount = (raw) => {
-  const c = String(raw ?? "").replace(/[^0-9.]/g, "");
+  const c = plainNumberText(raw ?? "").replace(/[^0-9.]/g, "");
   return c === "" ? "" : Number(c) || 0;
 };
 const yearKey = (y) =>
@@ -854,7 +855,7 @@ export function DetailScreenPage() {
           <div className="kpis">
             <div className="kpi">
               <span>Budget Allocated</span>
-              <b>₹ {lakhs(bud.allocated)}</b>
+              <b>{activeSymbol()} {lakhs(bud.allocated)}</b>
             </div>
             <div className="kpi">
               <span>Utilisation</span>

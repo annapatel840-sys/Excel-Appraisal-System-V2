@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { cn } from "@/lib/utils";
 
 // ============================================================
@@ -17,9 +18,9 @@ const ONE_CRORE = 10000000;
 export const formatCrore = (amount) =>
   ` ${(amount / ONE_CRORE).toFixed(2)} Cr`;
 
-// Full amount in Indian digit grouping, e.g. ₹ 1,57,00,000 (no Cr / L rounding).
+// Full amount in the selected location's display format, e.g. 1,57,00,000 (no Cr / L rounding).
 export const formatRupees = (amount) =>
-  ` ${Math.round(Number(amount) || 0).toLocaleString("en-IN")}`;
+  ` ${formatMoney(Math.round(Number(amount) || 0))}`;
 
 
 // Consumed = Performance Bonus (PB) + Retention Bonus (RB) + Hike Amount,

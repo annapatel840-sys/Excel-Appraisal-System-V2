@@ -1,3 +1,4 @@
+import { money as formatMoney, moneyLakhs } from "@/lib/currency-format";
 import { memo, useMemo, useRef, useState } from "react";
 
 import { buildChangeLog, subtreeOf, TYPE_LABEL, dateText } from "@/lib/budget-engine";
@@ -40,8 +41,8 @@ const num = (v) => {
   const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
   return Number.isFinite(n) ? n : 0;
 };
-const inr = (n) => Math.round(num(n)).toLocaleString("en-IN");
-const lakhs = (n) => `${(num(n) / 100000).toFixed(2)} L`;
+const inr = (n) => formatMoney(Math.round(num(n)));
+const lakhs = (n) => moneyLakhs(num(n));
 const pct = (n, d) => (d ? (num(n) / num(d)) * 100 : 0);
 const f1 = (n) => (Math.round(n * 10) / 10).toFixed(1);
 const ratingNum = (v) => {

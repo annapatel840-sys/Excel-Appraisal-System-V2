@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -19,7 +20,7 @@ const MAX_CYCLES = 3;
 const fmt = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return "0";
-  return Math.round(n).toLocaleString("en-IN");
+  return formatMoney(Math.round(n));
 };
 
 // Small figure under a value: "% of base" for Hike Amount, otherwise the

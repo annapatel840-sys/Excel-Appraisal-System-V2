@@ -29,6 +29,7 @@ import {
 } from "@/lib/employee-roster";
 import { clearSignedInUserData } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
+import { useCurrencyConfig } from "@/lib/currency-format";
 import { getSelectedEmpId } from "@/lib/selected-employee";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
 import {
@@ -180,6 +181,9 @@ function accessAllowedPath(path, access, isTechEd = false) {
 
 // Rendered inside <CatalystAuthGate> so useCatalystUser() sees the signed-in user.
 function AppRoutes() {
+  // Currency type + display format of the selected location (Location Master). Screens are
+  // re-created when it changes so every amount is drawn again in the new format.
+  const currency = useCurrencyConfig();
   const [path, setPath] = useState(window.location.pathname);
   const user = useCatalystUser();
   const access = useAccess();
@@ -288,7 +292,7 @@ function AppRoutes() {
     <SettingsProvider>
       <AppraisalProvider>
         <BudgetProvider>
-          <ScreenErrorBoundary key={effectivePath}>{page}</ScreenErrorBoundary>
+          <ScreenErrorBoundary key={`${effectivePath}|${currency.code}|${currency.format}`}>{page}</ScreenErrorBoundary>
         </BudgetProvider>
       </AppraisalProvider>
     </SettingsProvider>

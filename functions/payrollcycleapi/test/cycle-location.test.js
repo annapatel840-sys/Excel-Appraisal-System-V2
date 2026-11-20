@@ -306,6 +306,31 @@ async function t(name, fn) {
     assert.strictEqual(currentCycles.find((cycle) => cycle.id === indiaId).status, 'Active');
   });
 
+  await t('Location Master saves and returns currency type + display format', async () => {
+    const created = await post('locations', { location_name: 'Bahrain', location_code: 'bhr', address: 'Manama', currency_code: 'bhd', currency_display_format: '1,234,567.89' });
+    assert.strictEqual(created.status, 201, JSON.stringify(created.json));
+    assert.strictEqual(created.json.data.currency_code, 'BHD');
+    assert.strictEqual(created.json.data.currency_display_format, '1,234,567.89');
+    const listed = (await call(api, 'GET', 'locations')).json.data;
+    assert.strictEqual(listed.find((x) => x.location_code === 'BHR').currency_display_format, '1,234,567.89');
+    // A row that has no format saved yet is returned as "Default".
+    assert.strictEqual(listed.find((x) => x.location_code === 'IND').currency_display_format, 'Default');
+  });
+
+  await t('Location Master rejects a display format outside the list', async () => {
+    const bad = await post('locations', { location_name: 'Peru', location_code: 'PER', currency_code: 'PEN', currency_display_format: '1;234;567' });
+    assert.strictEqual(bad.status, 400, JSON.stringify(bad.json));
+    const badCode = await post('locations', { location_name: 'Chile', location_code: 'CHL', currency_code: 'C$', currency_display_format: 'Default' });
+    assert.strictEqual(badCode.status, 400, JSON.stringify(badCode.json));
+  });
+
+  await t('Location Master edit keeps working for a row saved before the format column existed', async () => {
+    const r = await post('locations', { id: '1', location_name: 'India', location_code: 'IND', currency_code: 'INR', currency_display_format: '12,34,567.89' });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const again = (await call(api, 'GET', 'locations')).json.data.find((x) => x.location_code === 'IND');
+    assert.strictEqual(again.currency_display_format, '12,34,567.89');
+  });
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();

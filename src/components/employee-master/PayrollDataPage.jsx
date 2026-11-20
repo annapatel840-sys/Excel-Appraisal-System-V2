@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
@@ -82,7 +83,7 @@ function priorRecordFor(rec, priorMap) {
   return priorMap?.get(rec) || null;
 }
 function fmtMoney(v) {
-  return v == null ? "—" : Math.round(v).toLocaleString("en-IN");
+  return v == null ? "—" : formatMoney(Math.round(v));
 }
 function yoyPctFor(r, baseKey, priorMap) {
   const prior = priorRecordFor(r, priorMap);

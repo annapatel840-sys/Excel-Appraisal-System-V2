@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -53,7 +54,7 @@ const go = (to) => {
   window.dispatchEvent(new PopStateEvent("popstate"));
 };
 
-const tipMoney = (v) => Math.round(num(v)).toLocaleString("en-IN");
+const tipMoney = (v) => formatMoney(Math.round(num(v)));
 
 /* ---------------- small building blocks ---------------- */
 

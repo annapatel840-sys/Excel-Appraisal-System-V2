@@ -1,3 +1,4 @@
+import { excelCurrencyFormat } from "@/lib/currency-format";
 import { COLUMNS } from "./appraisal-data";
 
 /* ============================================================
@@ -193,7 +194,7 @@ const thinBorder = {
 
 // Values are stored as numbers (7.5 means 7.5%), not Excel fractions.
 const NUMBER_FORMATS = {
-  currency: '"₹"#,##0',
+  currency: '"₹"#,##0', // fallback only: exports use excelCurrencyFormat() (selected location's currency)
   percent: '0.00"%"',
   decimal: "0.00",
   number: "0",
@@ -324,8 +325,9 @@ export async function exportToExcel(
         cell.fill = solidFill(COLORS.editableFill);
       }
 
-      if (NUMBER_FORMATS[column.type]) {
-        cell.numFmt = NUMBER_FORMATS[column.type];
+      const numFmt = column.type === "currency" ? excelCurrencyFormat() : NUMBER_FORMATS[column.type];
+      if (numFmt) {
+        cell.numFmt = numFmt;
       }
 
       cell.border = thinBorder;

@@ -42,6 +42,9 @@ const BUSINESS_TZ = "Asia/Kolkata";
 // A cycle belongs to one Location Master location, or to every location
 // ("All"). Cycles saved before locations existed have no value and count as All.
 const ALL_LOCATIONS = "All";
+// Location Master -> Display Format (same list as the Zoho Creator currency field). Stored as the sample text.
+const DEFAULT_CURRENCY_FORMAT = "Default";
+const CURRENCY_DISPLAY_FORMATS = ["Default", "1,234,567.89", "12,34,567.89", "1 234 567,89", "1.234.567,89"];
 const normalizedLocationValue = (value) => String(value || "").trim().toLowerCase();
 const cycleLocationKey = (cycle) => {
   const value = String((cycle && cycle.location) || "").trim();
@@ -4337,6 +4340,7 @@ async function routeRequest(req, res, identity, resource, a) {
         location_code: String(row.location_code || "").trim(),
         address: String(row.address || "").trim(),
         currency_code: String(row.currency_code || "").trim(),
+        currency_display_format: String(row.currency_display_format || "").trim() || DEFAULT_CURRENCY_FORMAT,
         status: String(row.status || "Active").trim() || "Active",
       }))
       .filter((location) => location.location_code)
@@ -4351,6 +4355,13 @@ async function routeRequest(req, res, identity, resource, a) {
     const locationCode = String(body.location_code || "").trim().toUpperCase();
     const address = String(body.address || "").trim();
     const currencyCode = String(body.currency_code || "").trim().toUpperCase();
+    const displayFormat = String(body.currency_display_format || "").trim() || DEFAULT_CURRENCY_FORMAT;
+    if (!CURRENCY_DISPLAY_FORMATS.includes(displayFormat)) {
+      return sendJson(res, 400, { success: false, message: "Display Format must be one of: " + CURRENCY_DISPLAY_FORMATS.join(", ") });
+    }
+    if (currencyCode && !/^[A-Z]{3,10}$/.test(currencyCode)) {
+      return sendJson(res, 400, { success: false, message: "Currency Type is not a valid currency code." });
+    }
     if (!locationName || !locationCode) {
       return sendJson(res, 400, { success: false, message: "Location Name and Location Code are required." });
     }
@@ -4363,16 +4374,18 @@ async function routeRequest(req, res, identity, resource, a) {
     });
     if (duplicate) return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
     const status = String(body.status || "Active").trim().toLowerCase() === "inactive" ? "Inactive" : "Active";
-    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode, status };
+    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode, currency_display_format: displayFormat, status };
     {
       // Access -> Fields -> Location Master: only changed fields need Edit.
-      const labels = { location_name: "Location Name", location_code: "Location Code", address: "Address", currency_code: "Currency Code", status: "Status" };
+      const labels = { location_name: "Location Name", location_code: "Location Code", address: "Address", currency_code: "Currency Code", currency_display_format: "Display Format", status: "Status" };
       const prior = locationId
         ? rows.find((row) => String(row.ROWID || row.rowid || row.id || "") === locationId)
         : null;
       const changed = Object.keys(labels)
         .filter((key) => (prior
-          ? String(prior[key] ?? "").trim() !== String(payload[key] ?? "").trim()
+          ? String(prior[key] ?? "").trim() !== String(payload[key] ?? "").trim() &&
+            // A row saved before the Display Format column existed counts as "Default", not as a change.
+            !(key === "currency_display_format" && !String(prior[key] ?? "").trim() && payload[key] === DEFAULT_CURRENCY_FORMAT)
           : String(payload[key] ?? "").trim() !== ""))
         .map((key) => labels[key]);
       access.guard(a, () => access.requireEditFields(a, "locationMaster", changed));

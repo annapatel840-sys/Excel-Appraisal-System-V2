@@ -30,6 +30,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
+import { money as formatMoney, plainNumberText } from "@/lib/currency-format";
 import {
   loadDesignationRules,
   newTitleChoices,
@@ -359,7 +360,7 @@ const numericValue = (value) => {
   }
 
   const normalized =
-    typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+    typeof value === "string" ? plainNumberText(value) : value;
   const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
@@ -368,23 +369,20 @@ const numericValue = (value) => {
 // Valid: 20000, 20,000, 1,234.50, -500, .5  (empty is allowed = clearing the cell)
 const isValidNumericInput = (value) => {
   if (value === "" || value === null || value === undefined) return true;
-  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(String(value).replace(/,/g, "").trim());
+  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(plainNumberText(value));
 };
 
 const formatEditableNumeric = (value, type) => {
   if (value === "" || value === null || value === undefined) return "";
   const number = Number(
-    typeof value === "string" ? value.replace(/,/g, "") : value,
+    typeof value === "string" ? plainNumberText(value) : value,
   );
   if (!Number.isFinite(number)) return String(value);
   if (type === "decimal") {
-    return number.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return formatMoney(number, { decimals: 2 });
   }
   if (type === "currency" || type === "number") {
-    return number.toLocaleString("en-IN", { maximumFractionDigits: 10 });
+    return formatMoney(number, { maxDecimals: 10 });
   }
   return String(value);
 };
@@ -425,7 +423,7 @@ const formatHistoryNumber = (value) => {
     return "0";
   }
 
-  return Math.round(n).toLocaleString("en-IN");
+  return formatMoney(Math.round(n));
 };
 
 const computeHistoryChange = (currentValue, previousValue) => {
@@ -3240,7 +3238,7 @@ export function AppraisalGrid({
       // (nearest 100, half rounds up). Cells the user did not type in never
       // reach this function (see the touched check in onBlur), so a shown
       // 14.54 can no longer overwrite a typed 27,000.
-      const pct = roundPct(Number(String(raw).replace(/,/g, "")) || 0);
+      const pct = roundPct(Number(plainNumberText(raw)) || 0);
       const amount = hikeAmountFromPct(basePay, pct);
 
       const changed =
@@ -3282,7 +3280,7 @@ export function AppraisalGrid({
 
       const basePay = Number(row.currentAnnualBasePay || 0);
       const amount =
-        Number((Number(String(raw).replace(/,/g, "")) || 0).toFixed(2));
+        Number((Number(plainNumberText(raw)) || 0).toFixed(2));
       const pct = hikePctFromAmount(basePay, amount);
 
       const changed =
@@ -3792,7 +3790,7 @@ export function AppraisalGrid({
     if (text === "" || ["no", "na", "n/a", "none", "-"].includes(text)) {
       return true;
     }
-    const num = Number(text.replace(/,/g, ""));
+    const num = Number(plainNumberText(text));
     return Number.isFinite(num) && num === 0;
   };
 
@@ -4182,7 +4180,7 @@ export function AppraisalGrid({
       const basePay = Number(row.currentAnnualBasePay || 0);
       const otherKey = col.key === "hikePct" ? "hikeAmount" : "hikePct";
       const otherRaw = row[otherKey];
-      const other = Number(String(otherRaw ?? "").replace(/,/g, ""));
+      const other = Number(plainNumberText(otherRaw ?? ""));
 
       if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
         if (col.key === "hikePct") {
@@ -4683,7 +4681,7 @@ export function AppraisalGrid({
     const pbFloor = Number(baseRow.pbToBePaid) || 0;
     const rbFloor = Number(baseRow.rbToBePaid) || 0;
     const basePay = Number(baseRow.currentAnnualBasePay) || 0;
-    const rawText = String(typing.raw ?? "").replace(/,/g, "").trim();
+    const rawText = plainNumberText(typing.raw ?? "");
     const entered = Number(rawText);
     const valid = rawText !== "" && Number.isFinite(entered);
 

@@ -2762,6 +2762,7 @@ const EMPTY_BUDGET_CYCLE_SNAPSHOT = Object.freeze({});
 // export { TechEdBudgetMasterPage };
 
 
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
@@ -2950,12 +2951,8 @@ function amount(value) {
 }
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
 function money(value) {
-  return INR.format(amount(value));
+  return formatMoney(Math.round(amount(value)));
 }
 
 // Select the whole value when a % field gets focus (click or Tab).

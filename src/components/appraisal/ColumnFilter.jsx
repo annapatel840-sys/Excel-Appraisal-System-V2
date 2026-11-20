@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Filter } from "lucide-react";
 
@@ -270,7 +271,7 @@ export function ColumnFilter({
 
     const number = Number(text);
 
-    return Number.isFinite(number) ? number.toLocaleString("en-IN") : text;
+    return Number.isFinite(number) ? formatMoney(number, { maxDecimals: 3 }) : text;
   };
 
   const sortedOptions = useMemo(

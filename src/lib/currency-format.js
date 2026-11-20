@@ -161,14 +161,17 @@ function groupDigits(digits, fmt) {
 
 /**
  * Number in the active display format, no symbol: 1234567 -> "12,34,567".
- * decimals = digits after the point (the appraisal screens show whole amounts).
+ * decimals = digits after the point (the appraisal screens show whole amounts);
+ * maxDecimals = up to that many digits, trailing zeros dropped.
  */
-export function money(value, { decimals = 0, config } = {}) {
+export function money(value, { decimals = 0, maxDecimals, config } = {}) {
   if (value === "" || value === null || value === undefined) return "";
   const n = Number(typeof value === "string" ? value.replace(/[^0-9.+\-eE]/g, "") : value);
   if (!Number.isFinite(n)) return "";
   const fmt = resolveFormat(config ? normalizeConfig(config) : active);
-  const fixed = Math.abs(n).toFixed(decimals);
+  let fixed = Math.abs(n).toFixed(maxDecimals ?? decimals);
+  // maxDecimals: up to that many digits, no trailing zeros (3.5, not 3.500).
+  if (maxDecimals !== undefined && fixed.includes(".")) fixed = fixed.replace(/\.?0+$/, "");
   const [int, frac] = fixed.split(".");
   const body = groupDigits(int, fmt) + (frac ? fmt.decimal + frac : "");
   // Never print "-0".
@@ -233,6 +236,27 @@ export function excelCurrencyFormat() {
     return `[>=10000000]${sym}##\\,##\\,##\\,##0;[>=100000]${sym}##\\,##\\,##0;${sym}##,##0`;
   }
   return `${sym}#,##0`;
+}
+
+/**
+ * Typed amount -> plain "1234.5" text that Number() understands, following the active display format.
+ * Numbers pass through untouched. With the comma-decimal formats ("1 234 567,89", "1.234.567,89")
+ * the last comma is the decimal mark and dots / spaces are grouping; a lone dot followed by exactly
+ * three digits is treated as grouping ("1.234" = 1234), otherwise as a decimal point ("7.5").
+ */
+export function plainNumberText(value) {
+  if (typeof value === "number") return String(value);
+  let s = String(value ?? "").trim().replace(/[\u00A0\s]/g, "");
+  if (!s) return "";
+  if (resolveFormat(active).decimal === ",") {
+    if (s.includes(",")) {
+      const i = s.lastIndexOf(",");
+      return s.slice(0, i).replace(/[.,]/g, "") + "." + s.slice(i + 1);
+    }
+    if ((s.match(/\./g) || []).length > 1 || /^[+-]?\d{1,3}\.\d{3}$/.test(s)) return s.replace(/\./g, "");
+    return s;
+  }
+  return s.replace(/,/g, "");
 }
 
 /** Parse what a person typed back into a number: "12,34,567", "1.234.567,50", "₹ 5000". */

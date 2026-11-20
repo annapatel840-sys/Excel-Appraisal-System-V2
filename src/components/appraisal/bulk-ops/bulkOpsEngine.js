@@ -1,3 +1,4 @@
+import { money as formatMoney } from "../../../lib/currency-format";
 /* GENERATED from the dummy "Bulk Operations" HTML by scripts/generate-bulk-ops.cjs. Do not edit by hand:
    change the dummy and run the script again.
 
@@ -94,9 +95,9 @@ S.rules=[newRule("hikePct",true)];
 /* ---------------- helpers ---------------- */
 function $(id){return root.querySelector("#"+id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function inr(n){return Number(n).toLocaleString("en-IN",{maximumFractionDigits:2})}
+function inr(n){return formatMoney(Number(n),{maxDecimals:2})}
 function pct(n){return Number(n).toFixed(2)+"%"}
-function big(n){return Math.round(Number(n)||0).toLocaleString("en-IN")}   /* full amount, no symbol */
+function big(n){return formatMoney(Math.round(Number(n)||0))}   /* full amount, no symbol */
 function bucket(e){return e.rating==null?null:Math.min(5,Math.max(1,Math.round(e.rating)))}
 function nowT(){var d=new Date();return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function lvl(p){return p>100?"danger":p>90?"warn":""}
@@ -2019,7 +2020,7 @@ function hStat(arr,s){
 }
 function niceStep(x){var p=Math.pow(10,Math.floor(Math.log10(x))),m=x/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
 function hFmt(v,pct,axis){if(v==null)return "–";if(pct)return v.toFixed(axis?1:1)+"%";
-  return Math.round(v).toLocaleString("en-IN")}
+  return formatMoney(Math.round(v))}
 function heroHtml(vr,p){
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var M=HMEAS[HS.meas]||HMEAS.hikePct;if(!HMEAS[HS.meas])HS.meas="hikePct";

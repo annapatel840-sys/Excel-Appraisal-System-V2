@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./hr-dashboard.css";
 
@@ -99,7 +100,7 @@ function ageDays(value) {
   return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
 const escHtml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const inr = (n) => Number(n || 0).toLocaleString("en-IN");
+const inr = (n) => formatMoney(Number(n || 0), { maxDecimals: 3 });
 const pct = (n) => Number(n || 0).toFixed(2);
 const locOf = (e) => e?.location || e?.rawEmployee?.location || e?.rawEmployee?.work_location || e?.work_location || "";
 const C = (t, node) => ({ t: String(t), node: node === undefined ? String(t) : node });

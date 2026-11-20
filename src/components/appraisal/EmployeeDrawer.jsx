@@ -1,3 +1,4 @@
+import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ function currency(value) {
     return "—";
   }
 
-  return Math.round(Number(value) || 0).toLocaleString("en-IN");
+  return formatMoney(Math.round(Number(value) || 0));
 }
 
 function percentageChange(current, previous) {

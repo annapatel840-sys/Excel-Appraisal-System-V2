@@ -1,3 +1,4 @@
+import { money as formatMoney, plainNumberText, moneyLakhs } from "@/lib/currency-format";
 import {
   EXCEPTION_NAME,
   EXCEPTION_ROW_BG,
@@ -542,8 +543,8 @@ const feedbackDesignation = (items, ...cycleNames) => {
   return "";
 };
 
-const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
-const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
+const fmt = (n) => formatMoney(Math.round(Number(n) || 0));
+const lakhs = (n) => moneyLakhs(Number(n) || 0);
 const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 const yrs = (v) => {
   const d = dash(v);
@@ -565,7 +566,7 @@ const isBlank = (v) => v === "" || v === null || v === undefined;
 const fmtOrBlank = (n) => (isBlank(n) ? "" : fmt(n));
 // Parse a formatted amount; an empty input stays "" instead of 0.
 const parseAmount = (raw) => {
-  const cleaned = String(raw ?? "").replace(/[^0-9.]/g, "");
+  const cleaned = plainNumberText(raw ?? "").replace(/[^0-9.]/g, "");
   return cleaned === "" ? "" : Number(cleaned) || 0;
 };
 const blankStr = (v) => (isBlank(v) ? "" : String(v));

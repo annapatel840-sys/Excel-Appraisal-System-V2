@@ -1,3 +1,4 @@
+import { activeSymbol, moneyCompact, moneyWithSymbol, usesLakhGrouping } from "./currency-format";
 // Pure helpers for the Budget Allocation / Team Changes feature.
 // Ported from the standalone "Detail Screen & Budget" HTML prototype so the
 // same math is used by DetailScreenPage, TeamChangesPage and
@@ -281,12 +282,14 @@ export const TYPE_LABEL = {
   out: "Transferred out",
 };
 
+// "₹ 12.50 L" for lakh-grouped formats, "AED 1.25 M" otherwise (selected location's currency + format).
 export function fmtLakh(n) {
-  return "₹ " + ((Number(n) || 0) / 1e5).toFixed(2) + " L";
+  const v = Number(n) || 0;
+  return usesLakhGrouping() ? `${activeSymbol()} ${(v / 1e5).toFixed(2)} L` : moneyCompact(v);
 }
 
 export function fmtInr(n) {
-  return "₹ " + Math.round(Number(n) || 0).toLocaleString("en-IN");
+  return moneyWithSymbol(Math.round(Number(n) || 0));
 }
 
 export function colLabel(key) {

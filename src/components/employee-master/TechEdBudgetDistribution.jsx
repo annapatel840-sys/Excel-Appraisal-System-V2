@@ -1326,6 +1326,7 @@
 // }
 // `;
 
+import { money as formatMoney } from "@/lib/currency-format";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
@@ -1368,11 +1369,7 @@ const LEVELS = ["Tech-ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
-const lakh = (n) => INR.format(num(n));
+const lakh = (n) => formatMoney(Math.round(num(n)));
 
 const MONTHS = [
   "Jan",
