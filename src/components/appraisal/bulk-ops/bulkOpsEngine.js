@@ -920,7 +920,7 @@ function doApply(){
     var batch={id:bid,at:Date.now(),startedAt:t0,time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
     x.ids.forEach(function(id){var e=byId(id);batch.rows.push({id:id,old:x.old[id],nw:x.nw[id],bulk:e.bulk});e.bulk=true});
     S.batches.push(batch);S.pv=null;S.ov={};if(cfg.onApplied){try{cfg.onApplied(batch)}catch(x){}}
-    persistBatches();
+    persistBatches(batch);
     return afterSave().then(function(){
       S.flash="Saved "+res.saved+" change"+(res.saved===1?"":"s")+" on "+x.ids.length+" rows · "+batch.time+" · source “bulk” in the audit trail"+(res.notes.length?" · Server notes: "+res.notes.join("; "):"");
     });
@@ -940,8 +940,9 @@ function discard(){S.pv=null;S.ov={};S.flash="";S.confirmAt=0;S.checkF="";render
 function saveScn(){
   var nm=$("scnName").value.trim();if(!nm||!S.pv)return;
   var bs=0;scope().forEach(function(e){bs+=e.basePay});
-  S.scenarios.push({name:nm,text:S.pv.text,rows:S.pv.n.chg,util:S.pv.after.util,utilT:S.pv.after.utilT,hike:S.pv.hike.after,avg:bs?S.pv.hike.after/bs*100:0,rules:S.pv.rules,skip:S.skipHand});
-  persist();$("scnForm").classList.add("hide");$("scnName").value="";
+  var sc={id:"SC-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:nm,by:(ME&&ME.name)||"",at:Date.now(),text:S.pv.text,rows:S.pv.n.chg,util:S.pv.after.util,utilT:S.pv.after.utilT,hike:S.pv.hike.after,avg:bs?S.pv.hike.after/bs*100:0,rules:S.pv.rules,skip:S.skipHand};
+  S.scenarios.push(sc);
+  persist(sc);$("scnForm").classList.add("hide");$("scnName").value="";
   $("scnCard").classList.remove("hide");S.flash="Saved scenario “"+nm+"”";render();
 }
 function loadScn(i){
@@ -950,8 +951,29 @@ function loadScn(i){
   if(!S.rules.length)S.rules=[newRule("hikePct",true)];
   $("skipHand").checked=s.skip;S.skipHand=s.skip;renderRules();doPreview();
 }
-function persist(){try{localStorage.setItem("bulkScenarios_v3",JSON.stringify(S.scenarios))}catch(x){}}
-function restore(){try{var v=localStorage.getItem("bulkScenarios_v3");if(v)S.scenarios=JSON.parse(v)||[]}catch(x){}}
+/* Scenarios belong to the cycle: with cfg.saveScenario / loadScenarios / deleteScenario they are saved on the server
+   (same list for every login of the cycle). Without them (demo) they stay in this browser, as before. */
+function scnFail(msg,err){S.err=msg+(err&&err.message?" ("+err.message+")":"");try{render()}catch(x){}}
+function persist(sc){
+  if(cfg.saveScenario&&sc){Promise.resolve().then(function(){return cfg.saveScenario(sc)}).catch(function(err){scnFail("Scenario “"+sc.name+"” is on screen but could not be saved to this cycle — try Save as Scenario again.",err)});return}
+  try{localStorage.setItem("bulkScenarios_v3",JSON.stringify(S.scenarios))}catch(x){}
+}
+function dropScn(sc){
+  if(cfg.deleteScenario&&sc&&sc.id){Promise.resolve().then(function(){return cfg.deleteScenario(sc.id)}).catch(function(err){S.scenarios.push(sc);scnFail("Scenario “"+sc.name+"” could not be deleted from this cycle.",err)});return}
+  persist();
+}
+function restore(){
+  if(cfg.loadScenarios){
+    Promise.resolve().then(function(){return cfg.loadScenarios()}).then(function(list){
+      if(!Array.isArray(list))return;
+      var by={};list.forEach(function(x){by[x.id]=1});
+      S.scenarios=list.concat(S.scenarios.filter(function(x){return !x.id||!by[x.id]}));
+      try{renderScn();renderImpact()}catch(x){}
+    }).catch(function(){});
+    return;
+  }
+  try{var v=localStorage.getItem("bulkScenarios_v3");if(v)S.scenarios=JSON.parse(v)||[]}catch(x){}
+}
 
 /* ---------------- Excel export (same library, loaded only when used, as on the Appraisal Sheet) ---------------- */
 function withXLSX(fn){
@@ -1149,7 +1171,7 @@ $("bScnOpen").addEventListener("click",function(){$("scnCard").classList.toggle(
 $("scnCard").addEventListener("click",function(ev){
   var t=ev.target;
   if(t.getAttribute("data-load")!=null)loadScn(Number(t.getAttribute("data-load")));
-  if(t.getAttribute("data-del")!=null){S.scenarios.splice(Number(t.getAttribute("data-del")),1);persist();renderScn()}
+  if(t.getAttribute("data-del")!=null){var gone=S.scenarios.splice(Number(t.getAttribute("data-del")),1)[0];dropScn(gone);renderScn();try{renderImpact()}catch(x){}}
 });
 $("hdr").addEventListener("mousedown",function(ev){
   var h=ev.target.closest(".col-rs");if(!h)return;ev.preventDefault();ev.stopPropagation();
@@ -1271,7 +1293,7 @@ function doRestore(id){
     if(res.rows)mergeRows(res.rows);
     b.rows.forEach(function(r){if(ids.indexOf(r.id)>=0){var e=byId(r.id);if(e)e.bulk=r.bulk}});
     b.restored=true;S.pv=null;
-    persistBatches();
+    persistBatches(b);
     return afterSave().then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
   }).catch(function(err){S.err=err.message+" Nothing was restored."}).then(function(){var w=Math.max(0,MIN_BUSY_MS-(Date.now()-t0));return w?new Promise(function(r){setTimeout(r,w)}):0}).then(function(){S.busy=false;S.prog=null;render()});
 }
@@ -1973,8 +1995,15 @@ function syncBatches(force){
     try{renderImpact()}catch(x){}
   }).catch(function(){});
 }
-/* History is kept in this browser for now (cfg.saveBatches / cfg.loadBatches); the audit trail still records every apply. */
-function persistBatches(){if(cfg.saveBatches){try{cfg.saveBatches(S.batches)}catch(x){}}}
+/* History is saved to the cycle on the server (cfg.saveBatch / cfg.loadBatches); the audit trail still records every apply.
+   Only the batch that just changed is sent. A failed save is shown, and tried again when the screen is next opened. */
+function persistBatches(b){
+  if(!cfg.saveBatch||!b)return;
+  Promise.resolve().then(function(){return cfg.saveBatch(b)}).catch(function(err){
+    S.err="The changes were applied, but this batch could not be saved to the cycle history"+(err&&err.message?" ("+err.message+")":"")+". It stays on this screen and will be saved again next time Bulk Edit is opened.";
+    try{render()}catch(x){}
+  });
+}
 function loadBatches(){
   if(cfg.loadBatches)return syncBatches(true);
   return apiCall("GET","/batches?cycle_id="+encodeURIComponent(ACTIVE_CYCLE.id)+asQ()).then(function(r){S.batches=(r.batches||[]).map(function(b){return {id:b.id,time:b.time||b.at||"",by:b.by||"",text:b.text||"",rows:(b.rows||[]).map(function(x){return {id:x.id||x.empId,old:x.old||{},nw:x.nw||x.new||{},bulk:x.bulk}}),restored:!!b.restored}})}).catch(function(){S.batches=[]});

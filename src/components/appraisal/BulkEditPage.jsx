@@ -42,6 +42,13 @@ import {
   sumBudgetConsumed,
   sumTargetPB,
 } from "@/components/appraisal/BudgetStatsBar";
+import {
+  fetchBulkBatches,
+  saveBulkBatch,
+  fetchBulkScenarios,
+  saveBulkScenario,
+  deleteBulkScenario,
+} from "@/lib/bulk-state-api";
 import { createBulkOps } from "@/components/appraisal/bulk-ops/bulkOpsEngine";
 import BULK_OPS_MARKUP from "@/components/appraisal/bulk-ops/bulkOpsMarkup";
 import logoUrl from "@/assets/wissen-logo.png";
@@ -74,10 +81,13 @@ const STORE_KEY = {
   newTitle: "newTitle",
 };
 
-/* ---------- Bulk history ----------
-   For now the history lives in this browser only (fast, nothing is read from the audit trail).
-   The audit trail is still written on every Apply, so switching to it later is a one-line change:
-   set HISTORY_FROM_AUDIT = true. */
+/* ---------- Bulk history + Scenarios ----------
+   Both are saved to the appraisal cycle on the server (resource "bulkstate"), so they are the same
+   after a refresh, in another browser and for every login of that cycle.
+   This browser keeps a backup copy of the history (and of a batch that could not reach the server yet);
+   whatever is only in the backup is sent to the server the next time the screen opens, so history written
+   before this change is not lost. The audit trail is still written on every Apply.
+   HISTORY_FROM_AUDIT = true would rebuild the history from the audit trail instead. */
 const HISTORY_FROM_AUDIT = false;
 const MAX_STORED_BATCHES = 30;
 const batchesKey = (cycle) => `bulkBatches.v1:${cycle?.id ?? ""}`;
@@ -94,9 +104,50 @@ function writeStoredBatches(cycle, batches) {
     const keep = (batches || []).slice(-MAX_STORED_BATCHES);
     window.localStorage.setItem(batchesKey(cycle), JSON.stringify(keep));
   } catch (x) {
-    /* storage full or blocked: the history still works for this session */
+    /* storage full or blocked: the server copy is the one that matters */
   }
 }
+function rememberStoredBatch(cycle, batch) {
+  const list = readStoredBatches(cycle).filter((b) => String(b.id) !== String(batch.id));
+  list.push(batch);
+  writeStoredBatches(cycle, list);
+}
+/* Same batch on the server and in this browser: keep one, and "restored" wins. */
+function mergeBatchLists(server, local) {
+  const by = new Map();
+  (server || []).forEach((b) => by.set(String(b.id), b));
+  (local || []).forEach((b) => {
+    const id = String(b.id);
+    const hit = by.get(id);
+    if (!hit) by.set(id, b);
+    else if (b.restored && !hit.restored) by.set(id, { ...hit, restored: true });
+  });
+  return [...by.values()].sort((a, b) => (a.at || 0) - (b.at || 0));
+}
+
+/* Scenarios saved in this browser before they were kept in the cycle (one list for all cycles). */
+const LEGACY_SCENARIOS_KEY = "bulkScenarios_v3";
+const LEGACY_SCENARIOS_DONE_KEY = "bulkScenarios_v3.moved";
+function takeLegacyScenarios() {
+  try {
+    const list = JSON.parse(window.localStorage.getItem(LEGACY_SCENARIOS_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((x) => x && typeof x === "object") : [];
+  } catch (x) {
+    return [];
+  }
+}
+function legacyScenariosMoved() {
+  try {
+    window.localStorage.setItem(
+      LEGACY_SCENARIOS_DONE_KEY,
+      window.localStorage.getItem(LEGACY_SCENARIOS_KEY) || "[]",
+    );
+    window.localStorage.removeItem(LEGACY_SCENARIOS_KEY);
+  } catch (x) {
+    /* ignore */
+  }
+}
+const newScenarioId = () => `SC-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /* ---------- Bulk history, rebuilt from the audit trail (used only when HISTORY_FROM_AUDIT is on) ---------- */
 const APPLY_SOURCE = "Bulk edit";
@@ -365,20 +416,62 @@ const BulkOperations = forwardRef(function BulkOperations(
         }
         return { saved, notes: [] };
       },
-      /* History of the current cycle: server audit trail + what this session just saved. */
-      saveBatches: (batches) => writeStoredBatches(live.current.cycle, batches),
+      /* History of the current cycle, saved on the server (see "Bulk history + Scenarios" above). */
+      saveBatch: async (batch) => {
+        const cyc = live.current.cycle;
+        rememberStoredBatch(cyc, batch);
+        await saveBulkBatch(cyc?.id, batch);
+      },
       loadBatches: async (force) => {
-        if (!HISTORY_FROM_AUDIT) return readStoredBatches(live.current.cycle);
         const { storeFetchBulkHistory: fetchHistory, sheetAudit: localAudit, cycle: cyc } = live.current;
-        if ((force || !historyCache.current) && fetchHistory) {
-          try {
-            historyCache.current = await fetchHistory();
-          } catch (x) {
-            /* keep the last copy; the session's own audit entries still show */
+        if (HISTORY_FROM_AUDIT) {
+          if ((force || !historyCache.current) && fetchHistory) {
+            try {
+              historyCache.current = await fetchHistory();
+            } catch (x) {
+              /* keep the last copy; the session's own audit entries still show */
+            }
+          }
+          return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
+        }
+        const local = readStoredBatches(cyc);
+        let server;
+        try {
+          server = await fetchBulkBatches(cyc?.id);
+        } catch (x) {
+          return local; // server not reachable right now: show the backup copy
+        }
+        const onServer = new Set(server.map((b) => String(b.id)));
+        // Batches only this browser has (older history, or a save that failed): send them to the cycle.
+        (async () => {
+          for (const b of local.filter((x) => !onServer.has(String(x.id)))) {
+            try {
+              await saveBulkBatch(cyc?.id, b);
+            } catch (x) {
+              break;
+            }
+          }
+        })();
+        return mergeBatchLists(server, local);
+      },
+      /* Scenarios of the current cycle, saved on the server. */
+      loadScenarios: async () => {
+        const cyc = live.current.cycle;
+        let list = await fetchBulkScenarios(cyc?.id);
+        if (!list.length) {
+          // First time on the server: bring over scenarios that were only in this browser.
+          const legacy = takeLegacyScenarios();
+          if (legacy.length) {
+            const moved = legacy.map((sc) => ({ ...sc, id: sc.id || newScenarioId() }));
+            for (const sc of moved) await saveBulkScenario(cyc?.id, sc);
+            legacyScenariosMoved();
+            list = moved;
           }
         }
-        return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
+        return list;
       },
+      saveScenario: (scenario) => saveBulkScenario(live.current.cycle?.id, scenario),
+      deleteScenario: (id) => deleteBulkScenario(live.current.cycle?.id, id),
       getSheetEmp: () => live.current.sheetEmp,
       // "edit" | "read" | "hidden" for an Appraisal Sheet field key (Access -> Fields tab).
       fieldLimit: (key) => (live.current.access ? live.current.access.fieldLimit(key) : "edit"),

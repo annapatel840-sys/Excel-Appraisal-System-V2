@@ -337,6 +337,16 @@ function requirePayrollAccess(a, resource, method) {
   // Tech-Ed's own notes / last-edit marker: handleMyNotes checks the role and
   // only ever reads or writes rows owned by the signed-in employee.
   if (resource === "mynotes") return;
+  // Bulk Edit History + Scenarios of a cycle: anyone who can open the Bulk Edit
+  // screen may read them; saving needs the same rights as applying a bulk edit.
+  if (resource === "bulkstate") {
+    access.requireScreen(a, "bulkEditScreen", "view");
+    if (method !== "GET") {
+      access.requireScreen(a, "bulkEditScreen", "edit");
+      access.requireAction(a, "bulkEdit");
+    }
+    return;
+  }
   if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
   if (resource === "locations" && method === "POST") {
     access.requireScreen(a, "locationMaster", "edit");
@@ -4083,6 +4093,148 @@ async function handleMyNotes(req, res, identity, tables) {
   return sendJson(res, 400, { success: false, message: "Unknown my-notes action." });
 }
 
+/* ============================================================
+   BULK EDIT "HISTORY" + "SCENARIOS" (saved per appraisal cycle)
+   Table: LastEdit_MyNotes (same table as above, two more kinds of row)
+
+   Record_Type = BULK_BATCH     one Bulk Edit apply / restore of a cycle.
+   Record_Type = BULK_SCENARIO  one saved Scenario of a cycle.
+   Both: App_Cycle = cycle id, Owner_Emp_ID = "BULK" (never a real employee, so
+   the Tech-Ed notes above never see these rows), Screen = "BULK", Batch_ID = the
+   item id. The item is a JSON text kept in Note_Text; a big one is cut into
+   pieces of BULKSTATE_CHUNK characters: Emp_Count = piece number (0, 1, ...),
+   Emp_IDs = "<piece>/<pieces>". Saving an item replaces all its pieces.
+
+   Everyone with Bulk Edit access sees the same history and scenarios of a cycle.
+   ============================================================ */
+const BULKSTATE_KINDS = { batches: "BULK_BATCH", scenarios: "BULK_SCENARIO" };
+const BULKSTATE_OWNER = "BULK";
+const BULKSTATE_CHUNK = 4000;
+const BULKSTATE_MAX_ITEM_CHARS = 2000000;
+const BULKSTATE_MAX_BATCHES = 200;
+
+const bulkStateId = (value) => String(value || "").trim().replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 100);
+
+async function bulkStateRows(tables, kind, cycle) {
+  return (await getAllRows(tables.lastEditNotes)).filter(
+    (row) =>
+      row.Record_Type === kind &&
+      row.Owner_Emp_ID === BULKSTATE_OWNER &&
+      String(row.App_Cycle || "").trim() === cycle,
+  );
+}
+
+// Pieces of every item, joined back into { id, data, editedAtMs }, oldest first.
+function bulkStateItems(rows) {
+  const byId = new Map();
+  rows.forEach((row) => {
+    const id = String(row.Batch_ID || "");
+    if (!id) return;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push(row);
+  });
+  const items = [];
+  byId.forEach((pieces, id) => {
+    pieces.sort((x, y) => (Number(x.Emp_Count) || 0) - (Number(y.Emp_Count) || 0));
+    const wanted = Number(String(pieces[0].Emp_IDs || "").split("/")[1]) || pieces.length;
+    // An incomplete item (a save that stopped half way) is skipped, not shown broken.
+    if (pieces.length < wanted) return;
+    try {
+      const data = JSON.parse(pieces.map((piece) => String(piece.Note_Text || "")).join(""));
+      items.push({ id, data, editedAtMs: Math.max(...pieces.map((piece) => myNotesTimeMs(piece.Edited_At))) });
+    } catch (error) {
+      /* unreadable item: skip */
+    }
+  });
+  return items.sort((x, y) => x.editedAtMs - y.editedAtMs);
+}
+
+async function bulkStateSave(tables, kind, cycle, id, data, location) {
+  const json = JSON.stringify(data);
+  if (json.length > BULKSTATE_MAX_ITEM_CHARS) {
+    throw new ApiError(413, "This is too large to save to the cycle.");
+  }
+  const pieces = [];
+  for (let at = 0; at < json.length; at += BULKSTATE_CHUNK) pieces.push(json.slice(at, at + BULKSTATE_CHUNK));
+  const now = nowLocal();
+  const table = tables.lastEditNotes;
+  const old = (await bulkStateRows(tables, kind, cycle)).filter((row) => String(row.Batch_ID || "") === id);
+  // Write the new pieces first, then drop the old ones: a failure never loses the item.
+  const records = pieces.map((text, index) => ({
+    Location: location,
+    App_Cycle: cycle,
+    Record_Type: kind,
+    Owner_Emp_ID: BULKSTATE_OWNER,
+    Screen: "BULK",
+    Note_Text: text,
+    Emp_Count: index,
+    Emp_IDs: index + "/" + pieces.length,
+    Batch_ID: id,
+    Edited_At: now,
+  }));
+  await writeRowsInBatches(table, records, "insert", null).then((results) => {
+    const failed = results.find((result) => !result.ok);
+    if (failed) throw (failed.error || new Error("Could not save to the cycle."));
+  });
+  for (const row of old) await table.deleteRow(rowId(row)).catch(() => {});
+}
+
+async function bulkStateDelete(tables, kind, cycle, id) {
+  const rows = (await bulkStateRows(tables, kind, cycle)).filter((row) => String(row.Batch_ID || "") === id);
+  for (const row of rows) await tables.lastEditNotes.deleteRow(rowId(row));
+  return rows.length;
+}
+
+async function handleBulkState(req, res, identity, tables) {
+  const method = String(req.method || "GET").toUpperCase();
+  const location = myNotesLocation(identity.location);
+
+  if (method === "GET") {
+    const query = getQuery(req);
+    const cycle = myNotesShort(query.cycle);
+    const type = String(query.type || "").toLowerCase();
+    if (!cycle) return sendJson(res, 400, { success: false, message: "cycle is required." });
+    if (!BULKSTATE_KINDS[type]) return sendJson(res, 400, { success: false, message: "type must be batches or scenarios." });
+    const items = bulkStateItems(await bulkStateRows(tables, BULKSTATE_KINDS[type], cycle));
+    const list = items.map((item) => ({ ...item.data, id: item.data && item.data.id != null ? item.data.id : item.id }));
+    return sendJson(res, 200, { success: true, data: { [type]: list } }, req);
+  }
+  if (method !== "POST") return sendJson(res, 405, { success: false, message: "Method not allowed." });
+
+  const body = await readBody(req);
+  const action = String(body.action || "");
+  const cycle = myNotesShort(body.cycle);
+  if (!cycle) return sendJson(res, 400, { success: false, message: "cycle is required." });
+
+  if (action === "save_batch" || action === "save_scenario") {
+    const isBatch = action === "save_batch";
+    const item = isBatch ? body.batch : body.scenario;
+    const id = bulkStateId(item && item.id);
+    if (!item || typeof item !== "object" || !id) {
+      return sendJson(res, 400, { success: false, message: (isBatch ? "batch" : "scenario") + " with an id is required." });
+    }
+    const kind = isBatch ? BULKSTATE_KINDS.batches : BULKSTATE_KINDS.scenarios;
+    await bulkStateSave(tables, kind, cycle, id, { ...item, id }, location);
+    if (isBatch) {
+      // Keep the history to the most recent batches of the cycle.
+      const all = bulkStateItems(await bulkStateRows(tables, kind, cycle));
+      for (const extra of all.slice(0, Math.max(0, all.length - BULKSTATE_MAX_BATCHES))) {
+        await bulkStateDelete(tables, kind, cycle, extra.id).catch(() => {});
+      }
+    }
+    return sendJson(res, 200, { success: true, data: { id } });
+  }
+
+  if (action === "delete_scenario") {
+    const id = bulkStateId(body.id);
+    if (!id) return sendJson(res, 400, { success: false, message: "id is required." });
+    await bulkStateDelete(tables, BULKSTATE_KINDS.scenarios, cycle, id);
+    return sendJson(res, 200, { success: true, data: { id } });
+  }
+
+  return sendJson(res, 400, { success: false, message: "Unknown bulk state action." });
+}
+
 async function routeRequest(req, res, identity, resource, a) {
   const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
@@ -4119,6 +4271,10 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "mynotes") {
     return handleMyNotes(req, res, identity, tables);
+  }
+
+  if (resource === "bulkstate") {
+    return handleBulkState(req, res, identity, tables);
   }
 
   if (resource === "schema" && req.method === "GET") {
@@ -5048,6 +5204,7 @@ module.exports = async function payrollCycleApi(req, res) {
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (myNotesCall) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "bulkstate" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
