@@ -343,14 +343,16 @@ export function BudgetDistributionPage() {
   // that is not in this cycle's roster can still be shown as "EMP004 - Name".
   const [masterEmployees, setMasterEmployees] = useState(null);
   const anyOpen = Object.values(open).some(Boolean);
+  // Also loaded when a Tech-ED in the table shows only its ID (set below, once the rows are known).
+  const [needNames, setNeedNames] = useState(false);
   useEffect(() => {
-    if (!anyOpen || masterEmployees !== null) return undefined;
+    if (!(anyOpen || needNames) || masterEmployees !== null) return undefined;
     let alive = true;
     fetchAllEmployeeMasterEmployees()
       .then((list) => { if (alive) setMasterEmployees(Array.isArray(list) ? list : []); })
       .catch(() => { if (alive) setMasterEmployees([]); });
     return () => { alive = false; };
-  }, [anyOpen, masterEmployees]);
+  }, [anyOpen, needNames, masterEmployees]);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
   const [cycleLabel, setCycleLabel] = useState("");
@@ -410,7 +412,7 @@ export function BudgetDistributionPage() {
   // Resolving a Tech-ED id means searching every Tech-ED and every employee, and the
   // live counts below resolve one value per appraisal row (~3,000). Remember each
   // answer until the Tech-ED or employee lists change, so a value is looked up once.
-  const resolveCache = useMemo(() => new Map(), [techEdOwners, employeeRows]);
+  const resolveCache = useMemo(() => new Map(), [techEdOwners, employeeRows, masterEmployees]);
   const resolveTechRecord = (raw) => {
     const text = String(raw || "").trim();
     if (!text) return null;
@@ -532,7 +534,11 @@ export function BudgetDistributionPage() {
         }
       });
     return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
-  }, [budgetRows, techEdOwners, employeeRows, activeCycleId, locationTeamCountByKey]);
+  }, [budgetRows, techEdOwners, employeeRows, activeCycleId, locationTeamCountByKey, resolveCache]);
+  // A Tech-ED shown as ID only ("EMP003") -> fetch the full Employee Master so its name can be found.
+  useEffect(() => {
+    setNeedNames(rows.some((row) => !/\s+-\s+\S/.test(String(row.tech_ed_id || ""))));
+  }, [rows]);
  
   // Header filters / sort for the table (display only; no data is refetched).
   const tableItems = rows.map((row) => {
