@@ -796,3 +796,9 @@
 .lt-rp-head *, .lt-rp-hd *, .lt-rp-tabs * { color: #fff; }
 .lt-rp-tabs button { background: transparent; opacity: .75; }
 .lt-rp-tabs button[aria-selected="true"] { opacity: 1; border-bottom: 2px solid #fff; }
+/* Letters grid row actions: clear, consistent action buttons. */
+.lt .lt-btn.pri { background: var(--primary, #2563eb); color: #fff; border-color: var(--primary, #2563eb); }
+.lt .lt-btn.success { background: #16a34a; color: #fff; border-color: #16a34a; }
+.lt .lt-btn.pri:hover:not(:disabled) { filter: brightness(.94); }
+.lt .lt-btn.success:hover:not(:disabled) { filter: brightness(.94); }
+.lt .lt-btn.pri:disabled, .lt .lt-btn.success:disabled { opacity: .55; cursor: not-allowed; }

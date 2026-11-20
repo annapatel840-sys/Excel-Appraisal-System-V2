@@ -276,12 +276,9 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       get: () => "Preview",
       render: (l) => (
         <span style={{ whiteSpace: "nowrap" }}>
-          <button type="button" className="lt-lnk" onClick={() => openPreview(l.id)}>Preview</button>
+          <button type="button" className="lt-btn sm pri" onClick={() => openPreview(l.id)}>Preview</button>
           {sendable(l) && (
-            <>
-              <span className="lt-sep">|</span>
-              <button type="button" className="lt-lnk" disabled={sending} onClick={() => rowSend(l.id)}>{sending ? "Sending…" : "Send"}</button>
-            </>
+            <button type="button" className="lt-btn sm success" disabled={sending} onClick={() => rowSend(l.id)}>{sending ? "Sending…" : "Send"}</button>
           )}
         </span>
       ),
@@ -413,13 +410,18 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       toast("Export not available here");
     }
   };
-  const exportLetters = () =>
-    exportGrid(
+  const exportLetters = () => {
+    // Export the currently selected employees only; when nothing is selected,
+    // preserve the existing behavior of exporting the filtered grid.
+    const selectedVisibleRows = view.filter((letter) => sel.has(letter.id));
+    const rowsToExport = selectedVisibleRows.length ? selectedVisibleRows : view;
+    return exportGrid(
       defs.filter((d) => visKeys.has(d.key)),
-      view,
+      rowsToExport,
       "Letters",
       "Letters",
     );
+  };
 
   const openCycleMaster = () => onNavigate && onNavigate("appraisal-cycle");
 
