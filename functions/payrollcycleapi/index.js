@@ -4223,10 +4223,9 @@ async function routeRequest(req, res, identity, resource, a) {
       prepared.push({ ROWID: id, emp_id: oldId });
     }
     if (conflicts.length) {
-      return sendJson(res, 409, {
-        success: false,
-        message: "Copy stopped without changing any rows. Resolve the listed data issues first.",
-        data: { totalRows: rows.length, readyToCopy: prepared.length, alreadyCopied, missingOld, conflicts: conflicts.slice(0, 50), conflictCount: conflicts.length },
+      return sendJson(res, 200, {
+        success: true,
+        data: { blocked: true, message: "Copy stopped without changing any rows. Resolve the listed data issues first.", totalRows: rows.length, readyToCopy: prepared.length, alreadyCopied, missingOld, conflicts: conflicts.slice(0, 50), conflictCount: conflicts.length },
       });
     }
     let copied = 0;
