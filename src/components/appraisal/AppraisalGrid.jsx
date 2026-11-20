@@ -1980,6 +1980,9 @@ export function AppraisalGrid({
   showHistory,
   setShowHistory,
   focusEmployeeId,
+  // Several employees to highlight at once (the last Bulk Edit). When given,
+  // it is used instead of focusEmployeeId.
+  focusEmployeeIds,
   onFocusEmployeeHandled,
 
   isTechEd = false,
@@ -3058,14 +3061,32 @@ export function AppraisalGrid({
 
   const handledFocusRef = useRef("");
   const [scrollTargetId, setScrollTargetId] = useState(null);
-  // Row flashed in amber after "Last Edited" so the person is easy to spot.
-  const [flashRowId, setFlashRowId] = useState(null);
+  // Rows flashed in amber after "Last Edited" so the person is easy to spot.
+  // One row for a single edit; every employee of the batch for a Bulk Edit.
+  const [flashRowIds, setFlashRowIds] = useState(() => new Set());
   const flashTimerRef = useRef(null);
   const [focusNotice, setFocusNotice] = useState("");
   const focusNoticeTimerRef = useRef(null);
 
+  const showFocusNotice = (text, ms = 3500) => {
+    setFocusNotice(text);
+
+    if (focusNoticeTimerRef.current) {
+      clearTimeout(focusNoticeTimerRef.current);
+    }
+
+    focusNoticeTimerRef.current = setTimeout(() => setFocusNotice(""), ms);
+  };
+
   useEffect(() => {
-    const target = String(focusEmployeeId || "").trim();
+    const targetIds = (
+      Array.isArray(focusEmployeeIds) && focusEmployeeIds.length
+        ? focusEmployeeIds
+        : [focusEmployeeId]
+    )
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const target = targetIds.join("|");
 
     if (!target) {
       handledFocusRef.current = "";
@@ -3076,63 +3097,110 @@ export function AppraisalGrid({
       return; // already handled, or rows not loaded yet (effect re-runs when they are)
     }
 
-    const wanted = [target];
+    const findRow = (id) => {
+      const wanted = [id];
 
-    if (target.includes(":")) {
-      wanted.push(target.slice(0, target.lastIndexOf(":")));
-    }
+      if (id.includes(":")) {
+        wanted.push(id.slice(0, id.lastIndexOf(":")));
+      }
 
-    const wantedLower = wanted.map((value) => value.toLowerCase());
+      const wantedLower = wanted.map((value) => value.toLowerCase());
 
-    const targetRow = rows.find(
-      (row) =>
-        wantedLower.includes(
-          String(row.empId || "")
-            .trim()
-            .toLowerCase(),
-        ) || wantedLower.includes(String(row.id).toLowerCase()),
-    );
+      return rows.find(
+        (row) =>
+          wantedLower.includes(
+            String(row.empId || "")
+              .trim()
+              .toLowerCase(),
+          ) || wantedLower.includes(String(row.id).toLowerCase()),
+      );
+    };
+
+    const found = new Map();
+
+    targetIds.forEach((id) => {
+      const match = findRow(id);
+
+      if (match) {
+        found.set(match.id, match);
+      }
+    });
+
+    const targetRows = [...found.values()];
 
     handledFocusRef.current = target;
 
-    if (!targetRow) {
-      setFocusNotice("That employee is hidden by the current filters.");
-
-      if (focusNoticeTimerRef.current) {
-        clearTimeout(focusNoticeTimerRef.current);
-      }
-
-      focusNoticeTimerRef.current = setTimeout(() => setFocusNotice(""), 3500);
+    if (!targetRows.length) {
+      showFocusNotice(
+        targetIds.length > 1
+          ? "Those employees are hidden by the current filters."
+          : "That employee is hidden by the current filters.",
+      );
 
       onFocusEmployeeHandled?.();
       return;
     }
 
-    if (!groupedRows) {
-      const index = sortedRows.findIndex((row) => row.id === targetRow.id);
+    // Jump to the first of them in the order the table shows.
+    let firstRow = targetRows[0];
 
-      if (index >= 0) {
+    if (!groupedRows) {
+      const order = new Map();
+
+      sortedRows.forEach((row, index) => order.set(row.id, index));
+
+      firstRow = targetRows.reduce(
+        (best, row) =>
+          (order.get(row.id) ?? Infinity) < (order.get(best.id) ?? Infinity)
+            ? row
+            : best,
+        targetRows[0],
+      );
+
+      const index = order.get(firstRow.id);
+
+      if (index !== undefined) {
         setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
       }
     }
 
-    setHistoryRow(targetRow);
-    setScrollTargetId(targetRow.id);
-    setFlashRowId(targetRow.id);
+    const several = targetRows.length > 1;
+
+    if (!several) {
+      setHistoryRow(firstRow);
+    }
+
+    setScrollTargetId(firstRow.id);
+    setFlashRowIds(new Set(targetRows.map((row) => row.id)));
 
     if (flashTimerRef.current) {
       clearTimeout(flashTimerRef.current);
     }
 
-    flashTimerRef.current = setTimeout(() => setFlashRowId(null), 4000);
+    // A bulk edit can run over several pages, so its highlight stays longer.
+    flashTimerRef.current = setTimeout(
+      () => setFlashRowIds(new Set()),
+      several ? 90000 : 4000,
+    );
 
-    if ((showHistory || detailOpen) && targetRow.empId) {
-      loadHistory(targetRow.empId).catch(() => {});
+    if (several) {
+      const hidden = targetIds.length - targetRows.length;
+
+      showFocusNotice(
+        `${targetRows.length} employee${targetRows.length === 1 ? "" : "s"} from the last edit highlighted` +
+          (hidden > 0 ? ` (${hidden} hidden by the current filters)` : "") +
+          ".",
+        7000,
+      );
+    }
+
+    if (!several && (showHistory || detailOpen) && firstRow.empId) {
+      loadHistory(firstRow.empId).catch(() => {});
     }
 
     onFocusEmployeeHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusEmployeeId, rows, sortedRows, groupedRows]);
+  }, [focusEmployeeId, focusEmployeeIds, rows, sortedRows, groupedRows]);
 
   useEffect(
     () => () => {
@@ -4375,7 +4443,7 @@ export function AppraisalGrid({
 
   const renderDataRow = (row, rowIndex) => {
     const isSelectedRow = historyRow?.id === row.id;
-    const isFlashRow = flashRowId === row.id;
+    const isFlashRow = flashRowIds.has(row.id);
 
     return (
       <tr

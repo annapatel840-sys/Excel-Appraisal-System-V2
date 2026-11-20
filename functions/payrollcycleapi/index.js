@@ -24,6 +24,9 @@ const TABLES = {
   locations: "74008000000022481",
   delegation: "74008000000036124",
   previousDelegation: "74008000000096255",
+  // LastEdit_MyNotes: Tech-Ed "My notes" (Dashboard + Detailed Screen) and the
+  // Appraisal Sheet "Last Edited" marker (one employee, or a whole bulk edit).
+  lastEditNotes: "74008000000495355",
 };
 const PAGE_SIZE = 200;
 
@@ -331,6 +334,9 @@ async function checkAccess(req) {
 
 function requirePayrollAccess(a, resource, method) {
   if (resource === "session") return;
+  // Tech-Ed's own notes / last-edit marker: handleMyNotes checks the role and
+  // only ever reads or writes rows owned by the signed-in employee.
+  if (resource === "mynotes") return;
   if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
   if (resource === "locations" && method === "POST") {
     access.requireScreen(a, "locationMaster", "edit");
@@ -998,6 +1004,7 @@ async function requirePayrollTables(adminApp) {
     locations: datastore.table(TABLES.locations),
     delegation: datastore.table(TABLES.delegation),
     previousDelegation: datastore.table(TABLES.previousDelegation),
+    lastEditNotes: datastore.table(TABLES.lastEditNotes),
     // Used only by the fast read-only GET paths (readTableFast); null when the
     // SDK instance has no ZCQL, in which case those reads use the paged reader.
     zcql: typeof adminApp.zcql === "function" ? adminApp.zcql() : null,
@@ -3857,6 +3864,225 @@ async function getFeedbackData(tables, query, includeBatches = true) {
   return { cycles, rows, batches };
 }
 
+/* ============================================================
+   TECH-ED "MY NOTES" + APPRAISAL SHEET "LAST EDITED"
+   Table: LastEdit_MyNotes (one shared table, three kinds of row)
+
+   Record_Type = NOTE      Screen = DASHBOARD  one row per owner + location.
+                                               Note_Text is the whole note box.
+                           Screen = DETAIL     one row per saved note.
+                                               Note_Text = the note, Emp_IDs = the
+                                               employee it mentions (blank if none).
+   Record_Type = LAST_EDIT Screen = SHEET      one row per owner + location + cycle.
+                                               Edit_Source = SHEET (one inline edit:
+                                               Emp_IDs is that one employee) or BULK
+                                               (a Bulk Edit apply: Emp_IDs is every
+                                               employee in it, Batch_ID is the batch).
+                                               Every save replaces the row, so the
+                                               row always describes the most recent
+                                               edit - whichever screen it came from.
+
+   Owner_Emp_ID is always the signed-in Tech-Ed's own employee ID, so nobody
+   reads or changes anyone else's rows. Edited_At is business time (IST).
+   ============================================================ */
+const MYNOTES_NOTE = "NOTE";
+const MYNOTES_LAST_EDIT = "LAST_EDIT";
+const MYNOTES_SCREENS = ["DASHBOARD", "DETAIL"];
+const MYNOTES_TEXT_LIMIT = 5000;
+// Emp_IDs is a text column: keep the list comfortably inside its size limit.
+const MYNOTES_IDS_LIMIT = 9000;
+
+const myNotesLocation = (value) => String(value || "").trim().slice(0, 200) || "All";
+const myNotesSame = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+const myNotesShort = (value) => String(value || "").trim().slice(0, 250);
+
+// "2026-11-20 14:05:09" (optionally with :mmm) is business time, IST (+05:30, no DST).
+function myNotesTimeMs(value) {
+  const m = String(value || "").trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/);
+  if (!m) return 0;
+  const ms = Date.parse(`${m[1]}T${m[2]}+05:30`);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function myNotesIds(list) {
+  const seen = new Set();
+  (Array.isArray(list) ? list : String(list || "").split(","))
+    .map((id) => String(id || "").trim())
+    .filter(Boolean)
+    .forEach((id) => seen.add(id));
+  return [...seen];
+}
+
+function shapeMyNote(row) {
+  return {
+    id: rowId(row),
+    text: String(row.Note_Text || ""),
+    ctx: String(row.Emp_IDs || ""),
+    editedAtMs: myNotesTimeMs(row.Edited_At),
+    editedAt: String(row.Edited_At || ""),
+  };
+}
+
+function shapeLastEdit(row) {
+  if (!row) return null;
+  const empIds = myNotesIds(row.Emp_IDs);
+  if (!empIds.length) return null;
+  return {
+    source: String(row.Edit_Source || "SHEET").toUpperCase() === "BULK" ? "BULK" : "SHEET",
+    empIds,
+    count: Number(row.Emp_Count) || empIds.length,
+    batchId: String(row.Batch_ID || ""),
+    editedAtMs: myNotesTimeMs(row.Edited_At),
+    editedAt: String(row.Edited_At || ""),
+  };
+}
+
+async function handleMyNotes(req, res, identity, tables) {
+  if (!isTechEd(identity.user)) {
+    return sendJson(res, 403, { success: false, message: "My notes and Last Edited are saved to the account for Tech-Ed logins only." });
+  }
+  const owner = myNotesShort(identity.empId);
+  if (!owner) {
+    return sendJson(res, 409, {
+      success: false,
+      code: "NO_EMP_ID",
+      message: "This login is not linked to an Employee Master record, so notes cannot be saved to the account.",
+    });
+  }
+  const table = tables.lastEditNotes;
+  const mine = async () => (await getAllRows(table)).filter((row) => myNotesSame(row.Owner_Emp_ID, owner));
+  const method = String(req.method || "GET").toUpperCase();
+
+  if (method === "GET") {
+    const query = getQuery(req);
+    const type = String(query.type || "").toLowerCase();
+    const location = myNotesLocation(query.location);
+    const rows = await mine();
+
+    if (type === "notes") {
+      const screen = String(query.screen || "").toUpperCase();
+      if (!MYNOTES_SCREENS.includes(screen)) return sendJson(res, 400, { success: false, message: "screen must be DASHBOARD or DETAIL." });
+      const notes = rows
+        .filter((row) => row.Record_Type === MYNOTES_NOTE && row.Screen === screen && myNotesSame(row.Location, location))
+        .map(shapeMyNote)
+        .sort((x, y) => x.editedAtMs - y.editedAtMs);
+      return sendJson(res, 200, { success: true, data: { notes } }, req);
+    }
+
+    if (type === "last_edit") {
+      const cycle = String(query.cycle || "").trim();
+      const latest = rows
+        .filter((row) => row.Record_Type === MYNOTES_LAST_EDIT && myNotesSame(row.Location, location) && myNotesSame(row.App_Cycle, cycle))
+        .sort((x, y) => myNotesTimeMs(y.Edited_At) - myNotesTimeMs(x.Edited_At))[0];
+      return sendJson(res, 200, { success: true, data: { lastEdit: shapeLastEdit(latest) } }, req);
+    }
+
+    return sendJson(res, 400, { success: false, message: "type must be notes or last_edit." });
+  }
+
+  if (method !== "POST") {
+    return sendJson(res, 405, { success: false, message: "Method not allowed." });
+  }
+
+  const body = await readBody(req);
+  const action = String(body.action || "");
+  const location = myNotesLocation(body.location);
+  const now = nowLocal();
+
+  if (action === "save_note") {
+    const screen = String(body.screen || "").toUpperCase();
+    if (!MYNOTES_SCREENS.includes(screen)) return sendJson(res, 400, { success: false, message: "screen must be DASHBOARD or DETAIL." });
+    const text = String(body.text == null ? "" : body.text).slice(0, MYNOTES_TEXT_LIMIT);
+    const base = {
+      Location: location,
+      App_Cycle: myNotesShort(body.cycle),
+      Record_Type: MYNOTES_NOTE,
+      Owner_Emp_ID: owner,
+      Screen: screen,
+      Note_Text: text,
+      Edited_At: now,
+    };
+
+    if (screen === "DASHBOARD") {
+      // The Dashboard has one note box: update the same row every time.
+      const rows = (await mine()).filter(
+        (row) => row.Record_Type === MYNOTES_NOTE && row.Screen === "DASHBOARD" && myNotesSame(row.Location, location),
+      );
+      if (rows.length) {
+        const saved = await table.updateRow({ ROWID: rowId(rows[0]), ...base });
+        return sendJson(res, 200, { success: true, data: { note: shapeMyNote({ ...rows[0], ...saved, ...base }) } });
+      }
+      if (!text.trim()) return sendJson(res, 200, { success: true, data: { note: null } });
+      const saved = await table.insertRow(base);
+      return sendJson(res, 200, { success: true, data: { note: shapeMyNote({ ...base, ...saved }) } });
+    }
+
+    // Detailed Screen: every saved note is its own row.
+    if (!text.trim()) return sendJson(res, 400, { success: false, message: "The note is empty." });
+    const saved = await table.insertRow({ ...base, Note_Text: text.trim(), Emp_IDs: String(body.ctx || "").trim().slice(0, 500) });
+    return sendJson(res, 200, { success: true, data: { note: shapeMyNote({ ...base, Emp_IDs: String(body.ctx || "").trim(), ...saved }) } });
+  }
+
+  if (action === "delete_note") {
+    const id = String(body.id || "").trim();
+    const row = (await mine()).find((item) => rowId(item) === id && item.Record_Type === MYNOTES_NOTE);
+    if (!row) return sendJson(res, 404, { success: false, message: "That note was not found." });
+    await table.deleteRow(id);
+    return sendJson(res, 200, { success: true, data: { id } });
+  }
+
+  if (action === "save_last_edit") {
+    const cycle = myNotesShort(body.cycle);
+    const source = String(body.source || "").toUpperCase() === "BULK" ? "BULK" : "SHEET";
+    const batchId = source === "BULK" ? myNotesShort(body.batchId) : "";
+    let empIds = myNotesIds(body.empIds);
+    if (!empIds.length) return sendJson(res, 400, { success: false, message: "empIds is required." });
+
+    const existing = (await mine())
+      .filter((row) => row.Record_Type === MYNOTES_LAST_EDIT && myNotesSame(row.Location, location) && myNotesSame(row.App_Cycle, cycle))
+      .sort((x, y) => myNotesTimeMs(y.Edited_At) - myNotesTimeMs(x.Edited_At));
+    const keep = existing[0];
+
+    // One Bulk Edit apply saves in several steps (one per field). Steps of the
+    // same batch add their employees to the row instead of replacing them.
+    if (source === "BULK" && body.merge === true && keep && batchId && keep.Batch_ID === batchId) {
+      empIds = myNotesIds([...myNotesIds(keep.Emp_IDs), ...empIds]);
+    }
+    const total = empIds.length;
+    let joined = empIds.join(",");
+    if (joined.length > MYNOTES_IDS_LIMIT) {
+      joined = joined.slice(0, MYNOTES_IDS_LIMIT);
+      joined = joined.slice(0, joined.lastIndexOf(","));
+    }
+
+    const record = {
+      Location: location,
+      App_Cycle: cycle,
+      Record_Type: MYNOTES_LAST_EDIT,
+      Owner_Emp_ID: owner,
+      Screen: "SHEET",
+      Edit_Source: source,
+      Emp_IDs: joined,
+      Emp_Count: total,
+      Batch_ID: batchId,
+      Edited_At: now,
+    };
+    let saved;
+    if (keep) {
+      saved = await table.updateRow({ ROWID: rowId(keep), ...record });
+      // A race can leave a second row for the same owner/location/cycle: drop it.
+      for (const extra of existing.slice(1)) {
+        await table.deleteRow(rowId(extra)).catch(() => {});
+      }
+    } else {
+      saved = await table.insertRow(record);
+    }
+    return sendJson(res, 200, { success: true, data: { lastEdit: shapeLastEdit({ ...record, ...saved, Emp_IDs: joined }) } });
+  }
+
+  return sendJson(res, 400, { success: false, message: "Unknown my-notes action." });
+}
+
 async function routeRequest(req, res, identity, resource, a) {
   const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
@@ -3882,7 +4108,7 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR, Comp. Manager, or Tech-Ed role is required for payroll access." });
   }
 
-  if (techEdUser && req.method !== "GET" && resource !== "session") {
+  if (techEdUser && req.method !== "GET" && resource !== "session" && resource !== "mynotes") {
     return sendJson(res, 403, { success: false, message: "Tech-Ed users have read-only payroll access." });
   }
 
@@ -3890,6 +4116,10 @@ async function routeRequest(req, res, identity, resource, a) {
   const tables = await requirePayrollTables(adminApp);
   const query = getQuery(req);
   const actor = identity.name || identity.email;
+
+  if (resource === "mynotes") {
+    return handleMyNotes(req, res, identity, tables);
+  }
 
   if (resource === "schema" && req.method === "GET") {
     const schema = await getProjectSchema(adminApp);
@@ -4804,7 +5034,10 @@ module.exports = async function payrollCycleApi(req, res) {
       method === "GET" &&
       (resource === "schema" || resource === "cycles" || resource === "locations");
     const publicSessionRead = resource === "session";
-    const a = cycleMetadataRead || publicSessionRead
+    // Tech-Ed notes / last edit are private to the signed-in employee, so no
+    // delegation-based check is run for them (handleMyNotes checks the role).
+    const myNotesCall = resource === "mynotes" && (method === "GET" || method === "POST");
+    const a = cycleMetadataRead || publicSessionRead || myNotesCall
       ? { dryRun: true, enforced: false, scope: { all: false } }
       : await checkAccess(req);
 
@@ -4814,6 +5047,7 @@ module.exports = async function payrollCycleApi(req, res) {
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
+    if (myNotesCall) return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);

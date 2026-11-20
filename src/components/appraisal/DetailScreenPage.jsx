@@ -48,6 +48,8 @@ import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
 import { cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
+import { useSelectedLocation } from "@/lib/location-store";
+import { useIsTechEdLogin, useRemoteDetailNotes } from "@/lib/my-notes-api";
 import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
 import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 
@@ -112,7 +114,14 @@ const formatNoteTime = () => {
 };
 
 function NotesPopover({ contextLabel, floating = false }) {
-  const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
+  // A Tech-Ed login keeps these notes in the account (LastEdit_MyNotes table),
+  // per location. Every other login keeps them in this browser, as before.
+  const techEd = useIsTechEdLogin();
+  const [location] = useSelectedLocation();
+  const remote = useRemoteDetailNotes(techEd, location);
+  const [localNotes, setNotes] = useState(() => readStore(NOTES_KEY, []));
+  const notes = remote ? remote.notes : localNotes;
+  const [saveProblem, setSaveProblem] = useState("");
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
 
@@ -121,9 +130,22 @@ function NotesPopover({ contextLabel, floating = false }) {
     writeStore(NOTE_DRAFT_KEY, value);
   };
 
-  const saveNote = () => {
+  const saveNote = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    if (remote) {
+      setSaveProblem("");
+      try {
+        await remote.add({ text: trimmed, ctx: tie ? contextLabel : "" });
+        setText("");
+        writeStore(NOTE_DRAFT_KEY, "");
+      } catch (error) {
+        // The draft stays in the box so nothing is lost.
+        setSaveProblem(error?.message || "The note could not be saved.");
+      }
+      return;
+    }
 
     const next = [
       ...notes,
@@ -146,7 +168,16 @@ function NotesPopover({ contextLabel, floating = false }) {
     writeStore(NOTE_DRAFT_KEY, "");
   };
 
-  const deleteNote = (id) => {
+  const deleteNote = async (id) => {
+    if (remote) {
+      setSaveProblem("");
+      try {
+        await remote.remove(id);
+      } catch (error) {
+        setSaveProblem(error?.message || "The note could not be deleted.");
+      }
+      return;
+    }
     const next = notes.filter((note) => note.id !== id);
     setNotes(next);
     writeStore(NOTES_KEY, next);
@@ -163,7 +194,13 @@ function NotesPopover({ contextLabel, floating = false }) {
       >
         My notes
         <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-          Saved in this browser only · not shared
+          {remote
+            ? remote.status === "loading"
+              ? "Loading your notes…"
+              : remote.status === "failed"
+                ? "Could not reach your account"
+                : "Saved to your account · only you see them"
+            : "Saved in this browser only · not shared"}
         </span>
       </h4>
 
@@ -216,9 +253,14 @@ function NotesPopover({ contextLabel, floating = false }) {
       </div>
 
       <div className="mt-2 max-h-[260px] overflow-auto">
+        {saveProblem ? (
+          <div className="py-1 text-[12px] font-semibold" style={{ color: RED }}>
+            {saveProblem}
+          </div>
+        ) : null}
         {notes.length === 0 ? (
           <div className="py-2 text-[12px]" style={{ color: MUTED }}>
-            No saved notes yet.
+            {remote && remote.status === "loading" ? "Loading…" : "No saved notes yet."}
           </div>
         ) : (
           notes.map((note) => (
@@ -747,10 +789,26 @@ function NotesButton({ employee }) {
   const [anchor, setAnchor] = useState({ top: 0, right: 0 });
   const btnRef = useRef(null);
 
+  const techEd = useIsTechEdLogin();
+  const [location] = useSelectedLocation();
+  const remote = useRemoteDetailNotes(techEd, location);
+  const reloadRemote = remote ? remote.reload : null;
+
+  // The pop-up keeps its own copy; read the account again once it closes so
+  // the count on the button matches.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasOpenRef.current && !notesOpen && reloadRemote) reloadRemote();
+    wasOpenRef.current = notesOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesOpen]);
+
   const notesCount = useMemo(() => {
+    if (remote) return remote.notes.length;
     const saved = readStore(NOTES_KEY, []);
     return Array.isArray(saved) ? saved.length : 0;
-  }, [notesOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesOpen, remote ? remote.notes : null]);
 
   useEffect(() => {
     if (!notesOpen) return undefined;

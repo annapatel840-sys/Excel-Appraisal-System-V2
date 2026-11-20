@@ -2381,7 +2381,8 @@ import { COLUMNS, normalizeManagerRating } from "./appraisal-data";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { useAccess } from "./access-store";
-import { getViewAsSelected, useViewAs } from "./view-as-store";
+import { getViewAsSelected, roleIdOf, useViewAs } from "./view-as-store";
+import { configureLastEditSync, recordLastEdit } from "./last-edit-sync";
 import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
@@ -2431,21 +2432,11 @@ const readLocalAuditTrail = (scope, userName) => {
 
 // The most recent edit is remembered in browser storage the moment it is made,
 // so the Appraisal Sheet's "Last Edited" button works after a refresh/re-login.
-export const LAST_EDIT_STORAGE_KEY = "appraisal.lastEdit.v2";
-const rememberLastEdit = (entry) => {
-  try {
-    if (typeof window === "undefined" || !entry?.empId) return;
-    window.localStorage.setItem(
-      LAST_EDIT_STORAGE_KEY,
-      JSON.stringify({
-        empId: String(entry.empId).trim(),
-        at: entry.at || new Date().toISOString(),
-      }),
-    );
-  } catch (_) {
-    /* storage unavailable */
-  }
-};
+// The latest edit is kept per location + cycle: one employee for an inline
+// edit, every employee of the batch for a Bulk Edit (see last-edit-sync.js).
+// A Tech-Ed login also saves it to the LastEdit_MyNotes table.
+export { LAST_EDIT_STORAGE_KEY } from "./last-edit-sync";
+const rememberLastEdit = (entries) => recordLastEdit(entries);
 
 const currentCycleAudit = (entries) => {
   if (!APPRAISAL_YEAR) return [];
@@ -3510,6 +3501,15 @@ export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const access = useAccess();
   const [selectedLocation] = useSelectedLocation();
+  // Set during render (not in an effect) so the Appraisal Sheet, which mounts
+  // before this provider's effects run, already reads the right place.
+  configureLastEditSync({
+    enabled: roleIdOf(authenticatedUser?.role) === "teched",
+    getContext: () => ({
+      location: APPRAISAL_LOCATION || String(selectedLocation || ""),
+      cycle: APPRAISAL_YEAR,
+    }),
+  });
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
 
@@ -4118,7 +4118,7 @@ export function AppraisalProvider({ children }) {
 
     updateRows(() => nextRows);
 
-    rememberLastEdit(entries[entries.length - 1]);
+    rememberLastEdit(entries);
     setAudit((prev) => [...entries.slice().reverse(), ...prev]);
 
     setModified((prev) => ({
@@ -4253,7 +4253,7 @@ export function AppraisalProvider({ children }) {
 
       updateRows(() => nextRows);
 
-      rememberLastEdit(entries[entries.length - 1]);
+      rememberLastEdit(entries);
       setAudit((prev) => [...entries.slice().reverse(), ...prev]);
 
       setModified((prev) => ({

@@ -6,6 +6,8 @@ import { calcHikePct, isPromoted, pctOfBase, ratingOf } from "@/lib/dashboard-ov
 import { DashboardOverview } from "./DashboardOverview";
 import { DashboardAnalysis } from "./DashboardAnalysis";
 import { useScopedRows } from "./useScopedRows";
+import { useSelectedLocation } from "@/lib/location-store";
+import { fetchMyNotes, saveMyNote, useIsTechEdLogin } from "@/lib/my-notes-api";
 
 import "./overview.css";
 
@@ -51,9 +53,20 @@ export function DashboardHome() {
   const [tab, setTab] = useState(tabFromUrl);
   const [cmp, setCmp] = useState([]); // compared cycle keys, shared by both tabs
   const [pop, setPop] = useState(null); // "notes" | "menu" | null
-  const [notes, setNotes] = useState(() => {
+  const readLocalNotes = () => {
     try { return window.localStorage.getItem(NOTES_KEY) || ""; } catch { return ""; }
-  });
+  };
+  // A Tech-Ed login keeps these notes in the account (LastEdit_MyNotes table),
+  // per location; every other login keeps them in this browser as before.
+  const techEd = useIsTechEdLogin();
+  const [location] = useSelectedLocation();
+  const [notes, setNotes] = useState(readLocalNotes);
+  // "browser" | "loading" | "saving" | "saved" | "failed"
+  const [noteState, setNoteState] = useState("browser");
+  const noteTimer = useRef(null);
+  const noteDirty = useRef(false);
+  const latest = useRef({ notes: "", location: "" });
+  latest.current = { notes, location };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const bar = useRef(null);
@@ -87,9 +100,64 @@ export function DashboardHome() {
     return () => clearTimeout(t);
   }, [msg]);
 
+  const sendNotes = async (text, forLocation) => {
+    noteDirty.current = false;
+    setNoteState("saving");
+    try {
+      await saveMyNote({ screen: "DASHBOARD", location: forLocation, text });
+      if (!noteDirty.current) setNoteState("saved");
+    } catch {
+      setNoteState("failed"); // the browser copy is still there
+    }
+  };
+
+  // Load this Tech-Ed's saved note for the selected location.
+  useEffect(() => {
+    if (!techEd) { setNoteState("browser"); return undefined; }
+    let alive = true;
+    setNoteState("loading");
+    fetchMyNotes({ screen: "DASHBOARD", location })
+      .then((list) => {
+        if (!alive) return;
+        const saved = list[list.length - 1];
+        if (saved) {
+          setNotes(saved.text || "");
+          setNoteState("saved");
+          return;
+        }
+        // Nothing saved in the account yet: keep what this browser had and save it there.
+        const local = readLocalNotes();
+        setNotes(local);
+        if (local.trim()) sendNotes(local, location);
+        else setNoteState("saved");
+      })
+      .catch(() => {
+        if (!alive) return;
+        setNotes(readLocalNotes());
+        setNoteState("failed");
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [techEd, location]);
+
+  // Send a pending change when the screen is left.
+  useEffect(() => () => {
+    if (noteTimer.current) {
+      clearTimeout(noteTimer.current);
+      if (noteDirty.current) {
+        saveMyNote({ screen: "DASHBOARD", location: latest.current.location, text: latest.current.notes }).catch(() => {});
+      }
+    }
+  }, []);
+
   const saveNotes = (v) => {
     setNotes(v);
     try { window.localStorage.setItem(NOTES_KEY, v); } catch { /* optional */ }
+    if (!techEd) return;
+    noteDirty.current = true;
+    setNoteState("saving");
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => { noteTimer.current = null; sendNotes(v, location); }, 800);
   };
 
   const exportExcel = async () => {
@@ -138,8 +206,20 @@ export function DashboardHome() {
             {pop === "notes" ? (
               <div className="dhx-pop dhx-notes">
                 <h4>My notes</h4>
-                <textarea autoFocus value={notes} placeholder="Write your notes here" onChange={(e) => saveNotes(e.target.value)} />
-                <small>Saved in this browser</small>
+                <textarea
+                  autoFocus
+                  value={notes}
+                  placeholder={noteState === "loading" ? "Loading your notes…" : "Write your notes here"}
+                  disabled={noteState === "loading"}
+                  onChange={(e) => saveNotes(e.target.value)}
+                />
+                <small>
+                  {noteState === "browser" ? "Saved in this browser" : null}
+                  {noteState === "loading" ? "Loading…" : null}
+                  {noteState === "saving" ? "Saving…" : null}
+                  {noteState === "saved" ? "Saved to your account" : null}
+                  {noteState === "failed" ? "Could not reach your account. Kept in this browser." : null}
+                </small>
               </div>
             ) : null}
           </div>

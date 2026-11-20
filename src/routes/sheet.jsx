@@ -30,7 +30,8 @@ import {
 
 import { cn } from "@/lib/utils";
 import { showNotice } from "@/lib/show-notice";
-import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
+import { useAppraisal } from "@/lib/appraisal-store";
+import { newestLastEdit, readLastEdit, resolveLastEdit } from "@/lib/last-edit-sync";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
 import { useNotices } from "@/lib/notices";
@@ -135,6 +136,7 @@ export function SheetPage() {
     clearSaveError,
     showingSaved,
     readOnlyCycle,
+    selectedLocation,
   } = useAppraisal();
   const {
     totals: budgetMasterTotals,
@@ -173,7 +175,8 @@ export function SheetPage() {
   const menuRef = useRef(null);
 
   const [auditOpen, setAuditOpen] = useState(false);
-  const [lastEditedTarget, setLastEditedTarget] = useState("");
+  // Employee IDs the grid should highlight after "Last Edited" (one, or a whole bulk edit).
+  const [lastEditedTargets, setLastEditedTargets] = useState([]);
   const { notices: dynamicNotices, dismiss: dismissNotice } = useNotices();
 
   useEffect(() => {
@@ -255,28 +258,49 @@ export function SheetPage() {
     [appraisalRows, editedEmployeeIds],
   );
 
-  // The newest edit is remembered in browser storage by the store at the
-  // moment it is made, so this keeps working after a refresh or re-login.
-  // It is re-read whenever the audit list changes.
-  const auditLastEntry =
+  // The latest edit - one employee for an inline edit, every employee of the
+  // batch for a Bulk Edit - is remembered per location + cycle by the store the
+  // moment it is made (and, for a Tech-Ed login, in the LastEdit_MyNotes table).
+  // Whichever happened last is the one used.
+  const auditLastRecord = useMemo(() => {
     // The audit list is already limited to the active cycle by the store.
-    audit.find((entry) => String(entry.empId || "").trim()) || null;
-  const storedLastEdit = useMemo(() => {
-    try {
-      const raw = window.localStorage.getItem(LAST_EDIT_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      return parsed?.empId ? parsed : null;
-    } catch (_) {
-      return null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const first = audit.find((entry) => String(entry.empId || "").trim());
+    if (!first) return null;
+    const batchId = String(first.batchId || "");
+    const bulk = /^bulk/i.test(String(first.source || "")) && Boolean(batchId);
+    const empIds = bulk
+      ? [
+          ...new Set(
+            audit
+              .filter((entry) => String(entry.batchId || "") === batchId)
+              .map((entry) => String(entry.empId || "").trim())
+              .filter(Boolean),
+          ),
+        ]
+      : [String(first.empId).trim()];
+    return { source: bulk ? "BULK" : "SHEET", batchId: bulk ? batchId : "", empIds, at: first.at || "" };
   }, [audit]);
-  const lastEditedEntry = storedLastEdit || auditLastEntry;
-  const lastEditedRow = lastEditedEntry
-    ? rows.find(
-        (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),
-      )
-    : null;
+
+  const rosterLoaded = rows.length > 0;
+  const [lastEdit, setLastEdit] = useState(() => readLastEdit());
+
+  // This browser's copy follows every edit (and a location / cycle change).
+  useEffect(() => {
+    setLastEdit(newestLastEdit(readLastEdit(), auditLastRecord));
+  }, [auditLastRecord, selectedLocation, rosterLoaded]);
+
+  // A Tech-Ed login also reads the copy saved in the account.
+  useEffect(() => {
+    let alive = true;
+    resolveLastEdit()
+      .then((best) => {
+        if (alive && best) setLastEdit((previous) => newestLastEdit(best, previous));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [selectedLocation, rosterLoaded]);
 
   // ============================================================
   // BUDGET NUMBERS
@@ -421,16 +445,26 @@ export function SheetPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  if (!lastEditedRow) {
+                onClick={async () => {
+                  // Read the latest first (a Tech-Ed's copy in the account too).
+                  const fresh = await resolveLastEdit().catch(() => null);
+                  const target = newestLastEdit(fresh, lastEdit);
+                  if (!target || !target.empIds.length) {
                     return;
                   }
+                  setLastEdit(target);
                   setFilters({});
                   setSearch("");
-                  setLastEditedTarget(String(lastEditedRow.empId).trim());
+                  setLastEditedTargets(target.empIds);
                 }}
                 className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
-                title={lastEditedRow ? "Go to the last edited employee" : "No edits recorded"}
+                title={
+                  !lastEdit
+                    ? "No edits recorded"
+                    : lastEdit.empIds.length > 1
+                      ? `Highlight the ${lastEdit.empIds.length} employees from the last edit`
+                      : "Go to the last edited employee"
+                }
               >
                 <span>↪ Last Edited</span>
               </button>
@@ -597,8 +631,8 @@ export function SheetPage() {
             }
             showHistory={showHistory}
             setShowHistory={setShowHistory}
-            focusEmployeeId={lastEditedTarget}
-            onFocusEmployeeHandled={() => setLastEditedTarget("")}
+            focusEmployeeIds={lastEditedTargets}
+            onFocusEmployeeHandled={() => setLastEditedTargets([])}
             isTechEd={isTechEd}
             isHR={isHR}
             onRequest={async (request) => {
