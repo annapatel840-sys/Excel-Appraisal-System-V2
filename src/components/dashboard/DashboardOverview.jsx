@@ -430,7 +430,7 @@ const Cell = ({ col, row }) => col.cell(row);
 /* ---------------- main ---------------- */
 
 export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
-  const { rows, audit, effectiveId } = useScopedRows();
+  const { rows, allRows, audit, effectiveId } = useScopedRows();
   const budgetCtx = useBudget();
   const catalystUser = useCatalystUser();
   const { name: cycleName, info: cycleInfo } = useCurrentCycleInfo();
@@ -530,6 +530,8 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     const al = alOverride === undefined ? allocationFor(lvl.k, g.key, budgetCtx) : alOverride;
     return { key, k: g.key, rows: g.rows, n: g.rows.length, pt, al, hasAl: al > 0, u: al > 0 ? (pt.total / al) * 100 : null, rem: al > 0 ? al - pt.total : null, d, kids, lvl };
   };
+  // Every employee loaded, so a Comp Manager id can be shown as "ID - Name".
+  const directory = useMemo(() => allRows.map((r) => ({ id: r.empId, name: r.name })), [allRows]);
   const budRows = useMemo(() => {
     if (!L0) {
       // A Comp Manager sees one row: their own team.
@@ -551,13 +553,17 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
           // Comp Managers allocated under THIS Tech-ED (Budget Distribution), with their
           // budget under it and the people of this Tech-ED's team they are Comp Manager for.
           const sheetLabels = Array.from(new Set(g.rows.map((r) => r.compManager).filter(Boolean)));
-          const kids = compManagersUnder(g.key, budgetCtx, sheetLabels);
+          const found = compManagersUnder(g.key, budgetCtx, sheetLabels, directory).map((c) => ({
+            ...c,
+            mine: g.rows.filter((r) => sameOwnerAs(c.label, r.compManager)),
+          }));
+          // A Comp Manager row with no budget and nobody in this team is an empty placeholder, not an allocation.
+          const kids = found.filter((c) => c.allocated > 0 || c.mine.length > 0);
           if (kids.length === 0) {
             out.push({ key: `none:${key}`, none: true, d: 1, k: "No comp manager allocated", rows: [], n: 0 });
           } else {
             kids.forEach((c) => {
-              const mine = g.rows.filter((r) => sameOwnerAs(c.label, r.compManager));
-              out.push(mkBudgetRow(L1, { key: c.label, rows: mine }, 1, false, `${L1.k}:${key}:${c.label}`, c.allocated));
+              out.push(mkBudgetRow(L1, { key: c.label, rows: c.mine }, 1, false, `${L1.k}:${key}:${c.label}`, c.allocated));
             });
           }
         } else {
@@ -567,7 +573,7 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, L0, L1, open, budgetCtx, parts, allocated, selfLabel]);
+  }, [rows, L0, L1, open, budgetCtx, parts, allocated, selfLabel, directory]);
   const CMM = !L0; // Comp Manager login: one row, no total line
   const overCount = budRows.filter((r) => !r.none && r.d === 0 && r.hasAl && r.pt.total > r.al).length;
 

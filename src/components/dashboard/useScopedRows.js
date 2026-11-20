@@ -27,5 +27,5 @@ export function useScopedRows() {
     [allRows, effectiveId, actualId, catalystUser],
   );
 
-  return { rows, audit, effectiveId };
+  return { rows, allRows, audit, effectiveId };
 }

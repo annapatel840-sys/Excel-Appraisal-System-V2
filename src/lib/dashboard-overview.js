@@ -122,20 +122,31 @@ const fkMap = (budget) => {
   return map;
 };
 
+// Budget rows of the ACTIVE cycle only. The store can hold rows of other cycles,
+// which would double a Tech-ED's budget and list stale Comp Manager rows.
+// If no row carries the active cycle (different id format), nothing is dropped.
+const inActiveCycle = (rows, budget) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const active = String(budget?.activeBudgetCycleId ?? "").trim();
+  if (!active) return list;
+  const hit = list.filter((r) => !String(r.appraisal_cycle_id ?? "").trim() || String(r.appraisal_cycle_id).trim() === active);
+  return hit.length ? hit : list;
+};
+
 // Real allocation for a group from the Budget Master tables the budget store
 // already loads. Returns 0 when nothing matches (the Dashboard shows 0).
 export const allocationFor = (level, key, budget) => {
   if (!String(key ?? "").trim()) return 0;
   if (level === "cm") {
     return sumBy(
-      (budget.budgetCompManagerRows || []).filter((r) => sameOwner(r.comp_manager, key)),
+      inActiveCycle(budget.budgetCompManagerRows, budget).filter((r) => sameOwner(r.comp_manager, key)),
       (r) => r.applied_budget,
     );
   }
   const fk = fkMap(budget);
   const resolve = (raw) => fk.get(String(raw ?? "").trim().toLowerCase()) || String(raw ?? "").trim();
   return sumBy(
-    (budget.budgetDistributionRows || []).filter((r) =>
+    inActiveCycle(budget.budgetDistributionRows, budget).filter((r) =>
       [r.tech_ed_id, r.appraiser_tech_ed_id, r.tech_ed, r.appraiser_tech_ed, r.tech_ed_name]
         .map(resolve)
         .some((owner) => sameOwner(owner, key)),
@@ -154,7 +165,7 @@ export const techEdDistributionRows = (key, budget) => {
   if (!String(key ?? "").trim()) return [];
   const fk = fkMap(budget);
   const resolve = (raw) => fk.get(String(raw ?? "").trim().toLowerCase()) || String(raw ?? "").trim();
-  return (budget.budgetDistributionRows || []).filter((r) =>
+  return inActiveCycle(budget.budgetDistributionRows, budget).filter((r) =>
     [r.tech_ed_id, r.appraiser_tech_ed_id, r.tech_ed, r.appraiser_tech_ed, r.tech_ed_name]
       .map(resolve)
       .some((owner) => sameOwner(owner, key)),
@@ -164,21 +175,28 @@ export const techEdDistributionRows = (key, budget) => {
 // "ID - Name" for a Comp Manager as stored on a Budget_Distribution_Comp row
 // (may be a ROWID, an employee id, a name or already "ID - Name"). `sheetLabels`
 // are the "ID - Name" labels the Appraisal Sheet already shows, tried last.
-const compManagerLabel = (raw, budget, fk, sheetLabels) => {
+const compManagerLabel = (raw, budget, fk, sheetLabels, directory) => {
   const text = String(raw ?? "").trim();
   if (!text) return "";
   const viaFk = fk.get(text.toLowerCase());
   if (viaFk) return viaFk;
+  const fromPair = (id, name) => {
+    const i = String(id ?? "").trim();
+    const n = String(name ?? "").trim();
+    return i && n ? `${i} - ${n}` : "";
+  };
+  // 1) Employee Master roster the budget store loaded, 2) every employee on the
+  // Appraisal Sheet (a Comp Manager is an employee too), 3) labels already on the sheet.
   const roster = [...(budget.employeeRows || []), ...(budget.locationEmployeeRows || [])];
   const emp = roster.find((e) =>
     [e?.emp_id, e?.employee_id, e?.employeeId, e?.emp_name, e?.employee_name, e?.name, e?.email, e?.email_id]
       .some((x) => x && sameOwner(x, text)),
   );
-  if (emp) {
-    const id = String(emp.emp_id || emp.employee_id || emp.employeeId || "").trim();
-    const name = String(emp.emp_name || emp.employee_name || emp.name || "").trim();
-    if (id && name) return `${id} - ${name}`;
-  }
+  const a = emp && fromPair(emp.emp_id || emp.employee_id || emp.employeeId, emp.emp_name || emp.employee_name || emp.name);
+  if (a) return a;
+  const d = (directory || []).find((e) => [e.id, e.name].some((x) => x && sameOwner(x, text)));
+  const b = d && fromPair(d.id, d.name);
+  if (b) return b;
   const seen = (sheetLabels || []).find((l) => sameOwner(l, text));
   return seen || text;
 };
@@ -186,7 +204,7 @@ const compManagerLabel = (raw, budget, fk, sheetLabels) => {
 // The Comp Managers allocated under ONE Tech-ED, from Budget_Distribution_Comp
 // (child.budget_distribution_id -> the Tech-ED's Budget_Distribution row).
 // Returns [] when the Tech-ED has none, and never mixes in another Tech-ED's.
-export const compManagersUnder = (techEdKey, budget, sheetLabels = []) => {
+export const compManagersUnder = (techEdKey, budget, sheetLabels = [], directory = []) => {
   const parents = new Set(
     techEdDistributionRows(techEdKey, budget)
       .map((r) => String(r.id ?? r.ROWID ?? "").trim())
@@ -195,14 +213,17 @@ export const compManagersUnder = (techEdKey, budget, sheetLabels = []) => {
   if (!parents.size) return [];
   const fk = fkMap(budget);
   const out = new Map();
-  (budget.budgetCompManagerRows || []).forEach((c) => {
+  inActiveCycle(budget.budgetCompManagerRows, budget).forEach((c) => {
     if (!parents.has(String(c.budget_distribution_id ?? "").trim())) return;
-    const label = compManagerLabel(c.comp_manager, budget, fk, sheetLabels);
+    const label = compManagerLabel(c.comp_manager, budget, fk, sheetLabels, directory);
     if (!label) return;
+    // One person = one row, however the id was stored ("emp001", "EMP001 - Name", ROWID).
     const id = ownerOf(label)?.id || label.toLowerCase();
     const hit = out.get(id);
-    if (hit) hit.allocated += num(c.applied_budget);
-    else out.set(id, { label, allocated: num(c.applied_budget) });
+    if (hit) {
+      hit.allocated += num(c.applied_budget);
+      if (!hit.label.includes(" - ") && label.includes(" - ")) hit.label = label;
+    } else out.set(id, { label, allocated: num(c.applied_budget) });
   });
   return Array.from(out.values()).sort((a, b) => a.label.localeCompare(b.label));
 };
