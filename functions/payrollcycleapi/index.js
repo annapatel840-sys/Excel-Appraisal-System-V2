@@ -369,6 +369,10 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "employeeMaster", "edit");
     return;
   }
+  if (resource === "eligibility-copy-emp-ids" && method === "POST") {
+    access.requireScreen(a, "employeeMaster", "edit");
+    return;
+  }
   if (resource === "generate-sheet" && method === "POST") {
     if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
     else access.requireScreen(a, "cycleMaster", "edit");
@@ -4186,6 +4190,56 @@ async function routeRequest(req, res, identity, resource, a) {
     });
   }
 
+  if (resource === "eligibility-copy-emp-ids" && req.method === "POST") {
+    if (!isHR(identity.user)) {
+      return sendJson(res, 403, { success: false, message: "Only HR Admin can copy Eligibility List employee IDs." });
+    }
+    const rows = await getAllRows(tables.eligibility);
+    const prepared = [];
+    const conflicts = [];
+    let missingOld = 0;
+    let alreadyCopied = 0;
+    for (const row of rows) {
+      const id = rowId(row);
+      const oldId = String(row.emp_id1 || "").trim();
+      const newId = String(row.emp_id || "").trim();
+      if (!oldId) {
+        missingOld += 1;
+        conflicts.push({ rowId: id, reason: "Old emp_id1 is blank." });
+        continue;
+      }
+      if (newId && newId !== oldId) {
+        conflicts.push({ rowId: id, reason: "New emp_id already contains a different value.", oldEmpId: oldId, newEmpId: newId });
+        continue;
+      }
+      if (newId === oldId) {
+        alreadyCopied += 1;
+        continue;
+      }
+      if (!id) {
+        conflicts.push({ reason: "Eligibility row has no ROWID.", oldEmpId: oldId });
+        continue;
+      }
+      prepared.push({ ROWID: id, emp_id: oldId });
+    }
+    if (conflicts.length) {
+      return sendJson(res, 409, {
+        success: false,
+        message: "Copy stopped without changing any rows. Resolve the listed data issues first.",
+        data: { totalRows: rows.length, readyToCopy: prepared.length, alreadyCopied, missingOld, conflicts: conflicts.slice(0, 50), conflictCount: conflicts.length },
+      });
+    }
+    let copied = 0;
+    for (const update of prepared) {
+      await tables.eligibility.updateRow(update);
+      copied += 1;
+    }
+    return sendJson(res, 200, {
+      success: true,
+      data: { totalRows: rows.length, copied, alreadyCopied, missingOld: 0, message: "Employee IDs copied using each Eligibility List row's ROWID." },
+    });
+  }
+
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
     const requestedLocation = String(query.location || "").trim().toLowerCase();
@@ -5053,6 +5107,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "eligibility-copy-emp-ids" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "sheet-status" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
