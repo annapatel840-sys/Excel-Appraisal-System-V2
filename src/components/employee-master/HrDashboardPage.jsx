@@ -730,7 +730,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
 
   const teTotal = teRows.reduce((a, t) => a + t.team, 0);
   const locLabel = isAllLocations(location) ? "All locations" : location;
-  const stateText = loading ? "Checking…" : checkedAt ? `Last check: ${checkedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "";
+  const stateText = loading ? "Checking…" : checkedAt ? `Last Check: ${checkedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).replace(/\s*([ap])\.?m\.?$/i, (_, x) => ` ${x.toUpperCase()}M`)}` : "";
 
   return (
     <div className="hrd">
