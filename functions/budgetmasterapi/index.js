@@ -3198,8 +3198,18 @@ async function calculateBudgetBases(
   // Budget tables may contain cycle names while the active-cycle API returns ROWIDs;
   // mismatched aliases made the dashboard sum all cycles or select the wrong budget.
   const canonicalizeCycle = (row) => {
-    const raw = String(row.appraisal_cycle_id || "").trim();
-    const cycle = currentCycleFor(raw);
+    const raw = cycleReference(row.appraisal_cycle_id).trim();
+    if (!raw) return;
+    const rawKey = raw.toLowerCase();
+    // Budget rows from location-scoped cycles may store "Location - Cycle Name".
+    // Resolve the same aliases used by cycle selection so budget-store receives
+    // the canonical Cycle Master ROWID expected by its cycle filters.
+    const cycle =
+      currentCycleFor(raw) ||
+      cycleRows.find((candidate) =>
+        cycleAliasesFor(candidate).includes(rawKey),
+      ) ||
+      null;
     if (cycle) row.appraisal_cycle_id = cycleIdOf(cycle) || raw;
   };
   bundle.master.forEach(canonicalizeCycle);

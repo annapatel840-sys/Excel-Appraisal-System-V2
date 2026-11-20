@@ -120,6 +120,37 @@ function setup() {
     assert.strictEqual(Number(activeMaster.org_budget_base), 1200000 + 100000 + 800000 + 50000, 'the Active cycle is still calculated');
   });
 
+  await t('closed location cycle budget rows using Location - Cycle Name resolve to canonical ID without writes', async () => {
+    const { store, writes, closedMaster, closedTech, closed, active } = setup();
+    const closedCycle = store.tables.Appraisal_Cycle_Master.find((row) => row.ROWID === closed);
+    const activeCycle = store.tables.Appraisal_Cycle_Master.find((row) => row.ROWID === active);
+    closedCycle.location = 'Singapore';
+    closedCycle.archived = false;
+    activeCycle.status = 'Upcoming';
+
+    // Older location-cycle budget rows can store the full location-qualified
+    // cycle label instead of the Cycle Master ROWID.
+    closedMaster.appraisal_cycle_id = 'Singapore - Annual 2026';
+    closedTech.appraisal_cycle_id = 'Singapore - Annual 2026';
+    store.tables.Appraisal_Sheet.forEach((row) => { row.cycle_id = closed; });
+    store.tables.Eligibility_List = [];
+
+    const before = JSON.stringify([closedMaster, closedTech]);
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.display_appraisal_cycle_id, closed);
+    assert.strictEqual(response.json.master.length, 1);
+    assert.strictEqual(response.json.master[0].appraisal_cycle_id, closed);
+    assert.strictEqual(Number(response.json.master[0].org_budget_base), 2105989);
+    assert.strictEqual(Number(response.json.master[0].applied_budget), 168479.12);
+    assert.strictEqual(response.json.techEd.length, 1);
+    assert.strictEqual(response.json.techEd[0].appraisal_cycle_id, closed);
+    assert.strictEqual(Number(response.json.techEd[0].budget_base), 794586);
+    assert.strictEqual(Number(response.json.techEd[0].calculated_budget), 63566.88);
+    assert.strictEqual(JSON.stringify([closedMaster, closedTech]), before, 'closed-cycle values must not be rewritten');
+    assert.deepStrictEqual(writes, [], 'closed-cycle GET must not write budget rows');
+  });
+
   await t('a second load with no data change writes nothing', async () => {
     const { store, writes } = setup();
     assert.strictEqual((await get(load(store))).status, 200);
