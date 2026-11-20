@@ -741,7 +741,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       )}
       {failed.length > 0 && (
         <div className="hrd-warn">
-          Could not load: {failed.join(", ")}. Those counts are left out, not shown as zero. Use “Check again”.
+          Could not load: {failed.join(", ")}. Those counts are left out, not shown as zero. Use “Check Again”.
           {[
             status.elig?.s === "error" && `Eligibility: ${status.elig.msg}`,
             status.del?.s === "error" && `Delegation: ${status.del.msg}`,
@@ -781,8 +781,10 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
                   </div>
                 </>
               )}
-              <div className="hrd-agt">{stateText}</div>
-              <button type="button" className="hrd-btn" onClick={() => load(true)} disabled={loading}>Check again</button>
+              <div className="hrd-agr">
+                <div className="hrd-agt">{stateText}</div>
+                <button type="button" className="hrd-btn" onClick={() => load(true)} disabled={loading}>Check Again</button>
+              </div>
             </div>
             <div className="hrd-cb">
               <div className="hrd-strip">
@@ -817,7 +819,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
                 <span className="hrd-nt">Budget not given is flagged</span>
               </div>
               {budget.error ? (
-                <div className="hrd-muted">Budget could not be loaded. Use “Check again”.</div>
+                <div className="hrd-muted">Budget could not be loaded. Use “Check Again”.</div>
               ) : budget.loading && !teRows.length ? (
                 <div className="hrd-muted">Loading…</div>
               ) : !teRows.length ? (
