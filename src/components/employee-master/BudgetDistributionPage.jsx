@@ -800,7 +800,7 @@ export function BudgetDistributionPage() {
                                   <div className="detail-item"><div className="label">Last updated</div><b>{dateText(lastUpdatedFor(row))}</b></div>
                                 </div>
                                 {(() => {
-                                  const managerRows = (budgetCompManagerRows || []).filter((item) =>
+                                  const rowsOfTech = (budgetCompManagerRows || []).filter((item) =>
                                     String(item.budget_distribution_id || "") === String(row.id || "") &&
                                     String(item.appraisal_cycle_id || activeCycleId) === String(activeCycleId)
                                   );
@@ -840,6 +840,20 @@ export function BudgetDistributionPage() {
                                     const shownId = eid || id.toUpperCase();
                                     return ename ? shownId + " - " + ename : shownId;
                                   };
+                                  // The server already leaves out Comp Managers deleted from Employee_Master. This also
+                                  // covers a copy of the data saved earlier in this browser: once the full Employee Master
+                                  // is loaded, a manager it cannot name ("LT02922" with no name) no longer exists -> hidden.
+                                  const labelled = rowsOfTech.map((item) => ({
+                                    item,
+                                    label: managerLabel(item.comp_manager, item.comp_manager_display),
+                                  }));
+                                  const masterLoaded = Array.isArray(masterEmployees) && masterEmployees.length > 0;
+                                  const managerRows = labelled
+                                    .filter(({ item, label }) =>
+                                      !masterLoaded ||
+                                      /\s+-\s+\S/.test(label) ||
+                                      !/^[A-Za-z]{1,6}\d{2,}$/.test(String(item.comp_manager || "").split(/\s+-\s+/)[0].trim()))
+                                    .map(({ item, label }) => ({ ...item, _label: label }));
                                   return (
                                     <div className="manager-allocation">
                                       <div className="label" style={{ marginTop: 12, marginBottom: 6 }}>Comp Manager allocations ({managerRows.length})</div>
@@ -848,7 +862,7 @@ export function BudgetDistributionPage() {
                                           <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilisation %</th></tr></thead>
                                           <tbody>{managerRows.map((manager) => (
                                             <tr key={manager.id || manager.comp_manager}>
-                                              <td>{managerLabel(manager.comp_manager, manager.comp_manager_display)}</td>
+                                              <td>{manager._label}</td>
                                               <td align="right">{pct(manager.percentage)}</td>
                                               <td align="right">{money(manager.budget_base)}</td>
                                               <td align="right">{money(manager.calculated_budget)}</td>

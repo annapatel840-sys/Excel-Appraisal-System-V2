@@ -4259,6 +4259,30 @@ module.exports = async function (req, res) {
         if (rowId) managerByRowId.set(String(rowId), employee);
         if (employeeName) managerByName.set(employeeName.toLowerCase(), employee);
       });
+      // A Comp Manager who has since been deleted from Employee_Master is not
+      // sent back: the saved allocation row stays in Budget_Distribution_Comp
+      // (nothing is deleted from the table), but it no longer appears on the
+      // Budget Distribution screens. Only applied when Employee_Master was
+      // actually read, so a failed read never hides real allocations.
+      // Only a value that is an Employee ID (EMP004, LT02922) is judged this way; a manager
+      // saved by name (e.g. a director) is never hidden.
+      const managerFound = (row) => {
+        const rawManager = String(row.comp_manager || "").trim();
+        if (!rawManager) return true;
+        if (!/^[A-Za-z]{1,6}\d{2,}$/.test(rawManager.split(/\s+-\s+/)[0].trim())) return true;
+        const parts = rawManager.split(/\s+-\s+/);
+        return Boolean(
+          managerByEmployeeId.get(parts[0].trim().toLowerCase()) ||
+            managerByRowId.get(parts[0].trim()) ||
+            managerByName.get(rawManager.toLowerCase()) ||
+            (parts.length > 1
+              ? managerByName.get(parts.slice(1).join(" - ").toLowerCase())
+              : null),
+        );
+      };
+      if (managerMasterRows.length) {
+        calculatedBundle.compManager = (calculatedBundle.compManager || []).filter(managerFound);
+      }
       calculatedBundle.compManager = (calculatedBundle.compManager || []).map(
         (row) => {
           const rawManager = String(row.comp_manager || "").trim();

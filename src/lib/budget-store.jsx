@@ -31,7 +31,8 @@ import {
 } from "@/lib/budget-audit-local";
 
 const BudgetContext = createContext(null);
-const BUDGET_CACHE_PREFIX = "appraisal.budget.snapshot.v1:";
+// v2: drops browser copies saved before deleted Comp Managers were filtered out.
+const BUDGET_CACHE_PREFIX = "appraisal.budget.snapshot.v2:";
 
 function readBudgetSnapshot(scope) {
   try {
