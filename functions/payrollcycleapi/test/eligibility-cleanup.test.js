@@ -169,7 +169,11 @@ async function setup() {
 
     const india = await mk('India - Annual 2029', 'India');
     assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Active' })).status, 200);
-    const response = await call(api, 'GET', 'eligibility&cycleId=' + india.id);
+    const response = await new Promise((resolve, reject) => {
+      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(india.id), on() {} };
+      const res = { status: 0, writeHead(status) { this.status = status; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
+      api(req, res).catch(reject);
+    });
     assert.strictEqual(response.status, 200, JSON.stringify(response.json));
     assert.strictEqual(response.json.data.meta.criteriaApplied, false);
     assert.strictEqual(response.json.data.meta.criteria, null);
