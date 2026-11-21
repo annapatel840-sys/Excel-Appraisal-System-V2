@@ -198,7 +198,7 @@ export function YearMenu({ cycles, selected, onChange }) {
 
 /* ---------------- people list (sort + filter per column) ---------------- */
 
-const PEOPLE_COLS = [
+export const PEOPLE_COLS = [
   {
     k: "name", l: "Employee", t: "t",
     g: (r) => `${r.name || ""} ${r.empId || ""}`,
@@ -315,6 +315,8 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
   const [filters, setFilters] = useState({});
   const [menu, setMenu] = useState(null); // { k, left, top }
   const box = useRef(null);
+  // A list may bring its own columns (e.g. the guidance lists on the Dashboard).
+  const COLS = list.cols || PEOPLE_COLS;
 
   // A different list starts with a clean sort and filters.
   useEffect(() => {
@@ -331,9 +333,9 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
   }, [menu]);
 
   const shown = useMemo(() => {
-    let r = list.rows.filter((it) => PEOPLE_COLS.every((c) => passes(c, it, filters[c.k])));
+    let r = list.rows.filter((it) => COLS.every((c) => passes(c, it, filters[c.k])));
     if (sort) {
-      const c = PEOPLE_COLS.find((x) => x.k === sort.k);
+      const c = COLS.find((x) => x.k === sort.k);
       const d = sort.d === "a" ? 1 : -1;
       if (c) {
         r = r.slice().sort((a, b) => {
@@ -355,7 +357,7 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
     const br = e.currentTarget.getBoundingClientRect();
     setMenu({ k, left: Math.max(8, Math.min(br.left - tr.left, tr.width - 268)), top: br.bottom - tr.top + 4 });
   };
-  const menuCol = menu ? PEOPLE_COLS.find((c) => c.k === menu.k) : null;
+  const menuCol = menu ? COLS.find((c) => c.k === menu.k) : null;
 
   return (
     <div className="tile pl" id="ov-people" ref={box}>
@@ -381,7 +383,7 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
         <table>
           <thead>
             <tr>
-              {PEOPLE_COLS.map((c) => (
+              {COLS.map((c) => (
                 <th key={c.k} className={c.t === "n" ? "n" : undefined}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                     {c.l}
@@ -395,9 +397,9 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
           </thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={PEOPLE_COLS.length} className="mut" style={{ padding: 14 }}>No one matches the filters.</td></tr>
+              <tr><td colSpan={COLS.length} className="mut" style={{ padding: 14 }}>No one matches the filters.</td></tr>
             ) : shown.slice(0, MAX_PEOPLE_SHOWN).map((r) => (
-              <tr key={r.id} className="data">{PEOPLE_COLS.map((c) => <Cell key={c.k} col={c} row={r} />)}</tr>
+              <tr key={r.id} className="data">{COLS.map((c) => <Cell key={c.k} col={c} row={r} />)}</tr>
             ))}
           </tbody>
         </table>

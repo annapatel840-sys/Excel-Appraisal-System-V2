@@ -205,3 +205,135 @@
   .ovw .dax-txt { width: auto; white-space: normal; }
   .ovw .dax-line { flex-wrap: wrap; }
 }
+/* ======================================================================
+   Dashboard tab (new): output tabs, pills, chart, guidance panel, Outliers
+   Inter everywhere (set on .ovw above, with !important).
+   ====================================================================== */
+.ovw .pills { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ovw .pill { border: 1px solid #d5dbe2; background: #fff; color: #334155; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s, background .15s, box-shadow .15s; }
+.ovw .pill:hover { border-color: #27548a; color: #27548a; }
+.ovw .pill.on { background: #1d3b5e; border-color: #1d3b5e; color: #fff; box-shadow: 0 1px 3px rgba(29, 59, 94, .28); }
+.ovw .pill .x { margin-left: 8px; opacity: .5; font-size: 13px; font-weight: 700; }
+.ovw .pill .x:hover { opacity: 1; }
+.ovw .pill.add { border: 1px dashed #9aa6b8; color: #475569; background: transparent; }
+.ovw .pill.add:hover { border-color: #27548a; color: #27548a; background: #fff; }
+.ovw .pitem { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; color: #334155; cursor: pointer; }
+.ovw .pitem:hover { background: #eef3fa; color: #1d3b5e; }
+.ovw .txt { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; background: #fff; }
+.ovw .pin { border: 1px solid #9ca3af; border-radius: 5px; padding: 5px 8px; background: #fff; text-align: right; font-weight: 700; width: 84px; }
+.ovw .chip { display: inline-block; background: #e6eef8; color: var(--navy); border: 1px solid #c9d8ec; border-radius: 5px; padding: 3px 9px; font-weight: 700; }
+.ovw .chip a { text-decoration: none; color: var(--muted); margin-left: 6px; }
+.ovw .note { background: #eef5f4; border: 1px solid #cde4df; color: #1d4fa8; border-radius: 10px; padding: 9px 12px; margin-top: 12px; }
+.ovw .ins { border: 1px solid var(--line); background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-top: 10px; font-size: 11.5px; }
+.ovw .ins div + div { margin-top: 3px; }
+.ovw .src { border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+.ovw .src.o { background: #eef5f4; color: #1d4fa8; }
+.ovw .ymenu > button { font-family: inherit; }
+
+/* chart tile + guidance panel */
+.ovw .dpx-main { display: flex; gap: 14px; align-items: flex-start; margin-top: 10px; }
+.ovw .dpx-chart { flex: 1; min-width: 0; padding: 12px 16px; }
+.ovw .dpx-chead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ovw .dpx-chead small { flex: 1; min-width: 0; }
+.ovw .dpx-side { width: 280px; flex: none; align-self: flex-start; display: flex; flex-direction: column; gap: 16px; padding: 12px 14px; }
+.ovw .dpx-sh { display: flex; align-items: center; font-weight: 700; color: var(--navy); font-size: 13px; }
+.ovw .dpx-cap { margin: 0 0 8px; }
+.ovw .dpx-cap2 { margin: 18px 0 8px; }
+.ovw .dpx-msg { font-size: 11.5px; margin-top: 4px; }
+.ovw .dpx-srcp { margin-bottom: 8px; }
+.ovw .dpx-srcp .pill { padding: 4px 10px; font-size: 11.5px; }
+.ovw .dpx-chk { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; font-size: 12px; }
+.ovw .dpx-add-wrap { position: relative; display: inline-block; }
+.ovw .dpx-addpop { top: 36px; max-height: 320px; overflow: auto; min-width: 250px; }
+.ovw .dpx-note { font-size: 11.5px; margin: 10px 0; }
+.ovw .dpx-sums { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ovw .dpx-sum { flex: 1; min-width: 150px; padding: 10px 14px; }
+.ovw .dpx-sum .big { font-size: 22px; }
+.ovw .dpx-insight { font-size: 12px; margin-top: 10px; }
+
+/* bars */
+.ovw .dpx-rows { display: flex; flex-direction: column; margin-top: 4px; }
+.ovw .dpx-grp { padding: 6px 4px; border-top: 1px solid #eef1f4; cursor: pointer; }
+.ovw .dpx-grp:first-child { border-top: 0; }
+.ovw .dpx-grp:hover { background: #f6f9fd; }
+.ovw .dpx-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.ovw .dpx-head b { color: var(--navy); font-size: 12.5px; font-weight: 800; }
+.ovw .dpx-few { font-size: 11px; }
+.ovw .dpx-head .dpx-few:last-child { margin-left: 0; }
+.ovw .dpx-line { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.ovw .dpx-trk { position: relative; flex: 1; min-width: 60px; display: flex; }
+.ovw .dpx-track { flex: 1; display: flex; background: #eef1f4; overflow: hidden; }
+.ovw .dpx-track > div { height: 100%; }
+.ovw .dpx-guide { position: absolute; top: -3px; bottom: -3px; background: rgba(111, 155, 208, .28); border-left: 1.5px dashed #3e6fa8; border-right: 1.5px dashed #3e6fa8; pointer-events: auto; }
+.ovw .dpx-guide.tall { top: -4px; bottom: -4px; }
+.ovw .dpx-target { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #111827; }
+.ovw .dpx-txt { flex: none; text-align: right; font-size: 11px; white-space: nowrap; }
+.ovw .dpx-txt b { color: var(--navy); font-weight: 800; font-size: 12px; }
+.ovw .dpx-txt .pre { font-weight: 600; }
+.ovw .dpx-add { color: #b7791f; font-weight: 700; }
+.ovw .dpx-bull { flex: none; width: 330px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.ovw .dpx-bull .nw { white-space: nowrap; }
+.ovw .dpx-bull b { color: var(--navy); font-weight: 800; }
+.ovw .dpx-pill { font-weight: 700; background: #f1f4f8; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.ovw .dpx-split { margin-top: 5px; }
+.ovw .dpx-sbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #eef1f4; }
+.ovw .dpx-slab { font-size: 11px; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap; }
+.ovw .dpx-gs { border: 0; background: none; padding: 0; cursor: pointer; color: inherit; }
+.ovw .dpx-gs b { text-decoration: underline dotted; }
+
+/* columns */
+.ovw .dpx-cols { overflow-x: auto; padding: 8px 0 2px; }
+.ovw .dpx-cols > div { display: flex; gap: 8px; align-items: flex-start; min-width: min-content; }
+.ovw .dpx-col { flex: 1 0 58px; min-width: 58px; display: flex; flex-direction: column; align-items: center; }
+.ovw .dpx-col .bars { display: flex; align-items: flex-end; gap: 3px; }
+.ovw .dpx-col .one { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.ovw .dpx-col .one span { font-size: 9px; color: var(--muted); white-space: nowrap; }
+.ovw .dpx-col .one i { display: block; width: 12px; border-radius: 3px 3px 0 0; }
+.ovw .dpx-col .nm { margin-top: 6px; text-align: center; white-space: normal; font-size: 9px; }
+.ovw .dpx-col.click { cursor: pointer; }
+
+/* guidance panel */
+.ovw .dpx-rr { padding: 9px 0; border-top: 1px solid #eef1f4; }
+.ovw .dpx-rr .top { display: flex; justify-content: space-between; font-size: 12px; }
+.ovw .dpx-rr .top b { color: var(--navy); font-weight: 700; }
+.ovw .dpx-rr .ins { display: flex; gap: 6px; align-items: center; margin-top: 6px; border: 0; background: none; padding: 0; }
+.ovw .dpx-rr .ro { flex: 1; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--navy); }
+.ovw .dpx-rr .out { font-size: 11.5px; margin-top: 5px; font-weight: 700; }
+.ovw .dpx-rin { width: 100%; min-width: 0; border: 1px solid #9ca3af; border-radius: 5px; padding: 5px 8px; font-size: 12px; font-weight: 700; text-align: right; background: #fff; }
+.ovw .dpx-cut { width: 100%; }
+.ovw .dpx-tol { display: flex; gap: 6px; align-items: center; }
+.ovw .dpx-tol .dpx-rin { width: 70px; }
+
+/* Outliers */
+.ovw .dpx-out { display: flex; gap: 14px; align-items: flex-start; }
+.ovw .dpx-outmain { flex: 1; min-width: 0; }
+.ovw .dpx-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ovw .hrc { flex: 1; min-width: 150px; padding: 10px 12px; }
+.ovw .hrc.on { outline: 2px solid var(--pill); background: #f2f7fd; }
+.ovw .dpx-det { margin-top: 12px; }
+.ovw .dpx-dh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ovw .dpx-dh .acts { margin-left: auto; display: flex; gap: 6px; }
+.ovw .dpx-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.ovw .dpx-lims { display: flex; flex-direction: column; gap: 8px; }
+.ovw .dpx-lim { display: flex; flex-direction: column; gap: 4px; }
+.ovw .dpx-lim .pin { width: 100%; }
+.ovw .dpx-show { display: flex; flex-direction: column; gap: 6px; }
+.ovw .dpx-show .txt { width: 100%; }
+.ovw .chk { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 12.5px; }
+.ovw .dpx-setup { margin-top: 0; }
+.ovw .dpx-sethead { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ovw .dpx-sethead .sp { flex: 1; }
+.ovw .dpx-catrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ovw .dpx-catrow > span { display: flex; gap: 4px; align-items: center; }
+.ovw .dpx-flag { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.ovw .dpx-flag .top { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ovw .dpx-flag .top label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+.ovw .dpx-flag .body2 { margin-top: 10px; }
+.ovw .dpx-flag .cond { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.ovw .tw.ag tbody tr.sel td { background: #dcebff !important; }
+
+@media (max-width: 1100px) {
+  .ovw .dpx-main, .ovw .dpx-out { flex-direction: column; }
+  .ovw .dpx-side { width: 100%; }
+  .ovw .dpx-bull { width: auto; flex-wrap: wrap; }
+}

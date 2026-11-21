@@ -16,6 +16,7 @@ import {
   useSelectedLocation,
 } from "@/lib/location-store";
 import { bareCycleName, cycleKeyOf } from "@/lib/dashboard-overview";
+import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 import { prefetchDetailHistory } from "@/components/appraisal/DetailScreenPage";
 
 const isTruthy = (v) =>
@@ -23,6 +24,10 @@ const isTruthy = (v) =>
 
 const nameOf = (c) => String(c?.name ?? c?.cycle_name ?? c?.appraisal_cycle_name ?? "").trim();
 const yearOf = (name) => Number((String(name).match(/(\d{4})/) || [])[1]) || 0;
+const isExceptionalName = (name) => /^exceptional\b/i.test(cycleNameWithoutLocation(name));
+// When the cycle took effect (ISO text); used to tell which Exceptional cycles came after an Annual one.
+const whenOf = (c) =>
+  String(c?.effective ?? c?.effective_date ?? c?.end ?? c?.end_date ?? c?.close_date ?? c?.start ?? c?.start_date ?? "").slice(0, 10);
 
 export function useCompareCycles() {
   const [selectedLocation] = useSelectedLocation();
@@ -45,7 +50,15 @@ export function useCompareCycles() {
           if (!own && !isAllLocations(cycleLocationOf(c))) return;
           const key = cycleKeyOf(name);
           // The location's own cycle wins over an org-wide cycle of the same name.
-          if (!seen.has(key) || own) seen.set(key, { key, name: bareCycleName(name), own });
+          if (!seen.has(key) || own) {
+            seen.set(key, {
+              key,
+              name: bareCycleName(name),
+              own,
+              exceptional: isExceptionalName(name),
+              when: whenOf(c),
+            });
+          }
         });
         setCycles(
           Array.from(seen.values()).sort(
