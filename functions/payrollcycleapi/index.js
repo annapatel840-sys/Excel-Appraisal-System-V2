@@ -2397,19 +2397,26 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     row,
   ]));
   const currentCycleDelegations = delegationRows.filter(
-    (row) => String(row.cycle_id || "") === String(cycle.id),
+    (row) => String(row.cycle_id || "").trim() === String(cycle.id).trim(),
   );
   const missingSavedTechEd = [];
   eligibleRows.forEach((employee) => {
-    const masterId = String(employee.employeeMasterRowId || "").trim();
-    const empId = String(employee.empId || "").trim();
+    const masterId = String(employee.employeeMasterRowId || "").trim().toLowerCase();
+    const empId = String(employee.empId || "").trim().toLowerCase();
     const saved = currentCycleDelegations.find((row) => {
-      const key = String(row.emp_id || "").trim().toLowerCase();
-      return key === masterId.toLowerCase() || key === empId.toLowerCase();
+      const employeeKeys = [
+        row.emp_id,
+        row.employee_id,
+        row.emp_master_row_id,
+        row.employee_master_row_id,
+      ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+      return employeeKeys.includes(masterId) || employeeKeys.includes(empId);
     });
     const techEd = String(saved?.appraiser_tech_ed || "").trim();
-    if (!resolveEmployeeReference(techEd, employeeMasterRows)) {
-      missingSavedTechEd.push(empId || "Unknown employee");
+    // Require a resolvable saved assignment on this cycle's Delegation row.
+    // A default on Employee_Master or a previous cycle must not satisfy this.
+    if (!saved || !resolveEmployeeReference(techEd, employeeMasterRows)) {
+      missingSavedTechEd.push(String(employee.empId || "Unknown employee"));
     }
   });
   if (missingSavedTechEd.length) {
