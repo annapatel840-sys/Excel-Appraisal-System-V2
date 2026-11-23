@@ -982,7 +982,10 @@ async function requireIdentity(req) {
   let employeeEmpId = "";
   if (email) {
     try {
-      const datastore = userApp.datastore();
+      // Read as admin: Employee_Master grants SELECT to App Administrator only, so a
+      // user-scope read failed for every Tech-ED / Comp Manager / HR login and the
+      // home location came back blank. Only the signed-in user's own row is used.
+      const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
       const [masterRows, locationRows] = await Promise.all([
         getAllRows(datastore.table(TABLES.employeeMaster)),
         getAllRows(datastore.table(TABLES.locations)),
@@ -1286,7 +1289,6 @@ async function applyEligibilityCriteria(tables, body, actor) {
   }
   // Apply Criteria can be run again for the Active cycle (Edit Criteria → Apply):
   // rows are re-evaluated against the new criteria and manual decisions are kept.
-
   // Ensure all active employees have an initial Eligible row and retain
   // existing inactive employees as visible Not Eligible rows.
   await syncEligibilityRows(tables, cycle, actor);

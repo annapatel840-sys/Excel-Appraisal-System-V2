@@ -15,6 +15,7 @@ import { setActiveCurrency } from "./currency-format";
 
 export const ALL_LOCATIONS = "All";
 const STORAGE_KEY_PREFIX = "appraisal.selectedLocation.v2:";
+const HOME_KEY_PREFIX = "appraisal.homeLocation.v1:";
 const EVENT_NAME = "appraisal:location-changed";
 
 const norm = (value) => String(value ?? "").trim().toLowerCase();
@@ -26,6 +27,18 @@ const readStored = (userKey) => {
   try {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(storageKeyForUser(userKey));
+  } catch (_) {
+    return null;
+  }
+};
+
+const homeKeyForUser = (userKey) =>
+  HOME_KEY_PREFIX + encodeURIComponent(norm(userKey) || "anonymous");
+
+const readStoredHome = (userKey) => {
+  try {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(homeKeyForUser(userKey));
   } catch (_) {
     return null;
   }
@@ -93,9 +106,14 @@ export function applyHomeLocationOnSignIn(userKey, homeLocation) {
   const home = String(homeLocation ?? "").trim();
   if (!who) return;
   activeUserKey = who;
-  selected = readStored(who) || home || ALL_LOCATIONS;
+  // The saved choice only wins while the user's Employee Master location is unchanged.
+  // If HR moved the employee to another location (e.g. Australia -> India), the new
+  // Employee Master location is used, not the choice saved for the old one.
+  const homeChanged = !!home && norm(readStoredHome(who)) !== norm(home);
+  selected = (homeChanged ? home : readStored(who) || home) || ALL_LOCATIONS;
   try {
     window.localStorage.setItem(storageKeyForUser(who), selected);
+    if (home) window.localStorage.setItem(homeKeyForUser(who), home);
   } catch (_) {
     /* storage is optional */
   }
