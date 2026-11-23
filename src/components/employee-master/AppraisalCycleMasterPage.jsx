@@ -1261,6 +1261,10 @@ export function AppraisalCycleMasterPage({
   const canGo = (id) => {
     const tabKey = NAV_TAB[id];
     if (!onNavigate) return false;
+    // Payroll Upload is an explicit setup action on the Payroll step. Keep it
+    // visible even when the generic tab-visibility check hides the Upload tab;
+    // the payroll upload screen and API still enforce edit permissions.
+    if (id === "go-up-pay") return true;
     // Appraisal Sheet is a separate route, not an Employee Master tab,
     // but it still respects the caller's screen permission.
     if (!tabKey) return false;
@@ -1417,10 +1421,12 @@ export function AppraisalCycleMasterPage({
         "Payroll",
         paySub,
         sharedSource ? "ok" : w ? (!w.emUpdated || m ? "wn" : "ok") : "pd",
-        sharedSource ? [] : [
-          { l: "Open Mismatch ›", id: "go-mm", link: true },
-          { l: "Upload ›", id: "go-up-pay" },
-        ],
+        sharedSource
+          ? [{ l: "Upload ›", id: "go-up-pay" }]
+          : [
+              { l: "Open Mismatch ›", id: "go-mm", link: true },
+              { l: "Upload ›", id: "go-up-pay" },
+            ],
       ),
       row(
         "Active",
