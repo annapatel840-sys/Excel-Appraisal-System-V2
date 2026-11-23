@@ -2387,6 +2387,37 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     getAllRows(tables.delegation),
     getAllRows(tables.locations),
   ]);
+
+  // Check saved Tech-ED Delegation before payroll/feedback validation so that
+  // an incomplete Delegation is reported directly instead of being masked by
+  // a separate missing-feedback error. Employee_Master defaults are not proof
+  // that the current cycle's Delegation assignment was saved.
+  const earlyMasterByEmpId = new Map(employeeMasterRows.map((row) => [
+    String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
+    row,
+  ]));
+  const currentCycleDelegations = delegationRows.filter(
+    (row) => String(row.cycle_id || "") === String(cycle.id),
+  );
+  const missingSavedTechEd = [];
+  eligibleRows.forEach((employee) => {
+    const masterId = String(employee.employeeMasterRowId || "").trim();
+    const empId = String(employee.empId || "").trim();
+    const saved = currentCycleDelegations.find((row) => {
+      const key = String(row.emp_id || "").trim().toLowerCase();
+      return key === masterId.toLowerCase() || key === empId.toLowerCase();
+    });
+    const techEd = String(saved?.appraiser_tech_ed || "").trim();
+    if (!resolveEmployeeReference(techEd, employeeMasterRows)) {
+      missingSavedTechEd.push(empId || "Unknown employee");
+    }
+  });
+  if (missingSavedTechEd.length) {
+    throw new ApiError(
+      `Appraisal Sheet cannot be generated. Appraiser Tech-ED is not assigned in the current cycle's Delegation for: ${missingSavedTechEd.slice(0, 30).join(", ")}${missingSavedTechEd.length > 30 ? ", ..." : ""}. Save a valid Appraiser Tech-ED assignment in Delegation for every eligible employee.`,
+      409,
+    );
+  }
   const cycleKeys = new Set(
     [cycle.id, cycle.name]
       .map((value) => String(value || "").trim().toLowerCase())
@@ -2852,7 +2883,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   // All generation prerequisites are checked before preparing or writing rows.
   const managerIdOf = strictEmployeeIdResolver(employeeMasterRows);
   const missingManagers = [];
-  const missingTechEd = [];
   eligibleRows.forEach((employee) => {
     const masterId = String(employee.employeeMasterRowId || "");
     const master = employeeMasterById.get(masterId);
@@ -2861,9 +2891,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     // Generation requires the current-cycle Delegation assignment itself.
     // Employee_Master's default Tech-ED is displayed as a starting value in
     // Delegation, but must be saved there before Appraisal Sheet generation.
-    const techEdValue = String(saved?.appraiser_tech_ed || "").trim();
-    if (!resolveEmployeeReference(techEdValue, employeeMasterRows)) missingTechEd.push(empId);
-
     const previousSource = payrollBaseSourceByMasterId.get(masterId) ||
       payrollBaseSourceByMasterId.get(empId);
     const previousManager = String(saved?.previous_comp_manager || "").trim() || (
@@ -2886,12 +2913,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   if (missingManagers.length) {
     throw new ApiError(
       `Appraisal Sheet cannot be generated. Comp Manager is missing for: ${missingManagers.slice(0, 30).join(", ")}${missingManagers.length > 30 ? ", ..." : ""}. Set the previous year's Comp Manager or the current Director in Employee Master / Delegation for every listed employee.`,
-      409,
-    );
-  }
-  if (missingTechEd.length) {
-    throw new ApiError(
-      `Appraisal Sheet cannot be generated. Appraiser Tech-ED is not assigned for: ${missingTechEd.slice(0, 30).join(", ")}${missingTechEd.length > 30 ? ", ..." : ""}. Complete Delegation for every listed employee.`,
       409,
     );
   }

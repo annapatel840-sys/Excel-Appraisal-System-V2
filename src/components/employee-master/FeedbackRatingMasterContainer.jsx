@@ -5,7 +5,7 @@ import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/li
 import { FeedbackRatingMasterPage } from "./FeedbackRatingMasterPage";
 
 // Loads the data from feedbackratingapi and hands it to the (UI-only) page.
-export function FeedbackRatingMasterContainer() {
+export function FeedbackRatingMasterContainer({ onUpload }) {
   const [state, setState] = useState({ cycles: [], rows: [], batches: [], loading: true, error: "" });
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
@@ -63,6 +63,7 @@ export function FeedbackRatingMasterContainer() {
       batches={allBatches}
       loading={state.loading}
       error={state.error}
+      onUpload={onUpload}
     />
   );
 }
