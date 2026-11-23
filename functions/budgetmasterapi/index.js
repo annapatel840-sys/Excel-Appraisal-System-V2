@@ -2363,6 +2363,7 @@ async function calculateBudgetBases(
     if (!employeeId) return;
     const techEdFields = [
       "appraiser_tech_ed1",
+      "appraiser_tech_ed_appraisal_sheet",
       "appraiser_tech_ed_row_id",
       "appraiser_tech_ed_id",
       "appraiser_tech_ed",
@@ -2387,6 +2388,8 @@ async function calculateBudgetBases(
     const techEd = resolvePersonId(rawTechEd);
     const rawCompManager = String(
       firstValue(row, [
+        "delegation_comp_manager",
+        "delegation_comp_manager_id",
         "comp_manager",
         "comp_manager_id",
         "comp_manager_name",
@@ -2394,7 +2397,12 @@ async function calculateBudgetBases(
         "compManager",
         "compManagerId",
       ]) ||
-        firstValue(masterRow, ["comp_manager", "director"]) ||
+        firstValue(masterRow, [
+          "delegation_comp_manager",
+          "delegation_comp_manager_id",
+          "comp_manager",
+          "director",
+        ]) ||
         "",
     ).trim();
     // Budget_Distribution_Comp stores the stable Employee ID. Appraisal
