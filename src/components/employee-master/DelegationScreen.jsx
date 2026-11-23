@@ -1906,7 +1906,7 @@
 //           <div className="dg-help">
 //             <b>How it works:</b>{" "}
 //             {isHR
-//               ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
+//               ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to the previous year's assignment; if unavailable, it defaults to the current Director. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
 //               : 'You see only employees mapped to you as Tech-ED. You can change their Comp. Manager only; Save updates Delegation and their existing Appraisal Sheet rows automatically.'}
 //           </div>
 //         </div>
