@@ -6497,13 +6497,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("feedback-rating") && activeTab === "feedback-rating" && (
           <div className="em-tab-content">
-            <FeedbackRatingMasterContainer
-              onUpload={() => {
-                setUploadScreen("fb");
-                setUploadCycleId("");
-                goToTab("payroll-upload");
-              }}
-            />
+            <FeedbackRatingMasterContainer />
           </div>
         )}
 
