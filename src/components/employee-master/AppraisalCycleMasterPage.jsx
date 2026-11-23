@@ -105,7 +105,7 @@ const CYCLE_COLS = [
   { key: "start", label: "Start Date", kind: "text", get: (c) => formatDate(c.start), sort: (c) => String(c.start || "") },
   { key: "end", label: "Close Date", kind: "text", get: (c) => formatDate(c.end), sort: (c) => String(c.end || "") },
   { key: "status", label: "Status", kind: "text", get: (c) => String(statusOf(c) ?? "") },
-  { key: "next", label: "Next", kind: "text", get: (c) => nextBtn(c)?.name || (c.archived ? "Done" : "—") },
+  { key: "next", label: "Next", kind: "text", get: (c) => nextBtns(c).map((b) => b.name).join(" / ") || (c.archived ? "Done" : "—") },
 ];
 const CYCLE_COL_KEYS = ["id", "name", "process", "effective", "start", "end", "status", "next", "actions"];
 const CYCLE_COL_W = { id: 70, name: 150, process: 110, effective: 110, start: 110, end: 110, status: 100, next: 110, actions: 110 };
@@ -119,6 +119,8 @@ const SDESC = {
     "Cycle is running. Do the steps in any order and as often as needed; press Close when the cycle is finished.",
   Closed:
     "Cycle is finished. HR can still correct data, with a reason, until the cutoff date set in HR Config; press Archive when done.",
+  "Tech-ED Closed":
+    "Tech-ED has finished. HR can still work on the cycle. Press Close Cycle when HR is finished, or Reopen For Correction to let Tech-ED correct something.",
 };
 const EDESC = {
   Upcoming:
@@ -131,6 +133,12 @@ const EDESC = {
 const BDESC = {
   activate:
     "Starts the cycle and triggers the Eligibility List. Needs the Employee Master updated and payroll differences resolved or ignored. From now on Employee Master changes go to the Change list.",
+  techclose:
+    "Optional first close. Marks the cycle as finished for Tech-ED; the cycle stays Active for HR. You can close the cycle directly without this step.",
+  techreopen:
+    "Takes the cycle back from Tech-ED Closed so Tech-ED can correct something. The cycle stays Active.",
+  reopencycle:
+    "Switches this Closed cycle back to Active. Only the read-only lock is lifted; nothing else changes.",
   close:
     "Closes the cycle (Active → Closed). A window shows what is still pending; you choose Close anyway or Don't close yet.",
   archive:
@@ -140,9 +148,12 @@ const BDESC = {
 };
 const BTN = {
   Upcoming: { k: "activate", name: "Activate", to: "Active" },
-  Active: { k: "close", name: "Close", to: "Closed" },
+  Active: { k: "close", name: "Close Cycle", to: "Closed" },
   Closed: { k: "archive", name: "Archive", to: "Archived" },
 };
+const BTN_TECH_CLOSE = { k: "techclose", name: "Close For Tech-ED", to: "Tech-ED Closed" };
+const BTN_TECH_REOPEN = { k: "techreopen", name: "Reopen For Correction", to: "Active" };
+const BTN_REOPEN = { k: "reopen", name: "Reopen Cycle", to: "Active" };
 
 // Step / pending buttons -> tab key passed to onNavigate (EmployeeMaster decides what exists).
 const NAV_TAB = {
@@ -181,10 +192,26 @@ const isNewJoinerWorkflow = (c) =>
   c?.type === "New Joiner" && c?.process === "None";
 const hasSetupWorkflow = (c) =>
   c?.process === "Annual" || isNewJoinerWorkflow(c);
-const nextBtn = (c) =>
-  !c || c.archived || (!hasSetupWorkflow(c) && c.process === "None") || isHidden(c)
-    ? null
-    : BTN[c.status] || null;
+// Active Annual cycle that Tech-ED has finished (the cycle itself stays Active).
+const isTechEdClosed = (c) =>
+  !!c && c.status === "Active" && !c.archived && c.process === "Annual" && !!c.techEdClosed;
+// What the person sees as the status: Active splits into Active / Tech-ED Closed.
+const shownStatus = (c) => (isTechEdClosed(c) ? "Tech-ED Closed" : statusOf(c));
+// The buttons that move a cycle on (first one is the main one).
+//   Active:          Close For Tech-ED (optional)  |  Close Cycle
+//   Tech-ED Closed:  Close Cycle                   |  Reopen For Correction
+//   Closed:          Archive                       |  Reopen Cycle
+const nextBtns = (c) => {
+  if (!c || c.archived || (!hasSetupWorkflow(c) && c.process === "None") || isHidden(c))
+    return [];
+  if (c.status === "Active" && c.process === "Annual")
+    return isTechEdClosed(c)
+      ? [BTN.Active, BTN_TECH_REOPEN]
+      : [BTN_TECH_CLOSE, BTN.Active];
+  if (c.status === "Closed") return [BTN.Closed, BTN_REOPEN];
+  return BTN[c.status] ? [BTN[c.status]] : [];
+};
+const nextBtn = (c) => nextBtns(c)[0] || null;
 
 const rule = (label, ok, txt, act = "") => ({
   label,
@@ -815,6 +842,20 @@ export function AppraisalCycleMasterPage({
         "Cycle closed",
         `${c.name} is now Closed.`,
       );
+    else if (kind === "techclose")
+      ok = await mutateCycle(
+        `cycles/teched/${c.id}`,
+        { techEdClosed: true, remark: stepRemark },
+        "Closed for Tech-ED",
+        `${c.name} is closed for Tech-ED. It is still Active for HR.`,
+      );
+    else if (kind === "techreopen")
+      ok = await mutateCycle(
+        `cycles/teched/${c.id}`,
+        { techEdClosed: false, remark: stepRemark },
+        "Reopened for correction",
+        `${c.name} is open for Tech-ED again.`,
+      );
     else if (kind === "reopen")
       ok = await mutateCycle(
         `cycles/status/${c.id}`,
@@ -879,7 +920,7 @@ export function AppraisalCycleMasterPage({
       return;
     }
     const items =
-      (kind === "close" || kind === "archive") && cycle.process === "Annual"
+      (kind === "close" || kind === "archive" || kind === "techclose") && cycle.process === "Annual"
         ? pendingList.filter((x) => x.n > 0)
         : [];
     const ok = await runStep(
@@ -905,8 +946,7 @@ export function AppraisalCycleMasterPage({
     }
   };
 
-  const onNextClick = () => {
-    const b = nextBtn(current);
+  const onNextClick = (b = nextBtn(current)) => {
     if (b) openConfirm(b.k, current);
   };
 
@@ -1535,13 +1575,13 @@ export function AppraisalCycleMasterPage({
     [audit, sel],
   );
   const isStep = (a) =>
-    /(activ|clos|archiv|reopen|status|generat)/i.test(a.action || "");
+    /(activ|clos|archiv|reopen|status|generat|tech-ed)/i.test(a.action || "");
 
   /* ---------------- render pieces ---------------- */
 
   const stTagClass = (c) =>
-    ({ Active: "g1", Upcoming: "i", Open: "i", Closed: "a", Archived: "v" })[
-      statusOf(c)
+    ({ Active: "g1", "Tech-ED Closed": "a", Upcoming: "i", Open: "i", Closed: "a", Archived: "v" })[
+      shownStatus(c)
     ] || "gr";
 
   const ruleRows = (rs) =>
@@ -1612,10 +1652,22 @@ export function AppraisalCycleMasterPage({
             Delete cycle
           </DropdownMenuItem>
           <DropdownMenuItem
+            disabled={saving || !(st === "Active" && c.process === "Annual" && !c.techEdClosed)}
+            onSelect={() => openConfirm("techclose", c)}
+          >
+            Close For Tech-ED
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || !isTechEdClosed(c)}
+            onSelect={() => openConfirm("techreopen", c)}
+          >
+            Reopen For Correction
+          </DropdownMenuItem>
+          <DropdownMenuItem
             disabled={saving || st !== "Closed"}
             onSelect={() => openConfirm("reopen", c)}
           >
-            Reopen (Closed → Active)
+            Reopen Cycle (Closed → Active)
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={saving || st !== "Closed"}
@@ -1670,12 +1722,12 @@ export function AppraisalCycleMasterPage({
                   <td>{formatDate(c.end)}</td>
                   <td>
                     <span className={`acx-tag ${stTagClass(c)}`}>
-                      {statusOf(c)}
+                      {shownStatus(c)}
                     </span>
                   </td>
                   <td>
                     {nb ? (
-                      <b>{nb.name}</b>
+                      <b>{nextBtns(c).map((b) => b.name).join(" / ")}</b>
                     ) : c.archived ? (
                       <span className="acx-mut">Done</span>
                     ) : (
@@ -1734,13 +1786,16 @@ export function AppraisalCycleMasterPage({
     const st = statusOf(c);
     const stline = (
       <div className="acx-stl">
-        {["Upcoming", "Active", "Closed", "Archived"].map((s, i, a) => {
-          const idx = a.indexOf(st);
-          const cls = st === s ? "s on" : idx > -1 && i < idx ? "s dn" : "s";
+        {(c.process === "Annual"
+          ? ["Upcoming", "Active", "Tech-ED Closed", "Closed", "Archived"]
+          : ["Upcoming", "Active", "Closed", "Archived"]
+        ).map((s, i, a) => {
+          const idx = a.indexOf(shownStatus(c));
+          const cls = shownStatus(c) === s ? "s on" : idx > -1 && i < idx ? "s dn" : "s";
           return (
             <span key={s}>
               <span className={cls}>{s}</span>
-              {i < 3 && <span className="ar"> → </span>}
+              {i < a.length - 1 && <span className="ar"> → </span>}
             </span>
           );
         })}
@@ -1823,18 +1878,22 @@ export function AppraisalCycleMasterPage({
             <span className="acx-mut">
               {isNewJoinerWorkflow(c)
               ? "New Joiner · No process"
-              : `${c.process} process`} · Next: {nb.name} → {nb.to}
+              : `${c.process} process`} · Next: {nextBtns(c).map((b) => b.name).join(" or ")}
             </span>
           </div>
-          <div className="big">{c.status}</div>
+          <div className="big">{shownStatus(c)}</div>
           <div className="mut2">
             {isNewJoinerWorkflow(c)
               ? "New Joiner setup cycle. Complete the Employee Master and payroll uploads, then use the same Eligibility, Delegation, Feedback and Rating, and Appraisal Sheet steps as the Annual workflow."
-              : c.process === "Annual" ? SDESC[c.status] : EDESC[c.status]}
+              : c.process === "Annual" ? SDESC[shownStatus(c)] : EDESC[c.status]}
           </div>
           {stline}
-          <div className="h3">{nb.name}</div>
-          <div className="mut2">{BDESC[nb.k]}</div>
+          {nextBtns(c).map((b) => (
+            <div key={b.k}>
+              <div className="h3">{b.name}</div>
+              <div className="mut2">{BDESC[b.k === "reopen" ? "reopencycle" : b.k]}</div>
+            </div>
+          ))}
           {chk.length > 0 && <div className="acx-vl">{ruleRows(chk)}</div>}
           <div className="foot">
             <span className="tip">
@@ -2218,7 +2277,7 @@ export function AppraisalCycleMasterPage({
     if (!confirm) return null;
     const { kind, cycle: c } = confirm;
     const close = () => setConfirm(null);
-    const isStepKind = kind === "close" || kind === "archive";
+    const isStepKind = kind === "close" || kind === "archive" || kind === "techclose";
     const items =
       isStepKind && c.process === "Annual"
         ? pendingList.filter((x) => x.n > 0)
@@ -2226,9 +2285,11 @@ export function AppraisalCycleMasterPage({
     const has = items.length > 0;
     const verb = {
       activate: "Activate",
-      close: "Close",
+      close: "Close Cycle",
+      techclose: "Close For Tech-ED",
+      techreopen: "Reopen For Correction",
       archive: "Archive",
-      reopen: "Reopen",
+      reopen: "Reopen Cycle",
       delete: "Delete cycle",
       generate: "Generate",
     }[kind];
@@ -2309,7 +2370,7 @@ export function AppraisalCycleMasterPage({
               Nothing is pending.
             </div>
           ))}
-        {(isStepKind || kind === "activate" || kind === "reopen") && (
+        {(isStepKind || kind === "activate" || kind === "reopen" || kind === "techreopen") && (
           <>
             <label className="acx-fl">Remark (optional)</label>
             <textarea
@@ -2485,20 +2546,22 @@ export function AppraisalCycleMasterPage({
                 </span>
                 <span className="acx-seln">
                   {current
-                    ? `${current.name} (${current.id}) · ${statusOf(current)}`
+                    ? `${current.name} (${current.id}) · ${shownStatus(current)}`
                     : "No cycle selected"}
                 </span>
-                {canManageCycles && nb && (
-                  <button
-                    type="button"
-                    className="acx-btn cta"
-                    disabled={saving || !nextOk}
-                    title={nextOk ? "" : "Checks not met — see the Status card"}
-                    onClick={onNextClick}
-                  >
-                    {nb.name}
-                  </button>
-                )}
+                {canManageCycles &&
+                  nextBtns(current).map((b, i) => (
+                    <button
+                      key={b.k}
+                      type="button"
+                      className={`acx-btn${i === 0 || b.k === "close" ? " cta" : ""}`}
+                      disabled={saving || (b.k === "activate" && !nextOk)}
+                      title={b.k === "activate" && !nextOk ? "Checks not met — see the Status card" : BDESC[b.k === "reopen" ? "reopencycle" : b.k]}
+                      onClick={() => onNextClick(b)}
+                    >
+                      {b.name}
+                    </button>
+                  ))}
               </div>
 
               <div className="acx-ttabs" role="tablist">
