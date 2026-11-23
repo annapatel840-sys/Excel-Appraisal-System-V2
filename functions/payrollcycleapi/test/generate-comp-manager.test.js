@@ -14,6 +14,7 @@ const T = {
   sheet: '74008000000039094', master: '74008000000035727', payroll: '74008000000035326',
   cycles: '74008000000034190', audit: '74008000000034940', feedback: '74008000000022041',
   elig: '74008000000057046', delegation: '74008000000036124',
+  designations: 'Designations',
 };
 
 let DB;
@@ -21,19 +22,22 @@ let seq;
 function seed() {
   seq = 0;
   const master = [
-    { ROWID: 'M1', emp_id: 'EMP001', emp_name: 'Prabhu Parida', email_id: 'prabhu@x.com', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
-    { ROWID: 'M2', emp_id: 'EMP002', emp_name: 'Ashok Kumar', email_id: 'ashok@x.com', emp_status: 'Active', appraiser_tech_ed: 'EMP001 - Prabhu Parida' },
-    { ROWID: 'M3', emp_id: 'EMP003', emp_name: 'Riya Sen', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar', comp_manager: 'EMP001 - Prabhu Parida' },
-    { ROWID: 'M4', emp_id: 'EMP004', emp_name: 'Kabir Singh', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
-    { ROWID: 'M5', emp_id: 'EMP005', emp_name: 'Neha Verma', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
-    { ROWID: 'M6', emp_id: 'EMP006', emp_name: 'Neha Verma', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
-    { ROWID: 'M7', emp_id: 'EMP007', emp_name: 'Arjun Das', emp_status: 'Active', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
+    { ROWID: 'M1', emp_id: 'EMP001', emp_name: 'Prabhu Parida', email_id: 'prabhu@x.com', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
+    { ROWID: 'M2', emp_id: 'EMP002', emp_name: 'Ashok Kumar', email_id: 'ashok@x.com', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP001', appraiser_tech_ed: 'EMP001 - Prabhu Parida' },
+    { ROWID: 'M3', emp_id: 'EMP003', emp_name: 'Riya Sen', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar', comp_manager: 'EMP001 - Prabhu Parida' },
+    { ROWID: 'M4', emp_id: 'EMP004', emp_name: 'Kabir Singh', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
+    { ROWID: 'M5', emp_id: 'EMP005', emp_name: 'Neha Verma', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
+    { ROWID: 'M6', emp_id: 'EMP006', emp_name: 'Neha Verma', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
+    { ROWID: 'M7', emp_id: 'EMP007', emp_name: 'Arjun Das', emp_status: 'Active', designation: 'Software Engineer', director: 'EMP002', appraiser_tech_ed: 'EMP002 - Ashok Kumar' },
   ];
   DB = {
     [T.cycles]: [{ ROWID: 'C27', cycle_name: 'Annual 2027', status: 'Active', archived: false, start_date: '2026-04-01' }],
+    Designations: [
+      { ROWID: 'DS1', cycle_id: 'C27', name: 'Software Engineer', next_type: 'F', status: 'Active' },
+    ],
     [T.master]: master,
     [T.elig]: master.map((m, i) => ({ ROWID: 'E' + i, appraisal_cycle_id: 'C27', employee_master_id: m.ROWID, emp_id: m.emp_id, eligibility_status: 'Eligible', eligibility_source: 'Manual' })),
-    [T.payroll]: master.map((m, i) => ({ ROWID: 'P' + i, emp_id: m.ROWID, appraisal_cycle_name: 'C27', new_base_pay: 500000 })),
+    [T.payroll]: master.map((m, i) => ({ ROWID: 'P' + i, emp_id: m.ROWID, appraisal_cycle_name: 'C27', new_base_pay: 500000, Comp_Manager: 'EMP002' })),
     [T.feedback]: master.map((m, i) => ({ ROWID: 'F' + i, emp_ID: m.ROWID, appraisal_cycle_name: 'C27', manager_feedback: 'Good', manager_rating: 4 })),
     // Delegation (stores IDs and, for EMP007, a row ID).
     [T.delegation]: [
@@ -133,10 +137,10 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
 
   await t('a value that matches no employee, or a name two employees share, is left as it is', async () => {
     await generate();
-    assert.strictEqual(compManagerOf('EMP005'), 'Meena Joshi');
+    assert.strictEqual(compManagerOf('EMP005'), 'EMP002', 'invalid free-text assignment falls back to previous-year Comp Manager');
     DB[T.sheet].find((r) => r.ROWID === 'S6').comp_manager = 'Neha Verma'; // two employees are called Neha Verma
     await generate();
-    assert.strictEqual(compManagerOf('EMP006'), 'Neha Verma');
+    assert.strictEqual(compManagerOf('EMP006'), 'EMP002', 'ambiguous free-text assignment falls back to previous-year Comp Manager');
   });
 
   await t('a second Generate finds nothing to change', async () => {
@@ -146,10 +150,57 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(again.json.data.upToDate, true);
   });
 
+  await t('missing Comp Manager blocks before any Appraisal Sheet write', async () => {
+    DB[T.payroll].forEach((row) => { row.Comp_Manager = ''; });
+    DB[T.master].forEach((row) => { row.director = ''; row.comp_manager = ''; });
+    DB[T.sheet] = [];
+    const result = await generate();
+    assert.strictEqual(result.status, 409);
+    assert.match(result.json.message, /Comp Manager is missing/);
+    assert.strictEqual(DB[T.sheet].length, 0, 'no partial rows written');
+  });
+
+  await t('missing Appraiser Tech-ED blocks before any Appraisal Sheet write', async () => {
+    DB[T.master].find((row) => row.emp_id === 'EMP003').appraiser_tech_ed = '';
+    const result = await generate();
+    assert.strictEqual(result.status, 409);
+    assert.match(result.json.message, /Appraiser Tech-ED is not assigned/);
+    assert.strictEqual(DB[T.sheet].length, 4, 'pre-existing rows remain untouched and no new rows are written');
+  });
+
+  await t('designation absent from Designation Master blocks generation', async () => {
+    DB[T.master].find((row) => row.emp_id === 'EMP003').designation = 'New Designation';
+    const result = await generate();
+    assert.strictEqual(result.status, 409);
+    assert.match(result.json.message, /Designation Master validation failed/);
+    assert.strictEqual(DB[T.sheet].length, 4, 'no partial rows written');
+  });
+
+  await t('designation without a next mapping blocks, while Free Select is accepted', async () => {
+    DB.Designations[0].next_type = 'S';
+    DB.Designations[0].single_next_designation = '';
+    const blocked = await generate();
+    assert.strictEqual(blocked.status, 409);
+    assert.match(blocked.json.message, /no active next designation is mapped/);
+    DB.Designations[0].next_type = 'F';
+    const allowed = await generate();
+    assert.strictEqual(allowed.status, 200, JSON.stringify(allowed.json));
+  });
+
+  await t('current Director is the Comp Manager fallback when prior-year assignment is absent', async () => {
+    DB[T.payroll].forEach((row) => { row.Comp_Manager = ''; });
+    DB[T.master].forEach((row) => { row.comp_manager = ''; row.director = 'EMP002'; });
+    DB[T.sheet] = [];
+    const result = await generate();
+    assert.strictEqual(result.status, 200, JSON.stringify(result.json));
+    assert.strictEqual(compManagerOf('EMP003'), 'EMP002');
+  });
+
   await t('a location cycle reuses payroll, feedback, and ratings from its closed Annual source', async () => {
     const source = DB[T.cycles][0];
     source.status = 'Closed';
     DB[T.master][0].location = 'India';
+    DB.Designations.push({ ROWID: 'DS2', cycle_id: 'C28', name: 'Software Engineer', next_type: 'F', status: 'Active' });
     DB[T.cycles].push({
       ROWID: 'C28',
       cycle_name: 'India - Annual 2027',
@@ -179,6 +230,7 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
   await t('a location cycle can reuse payroll, feedback, and ratings before the shared Annual source is closed', async () => {
     DB[T.master][0].location = 'India';
     DB[T.master][1].location = 'Dubai';
+    DB.Designations.push({ ROWID: 'DS2', cycle_id: 'C28', name: 'Software Engineer', next_type: 'F', status: 'Active' });
     DB[T.cycles].push({
       ROWID: 'C28',
       cycle_name: 'India - Annual 2027',
