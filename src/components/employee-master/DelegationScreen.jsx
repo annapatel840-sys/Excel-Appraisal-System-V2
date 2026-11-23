@@ -3338,7 +3338,7 @@ export default function DelegationScreen({
   // cycle roster, not the global Employee Master employee list.
   const techEdCompManagerPeople = useMemo(() => {
     const uniquePeople = new Map();
-    allRows.forEach((row) => {
+    rows.forEach((row) => {
       const label = resolveName(row.comp || "");
       if (!label) return;
       const id = label.match(/^([a-z]*\\d+)\\s*-/i)?.[1] || label;
@@ -3349,7 +3349,7 @@ export default function DelegationScreen({
     return Array.from(uniquePeople.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  }, [allRows, resolveName]);
+  }, [rows, resolveName]);
   const techEdPeople = useMemo(() => {
     const uniquePeople = new Map();
     const add = (raw) => {
