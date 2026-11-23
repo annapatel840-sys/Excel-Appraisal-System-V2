@@ -1417,10 +1417,12 @@ export function AppraisalCycleMasterPage({
         "Payroll",
         paySub,
         sharedSource ? "ok" : w ? (!w.emUpdated || m ? "wn" : "ok") : "pd",
-        sharedSource ? [] : [
-          { l: "Open Mismatch ›", id: "go-mm", link: true },
-          { l: "Upload ›", id: "go-up-pay" },
-        ],
+        sharedSource
+          ? [{ l: "Upload ›", id: "go-up-pay" }]
+          : [
+              { l: "Open Mismatch ›", id: "go-mm", link: true },
+              { l: "Upload ›", id: "go-up-pay" },
+            ],
       ),
       row(
         "Active",
