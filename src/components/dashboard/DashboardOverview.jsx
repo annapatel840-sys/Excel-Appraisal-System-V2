@@ -7,6 +7,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useCurrentCycleInfo } from "@/lib/current-cycle";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { resolveBudgetAllocated } from "@/components/appraisal/BudgetStatsBar";
+import { useDistributionBudget } from "@/lib/distribution-budget";
 import { MANAGER_RATING_LABELS } from "@/lib/appraisal-data";
 import { useCompareCycles, usePreviousCycleData } from "@/lib/overview-compare";
 import {
@@ -716,11 +717,17 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     t.style.top = `${e.clientY + 14}px`;
   };
 
-  const { allocated } = resolveBudgetAllocated({
-    totals: budgetCtx.totals,
-    loading: budgetCtx.loading,
-    error: budgetCtx.error,
-  });
+  // Same source as the Appraisal Sheet, Bulk Edit and Detailed Screen headers: the
+  // Budget Distribution figure when it applies to this login, else the shared totals.
+  const distBudget = useDistributionBudget();
+  const { allocated } =
+    distBudget && distBudget.applies
+      ? { allocated: distBudget.updatedBudget }
+      : resolveBudgetAllocated({
+          totals: budgetCtx.totals,
+          loading: budgetCtx.loading,
+          error: budgetCtx.error,
+        });
 
   const edited = useMemo(() => manualEditedRowIds(rows, audit), [rows, audit]);
   const n = rows.length;

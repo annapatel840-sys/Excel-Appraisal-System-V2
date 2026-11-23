@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import {
@@ -172,13 +173,20 @@ export function BudgetProvider({ children }) {
     .trim()
     .toLowerCase();
   const [selectedLocation] = useSelectedLocation();
-  const budgetSnapshotScope = budgetCacheScope + "::" + String(selectedLocation || "All").trim().toLowerCase();
+  const budgetSnapshotScope =
+    budgetCacheScope +
+    "::" +
+    String(selectedLocation || "All")
+      .trim()
+      .toLowerCase();
   const initialBudget = useMemo(
     () => (budgetCacheScope ? readBudgetSnapshot(budgetSnapshotScope) : null),
     [budgetSnapshotScope],
   );
   const initialCycleId = String(
-    initialBudget?.display_appraisal_cycle_id || initialBudget?.active_appraisal_cycle_id || "",
+    initialBudget?.display_appraisal_cycle_id ||
+      initialBudget?.active_appraisal_cycle_id ||
+      "",
   ).trim();
   const initialTechEd = (
     Array.isArray(initialBudget?.techEd)
@@ -224,13 +232,16 @@ export function BudgetProvider({ children }) {
       if (!initialCycleId) return false;
       const childCycle = String(row.appraisal_cycle_id || "").trim();
       const parent = initialTechEd.find(
-        (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
+        (item) =>
+          String(item.id || "") === String(row.budget_distribution_id || ""),
       );
       // The parent Tech-Ed allocation is the authoritative cycle relationship.
       // Legacy child rows can store the cycle name (or an older cycle reference)
       // while their budget_distribution_id correctly links to this active parent.
-      return childCycle === initialCycleId ||
-        String(parent?.appraisal_cycle_id || "").trim() === initialCycleId;
+      return (
+        childCycle === initialCycleId ||
+        String(parent?.appraisal_cycle_id || "").trim() === initialCycleId
+      );
     });
 
   const roleText = String(currentUser.role || "")
@@ -253,8 +264,14 @@ export function BudgetProvider({ children }) {
     useState(initialTechEd);
   const [budgetCompManagerRows, setBudgetCompManagerRows] =
     useState(initialComp);
-  const [budgetCompManagerTransferOptions, setBudgetCompManagerTransferOptions] =
-    useState(Array.isArray(initialBudget?.compManagerTransferOptions) ? initialBudget.compManagerTransferOptions : []);
+  const [
+    budgetCompManagerTransferOptions,
+    setBudgetCompManagerTransferOptions,
+  ] = useState(
+    Array.isArray(initialBudget?.compManagerTransferOptions)
+      ? initialBudget.compManagerTransferOptions
+      : [],
+  );
   const [employeeRows, setEmployeeRows] = useState(
     Array.isArray(initialBudget?.employeeRoster)
       ? initialBudget.employeeRoster
@@ -295,7 +312,9 @@ export function BudgetProvider({ children }) {
       return;
     }
     const cycleId = String(
-      initialBudget.display_appraisal_cycle_id || initialBudget.active_appraisal_cycle_id || "",
+      initialBudget.display_appraisal_cycle_id ||
+        initialBudget.active_appraisal_cycle_id ||
+        "",
     ).trim();
     const techEd = (
       Array.isArray(initialBudget.techEd)
@@ -339,11 +358,14 @@ export function BudgetProvider({ children }) {
         if (!cycleId) return false;
         const childCycle = String(row.appraisal_cycle_id || "").trim();
         const parent = techEd.find(
-          (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
+          (item) =>
+            String(item.id || "") === String(row.budget_distribution_id || ""),
         );
         // Resolve legacy child-cycle values through the linked Tech-Ed parent.
-        return childCycle === cycleId ||
-          String(parent?.appraisal_cycle_id || "").trim() === cycleId;
+        return (
+          childCycle === cycleId ||
+          String(parent?.appraisal_cycle_id || "").trim() === cycleId
+        );
       });
     setActiveBudgetCycleId(cycleId);
     setBudgetRows(techEd);
@@ -351,9 +373,31 @@ export function BudgetProvider({ children }) {
     setBudgetDistributionRows(techEd);
     setBudgetCompManagerRows(comp);
     setBudgetCompManagerTransferOptions(
-      (Array.isArray(initialBudget.compManagerTransferOptions) ? initialBudget.compManagerTransferOptions : [])
-        .map((row) => ({ ...row, id: String(row.id || ""), appraisal_cycle_id: String(row.appraisal_cycle_id || ""), budget_distribution_id: String(row.budget_distribution_id || ""), comp_manager: String(row.comp_manager || ""), percentage: number(row.percentage), calculated_budget: number(row.calculated_budget), total_utilization: number(row.total_utilization), applied_budget: number(row.applied_budget) }))
-        .filter((row) => !cycleId || !row.appraisal_cycle_id || row.appraisal_cycle_id === cycleId || techEd.some((parent) => String(parent.id) === String(row.budget_distribution_id))),
+      (Array.isArray(initialBudget.compManagerTransferOptions)
+        ? initialBudget.compManagerTransferOptions
+        : []
+      )
+        .map((row) => ({
+          ...row,
+          id: String(row.id || ""),
+          appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+          budget_distribution_id: String(row.budget_distribution_id || ""),
+          comp_manager: String(row.comp_manager || ""),
+          percentage: number(row.percentage),
+          calculated_budget: number(row.calculated_budget),
+          total_utilization: number(row.total_utilization),
+          applied_budget: number(row.applied_budget),
+        }))
+        .filter(
+          (row) =>
+            !cycleId ||
+            !row.appraisal_cycle_id ||
+            row.appraisal_cycle_id === cycleId ||
+            techEd.some(
+              (parent) =>
+                String(parent.id) === String(row.budget_distribution_id),
+            ),
+        ),
     );
     setEmployeeRows(
       Array.isArray(initialBudget.employeeRoster)
@@ -368,284 +412,317 @@ export function BudgetProvider({ children }) {
     setLoading(false);
   }, [budgetCacheScope, budgetSnapshotScope, initialBudget]);
 
-  const runLoad = useCallback(async (generation) => {
-    const isCurrentLoad = () => loadGenerationRef.current === generation;
-    if (isCurrentLoad()) {
-      setLoading(!initialBudget);
-      setError("");
-    }
-    try {
-      // Do not gate budget refresh on the appraisal roster. The Appraisal
-      // provider loads/caches the roster independently; waiting here delays
-      // first paint on both Sheet and Detailed Screen and couples two requests.
-      const requestLocation = String(selectedLocation || "All");
-      const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
-      budgetUrl.searchParams.set("_ts", String(Date.now()));
-      budgetUrl.searchParams.set("location", requestLocation);
-      // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
-      budgetUrl.searchParams.set("gz", "1");
-      // Start both independent requests immediately, but do not make the
-      // Budget cards wait for the employee roster request to finish.
-      const requestUser = String(
-        authenticatedUser?.email ||
-          authenticatedUser?.id ||
-          authenticatedUser?.user_id ||
-          "anonymous",
-      )
-        .trim()
-        .toLowerCase();
-      const employeeResultPromise = fetchAllEligibleEmployees(
-        requestUser,
-        requestLocation,
-      ).then(
-        (employees) => ({ employees }),
-        (employeeError) => ({ employees: [], employeeError }),
-      );
-      const budgetResponse = await catalystFetch(budgetUrl.toString(), {
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
-      });
-
-      let budgetJson = {};
+  const runLoad = useCallback(
+    async (generation) => {
+      const isCurrentLoad = () => loadGenerationRef.current === generation;
+      if (isCurrentLoad()) {
+        setLoading(!initialBudget);
+        setError("");
+      }
       try {
-        budgetJson = await budgetResponse.json();
-      } catch (_) {
-        budgetJson = {};
-      }
-      if (!budgetResponse.ok) {
-        const statusText =
-          budgetResponse.status === 404
-            ? "Budget Master API is not deployed in the current Catalyst environment."
-            : (budgetJson && budgetJson.message) ||
-              `Failed to load Budget Master (${budgetResponse.status}).`;
-        throw new Error(statusText);
-      }
-
-      saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
-      if (!isCurrentLoad()) return;
-      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
-        ? budgetJson.techEd
-        : Array.isArray(budgetJson && budgetJson.data)
-          ? budgetJson.data
-          : [];
-      const apiTechEdOwners = Array.isArray(
-        budgetJson && budgetJson.techEdOwners,
-      )
-        ? budgetJson.techEdOwners
-        : [];
-      const masterRows = Array.isArray(budgetJson && budgetJson.master)
-        ? budgetJson.master
-        : [];
-      const compRows = Array.isArray(budgetJson && budgetJson.compManager)
-        ? budgetJson.compManager
-        : [];
-      const activeCycleId = String(
-        budgetJson?.display_appraisal_cycle_id || budgetJson?.active_appraisal_cycle_id || "",
-      ).trim();
-      setActiveBudgetCycleId(activeCycleId);
-      const normalizedTechEd = techEdRows
-        .map(normalizeRow)
-        .filter(
-          (row) =>
-            Boolean(activeCycleId) &&
-            String(row.appraisal_cycle_id || "").trim() === activeCycleId,
-        );
-      const normalizedMaster = masterRows
-        .map(normalizeRow)
-        .filter(
-          (row) =>
-            Boolean(activeCycleId) &&
-            String(row.appraisal_cycle_id || "").trim() === activeCycleId,
-        );
-      const normalizedComp = compRows
-        .map((row) => ({
-          ...row,
-          id: String(row.id || ""),
-          appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
-          budget_distribution_id: String(row.budget_distribution_id || ""),
-          comp_manager: String(row.comp_manager || ""),
-          percentage: number(row.percentage),
-          calculated_budget: number(row.calculated_budget),
-          total_utilization: number(row.total_utilization),
-          applied_budget: number(row.applied_budget),
-          utilization_percentage:
-            number(row.applied_budget) > 0
-              ? (number(row.total_utilization) / number(row.applied_budget)) *
-                100
-              : 0,
-        }))
-        .filter((row) => {
-          if (!activeCycleId) return false;
-          const childCycle = String(row.appraisal_cycle_id || "").trim();
-          const parent = normalizedTechEd.find(
-            (item) => String(item.id || "") === String(row.budget_distribution_id || ""),
-          );
-          // Keep a child when its parent belongs to this active cycle, even if
-          // the legacy child cycle value is a name or stale reference.
-          return childCycle === activeCycleId ||
-            String(parent?.appraisal_cycle_id || "").trim() === activeCycleId;
-        });
-      // Keep the existing budgetRows API shape for current screens, while
-      // exposing the three relational levels to every budget consumer.
-      setBudgetRows(normalizedTechEd);
-      setBudgetMasterRows(normalizedMaster);
-      setBudgetDistributionRows(normalizedTechEd);
-      setBudgetCompManagerRows(normalizedComp);
-      setBudgetCompManagerTransferOptions(
-        (Array.isArray(budgetJson && budgetJson.compManagerTransferOptions) ? budgetJson.compManagerTransferOptions : [])
-          .map((row) => ({ ...row, id: String(row.id || ""), appraisal_cycle_id: String(row.appraisal_cycle_id || ""), budget_distribution_id: String(row.budget_distribution_id || ""), comp_manager: String(row.comp_manager || ""), percentage: number(row.percentage), calculated_budget: number(row.calculated_budget), total_utilization: number(row.total_utilization), applied_budget: number(row.applied_budget) }))
-          .filter((row) => !activeCycleId || !row.appraisal_cycle_id || row.appraisal_cycle_id === activeCycleId || normalizedTechEd.some((parent) => String(parent.id) === String(row.budget_distribution_id))),
-      );
-
-      // The budget response is complete. Release the Budget loading state now;
-      // employee enrichment below must not hold up Budget Allocated.
-      setLoading(false);
-
-      const rosterEmployees =
-        activeCycleId && Array.isArray(budgetJson && budgetJson.employeeRoster)
-          ? budgetJson.employeeRoster
-          : [];
-
-      // Budget Master already returns its authoritative cycle-scoped roster.
-      // Publish it now so role matching and Budget Allocated do not wait for
-      // the slower supplementary employeesapi request.
-      setEmployeeRows(rosterEmployees);
-      setTechEdOwners(apiTechEdOwners);
-
-      // The full employeesapi roster is supplementary. It was started above
-      // in parallel, and is awaited only after the budget data is available.
-      const employeeResult = await employeeResultPromise;
-      if (!isCurrentLoad()) return;
-      const apiEmployees =
-        activeCycleId && Array.isArray(employeeResult.employees)
-          ? employeeResult.employees
-          : [];
-      // Merge rather than choose one source: employeesapi supplies the full
-      // employee detail where permitted, while Budget Master API guarantees
-      // the appraisal/master Tech-ED assignment is present.
-      const employeeById = new Map();
-      apiEmployees.forEach((employee) => {
-        const id = String(employee.emp_id || employee.employee_id || "")
+        // Do not gate budget refresh on the appraisal roster. The Appraisal
+        // provider loads/caches the roster independently; waiting here delays
+        // first paint on both Sheet and Detailed Screen and couples two requests.
+        const requestLocation = String(selectedLocation || "All");
+        const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
+        budgetUrl.searchParams.set("_ts", String(Date.now()));
+        budgetUrl.searchParams.set("location", requestLocation);
+        // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
+        budgetUrl.searchParams.set("gz", "1");
+        // Start both independent requests immediately, but do not make the
+        // Budget cards wait for the employee roster request to finish.
+        const requestUser = String(
+          authenticatedUser?.email ||
+            authenticatedUser?.id ||
+            authenticatedUser?.user_id ||
+            "anonymous",
+        )
           .trim()
           .toLowerCase();
-        if (id) employeeById.set(id, employee);
-      });
-      rosterEmployees.forEach((employee) => {
-        const id = String(employee.emp_id || employee.employee_id || "")
-          .trim()
-          .toLowerCase();
-        if (!id) return;
-        const previous = employeeById.get(id) || {};
-        employeeById.set(id, {
-          ...previous,
-          ...employee,
-          in_appraisal_sheet: true,
-          // Preserve the resolved Appraisal Sheet assignment separately;
-          // the raw lookup FK may be a numeric Employee_Master ROWID.
-          appraiser_tech_ed_row_id: String(
-            employee.appraiser_tech_ed_row_id ||
-              previous.appraiser_tech_ed_row_id ||
-              "",
-          ),
-          appraiser_tech_ed_appraisal_sheet: String(
-            employee.appraiser_tech_ed_appraisal_sheet ||
-              previous.appraiser_tech_ed_appraisal_sheet ||
-              "",
-          ),
-          appraiser_tech_ed: String(
-            employee.appraiser_tech_ed_appraisal_sheet ||
-              employee.appraiser_tech_ed ||
-              previous.appraiser_tech_ed_appraisal_sheet ||
-              previous.appraiser_tech_ed ||
-              previous.appraiser_tech_ed_id ||
-              "",
-          ),
+        const employeeResultPromise = fetchAllEligibleEmployees(
+          requestUser,
+          requestLocation,
+        ).then(
+          (employees) => ({ employees }),
+          (employeeError) => ({ employees: [], employeeError }),
+        );
+        const budgetResponse = await catalystFetch(budgetUrl.toString(), {
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
         });
-      });
-      const mergedEmployees = Array.from(employeeById.values());
-      setEmployeeRows(mergedEmployees);
 
-      // Tech-ED owners: the API list first, then any extra assignment found in
-      // the merged employees, so no Tech-ED from the Appraisal Sheet is missed.
-      const ownerByKey = new Map();
-      apiTechEdOwners.forEach((item) => {
-        const assignment = String((item && item.assignment) || "").trim();
-        if (assignment) {
-          ownerByKey.set(normalizeOwner(assignment), {
-            ...item,
-            assignment,
-            row_id: String(item.row_id || item.ROWID || ""),
-            employee_id: String(item.employee_id || item.emp_id || ""),
-            name: String(item.name || ""),
-          });
+        let budgetJson = {};
+        try {
+          budgetJson = await budgetResponse.json();
+        } catch (_) {
+          budgetJson = {};
         }
-      });
-      mergedEmployees.forEach((employee) => {
-        const assignment = String(
-          employee.appraiser_tech_ed ||
-            employee.appraiser_tech_ed_id ||
-            employee.tech_ed ||
-            employee.tech_ed_id ||
+        if (!budgetResponse.ok) {
+          const statusText =
+            budgetResponse.status === 404
+              ? "Budget Master API is not deployed in the current Catalyst environment."
+              : (budgetJson && budgetJson.message) ||
+                `Failed to load Budget Master (${budgetResponse.status}).`;
+          throw new Error(statusText);
+        }
+
+        saveBudgetSnapshot(budgetSnapshotScope, budgetJson);
+        if (!isCurrentLoad()) return;
+        const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
+          ? budgetJson.techEd
+          : Array.isArray(budgetJson && budgetJson.data)
+            ? budgetJson.data
+            : [];
+        const apiTechEdOwners = Array.isArray(
+          budgetJson && budgetJson.techEdOwners,
+        )
+          ? budgetJson.techEdOwners
+          : [];
+        const masterRows = Array.isArray(budgetJson && budgetJson.master)
+          ? budgetJson.master
+          : [];
+        const compRows = Array.isArray(budgetJson && budgetJson.compManager)
+          ? budgetJson.compManager
+          : [];
+        const activeCycleId = String(
+          budgetJson?.display_appraisal_cycle_id ||
+            budgetJson?.active_appraisal_cycle_id ||
             "",
         ).trim();
-        const key = normalizeOwner(assignment);
-        if (key && !ownerByKey.has(key)) ownerByKey.set(key, { assignment });
-      });
-      setTechEdOwners(Array.from(ownerByKey.values()));
-      setBudgetWarning(
-        String(
-          (budgetJson &&
-            budgetJson.diagnostics &&
-            budgetJson.diagnostics.warning) ||
-            "",
-        ),
-      );
+        setActiveBudgetCycleId(activeCycleId);
+        const normalizedTechEd = techEdRows
+          .map(normalizeRow)
+          .filter(
+            (row) =>
+              Boolean(activeCycleId) &&
+              String(row.appraisal_cycle_id || "").trim() === activeCycleId,
+          );
+        const normalizedMaster = masterRows
+          .map(normalizeRow)
+          .filter(
+            (row) =>
+              Boolean(activeCycleId) &&
+              String(row.appraisal_cycle_id || "").trim() === activeCycleId,
+          );
+        const normalizedComp = compRows
+          .map((row) => ({
+            ...row,
+            id: String(row.id || ""),
+            appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+            budget_distribution_id: String(row.budget_distribution_id || ""),
+            comp_manager: String(row.comp_manager || ""),
+            percentage: number(row.percentage),
+            calculated_budget: number(row.calculated_budget),
+            total_utilization: number(row.total_utilization),
+            applied_budget: number(row.applied_budget),
+            utilization_percentage:
+              number(row.applied_budget) > 0
+                ? (number(row.total_utilization) / number(row.applied_budget)) *
+                  100
+                : 0,
+          }))
+          .filter((row) => {
+            if (!activeCycleId) return false;
+            const childCycle = String(row.appraisal_cycle_id || "").trim();
+            const parent = normalizedTechEd.find(
+              (item) =>
+                String(item.id || "") ===
+                String(row.budget_distribution_id || ""),
+            );
+            // Keep a child when its parent belongs to this active cycle, even if
+            // the legacy child cycle value is a name or stale reference.
+            return (
+              childCycle === activeCycleId ||
+              String(parent?.appraisal_cycle_id || "").trim() === activeCycleId
+            );
+          });
+        // Keep the existing budgetRows API shape for current screens, while
+        // exposing the three relational levels to every budget consumer.
+        setBudgetRows(normalizedTechEd);
+        setBudgetMasterRows(normalizedMaster);
+        setBudgetDistributionRows(normalizedTechEd);
+        setBudgetCompManagerRows(normalizedComp);
+        setBudgetCompManagerTransferOptions(
+          (Array.isArray(budgetJson && budgetJson.compManagerTransferOptions)
+            ? budgetJson.compManagerTransferOptions
+            : []
+          )
+            .map((row) => ({
+              ...row,
+              id: String(row.id || ""),
+              appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+              budget_distribution_id: String(row.budget_distribution_id || ""),
+              comp_manager: String(row.comp_manager || ""),
+              percentage: number(row.percentage),
+              calculated_budget: number(row.calculated_budget),
+              total_utilization: number(row.total_utilization),
+              applied_budget: number(row.applied_budget),
+            }))
+            .filter(
+              (row) =>
+                !activeCycleId ||
+                !row.appraisal_cycle_id ||
+                row.appraisal_cycle_id === activeCycleId ||
+                normalizedTechEd.some(
+                  (parent) =>
+                    String(parent.id) === String(row.budget_distribution_id),
+                ),
+            ),
+        );
 
-      // Show the first problem found so a failed roster read is visible on the page.
-      if (budgetJson && budgetJson.rosterError) {
-        console.error("Budget Master roster error:", budgetJson.rosterError);
-        setError(
-          "Appraisal Sheet roster could not be read: " + budgetJson.rosterError,
+        // The budget response is complete. Release the Budget loading state now;
+        // employee enrichment below must not hold up Budget Allocated.
+        setLoading(false);
+
+        const rosterEmployees =
+          activeCycleId &&
+          Array.isArray(budgetJson && budgetJson.employeeRoster)
+            ? budgetJson.employeeRoster
+            : [];
+
+        // Budget Master already returns its authoritative cycle-scoped roster.
+        // Publish it now so role matching and Budget Allocated do not wait for
+        // the slower supplementary employeesapi request.
+        setEmployeeRows(rosterEmployees);
+        setTechEdOwners(apiTechEdOwners);
+
+        // The full employeesapi roster is supplementary. It was started above
+        // in parallel, and is awaited only after the budget data is available.
+        const employeeResult = await employeeResultPromise;
+        if (!isCurrentLoad()) return;
+        const apiEmployees =
+          activeCycleId && Array.isArray(employeeResult.employees)
+            ? employeeResult.employees
+            : [];
+        // Merge rather than choose one source: employeesapi supplies the full
+        // employee detail where permitted, while Budget Master API guarantees
+        // the appraisal/master Tech-ED assignment is present.
+        const employeeById = new Map();
+        apiEmployees.forEach((employee) => {
+          const id = String(employee.emp_id || employee.employee_id || "")
+            .trim()
+            .toLowerCase();
+          if (id) employeeById.set(id, employee);
+        });
+        rosterEmployees.forEach((employee) => {
+          const id = String(employee.emp_id || employee.employee_id || "")
+            .trim()
+            .toLowerCase();
+          if (!id) return;
+          const previous = employeeById.get(id) || {};
+          employeeById.set(id, {
+            ...previous,
+            ...employee,
+            in_appraisal_sheet: true,
+            // Preserve the resolved Appraisal Sheet assignment separately;
+            // the raw lookup FK may be a numeric Employee_Master ROWID.
+            appraiser_tech_ed_row_id: String(
+              employee.appraiser_tech_ed_row_id ||
+                previous.appraiser_tech_ed_row_id ||
+                "",
+            ),
+            appraiser_tech_ed_appraisal_sheet: String(
+              employee.appraiser_tech_ed_appraisal_sheet ||
+                previous.appraiser_tech_ed_appraisal_sheet ||
+                "",
+            ),
+            appraiser_tech_ed: String(
+              employee.appraiser_tech_ed_appraisal_sheet ||
+                employee.appraiser_tech_ed ||
+                previous.appraiser_tech_ed_appraisal_sheet ||
+                previous.appraiser_tech_ed ||
+                previous.appraiser_tech_ed_id ||
+                "",
+            ),
+          });
+        });
+        const mergedEmployees = Array.from(employeeById.values());
+        setEmployeeRows(mergedEmployees);
+
+        // Tech-ED owners: the API list first, then any extra assignment found in
+        // the merged employees, so no Tech-ED from the Appraisal Sheet is missed.
+        const ownerByKey = new Map();
+        apiTechEdOwners.forEach((item) => {
+          const assignment = String((item && item.assignment) || "").trim();
+          if (assignment) {
+            ownerByKey.set(normalizeOwner(assignment), {
+              ...item,
+              assignment,
+              row_id: String(item.row_id || item.ROWID || ""),
+              employee_id: String(item.employee_id || item.emp_id || ""),
+              name: String(item.name || ""),
+            });
+          }
+        });
+        mergedEmployees.forEach((employee) => {
+          const assignment = String(
+            employee.appraiser_tech_ed ||
+              employee.appraiser_tech_ed_id ||
+              employee.tech_ed ||
+              employee.tech_ed_id ||
+              "",
+          ).trim();
+          const key = normalizeOwner(assignment);
+          if (key && !ownerByKey.has(key)) ownerByKey.set(key, { assignment });
+        });
+        setTechEdOwners(Array.from(ownerByKey.values()));
+        setBudgetWarning(
+          String(
+            (budgetJson &&
+              budgetJson.diagnostics &&
+              budgetJson.diagnostics.warning) ||
+              "",
+          ),
         );
-      } else if (employeeResult.employeeError) {
-        // Budget Master API already returns its cycle-scoped employeeRoster.
-        // employeesapi is an auxiliary detail source; its failure must not mark
-        // an otherwise authoritative budget total as failed or trigger a demo value.
-        console.warn(
-          "Supplementary employee details could not be loaded; using Budget Master roster:",
-          employeeResult.employeeError,
-        );
+
+        // Show the first problem found so a failed roster read is visible on the page.
+        if (budgetJson && budgetJson.rosterError) {
+          console.error("Budget Master roster error:", budgetJson.rosterError);
+          setError(
+            "Appraisal Sheet roster could not be read: " +
+              budgetJson.rosterError,
+          );
+        } else if (employeeResult.employeeError) {
+          // Budget Master API already returns its cycle-scoped employeeRoster.
+          // employeesapi is an auxiliary detail source; its failure must not mark
+          // an otherwise authoritative budget total as failed or trigger a demo value.
+          console.warn(
+            "Supplementary employee details could not be loaded; using Budget Master roster:",
+            employeeResult.employeeError,
+          );
+        }
+      } catch (e) {
+        if (!isCurrentLoad()) return;
+        console.error("Failed to load Budget Master:", e);
+        // Keep a previously cached, usable snapshot on screen if refresh fails.
+        if (!initialBudget) {
+          setBudgetRows([]);
+          setBudgetMasterRows([]);
+          setActiveBudgetCycleId("");
+          setBudgetDistributionRows([]);
+          setBudgetCompManagerRows([]);
+          setEmployeeRows([]);
+          setTechEdOwners([]);
+        }
+        setError((e && e.message) || "Failed to load Budget Master.");
+      } finally {
+        if (isCurrentLoad()) setLoading(false);
       }
-    } catch (e) {
-      if (!isCurrentLoad()) return;
-      console.error("Failed to load Budget Master:", e);
-      // Keep a previously cached, usable snapshot on screen if refresh fails.
-      if (!initialBudget) {
-        setBudgetRows([]);
-        setBudgetMasterRows([]);
-        setActiveBudgetCycleId("");
-        setBudgetDistributionRows([]);
-        setBudgetCompManagerRows([]);
-        setEmployeeRows([]);
-        setTechEdOwners([]);
-      }
-      setError((e && e.message) || "Failed to load Budget Master.");
-    } finally {
-      if (isCurrentLoad()) setLoading(false);
-    }
-  }, [
-    authenticatedUser?.email,
-    authenticatedUser?.id,
-    authenticatedUser?.user_id,
-    budgetCacheScope,
-    budgetSnapshotScope,
-    initialBudget,
-    selectedLocation,
-  ]);
+    },
+    [
+      authenticatedUser?.email,
+      authenticatedUser?.id,
+      authenticatedUser?.user_id,
+      budgetCacheScope,
+      budgetSnapshotScope,
+      initialBudget,
+      selectedLocation,
+    ],
+  );
 
   // Deduplicate only within the same account/location. A location change
   // starts a fresh request, and the generation guard prevents an older result
@@ -756,14 +833,68 @@ export function BudgetProvider({ children }) {
   // budgetmasterapi rows (fresh or from the per-location browser snapshot)
   // carry no location field, but they are already scoped to the selected
   // location's cycle. Keep them; filter only rows that name a location.
+  // The Appraisal Sheet the login is looking at is the source of truth for "who is on
+  // the team". The budget roster can miss a person the sheet shows (different id or
+  // Tech-ED spelling), which made Team Size 16 where the sheet has 18. Add any such
+  // person here, in the roster's own field names, so every count agrees with the sheet.
+  let sheetRowsForTeam = [];
+  try {
+    sheetRowsForTeam = useAppraisal().rows || [];
+  } catch (x) {
+    sheetRowsForTeam = [];
+  }
+  // People on the Appraisal Sheet that the budget roster does not list (sheet rows are already
+  // limited to the selected location and the login), in the roster's own field names.
+  const sheetOnlyRows = useMemo(() => {
+    if (!sheetRowsForTeam.length) return [];
+    const have = new Set(
+      employeeRows
+        .map((e) =>
+          String(e.emp_id || e.employee_id || e.empId || "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    );
+    const extra = [];
+    sheetRowsForTeam.forEach((r) => {
+      const id = String(r.empId || "").trim();
+      if (!id || have.has(id.toLowerCase())) return;
+      have.add(id.toLowerCase());
+      extra.push({
+        emp_id: id,
+        employee_id: id,
+        empId: id,
+        emp_name: r.name,
+        name: r.name,
+        appraiser_tech_ed: r.appraiserTechED,
+        appraiser_tech_ed_appraisal_sheet: r.appraiserTechED,
+        comp_manager: r.compManager,
+        comp_manager_display: r.compManagerDisplay || r.compManager,
+        status: r.status,
+        eligible_status: r.eligibility,
+        hike_amount: r.hikeAmount,
+        allocated_pb_amount: r.allocatedPBAmount,
+        new_rb: r.newRB,
+        in_appraisal_sheet: true,
+      });
+    });
+    return extra;
+  }, [employeeRows, sheetRowsForTeam]);
+  const employeeRowsWithSheet = useMemo(
+    () =>
+      sheetOnlyRows.length ? [...employeeRows, ...sheetOnlyRows] : employeeRows,
+    [employeeRows, sheetOnlyRows],
+  );
   const locationEmployeeRows = useMemo(() => {
-    if (isAllLocations(selectedLocation)) return employeeRows;
+    if (isAllLocations(selectedLocation)) return employeeRowsWithSheet;
     const withLocation = employeeRows.filter((row) => locationOfRow(row));
     const matched = new Set(filterByLocation(withLocation, selectedLocation));
-    return employeeRows.filter(
+    const base = employeeRows.filter(
       (row) => !locationOfRow(row) || matched.has(row),
     );
-  }, [employeeRows, selectedLocation]);
+    return sheetOnlyRows.length ? [...base, ...sheetOnlyRows] : base;
+  }, [employeeRows, employeeRowsWithSheet, sheetOnlyRows, selectedLocation]);
 
   const rows = useMemo(
     () =>
@@ -1299,7 +1430,12 @@ export function BudgetProvider({ children }) {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, resource, appraisal_cycle_id: activeBudgetCycleId, ...payload }),
+          body: JSON.stringify({
+            id,
+            resource,
+            appraisal_cycle_id: activeBudgetCycleId,
+            ...payload,
+          }),
         },
       );
       const result = await response.json();
@@ -1401,7 +1537,7 @@ export function BudgetProvider({ children }) {
         budgetDistributionRows,
         budgetCompManagerRows,
         budgetCompManagerTransferOptions,
-        employeeRows,
+        employeeRows: employeeRowsWithSheet,
         locationEmployeeRows,
         selectedLocation,
         techEdOwners,
