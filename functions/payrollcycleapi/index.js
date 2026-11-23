@@ -1277,21 +1277,30 @@ async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
   return { criteria: null, criteriaHistory, inherited: false };
 }
 
-// Eligibility List generation is not allowed to take a roster snapshot
-// while an in-scope, criteria-passing employee has no payroll history.
-// This check is read-only and runs before syncEligibilityRows or any audit write.
-async function validatePayrollBeforeEligibility(tables, cycle, criteria) {
+// Validate payroll readiness with the same source-cycle/history rules as
+// Appraisal Sheet generation. Payroll_Data.appraisal_cycle_name stores the
+// source cycle ROWID, not an arbitrary historical cycle label.
+async function validatePayrollBeforeEligibility(tables, cycle, criteria = {}) {
+  if (cycleProcessOf(cycle) !== "Annual") return;
   const [masters, payrollRows, cycleRows, locations] = await Promise.all([
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.payroll),
-    getAllRows(tables.cycles),
-    getAllRows(tables.locations),
+    getAllRows(tables.employeeMaster), getAllRows(tables.payroll),
+    getAllRows(tables.cycles), getAllRows(tables.locations),
   ]);
-  const rawCycle = cycleRows.find((row) =>
-    String(row.ROWID || row.rowid || "") === String(cycle.sourceRowId || cycle.id),
-  );
-  const currentYear = cycleYear(cycle);
+  const allCycles = cycleRows.map(normalizeCycle);
   const lower = (value) => String(value ?? "").trim().toLowerCase();
+  const ref = (value) => value && typeof value === "object"
+    ? String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ??
+      value.emp_id ?? value.employee_id ?? value.cycle_name ?? value.appraisal_cycle_name ?? "").trim()
+    : String(value ?? "").trim();
+  const field = (row, ...names) => {
+    const keys = Object.keys(row || {});
+    for (const name of names) {
+      const key = keys.find((item) => item.toLowerCase() === name.toLowerCase());
+      if (key !== undefined && row[key] !== null && row[key] !== undefined) return row[key];
+    }
+    return undefined;
+  };
+  const currentYear = cycleYear(cycle);
   const departments = new Set((criteria.departments || []).map(lower));
   const designations = new Set((criteria.designations || []).map(lower));
   const excludedEmployees = new Set((criteria.excludedEmployees || []).map(lower));
@@ -1299,60 +1308,85 @@ async function validatePayrollBeforeEligibility(tables, cycle, criteria) {
   const cutoff = isoDateOf(criteria.cutoffDate);
   const candidates = masters.filter((master) => {
     if (!inCycleLocation(cycle, master, locations)) return false;
-    if (lower(master.emp_status || master.status || "Active") !== "active") return false;
-    const empId = lower(master.emp_id || master.employee_id || master.emp_code);
-    if (!empId) return false;
-    if (departments.has(lower(master.department || master.organization))) return false;
-    if (designations.has(lower(master.designation))) return false;
-    if (excludedEmployees.has(empId)) return false;
-    if (statuses.has(lower(master.emp_status || master.status || "Active"))) return false;
+    if (lower(field(master, "emp_status", "status") || "Active") !== "active") return false;
+    const empId = lower(field(master, "emp_id", "employee_id", "emp_code"));
+    if (!empId || departments.has(lower(field(master, "department", "organization"))) ||
+        designations.has(lower(field(master, "designation"))) ||
+        excludedEmployees.has(empId) ||
+        statuses.has(lower(field(master, "emp_status", "status") || "Active"))) return false;
     if ((criteria.extraParameters || []).some((param) => failsCriteriaParam(param, master))) return false;
     if (cutoff) {
-      const doj = isoDateOf(master.joining_date || master.date_of_join || master.date_of_joining || master.doj);
+      const doj = isoDateOf(field(master, "joining_date", "date_of_join", "date_of_joining", "doj"));
       if (!doj || doj > cutoff) return false;
     }
     return true;
   });
   if (!candidates.length) return;
-
   const masterByKey = new Map();
   candidates.forEach((master) => {
-    [master.ROWID, master.rowid, master.emp_id, master.employee_id, master.emp_code]
-      .filter((value) => value !== undefined && value !== null && String(value).trim())
-      .forEach((value) => masterByKey.set(lower(value), master));
+    [ref(master.ROWID ?? master.rowid), field(master, "emp_id", "employee_id", "emp_code")]
+      .map(lower).filter(Boolean).forEach((key) => masterByKey.set(key, master));
   });
+  const cycleByReference = new Map();
+  allCycles.forEach((item) => [item.id, item.sourceRowId, item.name].map(lower).filter(Boolean)
+    .forEach((key) => cycleByReference.set(key, item)));
+  const isCancelled = (item) => ["cancelled", "canceled"].includes(lower(item?.status));
+  const isNewJoiner = (item) => /new[\s_-]*joiners?/i.test(String(item?.name || ""));
+  const isAnnual = (item) => /\bannual\b/i.test(String(item?.name || ""));
+  const isBeforeCurrent = (item) => {
+    const itemYear = Number(cycleYear(item)) || 0;
+    const current = Number(currentYear) || 0;
+    const itemDate = String(item.effective || item.end || item.start || "");
+    const currentDate = String(cycle.effective || cycle.end || cycle.start || "");
+    return itemYear < current || (itemYear === current && itemDate && currentDate && itemDate < currentDate);
+  };
+  const canonicalName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
+  const sharedSource = cycleLocationKey(cycle)
+    ? allCycles.find((item) =>
+        String(item.id) !== String(cycle.id) && !cycleLocationKey(item) &&
+        !isCancelled(item) &&
+        cycleNameWithoutLocation(item.name).trim().toLowerCase() === canonicalName &&
+        cycleYear(item) === currentYear && cycleTypeOf(item.name) === cycleTypeOf(cycle.name))
+    : null;
+  const usableHistoryCycle = (item) => !!item && !isCancelled(item) && (
+    String(item.id) === String(cycle.id) ||
+    (sharedSource && String(item.id) === String(sharedSource.id)) ||
+    (isNewJoiner(item) && cycleYear(item) === currentYear) ||
+    (isAnnual(item) && isBeforeCurrent(item))
+  );
   const payrollReady = new Set();
   payrollRows.forEach((row) => {
-    const employeeRef = row.emp_id ?? row.employee_master_id ?? row.employee_id ?? row.emp_code;
-    const rawRef = employeeRef && typeof employeeRef === "object"
-      ? employeeRef.ROWID ?? employeeRef.rowid ?? employeeRef.id ?? employeeRef.emp_id ?? ""
-      : employeeRef;
-    const master = masterByKey.get(lower(rawRef));
+    const rawCycle = ref(field(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"));
+    const matchedCycle = cycleByReference.get(lower(rawCycle));
+    if (!usableHistoryCycle(matchedCycle)) return;
+    const rawEmployee = lower(ref(field(row, "emp_id", "employee_master_id", "employee_id", "emp_code")));
+    const master = masterByKey.get(rawEmployee);
     if (!master) return;
-    payrollReady.add(lower(master.ROWID || master.rowid));
-    payrollReady.add(lower(master.emp_id || master.employee_id || master.emp_code));
+    const employeeHasLocation = Boolean(employeeLocationKey(master));
+    const sameLocation = cycleLocationKey(matchedCycle) === cycleLocationKey(cycle);
+    const locationMatches = inCycleLocation(matchedCycle, master, locations) ||
+      (!employeeHasLocation && (!cycleLocationKey(matchedCycle) || sameLocation));
+    if (!locationMatches) return;
+    payrollReady.add(lower(ref(master.ROWID ?? master.rowid)));
+    payrollReady.add(lower(field(master, "emp_id", "employee_id", "emp_code")));
   });
-
   const missing = candidates.filter((master) => {
-    const masterId = lower(master.ROWID || master.rowid);
-    const empId = lower(master.emp_id || master.employee_id || master.emp_code);
+    const masterId = lower(ref(master.ROWID ?? master.rowid));
+    const empId = lower(field(master, "emp_id", "employee_id", "emp_code"));
     if (payrollReady.has(masterId) || payrollReady.has(empId)) return false;
-    const doj = isoDateOf(master.joining_date || master.date_of_join || master.date_of_joining || master.doj);
-    const joiningYear = (doj.match(/^(?:19|20)\\d{2}/) || [])[0] || "";
-    // Current-year joiners are intentionally handled as New Joiners.
+    const doj = isoDateOf(field(master, "joining_date", "date_of_join", "date_of_joining", "doj"));
+    const joiningYear = (doj.match(/(?:19|20)\d{2}/) || [])[0] || "";
     return !(currentYear && joiningYear === currentYear);
   });
   if (!missing.length) return;
-
   const names = missing.map((master) => {
-    const id = String(master.emp_id || master.employee_id || master.emp_code || "").trim();
-    const name = String(master.emp_name || master.name || "").trim();
+    const id = String(field(master, "emp_id", "employee_id", "emp_code") || "").trim();
+    const name = String(field(master, "emp_name", "name") || "").trim();
     return name ? `${id} - ${name}` : id;
   }).filter(Boolean);
   throw new ApiError(
-    `Payroll data is not updated. Eligibility List cannot be generated for ${cycle.name} until payroll history is available for all eligible employees. Missing employees: ${names.join(", ")}. Upload the missing payroll data and try again.`,
-    409,
-    "ELIGIBILITY_PAYROLL_MISSING",
+    `Payroll data is not uploaded or updated for ${missing.length} employee(s) in ${cycle.name}. Eligibility List cannot be generated and the cycle cannot be activated until the missing payroll data is uploaded. Missing employees: ${names.join(", ")}.`,
+    409, "ELIGIBILITY_PAYROLL_MISSING",
   );
 }
 
@@ -1363,14 +1397,15 @@ async function applyEligibilityCriteria(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+  // Check payroll before the status gate and before any Eligibility_List or
+  // audit writes, so every entry point reports the same prerequisite error.
+  const criteria = cleanCriteria(body);
+  await validatePayrollBeforeEligibility(tables, cycle, criteria);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
   // Apply Criteria can be run again for the Active cycle (Edit Criteria → Apply):
   // rows are re-evaluated against the new criteria and manual decisions are kept.
-  const criteria = cleanCriteria(body);
-  // Fail before any Eligibility_List writes or audit entries.
-  await validatePayrollBeforeEligibility(tables, cycle, criteria);
 
   // Ensure all active employees have an initial Eligible row and retain
   // existing inactive employees as visible Not Eligible rows.
@@ -4412,6 +4447,27 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "cycles" && req.method === "GET") {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    if (String(query.payrollReadiness || "") === "1") {
+      const locationRows = await getAllRows(tables.locations);
+      const requestedLocation = String(query.location || "").trim().toLowerCase();
+      const candidates = cycles.filter((item) =>
+        ["upcoming", "active"].includes(String(item.status || "").trim().toLowerCase()) &&
+        !item.archived && !item.hidden &&
+        (requestedLocation
+          ? locationAliases(item.location, locationRows).has(requestedLocation)
+          : !cycleLocationKey(item))
+      );
+      const target = candidates.find((item) => String(item.status).toLowerCase() === "active") ||
+        candidates.find((item) => String(item.status).toLowerCase() === "upcoming");
+      if (target && cycleProcessOf(target) === "Annual") {
+        try {
+          await validatePayrollBeforeEligibility(tables, target, cleanCriteria({}));
+        } catch (error) {
+          if (error?.code !== "ELIGIBILITY_PAYROLL_MISSING") throw error;
+          target.payrollError = error.message;
+        }
+      }
+    }
     return sendJson(res, 200, { success: true, data: cycles });
   }
 
@@ -5194,6 +5250,10 @@ async function routeRequest(req, res, identity, resource, a) {
       if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only. Unarchive the cycle first." });
       if (!(CYCLE_MOVES[existing.status] || []).includes(status)) {
         return sendJson(res, 409, { success: false, message: `A cycle cannot move from ${existing.status} to ${status}.` });
+      }
+      if (status === "Active" && cycleProcessOf(existing) === "Annual") {
+        // This read-only check must pass before status/access/eligibility/audit writes.
+        await validatePayrollBeforeEligibility(tables, existing, cleanCriteria({}));
       }
       const otherActive = otherActiveCycle(id);
       if (status === "Active" && otherActive) {
