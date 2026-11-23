@@ -14,7 +14,8 @@ import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { buildInfo } from "./DetailSidePanel";
+import { buildInfo, FeedbackTab } from "./DetailSidePanel";
+import { PANEL_CSS } from "./detailPanelCss";
 import { loadRules } from "@/lib/detail-highlight-rules";
 import { ColumnFilter } from "./ColumnFilter";
 import { ColumnOrderMenu } from "./ColumnOrderMenu";
@@ -1127,7 +1128,7 @@ function EmployeePanel({
     ([key]) => key !== "request" || showRequest,
   );
 
-  const subList = PANEL_SUBS[activeTab] || [];
+  const subList = activeTab === "feedback" ? [] : PANEL_SUBS[activeTab] || [];
   const sub = subs[activeTab];
 
   const panelWidth = width;
@@ -1930,7 +1931,17 @@ function EmployeePanel({
         {activeTab === "info"
           ? renderInfo()
           : activeTab === "feedback"
-          ? renderFeedback()
+          ? (
+            <div className="rp" style={{ width: "100%", minWidth: 0, maxWidth: "none", border: 0, boxShadow: "none", background: "transparent", height: "auto" }}>
+              <style>{PANEL_CSS}</style>
+              <FeedbackTab
+                employee={employee}
+                history={(history.rows || []).slice(1).filter((record) => !isExceptionRecord(record))}
+                items={feedbackData.items}
+                currentCycleName={currentCycleName}
+              />
+            </div>
+          )
           : activeTab === "request"
             ? renderRequest()
             : renderMore()}
@@ -2858,7 +2869,6 @@ export function AppraisalGrid({
   // ============================================================
 
   const [detailOpen, setDetailOpen] = useState(false);
-  const [metricsOpen, setMetricsOpen] = useState(false);
 
   // ============================================================
   // SELECTED EMPLOYEE (drives the history panel + right panel)
@@ -5710,56 +5720,6 @@ export function AppraisalGrid({
           </div>
         )}
       </div>
-
-      {/* METRICS STRIP (fold / unfold) — placeholder, sits left of the panel */}
-
-      {detailOpen && liveHistoryRow && (
-        <div
-          className={cn(
-            "relative shrink-0 border-l border-[#d5dce5] bg-white",
-            metricsOpen
-              ? "w-[300px]"
-              : "w-[34px] cursor-pointer hover:bg-[#f6f7f9]",
-          )}
-          style={{ fontFamily: APPRAISAL_FONT }}
-          onClick={() => {
-            if (!metricsOpen) {
-              setMetricsOpen(true);
-            }
-          }}
-          title={metricsOpen ? undefined : "Open metrics"}
-        >
-          {metricsOpen ? (
-            <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#fafbfd] p-4 text-center text-[12.5px] text-[#6b7280]">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setMetricsOpen(false);
-                }}
-                className="absolute right-2 top-2 rounded-md border border-[#d1d5db] bg-white px-2 py-[3px] text-[12px] text-[#374151]"
-                title="Fold metrics"
-              >
-                ‹ Fold
-              </button>
-
-              <b className="text-[14px] text-[#102a43]">Metrics</b>
-              <div>Placeholder</div>
-              <div>Team and org metrics open as separate screens.</div>
-            </div>
-          ) : (
-            <span
-              className="absolute left-2 top-3.5 text-[12.5px] font-bold text-[#102a43]"
-              style={{
-                writingMode: "vertical-rl",
-                transform: "rotate(180deg)",
-              }}
-            >
-              Metrics ›
-            </span>
-          )}
-        </div>
-      )}
 
       {/* RIGHT PANEL — opens when an employee name is clicked and follows the
           selected row. Tabs: Feedback, Request (Tech Ed only), + More. */}

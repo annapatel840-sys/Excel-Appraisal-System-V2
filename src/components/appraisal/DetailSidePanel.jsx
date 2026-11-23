@@ -455,7 +455,7 @@ function InfoTab({ employee, info }) {
    FEEDBACK  (one grid for the cycles, then the written feedback)
 ============================================================ */
 
-function FeedbackTab({ employee, history, items, currentCycleName }) {
+export function FeedbackTab({ employee, history, items, currentCycleName }) {
   const cycles = useMemo(
     () => (employee ? buildFeedbackRows(employee, history, items, currentCycleName) : []),
     [employee, history, items, currentCycleName],
