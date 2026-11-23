@@ -4563,6 +4563,21 @@ async function routeRequest(req, res, identity, resource, a) {
       if (exact) targetCycles = [exact];
     }
     const cycle = targetCycles[0] || null;
+    // If activation was correctly blocked, HR may still open the Eligibility
+    // step from the Upcoming cycle. Surface the same payroll prerequisite
+    // instead of returning an apparently empty/healthy list.
+    if (!cycle) {
+      const upcoming = cycles.find((item) =>
+        String(item.status || "").trim().toLowerCase() === "upcoming" &&
+        !item.archived && !item.hidden &&
+        (queryCycleId
+          ? item.id === queryCycleId
+          : cycleMatchesRequestedLocation(item))
+      );
+      if (upcoming && cycleProcessOf(upcoming) === "Annual") {
+        await validatePayrollBeforeEligibility(tables, upcoming, cleanCriteria({}));
+      }
+    }
     if (["1", "true"].includes(String(query.count || "").trim().toLowerCase())) {
       if (!targetCycles.length) {
         return sendJson(res, 200, { success: true, data: { cycleId: "", total: 0, criteriaApplied: false } });
