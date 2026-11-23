@@ -457,7 +457,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       return Promise.all([
         run(
           "cycle",
-          () => payrollCycleRequest("cycles", { fresh }),
+          () => payrollCycleRequest("cycles", { fresh, query: { payrollReadiness: 1, location } }),
           (list) => setCycle(pickCycle(list, location) || { none: true }),
         ),
         run(
@@ -1144,6 +1144,11 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         <div className="hrd-warn">
           {locLabel} has no appraisal cycle yet, so there is nothing to track.
           Create or activate one in Appraisal Cycle Master.
+        </div>
+      )}
+      {activeCycle?.payrollError && (
+        <div className="hrd-warn" role="alert">
+          {activeCycle.payrollError}
         </div>
       )}
       {failed.length > 0 && (
