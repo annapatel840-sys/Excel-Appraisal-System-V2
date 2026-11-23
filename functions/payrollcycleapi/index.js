@@ -1338,6 +1338,7 @@ async function validatePayrollBeforeEligibility(tables, cycle, criteria = {}) {
     const current = Number(currentYear) || 0;
     const itemDate = String(item.effective || item.end || item.start || "");
     const currentDate = String(cycle.effective || cycle.end || cycle.start || "");
+    if (!current) return Boolean(itemDate && currentDate && itemDate < currentDate);
     return itemYear < current || (itemYear === current && itemDate && currentDate && itemDate < currentDate);
   };
   const canonicalName = cycleNameWithoutLocation(cycle.name).trim().toLowerCase();
