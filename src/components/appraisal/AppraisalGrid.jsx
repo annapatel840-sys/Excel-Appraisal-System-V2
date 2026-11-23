@@ -1934,12 +1934,14 @@ function EmployeePanel({
           ? (
             <div className="rp" style={{ width: "100%", minWidth: 0, maxWidth: "none", border: 0, boxShadow: "none", background: "transparent", height: "auto" }}>
               <style>{PANEL_CSS}</style>
+              <div style={{ overflowX: "auto", maxWidth: "100%" }}>
               <FeedbackTab
                 employee={employee}
                 history={(history.rows || []).slice(1).filter((record) => !isExceptionRecord(record))}
                 items={feedbackData.items}
                 currentCycleName={currentCycleName}
               />
+              </div>
             </div>
           )
           : activeTab === "request"
