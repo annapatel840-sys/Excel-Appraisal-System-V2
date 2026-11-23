@@ -3333,6 +3333,23 @@ export default function DelegationScreen({
       a.name.localeCompare(b.name),
     );
   }, [globalEmployeeOptions, rows]);
+  // Tech-ED users may reassign only among the Comp. Managers already
+  // mapped under their own team. Build these options from the complete
+  // cycle roster, not the global Employee Master employee list.
+  const techEdCompManagerPeople = useMemo(() => {
+    const uniquePeople = new Map();
+    allRows.forEach((row) => {
+      const label = resolveName(row.comp || "");
+      if (!label) return;
+      const id = label.match(/^([a-z]*\\d+)\\s*-/i)?.[1] || label;
+      const key = normText(id);
+      if (!key) return;
+      uniquePeople.set(key, { id: label, name: label, roles: [] });
+    });
+    return Array.from(uniquePeople.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [allRows, resolveName]);
   const techEdPeople = useMemo(() => {
     const uniquePeople = new Map();
     const add = (raw) => {
@@ -4730,7 +4747,7 @@ export default function DelegationScreen({
                                   }
                                   disabled={editLocked || (isTechEdUser && f !== "comp")}
                                   value={cur}
-                                  people={f === "app" ? techEdPeople : people}
+                                  people={f === "app" ? techEdPeople : isTechEdUser ? techEdCompManagerPeople : people}
                                   onOpen={f === "app" ? loadGlobalTechEdOptions : undefined}
                                   onSelect={(person) => {
                                     if (directAssignment(f)) {
@@ -5145,7 +5162,7 @@ export default function DelegationScreen({
             onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
           >
             <option value="">— choose —</option>
-            {(bulk.field === "app" ? techEdPeople : people).map((p) => (
+            {(bulk.field === "app" ? techEdPeople : isTechEdUser ? techEdCompManagerPeople : people).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {p.roles.join(", ")}
               </option>
