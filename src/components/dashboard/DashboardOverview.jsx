@@ -45,7 +45,15 @@ import "./overview.css";
    from the Budget store for the same login and location. Nothing here widens
    that scope. */
 
-const C = { hike: "#1D3B5E", pb: "#4F7FB8", rb: "#A9C4E4", left: "#DCE1E7", warn: "#C98A1B", track: "#EEF1F4", target: "#B8C0CC" };
+const C = {
+  hike: "#1D3B5E",
+  pb: "#4F7FB8",
+  rb: "#A9C4E4",
+  left: "#DCE1E7",
+  warn: "#C98A1B",
+  track: "#EEF1F4",
+  target: "#B8C0CC",
+};
 const RATING_COLORS = ["#DCE1E7", "#A9C4E4", "#6F9BD0", "#3E6FA8", "#1D3B5E"];
 const LIGHT = new Set(["#DCE1E7", "#A9C4E4", "#EEF1F4", "#B8C0CC"]);
 const MAX_PEOPLE_SHOWN = 500;
@@ -63,7 +71,12 @@ export function Toggle({ value, options, onChange }) {
   return (
     <div className="ctog">
       {options.map(([k, label]) => (
-        <button key={k} type="button" className={value === k ? "on" : ""} onClick={() => onChange(k)}>
+        <button
+          key={k}
+          type="button"
+          className={value === k ? "on" : ""}
+          onClick={() => onChange(k)}
+        >
           {label}
         </button>
       ))}
@@ -79,13 +92,20 @@ function Seg({ parts, total, unit }) {
       {parts.map((p, i) => {
         const w = Math.max(0, (p.value / t) * 100);
         if (w <= 0) return null;
-        if (p.blank) return <i key={i} style={{ width: `${w}%`, background: p.color }} />;
-        const lab = unit === "p" ? (p.pText ?? `${w.toFixed(0)}%`) : (p.nText ?? barNum(p.value));
+        if (p.blank)
+          return <i key={i} style={{ width: `${w}%`, background: p.color }} />;
+        const lab =
+          unit === "p"
+            ? (p.pText ?? `${w.toFixed(0)}%`)
+            : (p.nText ?? barNum(p.value));
         return (
           <i
             key={i}
             className={LIGHT.has(p.color) ? "ovw-lt" : undefined}
-            data-tip={p.tip || `${p.label.split(" · ")[0]}: ${tipMoney(p.value)} (${w.toFixed(1)}%)`}
+            data-tip={
+              p.tip ||
+              `${p.label.split(" · ")[0]}: ${tipMoney(p.value)} (${w.toFixed(1)}%)`
+            }
             style={{ width: `${w}%`, background: p.color }}
           >
             {w >= Math.max(9, String(lab).length * 1.5 + 3) ? lab : ""}
@@ -114,7 +134,15 @@ function Donut({ parts, total }) {
   const CIRC = 2 * Math.PI * R;
   let off = 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", marginTop: 6 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 18,
+        flexWrap: "wrap",
+        marginTop: 6,
+      }}
+    >
       <svg width="120" height="120" viewBox="0 0 120 120">
         {parts.map((p) => {
           const len = (p.value / (total || 1)) * CIRC;
@@ -136,7 +164,15 @@ function Donut({ parts, total }) {
           off += len;
           return el;
         })}
-        <text x="60" y="64" textAnchor="middle" style={{ font: "600 16px Inter, Segoe UI, Arial, sans-serif", fill: "#1D3B5E" }}>
+        <text
+          x="60"
+          y="64"
+          textAnchor="middle"
+          style={{
+            font: "600 16px Inter, Segoe UI, Arial, sans-serif",
+            fill: "#1D3B5E",
+          }}
+        >
           {total}
         </text>
       </svg>
@@ -144,7 +180,8 @@ function Donut({ parts, total }) {
         {parts.map((p) => (
           <span key={p.label}>
             <i style={{ background: p.color }} />
-            {p.label.split(" · ").slice(0, 2).join(" · ")} ({((p.value / (total || 1)) * 100).toFixed(1)}%)
+            {p.label.split(" · ").slice(0, 2).join(" · ")} (
+            {((p.value / (total || 1)) * 100).toFixed(1)}%)
           </span>
         ))}
       </div>
@@ -155,7 +192,12 @@ function Donut({ parts, total }) {
 export function Arrow({ d, txt, good = true }) {
   if (Math.abs(d) < 0.0005) return <span>no change</span>;
   const up = d > 0;
-  return <span className={up === good ? "up" : "dn"}>{up ? "▲ " : "▼ "}{txt}</span>;
+  return (
+    <span className={up === good ? "up" : "dn"}>
+      {up ? "▲ " : "▼ "}
+      {txt}
+    </span>
+  );
 }
 
 /* ---------------- "Compare with" years ---------------- */
@@ -165,7 +207,9 @@ export function YearMenu({ cycles, selected, onChange }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
@@ -173,22 +217,43 @@ export function YearMenu({ cycles, selected, onChange }) {
   const label = chosen.length
     ? `${chosen.length === 1 ? "1 Cycle" : `${chosen.length} Cycles`} · ${chosen.map((c) => c.name).join(", ")}`
     : "Pick Appraisal Cycle";
-  const toggle = (k) => onChange(selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k]);
+  const toggle = (k) =>
+    onChange(
+      selected.includes(k) ? selected.filter((x) => x !== k) : [...selected, k],
+    );
   return (
     <div className="ymenu" ref={ref}>
-      <button type="button" onClick={() => setOpen((o) => !o)}>{label} ▾</button>
+      <button type="button" onClick={() => setOpen((o) => !o)}>
+        {label} ▾
+      </button>
       {open ? (
         <div className="ypop">
-          {cycles.length === 0 ? <div className="mut" style={{ padding: "4px 0" }}>No closed appraisal cycles yet</div> : null}
+          {cycles.length === 0 ? (
+            <div className="mut" style={{ padding: "4px 0" }}>
+              No closed appraisal cycles yet
+            </div>
+          ) : null}
           {cycles.map((c) => (
             <label key={c.key}>
-              <input type="checkbox" checked={selected.includes(c.key)} onChange={() => toggle(c.key)} />
+              <input
+                type="checkbox"
+                checked={selected.includes(c.key)}
+                onChange={() => toggle(c.key)}
+              />
               {c.name}
             </label>
           ))}
           <div className="yb">
-            <button type="button" className="btn" onClick={() => onChange(cycles.map((c) => c.key))}>All Cycles</button>
-            <button type="button" className="btn" onClick={() => onChange([])}>Clear</button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onChange(cycles.map((c) => c.key))}
+            >
+              All Cycles
+            </button>
+            <button type="button" className="btn" onClick={() => onChange([])}>
+              Clear
+            </button>
           </div>
         </div>
       ) : null}
@@ -200,29 +265,73 @@ export function YearMenu({ cycles, selected, onChange }) {
 
 export const PEOPLE_COLS = [
   {
-    k: "name", l: "Employee", t: "t",
+    k: "name",
+    l: "Employee",
+    t: "t",
     g: (r) => `${r.name || ""} ${r.empId || ""}`,
     cell: (r) => (
       <td className="rl">
         {r.name}
-        <div className="mut" style={{ fontWeight: 600, fontSize: 11 }}>{r.empId} · {r.designation}</div>
+        <div className="mut" style={{ fontWeight: 600, fontSize: 11 }}>
+          {r.empId} · {r.designation}
+        </div>
       </td>
     ),
   },
-  { k: "cm", l: "Comp Manager", t: "t", cl: true, g: (r) => r.compManager || "", cell: (r) => <td>{r.compManager}</td> },
-  { k: "mr", l: "Rating", t: "n", cl: true, g: (r) => ratingOf(r), cell: (r) => <td className="n">{ratingOf(r) || "–"}</td> },
-  { k: "hk", l: "Hike %", t: "n", g: (r) => calcHikePct(r), cell: (r) => <td className="n">{calcHikePct(r).toFixed(2)}</td> },
   {
-    k: "pb", l: "PB %", t: "n", g: (r) => pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay),
-    cell: (r) => <td className="n" data-tip={`PB ${money(r.allocatedPBAmount)}`}>{pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay).toFixed(1)}</td>,
+    k: "cm",
+    l: "Comp Manager",
+    t: "t",
+    cl: true,
+    g: (r) => r.compManager || "",
+    cell: (r) => <td>{r.compManager}</td>,
   },
   {
-    k: "rb", l: "RB %", t: "n", g: (r) => pctOfBase(r.newRB, r.currentAnnualBasePay),
-    cell: (r) => <td className="n" data-tip={`RB ${money(r.newRB)}`}>{pctOfBase(r.newRB, r.currentAnnualBasePay).toFixed(1)}</td>,
+    k: "mr",
+    l: "Rating",
+    t: "n",
+    cl: true,
+    g: (r) => ratingOf(r),
+    cell: (r) => <td className="n">{ratingOf(r) || "–"}</td>,
+  },
+  {
+    k: "hk",
+    l: "Hike %",
+    t: "n",
+    g: (r) => calcHikePct(r),
+    cell: (r) => <td className="n">{calcHikePct(r).toFixed(2)}</td>,
+  },
+  {
+    k: "pb",
+    l: "PB %",
+    t: "n",
+    g: (r) => pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay),
+    cell: (r) => (
+      <td className="n" data-tip={`PB ${money(r.allocatedPBAmount)}`}>
+        {pctOfBase(r.allocatedPBAmount, r.currentAnnualBasePay).toFixed(1)}
+      </td>
+    ),
+  },
+  {
+    k: "rb",
+    l: "RB %",
+    t: "n",
+    g: (r) => pctOfBase(r.newRB, r.currentAnnualBasePay),
+    cell: (r) => (
+      <td className="n" data-tip={`RB ${money(r.newRB)}`}>
+        {pctOfBase(r.newRB, r.currentAnnualBasePay).toFixed(1)}
+      </td>
+    ),
   },
 ];
 
-const NUM_OPS = [["=", "="], [">", "greater than"], [">=", "at least"], ["<", "less than"], ["<=", "at most"]];
+const NUM_OPS = [
+  ["=", "="],
+  [">", "greater than"],
+  [">=", "at least"],
+  ["<", "less than"],
+  ["<=", "at most"],
+];
 
 function FilterMenu({ col, items, initial, style, onApply, onClear, onSort }) {
   const num_ = col.t === "n";
@@ -232,57 +341,123 @@ function FilterMenu({ col, items, initial, style, onApply, onClear, onSort }) {
   const values = useMemo(() => {
     if (!col.cl) return [];
     const seen = new Set(items.map((it) => String(col.g(it))));
-    return Array.from(seen).sort((a, b) => (num_ ? a - b : a.localeCompare(b))).slice(0, 300);
+    return Array.from(seen)
+      .sort((a, b) => (num_ ? a - b : a.localeCompare(b)))
+      .slice(0, 300);
   }, [col, items, num_]);
   const [checked, setChecked] = useState(() => new Set(initial.set || values));
   const [q, setQ] = useState("");
   const allOn = values.every((v) => checked.has(v));
   return (
     <div className="pm" style={style} onMouseDown={(e) => e.stopPropagation()}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#102a43", marginBottom: 6 }}>{col.l}</div>
-      <div className="r">
-        <button className="btn" type="button" onClick={() => onSort("a")}>{num_ ? "Lowest → highest" : "A → Z"}</button>
-        <button className="btn" type="button" onClick={() => onSort("d")}>{num_ ? "Highest → lowest" : "Z → A"}</button>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: "#102a43",
+          marginBottom: 6,
+        }}
+      >
+        {col.l}
       </div>
       <div className="r">
-        <select className="sel" style={{ minWidth: 0, flex: "0 0 auto" }} value={op} onChange={(e) => setOp(e.target.value)}>
-          {ops.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        <button className="btn" type="button" onClick={() => onSort("a")}>
+          {num_ ? "Lowest → highest" : "A → Z"}
+        </button>
+        <button className="btn" type="button" onClick={() => onSort("d")}>
+          {num_ ? "Highest → lowest" : "Z → A"}
+        </button>
+      </div>
+      <div className="r">
+        <select
+          className="sel"
+          style={{ minWidth: 0, flex: "0 0 auto" }}
+          value={op}
+          onChange={(e) => setOp(e.target.value)}
+        >
+          {ops.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
         </select>
-        <input className="inp" type="text" value={val} placeholder="value" onChange={(e) => setVal(e.target.value)} />
+        <input
+          className="inp"
+          type="text"
+          value={val}
+          placeholder="value"
+          onChange={(e) => setVal(e.target.value)}
+        />
       </div>
       {col.cl ? (
         <>
-          <input className="inp" type="text" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: "100%", marginBottom: 6, border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 10px" }} />
+          <input
+            className="inp"
+            type="text"
+            placeholder="Search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{
+              width: "100%",
+              marginBottom: 6,
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              padding: "6px 10px",
+            }}
+          />
           <label style={{ marginBottom: 4 }}>
-            <input type="checkbox" checked={allOn} onChange={(e) => setChecked(new Set(e.target.checked ? values : []))} /> Select all
+            <input
+              type="checkbox"
+              checked={allOn}
+              onChange={(e) =>
+                setChecked(new Set(e.target.checked ? values : []))
+              }
+            />{" "}
+            Select all
           </label>
           <div className="list">
-            {values.filter((v) => v.toLowerCase().includes(q.toLowerCase())).map((v) => (
-              <label key={v}>
-                <input
-                  type="checkbox"
-                  checked={checked.has(v)}
-                  onChange={(e) => {
-                    const next = new Set(checked);
-                    if (e.target.checked) next.add(v); else next.delete(v);
-                    setChecked(next);
-                  }}
-                />{" "}
-                {v}
-              </label>
-            ))}
+            {values
+              .filter((v) => v.toLowerCase().includes(q.toLowerCase()))
+              .map((v) => (
+                <label key={v}>
+                  <input
+                    type="checkbox"
+                    checked={checked.has(v)}
+                    onChange={(e) => {
+                      const next = new Set(checked);
+                      if (e.target.checked) next.add(v);
+                      else next.delete(v);
+                      setChecked(next);
+                    }}
+                  />{" "}
+                  {v}
+                </label>
+              ))}
           </div>
         </>
       ) : null}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10 }}>
-        <button className="btn" type="button" onClick={onClear}>Clear</button>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 6,
+          marginTop: 10,
+        }}
+      >
+        <button className="btn" type="button" onClick={onClear}>
+          Clear
+        </button>
         <button
           className="btn pri"
           type="button"
           onClick={() => {
             const f = {};
-            if (val.trim() !== "") { f.op = op; f.val = val.trim(); }
-            if (col.cl && checked.size < values.length) f.set = Array.from(checked);
+            if (val.trim() !== "") {
+              f.op = op;
+              f.val = val.trim();
+            }
+            if (col.cl && checked.size < values.length)
+              f.set = Array.from(checked);
             onApply(f.op || f.set ? f : null);
           }}
         >
@@ -298,7 +473,8 @@ function passes(col, item, f) {
   const v = col.g(item);
   if (f.set && !f.set.includes(String(v))) return false;
   if (f.op && f.val !== "") {
-    if (col.t === "t") return String(v).toLowerCase().includes(String(f.val).toLowerCase());
+    if (col.t === "t")
+      return String(v).toLowerCase().includes(String(f.val).toLowerCase());
     const x = Number(f.val);
     const y = Number(v);
     if (f.op === ">" && !(y > x)) return false;
@@ -333,7 +509,9 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
   }, [menu]);
 
   const shown = useMemo(() => {
-    let r = list.rows.filter((it) => COLS.every((c) => passes(c, it, filters[c.k])));
+    let r = list.rows.filter((it) =>
+      COLS.every((c) => passes(c, it, filters[c.k])),
+    );
     if (sort) {
       const c = COLS.find((x) => x.k === sort.k);
       const d = sort.d === "a" ? 1 : -1;
@@ -352,31 +530,66 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
   const total = list.rows.length;
   const openMenu = (e, k) => {
     e.stopPropagation();
-    if (menu?.k === k) { setMenu(null); return; }
+    if (menu?.k === k) {
+      setMenu(null);
+      return;
+    }
     const tr = box.current.getBoundingClientRect();
     const br = e.currentTarget.getBoundingClientRect();
-    setMenu({ k, left: Math.max(8, Math.min(br.left - tr.left, tr.width - 268)), top: br.bottom - tr.top + 4 });
+    setMenu({
+      k,
+      left: Math.max(8, Math.min(br.left - tr.left, tr.width - 268)),
+      top: br.bottom - tr.top + 4,
+    });
   };
   const menuCol = menu ? COLS.find((c) => c.k === menu.k) : null;
 
   return (
     <div className="tile pl" id="ov-people" ref={box}>
       <div className="hd">
-        <span className="cap" style={{ display: "inline" }}>People</span>
-        <span style={{ fontWeight: 700, color: "var(--navy)", fontSize: 14 }}>{list.title}</span>
+        <span className="cap" style={{ display: "inline" }}>
+          People
+        </span>
+        <span style={{ fontWeight: 700, color: "var(--navy)", fontSize: 14 }}>
+          {list.title}
+        </span>
         <span className="mut" style={{ fontSize: 11.5 }}>
-          {shown.length === total ? `${inr(total)} people` : `${inr(shown.length)} of ${inr(total)} people`}
-          {shown.length > MAX_PEOPLE_SHOWN ? ` · showing first ${MAX_PEOPLE_SHOWN}` : ""}
+          {shown.length === total
+            ? `${inr(total)} people`
+            : `${inr(shown.length)} of ${inr(total)} people`}
+          {shown.length > MAX_PEOPLE_SHOWN
+            ? ` · showing first ${MAX_PEOPLE_SHOWN}`
+            : ""}
           {active ? (
             <>
               {" · "}
-              <button className="lnk" type="button" style={{ padding: 0 }} onClick={() => { setFilters({}); setSort(null); }}>Clear filters</button>
+              <button
+                className="lnk"
+                type="button"
+                style={{ padding: 0 }}
+                onClick={() => {
+                  setFilters({});
+                  setSort(null);
+                }}
+              >
+                Clear filters
+              </button>
             </>
           ) : null}
         </span>
         <span className="acts">
-          {canOpenSheet ? <button className="btn pri" type="button" onClick={() => go("/sheet")}>Open Appraisal Sheet ›</button> : null}
-          <button className="btn" type="button" onClick={onClose}>Close</button>
+          {canOpenSheet ? (
+            <button
+              className="btn pri"
+              type="button"
+              onClick={() => go("/sheet")}
+            >
+              Open Appraisal Sheet ›
+            </button>
+          ) : null}
+          <button className="btn" type="button" onClick={onClose}>
+            Close
+          </button>
         </span>
       </div>
       <div className="tw">
@@ -385,9 +598,20 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
             <tr>
               {COLS.map((c) => (
                 <th key={c.k} className={c.t === "n" ? "n" : undefined}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
                     {c.l}
-                    <button type="button" className="fb" title="Sort and filter" onClick={(e) => openMenu(e, c.k)}>
+                    <button
+                      type="button"
+                      className="fb"
+                      title="Sort and filter"
+                      onClick={(e) => openMenu(e, c.k)}
+                    >
                       ▾{filters[c.k] || sort?.k === c.k ? <i /> : null}
                     </button>
                   </span>
@@ -397,10 +621,24 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
           </thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={COLS.length} className="mut" style={{ padding: 14 }}>No one matches the filters.</td></tr>
-            ) : shown.slice(0, MAX_PEOPLE_SHOWN).map((r) => (
-              <tr key={r.id} className="data">{COLS.map((c) => <Cell key={c.k} col={c} row={r} />)}</tr>
-            ))}
+              <tr>
+                <td
+                  colSpan={COLS.length}
+                  className="mut"
+                  style={{ padding: 14 }}
+                >
+                  No one matches the filters.
+                </td>
+              </tr>
+            ) : (
+              shown.slice(0, MAX_PEOPLE_SHOWN).map((r) => (
+                <tr key={r.id} className="data">
+                  {COLS.map((c) => (
+                    <Cell key={c.k} col={c} row={r} />
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -411,14 +649,26 @@ export function PeopleList({ list, onClose, canOpenSheet }) {
           items={list.rows}
           initial={filters[menu.k] || {}}
           style={{ left: menu.left, top: menu.top }}
-          onSort={(d) => { setSort({ k: menu.k, d }); setMenu(null); }}
+          onSort={(d) => {
+            setSort({ k: menu.k, d });
+            setMenu(null);
+          }}
           onClear={() => {
-            setFilters((p) => { const n = { ...p }; delete n[menu.k]; return n; });
+            setFilters((p) => {
+              const n = { ...p };
+              delete n[menu.k];
+              return n;
+            });
             if (sort?.k === menu.k) setSort(null);
             setMenu(null);
           }}
           onApply={(f) => {
-            setFilters((p) => { const n = { ...p }; if (f) n[menu.k] = f; else delete n[menu.k]; return n; });
+            setFilters((p) => {
+              const n = { ...p };
+              if (f) n[menu.k] = f;
+              else delete n[menu.k];
+              return n;
+            });
             setMenu(null);
           }}
         />
@@ -454,7 +704,10 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     const t = tipRef.current;
     if (!t) return;
     const el = e.target.closest ? e.target.closest("[data-tip]") : null;
-    if (!el) { t.style.display = "none"; return; }
+    if (!el) {
+      t.style.display = "none";
+      return;
+    }
     t.textContent = el.getAttribute("data-tip");
     t.style.display = "block";
     let x = e.clientX + 12;
@@ -497,29 +750,64 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   const seenLabel = rows.find((r) => r.compManager)?.compManager || "";
   useEffect(() => {
     if (!seenLabel || effectiveId !== "compmanager") return;
-    try { window.sessionStorage.setItem(selfKey, seenLabel); } catch { /* optional */ }
+    try {
+      window.sessionStorage.setItem(selfKey, seenLabel);
+    } catch {
+      /* optional */
+    }
   }, [seenLabel, selfKey, effectiveId]);
   const selfLabel = useMemo(() => {
     const u = catalystUser || {};
-    const uid = String(u.empId || u.emp_id || u.employeeId || u.employee_id || "").trim();
-    const uname = String(
-      u.name || u.display_name || u.displayName || [u.first_name, u.last_name].filter(Boolean).join(" ") || "",
+    const uid = String(
+      u.empId || u.emp_id || u.employeeId || u.employee_id || "",
     ).trim();
-    if (uid && uname) return uname.toLowerCase().startsWith(uid.toLowerCase()) ? uname : `${uid} - ${uname}`;
+    const uname = String(
+      u.name ||
+        u.display_name ||
+        u.displayName ||
+        [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+        "",
+    ).trim();
+    if (uid && uname)
+      return uname.toLowerCase().startsWith(uid.toLowerCase())
+        ? uname
+        : `${uid} - ${uname}`;
     // The complete employee roster (every location) knows this login's employee ID.
-    const norm = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
-    const roster = Array.isArray(budgetCtx.employeeRows) ? budgetCtx.employeeRows : [];
+    const norm = (v) =>
+      String(v || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+    const roster = Array.isArray(budgetCtx.employeeRows)
+      ? budgetCtx.employeeRows
+      : [];
     const mail = norm(u.email);
     const emp =
-      (mail && roster.find((e) => [e.email, e.email_id, e.emailId].some((x) => norm(x) === mail))) ||
-      (uname && roster.find((e) => [e.emp_name, e.employee_name, e.name].some((x) => norm(x) === norm(uname))));
+      (mail &&
+        roster.find((e) =>
+          [e.email, e.email_id, e.emailId].some((x) => norm(x) === mail),
+        )) ||
+      (uname &&
+        roster.find((e) =>
+          [e.emp_name, e.employee_name, e.name].some(
+            (x) => norm(x) === norm(uname),
+          ),
+        ));
     if (emp) {
-      const eid = String(emp.emp_id || emp.employee_id || emp.employeeId || "").trim();
-      const ename = String(emp.emp_name || emp.employee_name || emp.name || uname).trim();
+      const eid = String(
+        emp.emp_id || emp.employee_id || emp.employeeId || "",
+      ).trim();
+      const ename = String(
+        emp.emp_name || emp.employee_name || emp.name || uname,
+      ).trim();
       if (eid) return `${eid} - ${ename}`;
     }
     let cached = "";
-    try { cached = window.sessionStorage.getItem(selfKey) || ""; } catch { /* optional */ }
+    try {
+      cached = window.sessionStorage.getItem(selfKey) || "";
+    } catch {
+      /* optional */
+    }
     return cached || uid || uname;
   }, [catalystUser, selfKey, budgetCtx.employeeRows]);
 
@@ -529,22 +817,52 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   /* ---- budget rows (level 1, optionally opened into level 2) ---- */
   const mkBudgetRow = (lvl, g, d, kids, key, alOverride) => {
     const pt = partsOf(g.rows);
-    const al = alOverride === undefined ? allocationFor(lvl.k, g.key, budgetCtx) : alOverride;
-    return { key, k: g.key, rows: g.rows, n: g.rows.length, pt, al, hasAl: al > 0, u: al > 0 ? (pt.total / al) * 100 : null, rem: al > 0 ? al - pt.total : null, d, kids, lvl };
+    const al =
+      alOverride === undefined
+        ? allocationFor(lvl.k, g.key, budgetCtx)
+        : alOverride;
+    return {
+      key,
+      k: g.key,
+      rows: g.rows,
+      n: g.rows.length,
+      pt,
+      al,
+      hasAl: al > 0,
+      u: al > 0 ? (pt.total / al) * 100 : null,
+      rem: al > 0 ? al - pt.total : null,
+      d,
+      kids,
+      lvl,
+    };
   };
   // Every employee loaded, so a Comp Manager id can be shown as "ID - Name".
-  const directory = useMemo(() => allRows.map((r) => ({ id: r.empId, name: r.name })), [allRows]);
+  const directory = useMemo(
+    () => allRows.map((r) => ({ id: r.empId, name: r.name })),
+    [allRows],
+  );
   const budRows = useMemo(() => {
     if (!L0) {
       // A Comp Manager sees one row: their own team.
       // With no team at this location, still show who this is: "EMP002 - Ashok Kumar".
-      const name = rows.find((r) => r.compManager)?.compManager || selfLabel || "My Team";
-      return [{
-        key: "cm:me", k: name, rows, n: rows.length, pt: parts, al: allocated, hasAl: allocated > 0,
-        u: allocated > 0 ? (parts.total / allocated) * 100 : null,
-        rem: allocated > 0 ? allocated - parts.total : null,
-        d: 0, kids: false, lvl: { k: "cm", n: "Comp Manager" },
-      }];
+      const name =
+        rows.find((r) => r.compManager)?.compManager || selfLabel || "My Team";
+      return [
+        {
+          key: "cm:me",
+          k: name,
+          rows,
+          n: rows.length,
+          pt: parts,
+          al: allocated,
+          hasAl: allocated > 0,
+          u: allocated > 0 ? (parts.total / allocated) * 100 : null,
+          rem: allocated > 0 ? allocated - parts.total : null,
+          d: 0,
+          kids: false,
+          lvl: { k: "cm", n: "Comp Manager" },
+        },
+      ];
     }
     const out = [];
     groupRows(rows, L0.of).forEach((g) => {
@@ -554,8 +872,15 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
         if (L0.k === "te" && L1.k === "cm") {
           // Comp Managers allocated under THIS Tech-ED (Budget Distribution), with their
           // budget under it and the people of this Tech-ED's team they are Comp Manager for.
-          const sheetLabels = Array.from(new Set(g.rows.map((r) => r.compManager).filter(Boolean)));
-          const found = compManagersUnder(g.key, budgetCtx, sheetLabels, directory).map((c) => ({
+          const sheetLabels = Array.from(
+            new Set(g.rows.map((r) => r.compManager).filter(Boolean)),
+          );
+          const found = compManagersUnder(
+            g.key,
+            budgetCtx,
+            sheetLabels,
+            directory,
+          ).map((c) => ({
             ...c,
             mine: g.rows.filter((r) => sameOwnerAs(c.label, r.compManager)),
           }));
@@ -563,14 +888,32 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
           // empty placeholder (even if the sheet lists him as Comp Manager of these people), so it is not shown.
           const kids = found.filter((c) => c.allocated > 0);
           if (kids.length === 0) {
-            out.push({ key: `none:${key}`, none: true, d: 1, k: "No comp manager allocated", rows: [], n: 0 });
+            out.push({
+              key: `none:${key}`,
+              none: true,
+              d: 1,
+              k: "No comp manager allocated",
+              rows: [],
+              n: 0,
+            });
           } else {
             kids.forEach((c) => {
-              out.push(mkBudgetRow(L1, { key: c.label, rows: c.mine }, 1, false, `${L1.k}:${key}:${c.label}`, c.allocated));
+              out.push(
+                mkBudgetRow(
+                  L1,
+                  { key: c.label, rows: c.mine },
+                  1,
+                  false,
+                  `${L1.k}:${key}:${c.label}`,
+                  c.allocated,
+                ),
+              );
             });
           }
         } else {
-          groupRows(g.rows, L1.of).forEach((c) => out.push(mkBudgetRow(L1, c, 1, false, `${L1.k}:${key}:${c.key}`)));
+          groupRows(g.rows, L1.of).forEach((c) =>
+            out.push(mkBudgetRow(L1, c, 1, false, `${L1.k}:${key}:${c.key}`)),
+          );
         }
       }
     });
@@ -578,10 +921,14 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, L0, L1, open, budgetCtx, parts, allocated, selfLabel, directory]);
   const CMM = !L0; // Comp Manager login: one row, no total line
-  const overCount = budRows.filter((r) => !r.none && r.d === 0 && r.hasAl && r.pt.total > r.al).length;
+  const overCount = budRows.filter(
+    (r) => !r.none && r.d === 0 && r.hasAl && r.pt.total > r.al,
+  ).length;
 
   /* ---- ratings ---- */
-  const ratingCounts = [1, 2, 3, 4, 5].map((r) => rows.filter((x) => ratingOf(x) === r).length);
+  const ratingCounts = [1, 2, 3, 4, 5].map(
+    (r) => rows.filter((x) => ratingOf(x) === r).length,
+  );
   const ratingParts = ratingCounts.map((c, i) => ({
     label: `${i + 1} · ${MANAGER_RATING_LABELS[i + 1]}`,
     value: c,
@@ -593,7 +940,10 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     () =>
       rows.filter((r) => {
         const rt = ratingOf(r);
-        return (rt >= 4 && calcHikePct(r) < avgHike - 2) || (isPromoted(r) && rt > 0 && rt <= 2);
+        return (
+          (rt >= 4 && calcHikePct(r) < avgHike - 2) ||
+          (isPromoted(r) && rt > 0 && rt <= 2)
+        );
       }),
     [rows, avgHike],
   );
@@ -601,33 +951,39 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   /* ---- compare with previous Annual cycles (same people only) ---- */
   const compareCycles = useCompareCycles();
   const prev = usePreviousCycleData(rows, cmp.length > 0);
-  const hikeLines = cmp.map((key) => {
-    const c = compareCycles.find((x) => x.key === key);
-    if (!c) return null;
-    const pairs = [];
-    rows.forEach((r) => {
-      const rec = (prev.historyOf(r.empId) || []).find((h) => cycleKeyOf(h.cycleName) === key);
-      const p = rec ? recordHikePct(rec) : null;
-      if (p !== null) pairs.push([calcHikePct(r), p]);
-    });
-    if (pairs.length < MIN_GROUP) return { key, c, few: true };
-    const cur = avgBy(pairs, (x) => x[0]);
-    const old = avgBy(pairs, (x) => x[1]);
-    return { key, c, cur, old };
-  }).filter(Boolean);
+  const hikeLines = cmp
+    .map((key) => {
+      const c = compareCycles.find((x) => x.key === key);
+      if (!c) return null;
+      const pairs = [];
+      rows.forEach((r) => {
+        const rec = (prev.historyOf(r.empId) || []).find(
+          (h) => cycleKeyOf(h.cycleName) === key,
+        );
+        const p = rec ? recordHikePct(rec) : null;
+        if (p !== null) pairs.push([calcHikePct(r), p]);
+      });
+      if (pairs.length < MIN_GROUP) return { key, c, few: true };
+      const cur = avgBy(pairs, (x) => x[0]);
+      const old = avgBy(pairs, (x) => x[1]);
+      return { key, c, cur, old };
+    })
+    .filter(Boolean);
 
   const openList = (title, list_) => {
     setList({ title, rows: list_ });
     setTimeout(() => {
       const el = document.getElementById("ov-people");
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      if (el && el.scrollIntoView)
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 0);
   };
 
   /* ---- title row ---- */
   const isHR = effectiveId === "hr";
   const dl = cycleInfo?.end ? daysUntil(cycleInfo.end) : null;
-  const canOpenCycle = isHR && access.canScreen(HR_TAB_SCREENS["appraisal-cycle"]);
+  const canOpenCycle =
+    isHR && access.canScreen(HR_TAB_SCREENS["appraisal-cycle"]);
   const canOpenSheet = access.canScreen("appraisalSheet");
 
   /* ---- KPI tiles ---- */
@@ -635,37 +991,99 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   tiles.push(
     <div className="tile" key="edited">
       <small>Edited vs remaining to edit</small>
-      <b className="big">{n ? ((editedCount / n) * 100).toFixed(1) : "0.0"}<span className="un">%</span></b>
-      <div className="sub gap">{inr(editedCount)} edited · {inr(remaining)} remaining</div>
-      <Seg unit={unit} total={n} parts={[{ label: "Edited", value: editedCount, color: C.pb }, { label: "Remaining", value: remaining, color: C.left }]} />
-      <Legend items={[["Edited", C.pb], ["Remaining", C.left]]} />
+      <b className="big">
+        {n ? ((editedCount / n) * 100).toFixed(1) : "0.0"}
+        <span className="un">%</span>
+      </b>
+      <div className="sub gap">
+        {inr(editedCount)} edited by hand · {inr(remaining)} remaining
+      </div>
+      <Seg
+        unit={unit}
+        total={n}
+        parts={[
+          { label: "Edited", value: editedCount, color: C.pb },
+          { label: "Remaining", value: remaining, color: C.left },
+        ]}
+      />
+      <Legend
+        items={[
+          ["Edited", C.pb],
+          ["Remaining", C.left],
+        ]}
+      />
     </div>,
   );
   tiles.push(
     <div className="tile" key="budget">
       <small>Budget used</small>
-      <b className="big" style={usedPct > 100 ? { color: "var(--err)" } : undefined}>{usedPct.toFixed(1)}<span className="un">%</span></b>
+      <b
+        className="big"
+        style={usedPct > 100 ? { color: "var(--err)" } : undefined}
+      >
+        {usedPct.toFixed(1)}
+        <span className="un">%</span>
+      </b>
       <div className="sub gap">
         {allocated
           ? `${fmMoney(used)} of ${fmMoney(allocated)} · ${used > allocated ? `over by ${fmMoney(used - allocated)}` : `${fmMoney(allocated - used)} left`}`
           : `${fmMoney(used)} used · no allocation found`}
       </div>
-      <Seg unit={unit} total={Math.max(allocated, used)} parts={[{ label: "Hike", value: parts.hike, color: C.hike }, { label: "PB", value: parts.pb, color: C.pb }, { label: "RB", value: parts.rb, color: C.rb }, { label: "Left", value: Math.max(allocated - used, 0), color: C.left }]} />
-      <Legend items={[["Hike", C.hike], ["PB", C.pb], ["RB", C.rb], ["Left", C.left]]} />
+      <Seg
+        unit={unit}
+        total={Math.max(allocated, used)}
+        parts={[
+          { label: "Hike", value: parts.hike, color: C.hike },
+          { label: "PB", value: parts.pb, color: C.pb },
+          { label: "RB", value: parts.rb, color: C.rb },
+          {
+            label: "Left",
+            value: Math.max(allocated - used, 0),
+            color: C.left,
+          },
+        ]}
+      />
+      <Legend
+        items={[
+          ["Hike", C.hike],
+          ["PB", C.pb],
+          ["RB", C.rb],
+          ["Left", C.left],
+        ]}
+      />
     </div>,
   );
   tiles.push(
     <div className="tile" key="hike">
-      <small>Average hike %</small>
-      <b className="big">{avgHike.toFixed(2)}<span className="un">%</span></b>
-      <div className="sub gap" style={{ marginBottom: hikeLines.length || prev.loading ? 10 : 0 }}>Across {inr(n)} people · hike amount {fmMoney(parts.hike)}</div>
-      {prev.loading ? <div className="dl mut">Loading previous cycles… {inr(prev.progress.done)} / {inr(prev.progress.total)}</div> : null}
+      <small>Average hike % (per person)</small>
+      <b className="big">
+        {avgHike.toFixed(2)}
+        <span className="un">%</span>
+      </b>
+      <div
+        className="sub gap"
+        style={{ marginBottom: hikeLines.length || prev.loading ? 10 : 0 }}
+      >
+        Across {inr(n)} people · hike amount {fmMoney(parts.hike)}
+      </div>
+      {prev.loading ? (
+        <div className="dl mut">
+          Loading previous cycles… {inr(prev.progress.done)} /{" "}
+          {inr(prev.progress.total)}
+        </div>
+      ) : null}
       {hikeLines.map((l) =>
         l.few ? (
-          <div className="dl mut" key={l.key}>vs {l.c.name}: not enough people</div>
+          <div className="dl mut" key={l.key}>
+            vs {l.c.name}: not enough people
+          </div>
         ) : (
           <div className="dl" key={l.key}>
-            vs {l.c.name} <b>{l.old.toFixed(2)}%</b> <Arrow d={l.cur - l.old} txt={`${Math.abs(l.cur - l.old).toFixed(2)} pts`} />
+            vs {l.c.name} <b>{l.old.toFixed(2)}%</b>{" "}
+            <Arrow
+              d={l.cur - l.old}
+              txt={`${Math.abs(l.cur - l.old).toFixed(2)} pts`}
+            />
           </div>
         ),
       )}
@@ -674,19 +1092,37 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   tiles.push(
     <div className="tile" key="pbt">
       <small>PB vs Target PB</small>
-      <b className="big" style={gapPct > 0 ? { color: "var(--amber)" } : undefined}>
-        {gapPct > 0 ? "+" : gapPct < 0 ? "−" : ""}{Math.abs(gapPct).toFixed(1)}<span className="un">%</span>
+      <b
+        className="big"
+        style={gapPct > 0 ? { color: "var(--amber)" } : undefined}
+      >
+        {gapPct > 0 ? "+" : gapPct < 0 ? "−" : ""}
+        {Math.abs(gapPct).toFixed(1)}
+        <span className="un">%</span>
       </b>
-      <div className="sub gap">{gapPct > 0 ? "Over" : "Under"} target · {inr(tgt.n)} people with a last-year target</div>
-      <div className="dl">PB paid <b data-tip={money(tgt.paid)}>{fmMoney(tgt.paid)}</b></div>
-      <div className="dl">Target PB <b data-tip={money(tgt.target)}>{fmMoney(tgt.target)}</b></div>
+      <div className="sub gap">
+        {gapPct > 0 ? "Over" : "Under"} target · {inr(tgt.n)} people with a
+        last-year target
+      </div>
+      <div className="dl">
+        PB paid <b data-tip={money(tgt.paid)}>{fmMoney(tgt.paid)}</b>
+      </div>
+      <div className="dl">
+        Target PB (last year){" "}
+        <b data-tip={money(tgt.target)}>{fmMoney(tgt.target)}</b>
+      </div>
     </div>,
   );
   if (L0) {
     tiles.push(
       <div className="tile" key="over">
         <small>{L0.n}s over allocation</small>
-        <b className="big" style={overCount ? { color: "var(--amber)" } : undefined}>{overCount}</b>
+        <b
+          className="big"
+          style={overCount ? { color: "var(--amber)" } : undefined}
+        >
+          {overCount}
+        </b>
         <div className="sub">Warning only, nothing is blocked</div>
       </div>,
     );
@@ -695,12 +1131,20 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
     <div
       className={`tile click${list?.title === "Outliers to review" ? " sel" : ""}`}
       key="outliers"
-      onClick={() => (list?.title === "Outliers to review" ? setList(null) : openList("Outliers to review", outliers))}
+      onClick={() =>
+        list?.title === "Outliers to review"
+          ? setList(null)
+          : openList("Outliers to review", outliers)
+      }
     >
       <small>Outliers to review</small>
       <b className="big">{inr(outliers.length)}</b>
-      <div className="sub">High rating with low hike, or promoted with a low rating</div>
-      <button className="lnk" type="button" style={{ padding: "6px 0 0" }}>Show the people ›</button>
+      <div className="sub">
+        High rating with low hike, or promoted with a low rating
+      </div>
+      <button className="lnk" type="button" style={{ padding: "6px 0 0" }}>
+        Show the people ›
+      </button>
     </div>,
   );
   const tileRows = balanceRows(tiles, 5);
@@ -714,9 +1158,21 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
         {ratingParts.map((p, i) => {
           const mx = Math.max(...ratingCounts, 1);
           return (
-            <div key={p.label} data-tip={`${p.label}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)`}>
-              <b>{unit === "p" ? `${n ? ((p.value / n) * 100).toFixed(0) : 0}%` : p.value}</b>
-              <i style={{ height: Math.max(2, (p.value / mx) * 100), background: RATING_COLORS[i] }} />
+            <div
+              key={p.label}
+              data-tip={`${p.label}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)`}
+            >
+              <b>
+                {unit === "p"
+                  ? `${n ? ((p.value / n) * 100).toFixed(0) : 0}%`
+                  : p.value}
+              </b>
+              <i
+                style={{
+                  height: Math.max(2, (p.value / mx) * 100),
+                  background: RATING_COLORS[i],
+                }}
+              />
               <span>{p.label}</span>
             </div>
           );
@@ -724,39 +1180,126 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
       </div>
     ) : (
       <>
-        <Seg unit={unit} total={n} parts={ratingParts.map((p) => ({ ...p, label: p.label, tip: `${p.label.split(" · ").slice(0, 2).join(" · ")}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)` }))} />
-        <Legend items={ratingParts.map((p) => [`${p.label} · ${p.value}`, p.color])} />
+        <Seg
+          unit={unit}
+          total={n}
+          parts={ratingParts.map((p) => ({
+            ...p,
+            label: p.label,
+            tip: `${p.label.split(" · ").slice(0, 2).join(" · ")}: ${p.value} (${n ? ((p.value / n) * 100).toFixed(1) : 0}%)`,
+          }))}
+        />
+        <Legend
+          items={ratingParts.map((p) => [`${p.label} · ${p.value}`, p.color])}
+        />
       </>
     );
 
   /* ---- budget by level ---- */
-  const mx = Math.max(1, ...budRows.filter((r) => !r.none).map((r) => Math.max(r.al, r.pt.total))) * 1.08;
+  const mx =
+    Math.max(
+      1,
+      ...budRows.filter((r) => !r.none).map((r) => Math.max(r.al, r.pt.total)),
+    ) * 1.08;
   const remText = (r) =>
-    !r.hasAl ? "0" : r.rem < 0 ? <span style={{ color: "var(--err)", fontWeight: 700 }}>Over by {fmAmt(-r.rem)}</span> : fmAmt(r.rem);
-  const utilText = (u) =>
-    <span style={{ fontWeight: 700, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{(u ?? 0).toFixed(1)}%</span>;
+    !r.hasAl ? (
+      "0"
+    ) : r.rem < 0 ? (
+      <span style={{ color: "var(--err)", fontWeight: 700 }}>
+        Over by {fmAmt(-r.rem)}
+      </span>
+    ) : (
+      fmAmt(r.rem)
+    );
+  const utilText = (u) => (
+    <span
+      style={{ fontWeight: 700, color: u > 100 ? "var(--err)" : "var(--navy)" }}
+    >
+      {(u ?? 0).toFixed(1)}%
+    </span>
+  );
   const rowName = (r) => (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: r.d * 22 }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        paddingLeft: r.d * 22,
+      }}
+    >
       {r.kids ? (
-        <button type="button" className="ex" onClick={(e) => { e.stopPropagation(); setOpen((p) => ({ ...p, [r.key]: !p[r.key] })); }}>{open[r.key] ? "▾" : "▸"}</button>
-      ) : <span style={{ width: 14 }} />}
+        <button
+          type="button"
+          className="ex"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((p) => ({ ...p, [r.key]: !p[r.key] }));
+          }}
+        >
+          {open[r.key] ? "▾" : "▸"}
+        </button>
+      ) : (
+        <span style={{ width: 14 }} />
+      )}
       <span style={{ fontWeight: r.d ? 500 : 700 }}>{r.k}</span>
     </span>
   );
   const noCmName = (r) => (
-    <span className="mut" style={{ display: "inline-block", paddingLeft: r.d * 22 + 20, fontStyle: "italic", fontWeight: 600 }}>{r.k}</span>
+    <span
+      className="mut"
+      style={{
+        display: "inline-block",
+        paddingLeft: r.d * 22 + 20,
+        fontStyle: "italic",
+        fontWeight: 600,
+      }}
+    >
+      {r.k}
+    </span>
   );
   const peopleLink = (r) => (
-    <button className="lnk" type="button" style={{ padding: 0 }} onClick={(e) => { e.stopPropagation(); openList(`${r.k} · people`, r.rows); }}>People ›</button>
+    <button
+      className="lnk"
+      type="button"
+      style={{ padding: 0 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        openList(`${r.k} · people`, r.rows);
+      }}
+    >
+      People ›
+    </button>
   );
-  const allRow = { n, pt: parts, al: allocated, hasAl: allocated > 0, u: allocated > 0 ? (used / allocated) * 100 : null, rem: allocated > 0 ? allocated - used : null };
+  const allRow = {
+    n,
+    pt: parts,
+    al: allocated,
+    hasAl: allocated > 0,
+    u: allocated > 0 ? (used / allocated) * 100 : null,
+    rem: allocated > 0 ? allocated - used : null,
+  };
   const BudgetLegend = ({ line }) => (
     <div className="sleg" style={{ marginTop: 8 }}>
-      <span><i style={{ background: C.hike }} />Hike</span>
-      <span><i style={{ background: C.pb }} />PB</span>
-      <span><i style={{ background: C.rb }} />RB</span>
       <span>
-        <i style={line === "v" ? { width: 2, height: 12, background: "#111827", borderRadius: 0 } : { width: 12, height: 2, background: "#111827", borderRadius: 0 }} />
+        <i style={{ background: C.hike }} />
+        Hike
+      </span>
+      <span>
+        <i style={{ background: C.pb }} />
+        PB
+      </span>
+      <span>
+        <i style={{ background: C.rb }} />
+        RB
+      </span>
+      <span>
+        <i
+          style={
+            line === "v"
+              ? { width: 2, height: 12, background: "#111827", borderRadius: 0 }
+              : { width: 12, height: 2, background: "#111827", borderRadius: 0 }
+          }
+        />
         Allocated
       </span>
     </div>
@@ -764,15 +1307,29 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   const cell = (v, al) => (
     <td className="n">
       <span style={{ fontWeight: 800, color: "var(--navy)" }}>{fmAmt(v)}</span>
-      <div className="sub2">{al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "–"}</div>
+      <div className="sub2">
+        {al > 0 ? `${((v / al) * 100).toFixed(1)}%` : "–"}
+      </div>
     </td>
   );
   const totCell = (pt, al) => {
     const u = al > 0 ? (pt.total / al) * 100 : null;
     return (
       <td className="n">
-        <span style={{ fontWeight: 800, color: u > 100 ? "var(--err)" : "var(--navy)" }}>{fmAmt(pt.total)}</span>
-        <div className="sub2" style={u > 100 ? { color: "var(--err)" } : undefined}>{u === null ? "–" : `${u.toFixed(1)}%`}</div>
+        <span
+          style={{
+            fontWeight: 800,
+            color: u > 100 ? "var(--err)" : "var(--navy)",
+          }}
+        >
+          {fmAmt(pt.total)}
+        </span>
+        <div
+          className="sub2"
+          style={u > 100 ? { color: "var(--err)" } : undefined}
+        >
+          {u === null ? "–" : `${u.toFixed(1)}%`}
+        </div>
       </td>
     );
   };
@@ -784,31 +1341,67 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
           <table>
             <thead>
               <tr>
-                <th>{CMM ? "Comp Manager" : `${L0.n} / Team`}</th><th className="n">Team Size</th><th className="n">Budget Allocated</th>
-                <th className="n">Hike</th><th className="n">PB</th><th className="n">RB</th>
-                <th className="n">Total Utilised</th><th className="n">Remaining Budget</th><th />
+                <th>{CMM ? "Comp Manager" : `${L0.n} / Team`}</th>
+                <th className="n">Team Size</th>
+                <th className="n">Budget Allocated</th>
+                <th className="n">Hike</th>
+                <th className="n">PB</th>
+                <th className="n">RB</th>
+                <th className="n">Total Utilised</th>
+                <th className="n">Remaining Budget</th>
+                <th />
               </tr>
             </thead>
             <tbody>
-              {budRows.map((r) => r.none ? (
-                <tr key={r.key} className="data">
-                  <td className="rl" colSpan={9}>{noCmName(r)}</td>
-                </tr>
-              ) : (
-                <tr key={r.key} className={`data${r.kids ? " click" : ""}`} onClick={r.kids ? () => setOpen((p) => ({ ...p, [r.key]: !p[r.key] })) : undefined}>
-                  <td className="rl">{rowName(r)}</td>
-                  <td className="n">{inr(r.n)}</td>
-                  <td className="n" data-tip={r.hasAl ? money(r.al) : "No allocation found in Budget Master"}>{fmAmt(r.al)}</td>
-                  {cell(r.pt.hike, r.al)}{cell(r.pt.pb, r.al)}{cell(r.pt.rb, r.al)}{totCell(r.pt, r.al)}
-                  <td className="n">{remText(r)}</td>
-                  <td className="n">{peopleLink(r)}</td>
-                </tr>
-              ))}
+              {budRows.map((r) =>
+                r.none ? (
+                  <tr key={r.key} className="data">
+                    <td className="rl" colSpan={9}>
+                      {noCmName(r)}
+                    </td>
+                  </tr>
+                ) : (
+                  <tr
+                    key={r.key}
+                    className={`data${r.kids ? " click" : ""}`}
+                    onClick={
+                      r.kids
+                        ? () => setOpen((p) => ({ ...p, [r.key]: !p[r.key] }))
+                        : undefined
+                    }
+                  >
+                    <td className="rl">{rowName(r)}</td>
+                    <td className="n">{inr(r.n)}</td>
+                    <td
+                      className="n"
+                      data-tip={
+                        r.hasAl
+                          ? money(r.al)
+                          : "No allocation found in Budget Master"
+                      }
+                    >
+                      {fmAmt(r.al)}
+                    </td>
+                    {cell(r.pt.hike, r.al)}
+                    {cell(r.pt.pb, r.al)}
+                    {cell(r.pt.rb, r.al)}
+                    {totCell(r.pt, r.al)}
+                    <td className="n">{remText(r)}</td>
+                    <td className="n">{peopleLink(r)}</td>
+                  </tr>
+                ),
+              )}
               {CMM ? null : (
                 <tr className="tot">
-                  <td className="rl">Total</td><td className="n">{inr(allRow.n)}</td><td className="n">{fmAmt(allRow.al)}</td>
-                  {cell(parts.hike, allocated)}{cell(parts.pb, allocated)}{cell(parts.rb, allocated)}{totCell(parts, allocated)}
-                  <td className="n">{remText(allRow)}</td><td />
+                  <td className="rl">Total</td>
+                  <td className="n">{inr(allRow.n)}</td>
+                  <td className="n">{fmAmt(allRow.al)}</td>
+                  {cell(parts.hike, allocated)}
+                  {cell(parts.pb, allocated)}
+                  {cell(parts.rb, allocated)}
+                  {totCell(parts, allocated)}
+                  <td className="n">{remText(allRow)}</td>
+                  <td />
                 </tr>
               )}
             </tbody>
@@ -819,29 +1412,63 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
       const pw = (v) => `${(v / mx) * 100}%`;
       budgetBody = (
         <>
-          {budRows.map((r) => r.none ? (
-            <div className="brow" key={r.key} style={{ paddingLeft: r.d * 22 }}>
-              <div className="h">{noCmName(r)}</div>
-            </div>
-          ) : (
-            <div className="brow" key={r.key} style={{ paddingLeft: r.d * 22 }}>
-              <div className="h">{rowName({ ...r, d: 0 })}<span className="mut" style={{ fontSize: 11 }}>{inr(r.n)} people</span>{peopleLink(r)}</div>
-              <div className="t">
-                <div className="track">
-                  <div className="trk">
-                    <div data-tip={`Hike ${fmMoney(r.pt.hike)}`} style={{ width: pw(r.pt.hike), background: C.hike }} />
-                    <div data-tip={`PB ${fmMoney(r.pt.pb)}`} style={{ width: pw(r.pt.pb), background: C.pb }} />
-                    <div data-tip={`RB ${fmMoney(r.pt.rb)}`} style={{ width: pw(r.pt.rb), background: C.rb }} />
-                  </div>
-                  {r.hasAl ? <div className="mk" data-tip={`Allocated ${fmMoney(r.al)}`} style={{ left: `calc(${pw(r.al)} - 1px)` }} /> : null}
+          {budRows.map((r) =>
+            r.none ? (
+              <div
+                className="brow"
+                key={r.key}
+                style={{ paddingLeft: r.d * 22 }}
+              >
+                <div className="h">{noCmName(r)}</div>
+              </div>
+            ) : (
+              <div
+                className="brow"
+                key={r.key}
+                style={{ paddingLeft: r.d * 22 }}
+              >
+                <div className="h">
+                  {rowName({ ...r, d: 0 })}
+                  <span className="mut" style={{ fontSize: 11 }}>
+                    {inr(r.n)} people
+                  </span>
+                  {peopleLink(r)}
                 </div>
-                <div className="nums">
-                  <span>{utilText(r.u)} <span className="mut">{`of ${fmAmt(r.al)}`}</span></span>
-                  <span>{remText(r)}</span>
+                <div className="t">
+                  <div className="track">
+                    <div className="trk">
+                      <div
+                        data-tip={`Hike ${fmMoney(r.pt.hike)}`}
+                        style={{ width: pw(r.pt.hike), background: C.hike }}
+                      />
+                      <div
+                        data-tip={`PB ${fmMoney(r.pt.pb)}`}
+                        style={{ width: pw(r.pt.pb), background: C.pb }}
+                      />
+                      <div
+                        data-tip={`RB ${fmMoney(r.pt.rb)}`}
+                        style={{ width: pw(r.pt.rb), background: C.rb }}
+                      />
+                    </div>
+                    {r.hasAl ? (
+                      <div
+                        className="mk"
+                        data-tip={`Allocated ${fmMoney(r.al)}`}
+                        style={{ left: `calc(${pw(r.al)} - 1px)` }}
+                      />
+                    ) : null}
+                  </div>
+                  <div className="nums">
+                    <span>
+                      {utilText(r.u)}{" "}
+                      <span className="mut">{`of ${fmAmt(r.al)}`}</span>
+                    </span>
+                    <span>{remText(r)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ),
+          )}
           <BudgetLegend line="v" />
         </>
       );
@@ -852,20 +1479,60 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
         <>
           <div className="bcols">
             <div>
-              {budRows.filter((r) => !r.none).map((r) => (
-                <div className="bcol" key={r.key}>
-                  <div style={{ fontSize: 12, marginBottom: 4 }}>{utilText(r.u)}</div>
-                  <div className="stk" style={{ height: H, opacity: r.d ? 0.8 : 1 }}>
-                    <div data-tip={`Hike ${fmMoney(r.pt.hike)}`} style={{ height: ph(r.pt.hike), background: C.hike }} />
-                    <div data-tip={`PB ${fmMoney(r.pt.pb)}`} style={{ height: ph(r.pt.pb), background: C.pb }} />
-                    <div data-tip={`RB ${fmMoney(r.pt.rb)}`} style={{ height: ph(r.pt.rb), background: C.rb, borderRadius: "4px 4px 0 0" }} />
-                    {r.hasAl ? <div className="ln" data-tip={`Allocated ${fmMoney(r.al)}`} style={{ bottom: ph(r.al) }} /> : null}
+              {budRows
+                .filter((r) => !r.none)
+                .map((r) => (
+                  <div className="bcol" key={r.key}>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>
+                      {utilText(r.u)}
+                    </div>
+                    <div
+                      className="stk"
+                      style={{ height: H, opacity: r.d ? 0.8 : 1 }}
+                    >
+                      <div
+                        data-tip={`Hike ${fmMoney(r.pt.hike)}`}
+                        style={{ height: ph(r.pt.hike), background: C.hike }}
+                      />
+                      <div
+                        data-tip={`PB ${fmMoney(r.pt.pb)}`}
+                        style={{ height: ph(r.pt.pb), background: C.pb }}
+                      />
+                      <div
+                        data-tip={`RB ${fmMoney(r.pt.rb)}`}
+                        style={{
+                          height: ph(r.pt.rb),
+                          background: C.rb,
+                          borderRadius: "4px 4px 0 0",
+                        }}
+                      />
+                      {r.hasAl ? (
+                        <div
+                          className="ln"
+                          data-tip={`Allocated ${fmMoney(r.al)}`}
+                          style={{ bottom: ph(r.al) }}
+                        />
+                      ) : null}
+                    </div>
+                    <div className="nm">
+                      {r.kids ? (
+                        <button
+                          type="button"
+                          className="lnk"
+                          style={{ padding: 0 }}
+                          onClick={() =>
+                            setOpen((p) => ({ ...p, [r.key]: !p[r.key] }))
+                          }
+                        >
+                          {open[r.key] ? "▾ " : "▸ "}
+                          {r.k}
+                        </button>
+                      ) : (
+                        r.k
+                      )}
+                    </div>
                   </div>
-                  <div className="nm">
-                    {r.kids ? <button type="button" className="lnk" style={{ padding: 0 }} onClick={() => setOpen((p) => ({ ...p, [r.key]: !p[r.key] }))}>{open[r.key] ? "▾ " : "▸ "}{r.k}</button> : r.k}
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
           <BudgetLegend line="h" />
@@ -896,35 +1563,59 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
   const fieldLabel = (v) => {
     const t = String(v ?? "");
     if (t.length < 18 || FULL_LABELS.includes(t)) return t;
-    const hits = FULL_LABELS.filter((label) => label.length > t.length && label.startsWith(t));
+    const hits = FULL_LABELS.filter(
+      (label) => label.length > t.length && label.startsWith(t),
+    );
     return hits.length === 1 ? hits[0] : t;
   };
   const fmtWhen = (v) => {
     const d = new Date(v);
     return Number.isNaN(d.getTime())
       ? String(v)
-      : d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      : d.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
   };
 
   return (
-    <div className="ovw" onMouseMove={onMove} onMouseLeave={() => { if (tipRef.current) tipRef.current.style.display = "none"; }}>
+    <div
+      className="ovw"
+      onMouseMove={onMove}
+      onMouseLeave={() => {
+        if (tipRef.current) tipRef.current.style.display = "none";
+      }}
+    >
       <div className="ovw-tip" ref={tipRef} />
 
       <div className="ttl">
         <h2>Appraisal Cycle: {cycleName || "—"}</h2>
-        {cycleName ? <span className="badge">{cycleInfo?.status || "Active"}</span> : null}
+        {cycleName ? (
+          <span className="badge">{cycleInfo?.status || "Active"}</span>
+        ) : null}
         <span className="meta">
           {inr(n)} employees in scope
           {cycleInfo?.end && fmtDate(cycleInfo.end) ? (
             <>
               {" · "}Closes <b>{fmtDate(cycleInfo.end)}</b>
-              {dl !== null ? ` · ${dl > 0 ? `${dl} day${dl > 1 ? "s" : ""} left` : dl === 0 ? "closes today" : "close date passed"}` : ""}
+              {dl !== null
+                ? ` · ${dl > 0 ? `${dl} day${dl > 1 ? "s" : ""} left` : dl === 0 ? "closes today" : "close date passed"}`
+                : ""}
             </>
           ) : null}
           {canOpenCycle ? (
             <>
               {" · "}
-              <button className="lnk" type="button" style={{ padding: 0 }} onClick={() => go("/employee-master?tab=appraisal-cycle")}>Open ›</button>
+              <button
+                className="lnk"
+                type="button"
+                style={{ padding: 0 }}
+                onClick={() => go("/employee-master?tab=appraisal-cycle")}
+              >
+                Open ›
+              </button>
             </>
           ) : null}
         </span>
@@ -932,65 +1623,166 @@ export function DashboardOverview({ cmp: cmpProp, onCmpChange } = {}) {
 
       <div className="cmp">
         <span className="mut">Compare With</span>
-        <YearMenu cycles={compareCycles} selected={cmp} onChange={(v) => setCmp(v)} />
-        <span className="mut" style={{ fontSize: 11 }}>All appraisal cycles, same people only</span>
-        <span className="sp"><Toggle value={unit} onChange={setUnit} options={[["n", "Numbers"], ["p", "%"]]} /></span>
+        <YearMenu
+          cycles={compareCycles}
+          selected={cmp}
+          onChange={(v) => setCmp(v)}
+        />
+        <span className="mut" style={{ fontSize: 11 }}>
+          All appraisal cycles, same people only
+        </span>
+        <span className="sp">
+          <Toggle
+            value={unit}
+            onChange={setUnit}
+            options={[
+              ["n", "Numbers"],
+              ["p", "%"],
+            ]}
+          />
+        </span>
       </div>
 
       <div className="stabs">
-        <button type="button" className={`stab${tab === "s" ? " on" : ""}`} onClick={() => setTab("s")}>Summary</button>
-        <button type="button" className={`stab${tab === "a" ? " on" : ""}`} onClick={() => setTab("a")}>Recent Activity</button>
+        <button
+          type="button"
+          className={`stab${tab === "s" ? " on" : ""}`}
+          onClick={() => setTab("s")}
+        >
+          Summary
+        </button>
+        <button
+          type="button"
+          className={`stab${tab === "a" ? " on" : ""}`}
+          onClick={() => setTab("a")}
+        >
+          Recent Activity
+        </button>
       </div>
 
       {tab === "s" ? (
         <>
           {tileRows.map((r, i) => (
-            <div className="balrow" key={i} style={{ gridTemplateColumns: `repeat(${r.length}, minmax(0, 1fr))` }}>{r}</div>
+            <div
+              className="balrow"
+              key={i}
+              style={{
+                gridTemplateColumns: `repeat(${r.length}, minmax(0, 1fr))`,
+              }}
+            >
+              {r}
+            </div>
           ))}
 
           <div className="tile" style={{ marginTop: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
               <small>Ratings summary</small>
-              <Toggle value={ratingView} onChange={setRatingView} options={[["s", "Bar"], ["c", "Columns"], ["d", "Donut"]]} />
+              <Toggle
+                value={ratingView}
+                onChange={setRatingView}
+                options={[
+                  ["s", "Bar"],
+                  ["c", "Columns"],
+                  ["d", "Donut"],
+                ]}
+              />
             </div>
             {ratingsBody}
             <div className="dl" style={{ marginTop: 8 }}>
-              <b>{promos}</b> promotions <span className="mut">({n ? ((promos / n) * 100).toFixed(1) : 0}% of {inr(n)} people)</span>
+              <b>{promos}</b> promotions{" "}
+              <span className="mut">
+                ({n ? ((promos / n) * 100).toFixed(1) : 0}% of {inr(n)} people)
+              </span>
             </div>
           </div>
 
           <div className="tile" style={{ marginTop: 12 }}>
             <div className="cmsel">
-              <span style={{ fontWeight: 700, color: "var(--navy)" }}>{CMM ? "Budget" : `Budget by ${L0.n}`}</span>
-              {L1 ? <span className="mut" style={{ fontSize: 11.5 }}>Click a row to open its {L1.n}s</span> : null}
+              <span style={{ fontWeight: 700, color: "var(--navy)" }}>
+                {CMM ? "Budget" : `Budget by ${L0.n}`}
+              </span>
+              {L1 ? (
+                <span className="mut" style={{ fontSize: 11.5 }}>
+                  Click a row to open its {L1.n}s
+                </span>
+              ) : null}
               <span style={{ marginLeft: "auto" }}>
-                <Toggle value={budgetView} onChange={setBudgetView} options={[["b", "Bars"], ["c", "Columns"], ["t", "Table"]]} />
+                <Toggle
+                  value={budgetView}
+                  onChange={setBudgetView}
+                  options={[
+                    ["b", "Bars"],
+                    ["c", "Columns"],
+                    ["t", "Table"],
+                  ]}
+                />
               </span>
             </div>
             {budgetBody}
           </div>
 
-          {list ? <PeopleList list={list} onClose={() => setList(null)} canOpenSheet={canOpenSheet} /> : null}
-
+          {list ? (
+            <PeopleList
+              list={list}
+              onClose={() => setList(null)}
+              canOpenSheet={canOpenSheet}
+            />
+          ) : null}
         </>
       ) : (
         <div className="tw">
           <table>
-            <thead><tr><th>When</th><th>Who</th><th>What</th><th>Screen</th></tr></thead>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Who</th>
+                <th>What</th>
+                <th>Screen</th>
+              </tr>
+            </thead>
             <tbody>
               {recent.length === 0 ? (
-                <tr><td colSpan={4} className="mut" style={{ padding: 14 }}>No activity yet.</td></tr>
-              ) : recent.map((a, i) => {
-                const scr = screenOfSource(a.source);
-                return (
-                  <tr className="data" key={a.id || i}>
-                    <td className="rl">{fmtWhen(a.at)}</td>
-                    <td>{a.user}</td>
-                    <td>{fieldLabel(a.field)} edited for {a.employeeName || a.empId}{a.to !== "" && a.to != null ? ` (${a.from || "–"} → ${a.to})` : ""}</td>
-                    <td><button className="lnk" type="button" style={{ padding: 0 }} onClick={() => go(scr.to)}>{scr.label} ›</button></td>
-                  </tr>
-                );
-              })}
+                <tr>
+                  <td colSpan={4} className="mut" style={{ padding: 14 }}>
+                    No activity yet.
+                  </td>
+                </tr>
+              ) : (
+                recent.map((a, i) => {
+                  const scr = screenOfSource(a.source);
+                  return (
+                    <tr className="data" key={a.id || i}>
+                      <td className="rl">{fmtWhen(a.at)}</td>
+                      <td>{a.user}</td>
+                      <td>
+                        {fieldLabel(a.field)} edited for{" "}
+                        {a.employeeName || a.empId}
+                        {a.to !== "" && a.to != null
+                          ? ` (${a.from || "–"} → ${a.to})`
+                          : ""}
+                      </td>
+                      <td>
+                        <button
+                          className="lnk"
+                          type="button"
+                          style={{ padding: 0 }}
+                          onClick={() => go(scr.to)}
+                        >
+                          {scr.label} ›
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

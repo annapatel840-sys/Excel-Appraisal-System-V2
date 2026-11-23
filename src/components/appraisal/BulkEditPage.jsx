@@ -37,6 +37,7 @@ import { useAccess } from "@/lib/access-store";
 import { MANAGER_RATING_LABELS } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
+import { allocationFor } from "@/lib/dashboard-overview";
 import {
   resolveBudgetAllocated,
   sumBudgetConsumed,
@@ -64,8 +65,12 @@ const pctOf = (x) =>
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
 
 const isLive = (r) =>
-  String(r.status || "").trim().toLowerCase() === "active" &&
-  String(r.eligibility || "").trim().toLowerCase() === "eligible";
+  String(r.status || "")
+    .trim()
+    .toLowerCase() === "active" &&
+  String(r.eligibility || "")
+    .trim()
+    .toLowerCase() === "eligible";
 const num = (v) => Number(v) || 0;
 
 /* Bulk screen field -> Appraisal Sheet column key */
@@ -93,7 +98,9 @@ const MAX_STORED_BATCHES = 30;
 const batchesKey = (cycle) => `bulkBatches.v1:${cycle?.id ?? ""}`;
 function readStoredBatches(cycle) {
   try {
-    const list = JSON.parse(window.localStorage.getItem(batchesKey(cycle)) || "[]");
+    const list = JSON.parse(
+      window.localStorage.getItem(batchesKey(cycle)) || "[]",
+    );
     return Array.isArray(list) ? list : [];
   } catch (x) {
     return [];
@@ -108,7 +115,9 @@ function writeStoredBatches(cycle, batches) {
   }
 }
 function rememberStoredBatch(cycle, batch) {
-  const list = readStoredBatches(cycle).filter((b) => String(b.id) !== String(batch.id));
+  const list = readStoredBatches(cycle).filter(
+    (b) => String(b.id) !== String(batch.id),
+  );
   list.push(batch);
   writeStoredBatches(cycle, list);
 }
@@ -120,7 +129,8 @@ function mergeBatchLists(server, local) {
     const id = String(b.id);
     const hit = by.get(id);
     if (!hit) by.set(id, b);
-    else if (b.restored && !hit.restored) by.set(id, { ...hit, restored: true });
+    else if (b.restored && !hit.restored)
+      by.set(id, { ...hit, restored: true });
   });
   return [...by.values()].sort((a, b) => (a.at || 0) - (b.at || 0));
 }
@@ -130,8 +140,12 @@ const LEGACY_SCENARIOS_KEY = "bulkScenarios_v3";
 const LEGACY_SCENARIOS_DONE_KEY = "bulkScenarios_v3.moved";
 function takeLegacyScenarios() {
   try {
-    const list = JSON.parse(window.localStorage.getItem(LEGACY_SCENARIOS_KEY) || "[]");
-    return Array.isArray(list) ? list.filter((x) => x && typeof x === "object") : [];
+    const list = JSON.parse(
+      window.localStorage.getItem(LEGACY_SCENARIOS_KEY) || "[]",
+    );
+    return Array.isArray(list)
+      ? list.filter((x) => x && typeof x === "object")
+      : [];
   } catch (x) {
     return [];
   }
@@ -147,7 +161,8 @@ function legacyScenariosMoved() {
     /* ignore */
   }
 }
-const newScenarioId = () => `SC-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const newScenarioId = () =>
+  `SC-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /* ---------- Bulk history, rebuilt from the audit trail (used only when HISTORY_FROM_AUDIT is on) ---------- */
 const APPLY_SOURCE = "Bulk edit";
@@ -163,7 +178,9 @@ const AUDIT_TO_ENGINE_KEY = {
 const textKey = (cycle) => `bulkBatchText.v1:${cycle?.id ?? ""}`;
 function loadBatchTexts(cycle) {
   try {
-    return JSON.parse(window.localStorage.getItem(textKey(cycle)) || "{}") || {};
+    return (
+      JSON.parse(window.localStorage.getItem(textKey(cycle)) || "{}") || {}
+    );
   } catch (x) {
     return {};
   }
@@ -192,7 +209,12 @@ function buildBatches(records, texts) {
     const src = String(r.source || "");
     const bid = String(r.batchId || "");
     if (src !== APPLY_SOURCE && src !== RESTORE_SOURCE) return;
-    if (!bid.startsWith(src === RESTORE_SOURCE ? RESTORE_PREFIX + BATCH_PREFIX : BATCH_PREFIX)) return;
+    if (
+      !bid.startsWith(
+        src === RESTORE_SOURCE ? RESTORE_PREFIX + BATCH_PREFIX : BATCH_PREFIX,
+      )
+    )
+      return;
     const k = `${r.empId}|${r.field}|${bid}|${r.to}`;
     if (seen.has(k)) return;
     seen.add(k);
@@ -201,7 +223,8 @@ function buildBatches(records, texts) {
   });
   const restoredIds = new Set();
   groups.forEach((_, bid) => {
-    if (bid.startsWith(RESTORE_PREFIX)) restoredIds.add(bid.slice(RESTORE_PREFIX.length));
+    if (bid.startsWith(RESTORE_PREFIX))
+      restoredIds.add(bid.slice(RESTORE_PREFIX.length));
   });
   const out = [];
   groups.forEach((entries, bid) => {
@@ -213,7 +236,13 @@ function buildBatches(records, texts) {
       const ek = AUDIT_TO_ENGINE_KEY[keyOfLabel(e.field)];
       if (!ek) return;
       labels.add(e.field);
-      if (!rows.has(e.empId)) rows.set(e.empId, { id: String(e.empId), old: {}, nw: {}, bulk: false });
+      if (!rows.has(e.empId))
+        rows.set(e.empId, {
+          id: String(e.empId),
+          old: {},
+          nw: {},
+          bulk: false,
+        });
       const row = rows.get(e.empId);
       row.old[ek] = asNum(e.from);
       row.nw[ek] = asNum(e.to);
@@ -234,7 +263,14 @@ function buildBatches(records, texts) {
 }
 
 const BulkOperations = forwardRef(function BulkOperations(
-  { apiUrl = "", offlineApi = false, cycle, height = "100%", onApplied, readOnly = false },
+  {
+    apiUrl = "",
+    offlineApi = false,
+    cycle,
+    height = "100%",
+    onApplied,
+    readOnly = false,
+  },
   ref,
 ) {
   const hostRef = useRef(null);
@@ -286,12 +322,19 @@ const BulkOperations = forwardRef(function BulkOperations(
         });
     return {
       allocated,
-      pending: (useDist ? !!distBudget.pending : !!budgetCtx.loading) && !allocated,
+      pending:
+        (useDist ? !!distBudget.pending : !!budgetCtx.loading) && !allocated,
       used: sumBudgetConsumed(live),
       tpb: sumTargetPB(live),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [budgetCtx, distBudget?.applies, distBudget?.updatedBudget, distBudget?.pending, sheetRows]);
+  }, [
+    budgetCtx,
+    distBudget?.applies,
+    distBudget?.updatedBudget,
+    distBudget?.pending,
+    sheetRows,
+  ]);
 
   /* The Appraisal Sheet's own rows, in the screen's row shape (Active + Eligible, by Employee ID). */
   // Access -> Fields tab ("Bulk Edit"): the engine asks this for every field it draws or changes.
@@ -300,7 +343,9 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   const sheetEmp = useMemo(() => {
     const edited = new Set(
-      (sheetAudit || []).map((x) => String(x.empId || "").trim()).filter(Boolean),
+      (sheetAudit || [])
+        .map((x) => String(x.empId || "").trim())
+        .filter(Boolean),
     );
     return sheetRows
       .filter(isLive)
@@ -344,8 +389,19 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
   live.current = {
-    sheetEmp, sheetHdr, readOnly: effectiveReadOnly, onApplied, cycle, apiUrl, offlineApi, sheetRows, storeBulkUpdate, access,
-    sheetAudit, storeFetchBulkHistory,
+    sheetEmp,
+    sheetHdr,
+    readOnly: effectiveReadOnly,
+    onApplied,
+    cycle,
+    apiUrl,
+    offlineApi,
+    sheetRows,
+    storeBulkUpdate,
+    access,
+    sheetAudit,
+    storeFetchBulkHistory,
+    budgetCtx,
   };
   /* Bulk history read from the server (kept so a screen refresh does not re-download it). */
   const historyCache = useRef(null);
@@ -378,16 +434,20 @@ const BulkOperations = forwardRef(function BulkOperations(
         const isRestore = source === "bulk_restore";
         const opts = {
           source: isRestore ? RESTORE_SOURCE : APPLY_SOURCE,
-          batchId: meta && meta.id ? (isRestore ? RESTORE_PREFIX : "") + meta.id : undefined,
+          batchId:
+            meta && meta.id
+              ? (isRestore ? RESTORE_PREFIX : "") + meta.id
+              : undefined,
         };
-        if (!isRestore && meta && meta.id && meta.text) rememberBatchText(live.current.cycle, meta.id, meta.text);
+        if (!isRestore && meta && meta.id && meta.text)
+          rememberBatchText(live.current.cycle, meta.id, meta.text);
         if (!bulkUpdate) throw new Error("Saving is not available right now.");
         // Second safeguard: never send a field this login may only read or cannot see.
         const accessNow = live.current.access;
         if (accessNow) {
-          const blocked = [...new Set(changes.map((c) => STORE_KEY[c.field] || c.field))].filter(
-            (key) => !accessNow.canEditField(key),
-          );
+          const blocked = [
+            ...new Set(changes.map((c) => STORE_KEY[c.field] || c.field)),
+          ].filter((key) => !accessNow.canEditField(key));
           if (blocked.length) {
             throw new Error(
               `Not saved: your access to ${blocked.join(", ")} is read-only or hidden.`,
@@ -412,7 +472,9 @@ const BulkOperations = forwardRef(function BulkOperations(
           saved += Number(bulkUpdate(g.ids, g.key, "set", g.value, opts)) || 0;
         });
         if (changes.length && !saved) {
-          throw new Error("Nothing could be saved (the sheet may be locked or the values did not change).");
+          throw new Error(
+            "Nothing could be saved (the sheet may be locked or the values did not change).",
+          );
         }
         return { saved, notes: [] };
       },
@@ -423,7 +485,11 @@ const BulkOperations = forwardRef(function BulkOperations(
         await saveBulkBatch(cyc?.id, batch);
       },
       loadBatches: async (force) => {
-        const { storeFetchBulkHistory: fetchHistory, sheetAudit: localAudit, cycle: cyc } = live.current;
+        const {
+          storeFetchBulkHistory: fetchHistory,
+          sheetAudit: localAudit,
+          cycle: cyc,
+        } = live.current;
         if (HISTORY_FROM_AUDIT) {
           if ((force || !historyCache.current) && fetchHistory) {
             try {
@@ -432,7 +498,10 @@ const BulkOperations = forwardRef(function BulkOperations(
               /* keep the last copy; the session's own audit entries still show */
             }
           }
-          return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
+          return buildBatches(
+            [...(historyCache.current || []), ...(localAudit || [])],
+            loadBatchTexts(cyc),
+          );
         }
         const local = readStoredBatches(cyc);
         let server;
@@ -462,7 +531,10 @@ const BulkOperations = forwardRef(function BulkOperations(
           // First time on the server: bring over scenarios that were only in this browser.
           const legacy = takeLegacyScenarios();
           if (legacy.length) {
-            const moved = legacy.map((sc) => ({ ...sc, id: sc.id || newScenarioId() }));
+            const moved = legacy.map((sc) => ({
+              ...sc,
+              id: sc.id || newScenarioId(),
+            }));
             for (const sc of moved) await saveBulkScenario(cyc?.id, sc);
             legacyScenariosMoved();
             list = moved;
@@ -470,17 +542,21 @@ const BulkOperations = forwardRef(function BulkOperations(
         }
         return list;
       },
-      saveScenario: (scenario) => saveBulkScenario(live.current.cycle?.id, scenario),
+      saveScenario: (scenario) =>
+        saveBulkScenario(live.current.cycle?.id, scenario),
       deleteScenario: (id) => deleteBulkScenario(live.current.cycle?.id, id),
       getSheetEmp: () => live.current.sheetEmp,
       // "edit" | "read" | "hidden" for an Appraisal Sheet field key (Access -> Fields tab).
-      fieldLimit: (key) => (live.current.access ? live.current.access.fieldLimit(key) : "edit"),
+      fieldLimit: (key) =>
+        live.current.access ? live.current.access.fieldLimit(key) : "edit",
       // Restore: true when this employee was edited by someone/something else after the batch started.
       // Entries of the batch itself (and of its own restore) do not count. null = audit not available.
       rowEditedSince: (empId, batch) => {
         const audit = live.current.sheetAudit;
         if (!Array.isArray(audit) || !batch) return null;
-        const since = Number(batch.startedAt) || (Number(batch.at) ? Number(batch.at) - 30000 : 0);
+        const since =
+          Number(batch.startedAt) ||
+          (Number(batch.at) ? Number(batch.at) - 30000 : 0);
         if (!since) return null;
         const own = String(batch.id);
         return audit.some((a) => {
@@ -493,6 +569,20 @@ const BulkOperations = forwardRef(function BulkOperations(
       },
       // Manager Rating names, same list as the Manager Rating column in the Appraisal Sheet.
       ratingLabels: MANAGER_RATING_LABELS,
+      /* Real Budget Master allocation of one Tech ED ("te") or Comp Manager ("cm"): the same figure the Dashboards use.
+         null = the budget tables are not loaded yet, so the screen falls back to sharing the total by Base pay. */
+      getGroupAlloc: (level, key) => {
+        const b = live.current.budgetCtx;
+        if (
+          !b ||
+          !(
+            Array.isArray(b.budgetDistributionRows) &&
+            b.budgetDistributionRows.length
+          )
+        )
+          return null;
+        return allocationFor(level, key, b);
+      },
       getHdr: () => {
         const h = live.current.sheetHdr;
         return h ? { allocated: h.allocated, used: h.used, tpb: h.tpb } : null;
@@ -500,7 +590,10 @@ const BulkOperations = forwardRef(function BulkOperations(
       onBudget: (b) => {
         if (live.current.sheetHdr) return;
         setFallback((prev) =>
-          prev && prev.budget === b.budget && prev.used === b.used && prev.tpb === b.tpb
+          prev &&
+          prev.budget === b.budget &&
+          prev.used === b.used &&
+          prev.tpb === b.tpb
             ? prev
             : { budget: b.budget, used: b.used, tpb: b.tpb },
         );
@@ -510,7 +603,9 @@ const BulkOperations = forwardRef(function BulkOperations(
         if (f) f(batch);
       },
       loadXLSX: () =>
-        import("xlsx").then((m) => (m.default && m.default.utils ? m.default : m)),
+        import("xlsx").then((m) =>
+          m.default && m.default.utils ? m.default : m,
+        ),
     };
     const api = createBulkOps(root, cfg);
     apiRef.current = api;
@@ -571,21 +666,36 @@ const BulkOperations = forwardRef(function BulkOperations(
             <strong className={lvl(util)}>{util.toFixed(1)}%</strong>
           </div>
           <div className="tk">
-            <span>Total Target PB</span>
+            <span title="Target PB for next year, summed over all people">
+              Target PB (next year)
+            </span>
             <strong>{rupees(b0.tpb)}</strong>
           </div>
         </div>
         {/* Reset sits where the old Menu button was. Scenarios and History are tabs now; Save as Scenario is inside the
             Scenarios tab. The hidden stubs below only keep the ids the engine still looks up (nothing is shown). */}
         <div className="more tb-more">
-          <button className="btn" id="bReset" type="button" title="Reset the rule, the filters and the preview">
+          <button
+            className="btn"
+            id="bRestoreLast"
+            type="button"
+            title="Put back the values changed by the last Apply"
+            disabled
+          >
+            Restore Last Apply
+          </button>
+          <button
+            className="btn"
+            id="bReset"
+            type="button"
+            title="Reset the rule, the filters and the preview"
+          >
             <span>Reset</span>
           </button>
           <div hidden aria-hidden="true">
             <button id="bMore" type="button" tabIndex={-1} />
             <div id="moreM" />
             <button id="bScnOpen" type="button" tabIndex={-1} />
-            <button id="bRestoreLast" type="button" tabIndex={-1} />
             <button id="bExport" type="button" tabIndex={-1} />
           </div>
         </div>
