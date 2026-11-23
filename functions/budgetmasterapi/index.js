@@ -1131,6 +1131,7 @@ async function readEmployeeRoster(app) {
       const assignment =
         readField(row, [
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
           "appraiser_tech_ed",
@@ -1851,7 +1852,17 @@ async function calculateBudgetBases(
   // Appraisal_Sheet assignment columns can contain Employee_Master.ROWID
   // foreign keys. Budget_Distribution stores stable business employee IDs.
   const resolvePersonId = (raw) => {
-    const text = String(raw || "").trim();
+    const value =
+      raw && typeof raw === "object"
+        ? raw.ROWID ||
+          raw.rowid ||
+          raw.id ||
+          raw.value ||
+          raw.display_value ||
+          raw.name ||
+          ""
+        : raw;
+    const text = String(value || "").trim();
     if (!text) return "";
     const split = text.split(/\s+-\s+/);
     if (split.length > 1) return split[0].trim();
@@ -3347,6 +3358,7 @@ async function calculateBudgetBases(
       const rawTechEd =
         firstValue(sheetRow, [
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
           "appraiser_tech_ed",
@@ -3498,6 +3510,7 @@ async function calculateBudgetBases(
       const rawTechEd =
         firstValue(sheetRow, [
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
           "appraiser_tech_ed",
@@ -3512,6 +3525,8 @@ async function calculateBudgetBases(
       const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
       const rawCompManager =
         firstValue(sheetRow, [
+          "delegation_comp_manager",
+          "delegation_comp_manager_id",
           "comp_manager",
           "comp_manager_id",
           "comp_manager_row_id",
