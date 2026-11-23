@@ -1264,7 +1264,7 @@ export function AppraisalCycleMasterPage({
     // Payroll Upload is an explicit setup action on the Payroll step. Keep it
     // visible even when the generic tab-visibility check hides the Upload tab;
     // the payroll upload screen and API still enforce edit permissions.
-    if (id === "go-up-pay") return true;
+    if (id === "go-up-pay" || id === "go-up-fr") return true;
     // Appraisal Sheet is a separate route, not an Employee Master tab,
     // but it still respects the caller's screen permission.
     if (!tabKey) return false;
