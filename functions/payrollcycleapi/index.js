@@ -4450,12 +4450,14 @@ async function routeRequest(req, res, identity, resource, a) {
     if (String(query.payrollReadiness || "") === "1") {
       const locationRows = await getAllRows(tables.locations);
       const requestedLocation = String(query.location || "").trim().toLowerCase();
+      const allLocationsSelected = !requestedLocation ||
+        ["all", "all locations"].includes(requestedLocation);
       const candidates = cycles.filter((item) =>
         ["upcoming", "active"].includes(String(item.status || "").trim().toLowerCase()) &&
         !item.archived && !item.hidden &&
-        (requestedLocation
-          ? locationAliases(item.location, locationRows).has(requestedLocation)
-          : !cycleLocationKey(item))
+        (allLocationsSelected
+          ? !cycleLocationKey(item)
+          : locationAliases(item.location, locationRows).has(requestedLocation))
       );
       const target = candidates.find((item) => String(item.status).toLowerCase() === "active") ||
         candidates.find((item) => String(item.status).toLowerCase() === "upcoming");
