@@ -8,6 +8,15 @@ import { money as formatMoney } from "../../../lib/currency-format";
 /* eslint-disable */
 export function createBulkOps(root, cfg) {
   cfg = cfg || {};
+  /* History, Scenarios and "Restore previous values" are for HR only. The screen sets cfg.canUseHistory
+     (false for Tech-ED / Comp Manager); when it is not set, nothing is hidden. */
+  var histHooks = [];
+  function historyAllowed() {
+    return cfg.canUseHistory !== false;
+  }
+  function syncHistoryAccess() {
+    for (var hi = 0; hi < histHooks.length; hi++) histHooks[hi]();
+  }
   var __docL = [],
     __winL = [];
   function onDoc(t, f, o) {
@@ -3881,8 +3890,10 @@ export function createBulkOps(root, cfg) {
       el = $("bRestoreLast");
     if (!el) return;
     var armed = b && restoreAt.id === b.id && Date.now() - restoreAt.t < 6000;
-    el.disabled = !b || S.busy || S.locked || !cfg.canApply || !RESTORE_ENABLED;
-    if (!RESTORE_ENABLED) el.title = "Restore is temporarily unavailable";
+    el.disabled = !b || S.busy || S.locked || !cfg.canApply || !restoreOn();
+    el.style.display = historyAllowed() ? "" : "none";
+    syncHistoryAccess();
+    if (!restoreOn()) el.title = "Restore is temporarily unavailable";
     el.textContent = !b
       ? "Restore Last Apply"
       : (armed ? "Confirm Restore · " : "Restore Last Apply · ") +
@@ -3892,7 +3903,7 @@ export function createBulkOps(root, cfg) {
   }
   $("bRestoreLast").addEventListener("click", function (ev) {
     var b = lastBatch();
-    if (!b || !RESTORE_ENABLED) return;
+    if (!b || !restoreOn()) return;
     if (restoreAt.id === b.id && Date.now() - restoreAt.t < 6000) {
       restoreAt = { id: "", t: 0 };
       $("moreM").classList.remove("on");
@@ -3912,6 +3923,7 @@ export function createBulkOps(root, cfg) {
     }, 6100);
   });
   $("bScnOpen").addEventListener("click", function () {
+    if (!historyAllowed()) return;
     $("scnCard").classList.toggle("hide");
   });
   $("scnCard").addEventListener("click", function (ev) {
@@ -4193,6 +4205,9 @@ export function createBulkOps(root, cfg) {
   var restoreAt = { id: "", t: 0 };
   /* "Restore Previous Values" (History tab and Menu). Set to false to switch it off. */
   var RESTORE_ENABLED = true;
+  function restoreOn() {
+    return RESTORE_ENABLED && historyAllowed();
+  }
   function sameVal(a, b) {
     return (
       String(a) === String(b) || (Number(a) === Number(b) && !isNaN(Number(a)))
@@ -4226,7 +4241,7 @@ export function createBulkOps(root, cfg) {
             : '<button class="btn" type="button" data-restore="' +
               esc(x.id) +
               '"' +
-              (RESTORE_ENABLED
+              (restoreOn()
                 ? ""
                 : ' disabled title="Restore is temporarily unavailable"') +
               ">" +
@@ -4263,7 +4278,7 @@ export function createBulkOps(root, cfg) {
     });
   }
   function doRestore(id) {
-    if (!cfg.canApply || !RESTORE_ENABLED) return;
+    if (!cfg.canApply || !restoreOn()) return;
     var b = S.batches.filter(function (x) {
       return x.id === id;
     })[0];
@@ -5438,7 +5453,7 @@ export function createBulkOps(root, cfg) {
       return;
     }
     var rb = ev.target.closest && ev.target.closest("[data-restore]");
-    if (rb && !RESTORE_ENABLED) return;
+    if (rb && !restoreOn()) return;
     if (rb) {
       var id = rb.getAttribute("data-restore");
       if (restoreAt.id === id && Date.now() - restoreAt.t < 6000) {
@@ -8967,6 +8982,11 @@ export function createBulkOps(root, cfg) {
     $("mainCol").appendChild(ws);
     /* state -> screen */
     function apply() {
+      if (!historyAllowed()) {
+        if (ct === "scn") ct = "res";
+        if (st.hid.indexOf("scn") >= 0) st.hid.splice(st.hid.indexOf("scn"), 1);
+        scnCard.classList.add("hide");
+      }
       ws.style.setProperty("--lw", (st.lc ? 40 : 320) + "px");
       ws.style.setProperty("--rw", (st.rc ? 40 : 290) + "px");
       ws.classList.toggle("lc", st.lc);
@@ -9024,6 +9044,16 @@ export function createBulkOps(root, cfg) {
     tScn.setAttribute("data-x", "scn");
     mpTabs.insertBefore(tEmp, mpTabs.firstChild.nextSibling);
     mpTabs.insertBefore(tScn, lyTog);
+    /* HR only: no Scenarios & History tab for Tech-ED / Comp Manager (checked again whenever the screen refreshes). */
+    histHooks.push(function () {
+      var ok = historyAllowed();
+      tScn.style.display = ok ? "" : "none";
+      if (!ok && ct === "scn") {
+        ct = "res";
+        apply();
+      }
+    });
+    histHooks[histHooks.length - 1]();
     /* "+" chooses which tabs show */
     var plus = mk("button", "tabPlus", "tplus", "＋");
     plus.type = "button";
@@ -9049,11 +9079,12 @@ export function createBulkOps(root, cfg) {
       }
     };
     $("bScnOpen").addEventListener("click", function () {
+      if (!historyAllowed()) return;
       ct = "scn";
       apply();
     });
     new MutationObserver(function () {
-      if (!scnCard.classList.contains("hide") && ct === "res") {
+      if (!scnCard.classList.contains("hide") && ct === "res" && historyAllowed()) {
         ct = "scn";
         apply();
       }
@@ -9067,6 +9098,7 @@ export function createBulkOps(root, cfg) {
         function (b) {
           var t = b.getAttribute("data-t") || b.getAttribute("data-x"),
             lock = t === "summary";
+          if (t === "scn" && !historyAllowed()) return;
           h +=
             '<label><input type="checkbox" data-tt="' +
             t +
