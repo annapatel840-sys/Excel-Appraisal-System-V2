@@ -1907,7 +1907,7 @@
 //             <b>How it works:</b>{" "}
 //             {isHR
 //               ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
-//               : 'You see employees whose Tech-ED is you. Your Comp. Manager and Appraiser Tech-ED changes are saved directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet.'}
+//               : 'You see only employees mapped to you as Tech-ED. You can change their Comp. Manager only; Save updates Delegation and their existing Appraisal Sheet rows automatically.'}
 //           </div>
 //         </div>
 
@@ -2172,7 +2172,7 @@
 //           <div className="note">
 //             {isHR
 //               ? "HR Admin: applied immediately."
-//               : "Delegation assignments are saved directly to the Delegation table; Generate Appraisal Sheet applies them to the sheet."}
+//               : "You can change Comp. Managers only for employees mapped to you. Save updates existing Appraisal Sheet rows automatically."}
 //           </div>
 //         </Modal>
 //       )}
@@ -4728,7 +4728,7 @@ export default function DelegationScreen({
                                   className={
                                     "in" + (prev && cur !== prev ? " c" : "")
                                   }
-                                  disabled={editLocked}
+                                  disabled={editLocked || (isTechEdUser && f !== "comp")}
                                   value={cur}
                                   people={f === "app" ? techEdPeople : people}
                                   onOpen={f === "app" ? loadGlobalTechEdOptions : undefined}
@@ -5121,7 +5121,7 @@ export default function DelegationScreen({
             onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
           >
             <option value="comp">Comp. Manager</option>
-            <option value="app">Appraiser Tech-ED</option>
+            {isHR && <option value="app">Appraiser Tech-ED</option>}
           </select>
           <div className="lb">Apply to</div>
           <select
