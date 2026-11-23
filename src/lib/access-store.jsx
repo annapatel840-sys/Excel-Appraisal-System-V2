@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystSignOut, useCatalystUser } from "./catalyst-auth";
+import { useCurrentCycleInfo } from "./current-cycle";
 import { isAllLocations, matchesLocation, useSelectedLocation } from "./location-store";
 
 // Per-user access rules from accessapi /me (see docs/ACCESS_SPEC.md).
@@ -11,6 +12,20 @@ import { isAllLocations, matchesLocation, useSelectedLocation } from "./location
 
 const CACHE_KEY = "access-me-cache-v1";
 const LEVEL_RANK = { none: 0, view: 1, edit: 2 };
+
+// Once HR has pressed "Close For Tech-ED" in Appraisal Cycle Master, Tech-ED logins get read
+// access only (every Edit screen becomes View, no edit actions) until the cycle is reopened
+// for correction. HR and other roles are not affected.
+const TECHED_LOCK_KEEP_SCREENS = new Set(["settings"]); // personal preferences, not cycle data
+const TECHED_LOCK_BLOCKED_ACTIONS = new Set([
+  "bulkEdit",
+  "allotNextLevel",
+  "importAppraisal",
+  "changeBudgetConfig",
+  "delegateRequest",
+]);
+const isTechEdRole = (role) =>
+  String(role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("teched");
 
 // HR Operations tabs (EmployeeMaster ?tab=...) → screen key.
 export const HR_TAB_SCREENS = {
@@ -123,6 +138,8 @@ export function AccessProvider({ children }) {
   const [state, setState] = useState({ loading: true, me: null, error: "" });
   const [nonce, setNonce] = useState(0);
   const [selectedLocation] = useSelectedLocation();
+  const { info: cycleInfo } = useCurrentCycleInfo();
+  const cycleTechEdClosed = cycleInfo?.techEdClosed === true;
 
   useEffect(() => {
     let active = true;
@@ -164,18 +181,23 @@ export function AccessProvider({ children }) {
     }
     const actions = (ok && me.actions) || {};
     const fields = (ok && me.fields) || {};
+    // Cycle closed for Tech-ED + a Tech-ED login = read-only.
+    const techEdLocked = ok && cycleTechEdClosed && isTechEdRole(me.role || me.roleLabel);
 
     const screenLevel = (key) => {
       if (!ok) return "edit";
-      return resolveScreenLevel(screens, key);
+      const level = resolveScreenLevel(screens, key);
+      return techEdLocked && level === "edit" && !TECHED_LOCK_KEEP_SCREENS.has(key) ? "view" : level;
     };
     const canScreen = (key, level = "view") =>
       LEVEL_RANK[screenLevel(key)] >= (LEVEL_RANK[level] ?? 1);
-    const canAction = (key) => (!ok ? true : actions[key] === true);
+    const canAction = (key) =>
+      !ok ? true : actions[key] === true && !(techEdLocked && TECHED_LOCK_BLOCKED_ACTIONS.has(key));
     const fieldLimit = (key) => {
       if (!ok) return "edit";
       const limit = fields[key];
-      return limit === "read" || limit === "hidden" ? limit : "edit";
+      if (limit === "read" || limit === "hidden") return limit;
+      return techEdLocked ? "read" : "edit";
     };
 
     return {
@@ -185,6 +207,7 @@ export function AccessProvider({ children }) {
       ok,
       error: state.error,
       denied: !state.loading && !ok && enforced,
+      techEdLocked,
       role: ok ? me.role || "" : "",
       roleLabel: ok ? me.roleLabel || me.role || "" : "",
       user: ok ? me.user || null : null,
@@ -199,7 +222,7 @@ export function AccessProvider({ children }) {
       screenFieldLimit: (screen, label) => fieldLimit(screenFieldKey(screen, label)),
       reload,
     };
-  }, [state, reload, selectedLocation]);
+  }, [state, reload, selectedLocation, cycleTechEdClosed]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
@@ -211,6 +234,7 @@ const PERMISSIVE = {
   ok: false,
   error: "",
   denied: false,
+  techEdLocked: false,
   role: "",
   roleLabel: "",
   user: null,

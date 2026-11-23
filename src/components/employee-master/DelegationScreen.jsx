@@ -2374,7 +2374,7 @@
 // .dg .btn.sm{padding:5px 12px;font-size:12px}
 // .dg-tw{overflow:auto;max-height:calc(100vh - 300px);min-height:220px;border-top:1px solid #cbd5e1}
 // .dg table{border-collapse:separate;border-spacing:0}
-// .dg table.dg-grid{font-family:Arial,Helvetica,sans-serif}
+// .dg table.dg-grid{font-family:Inter,"Segoe UI",Arial,sans-serif}
 // .dg .dg-grid th{position:sticky;background:#e9eef5;color:#24364d;font-size:11px;font-weight:700;text-align:left;padding:0;height:46px;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;overflow:visible;z-index:3}
 // .dg .dg-grid tr.grp th{top:0;height:28px;background:#fff;text-align:center;font-size:10.5px;padding:3px 4px;border-bottom:1px solid #cbd5e1;z-index:4}
 // .dg .dg-grid tr.hd th{top:28px}
@@ -5566,9 +5566,9 @@ function Modal({ title, children, foot, onClose, wide, closable }) {
 
 /* ---------------------------------------------------------------- styles */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 .dg,.dg *{box-sizing:border-box}
-.dg{font-family:Manrope,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
+.dg{font-family:Inter,"Segoe UI",Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
 .dg button,.dg input,.dg select,.dg textarea{font-family:inherit;font-size:inherit}
 .dg-pv{background:#e8f5f1;border-bottom:1px solid #b9dcc4;color:#146b5a;padding:7px 12px;font-size:12px;font-weight:600;display:flex;gap:10px;align-items:center}
 .dg-pv select{border:1px solid #b9dcc4;border-radius:4px;padding:3px 6px;font-weight:600}
