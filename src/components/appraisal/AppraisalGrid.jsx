@@ -51,7 +51,7 @@ import {
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
-const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
+const APPRAISAL_FONT = '"Inter", "Segoe UI", Arial, sans-serif';
 // NOTE: the table / grid used to use the earlier font (Arial / Inter look).
 // It now uses Inter, the same font as the reference HTML. Inter is still used
 // by the right-hand feedback panel (PANEL_FONT) below.

@@ -79,7 +79,7 @@ const CSS = `
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-family: "IBM Plex Sans", "Segoe UI", Arial, Helvetica, sans-serif;
+  font-family: "Inter", "Segoe UI", Arial, Helvetica, sans-serif;
   font-size: 12.5px;
   color: #0f1f33;
   font-variant-numeric: tabular-nums;

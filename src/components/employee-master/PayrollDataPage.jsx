@@ -702,7 +702,7 @@ export function PayrollDataPage() {
 }
 
 const PAYROLL_DATA_CSS = `
-.pd-root { font-family: Arial, Helvetica, sans-serif; background: #f4f6f9; color: #1f2937; font-size: 13px; display: flex; flex-direction: column; min-height: 100%; }
+.pd-root { font-family: "Inter", "Segoe UI", Arial, sans-serif; background: #f4f6f9; color: #1f2937; font-size: 13px; display: flex; flex-direction: column; min-height: 100%; }
 .pd-topbar { height: 58px; flex: 0 0 auto; background: #17365d; color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
 .pd-topbar h1 { font-size: 16px; margin: 0; }
 .pd-sub { font-size: 11.5px; color: #b9c6d9; margin: 2px 0 0; }
