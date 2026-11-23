@@ -1867,38 +1867,47 @@ export function TechEdBudgetDistribution() {
 
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
+    const techOwnerIdentities = [
+      techOwnerKey,
+      loginTechOwner,
+      liveTech?.appraiser_tech_ed_id,
+      liveTech?.appraiser_tech_ed_name,
+      liveTech?.tech_ed,
+      liveTech?.tech_ed_id,
+    ].filter(Boolean);
     const matchingRows = locationEmployeeRows.filter((employee) => {
       if (employee.in_appraisal_sheet !== true) return false;
-      const raw =
-        employee.appraiser_tech_ed_row_id ||
-        employee.appraiser_tech_ed_appraisal_sheet ||
-        employee.appraiser_tech_ed ||
-        employee.appraiser_tech_ed_id ||
-        employee.appraiser_tech_ed1 ||
-        employee.tech_ed ||
-        employee.tech_ed_id ||
-        "";
-      const linked = techEdOwners.find((item) =>
-        [
-          item?.employee_id,
-          item?.row_id,
-          item?.ROWID,
-          item?.assignment,
-          item?.name,
-          item?.email,
-          item?.email_id,
-        ]
-          .filter(Boolean)
-          .some((alias) => ownerMatches(alias, raw)),
-      );
-      const assignment = String(linked?.assignment || raw).trim();
-      // Team Size for a Comp Manager is across all of their Tech-Ed allocations.
-      // Transfer dropdown selection only scopes a single transfer operation.
-      if (
-        !isCompManagerLogin &&
-        !(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey)
-      )
-        return false;
+      const rawAssignments = [
+        employee.appraiser_tech_ed_row_id,
+        employee.appraiser_tech_ed_appraisal_sheet,
+        employee.appraiser_tech_ed,
+        employee.appraiser_tech_ed_id,
+        employee.appraiser_tech_ed1,
+        employee.tech_ed,
+        employee.tech_ed_id,
+      ].filter((value) => value !== null && value !== undefined && String(value).trim());
+      const belongsToTechEd = rawAssignments.some((raw) => {
+        if (ownerMatches(raw, techOwnerIdentities)) return true;
+        return techEdOwners.some((item) => {
+          const aliases = [
+            item?.employee_id,
+            item?.row_id,
+            item?.ROWID,
+            item?.assignment,
+            item?.name,
+            item?.email,
+            item?.email_id,
+          ].filter(Boolean);
+          const rawMatchesOwner = aliases.some((alias) =>
+            ownerMatches(alias, [String(raw)]),
+          );
+          return rawMatchesOwner && ownerMatches(item?.assignment, techOwnerIdentities);
+        });
+      });
+      // A Tech-ED team is matched through every available Appraisal Sheet
+      // assignment alias. Some rows store the Employee_Master lookup ROWID,
+      // while others store the Employee ID or display label.
+      if (!isCompManagerLogin && !belongsToTechEd) return false;
       if (!isCompManagerView) return true;
       const manager =
         employee.delegation_comp_manager ||
