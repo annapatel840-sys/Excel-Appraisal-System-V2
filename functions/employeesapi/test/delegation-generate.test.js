@@ -129,9 +129,9 @@ async function seed() {
   const m = table(T.master);
   const mk = (r) => m.insertRow({ emp_status: 'Active', ...r });
   const rows = [
-    await mk({ emp_id: 'EMP001', emp_name: 'Prabhuprasad Parida', email_id: 'prabhu@x.com', appraiser_tech_ed: ASHOK_T }),
+    await mk({ emp_id: 'EMP001', emp_name: 'Prabhuprasad Parida', email_id: 'prabhu@x.com', director: ASHOK_T, appraiser_tech_ed: ASHOK_T }),
     await mk({ emp_id: 'EMP002', emp_name: 'Ashok Kumar', email_id: 'ashok@x.com', appraiser_tech_ed: PRABHU_T, comp_manager: PRABHU_T }),
-    await mk({ emp_id: 'EMP011', emp_name: 'Pooja Rao', appraiser_tech_ed: ASHOK_T, comp_manager: ASHOK_T }),
+    await mk({ emp_id: 'EMP011', emp_name: 'Pooja Rao', director: ASHOK_T, appraiser_tech_ed: ASHOK_T, comp_manager: ASHOK_T }),
     await mk({ emp_id: 'EMP013', emp_name: 'Anjali Verma', appraiser_tech_ed: ASHOK_T }),
     await mk({ emp_id: 'EMP020', emp_name: 'Not Eligible', appraiser_tech_ed: ASHOK_T }),
   ];
@@ -222,7 +222,7 @@ const LIST = 'page=1&limit=100&view=delegation';
     assert.strictEqual(sheetRow('EMP013', 'C1').comp_manager, 'EMP001');
     assert.strictEqual(sheetRow('EMP011', 'C1').appraiser_tech_ed, ids.EMP001);
     assert.strictEqual(sheetRow('EMP011', 'C1').comp_manager, 'EMP002');
-    assert.strictEqual(sheetRow('EMP001', 'C1').comp_manager, 'EMP002', 'Comp Manager defaults to the Tech-ED');
+    assert.strictEqual(sheetRow('EMP001', 'C1').comp_manager, 'EMP002', 'Comp Manager defaults to the current Director when no prior-year manager exists');
     assert.ok(!sheetRow('EMP020', 'C1'), 'not eligible is not generated');
     assert.strictEqual(sheetRow('EMP011', 'C0').comp_manager, 'OLD CYCLE');
 

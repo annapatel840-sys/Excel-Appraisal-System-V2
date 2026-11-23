@@ -2936,23 +2936,21 @@ async function enrichPreviousAppraisalValues(
       previous_appraiser_tech_ed: previousAppraiserTechEd,
       previous_tech_ed: previousAppraiserTechEd,
       // The Delegation row is the persisted source for this cycle's current
-      // Comp Manager. For a new row, default to the prior-cycle manager; a new
-      // employee without prior history falls back to the Employee Master Tech-ED.
+      // Comp Manager. Default order is the previous-cycle Comp Manager, then
+      // the current Director. Do not substitute the employee's Tech-ED.
       // Whether this cycle already had a saved Delegation row for the
       // employee when the request started. The Delegation screen runs its
       // one-time roster fill only while some employee has none.
       delegation_saved: Boolean(savedDelegation),
-      // Only a real Employee_Master employee (name matching) counts. If the
-      // saved / previous / master value is not valid it is skipped, and the
-      // last default is the Tech-ED. If nothing is valid it is blank and the
-      // Delegation screen asks for a Comp Manager to be set.
+      // Only a real Employee_Master employee (name matching) counts. If neither
+      // previous assignment nor current Director resolves, leave it blank so
+      // generation validation can stop and HR can correct the source data.
       // COMP_MANAGER_TRANSFER START
       delegation_comp_manager:
         strictPersonLabel(transferredCompManagerByEmployee.get(String(empKey || "").toLowerCase()), employeeMasterMap) ||
         strictPersonLabel(savedDelegation?.comp_manager, employeeMasterMap) ||
         strictPersonLabel(previousCompManager, employeeMasterMap) ||
-        strictPersonLabel(employee.comp_manager, employeeMasterMap) ||
-        strictPersonLabel(employee.appraiser_tech_ed, employeeMasterMap),
+        strictPersonLabel(master.director || employee.director, employeeMasterMap),
       current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
