@@ -125,7 +125,7 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     const r = await generate();
     assert.strictEqual(r.status, 200, JSON.stringify(r.json).slice(0, 300));
     assert.strictEqual(compManagerOf('EMP001'), 'EMP002', 'Delegation ID');
-    assert.strictEqual(compManagerOf('EMP003'), 'EMP001', 'Employee Master "EMP001 - Name"');
+    assert.strictEqual(compManagerOf('EMP003'), 'EMP002', 'current Director is used when no previous-year Comp Manager exists');
     assert.strictEqual(compManagerOf('EMP007'), 'EMP001', 'Delegation row ID');
   });
 
