@@ -4747,8 +4747,10 @@ export default function DelegationScreen({
                                   }
                                   disabled={editLocked || (isTechEdUser && f !== "comp")}
                                   value={cur}
-                                  people={f === "app" ? techEdPeople : isTechEdUser ? techEdCompManagerPeople : people}
-                                  onOpen={f === "app" ? loadGlobalTechEdOptions : undefined}
+                                  people={isTechEdUser
+                                    ? (f === "app" ? techEdPeople : techEdCompManagerPeople)
+                                    : (f === "app" ? techEdPeople : people)}
+                                  onOpen={loadGlobalTechEdOptions}
                                   onSelect={(person) => {
                                     if (directAssignment(f)) {
                                       applyCellChange(r, f, person);
@@ -5162,7 +5164,9 @@ export default function DelegationScreen({
             onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
           >
             <option value="">— choose —</option>
-            {(bulk.field === "app" ? techEdPeople : isTechEdUser ? techEdCompManagerPeople : people).map((p) => (
+            {(isTechEdUser
+              ? (bulk.field === "app" ? techEdPeople : techEdCompManagerPeople)
+              : (bulk.field === "app" ? techEdPeople : people)).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {p.roles.join(", ")}
               </option>
