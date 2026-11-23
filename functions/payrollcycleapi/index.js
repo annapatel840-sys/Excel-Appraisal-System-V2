@@ -2314,13 +2314,14 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     if (isNewJoinerCycle(item)) return cycleYear(item) === currentYear;
     return isAnnualCycle(item) && isBeforeCurrentCycle(item);
   };
-  const hasPayrollForEligibleEmployee = payrollRowsWithCycle.some(({ row, cycle: rowCycle }) => {
-    if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return false;
+  const payrollEmployeesWithHistory = new Set();
+  payrollRowsWithCycle.forEach(({ row, cycle: rowCycle }) => {
+    if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return;
     const rawEmployee = referenceText(
       row.emp_id || row.employee_master_id || row.employee_id || row.emp_code,
     ).toLowerCase();
     const master = eligibleMasterByAnyKey.get(rawEmployee);
-    if (!master) return false;
+    if (!master) return;
     const employeeHasLocation = Boolean(employeeLocationKey(master));
     const sameAsCurrentLocation =
       cycleLocationKey(rowCycle) === cycleLocationKey(cycle);
@@ -2331,20 +2332,52 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       inCycleLocation(rowCycle, master, locationRows) ||
       (!employeeHasLocation &&
         (!cycleLocationKey(rowCycle) || sameAsCurrentLocation));
-    return locationMatches;
+    if (!locationMatches) return;
+    const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase();
+    const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+    if (masterId) payrollEmployeesWithHistory.add(masterId);
+    if (empId) payrollEmployeesWithHistory.add(empId);
   });
-  if (!hasPayrollForEligibleEmployee) {
+
+  // Validate each eligible employee, not the roster as a whole. A single
+  // employee's payroll row must never make the entire cycle look complete.
+  // Employees who joined in the current cycle year are new joiners and do not
+  // need prior-cycle payroll history; their current compensation is sourced
+  // from Employee_Master / same-year New Joiner payroll when available.
+  const missingPayrollEmployees = eligibleRows.filter((employee) => {
+    const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+    const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+    if (
+      (masterId && payrollEmployeesWithHistory.has(masterId)) ||
+      (empId && payrollEmployeesWithHistory.has(empId))
+    ) return false;
+    const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId);
+    const joiningDate = referenceText(fieldValue(master || {}, "joining_date", "date_of_join", "date_of_joining", "doj"));
+    const joiningYear = (joiningDate.match(/(?:19|20)\d{2}/) || [])[0] || "";
+    return !(currentYear && joiningYear === currentYear);
+  });
+
+  if (missingPayrollEmployees.length) {
+    const missingNames = missingPayrollEmployees.map((employee) => {
+      const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+      const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+      const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId) || {};
+      const id = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || employee.empId || employee.emp_id || "").trim();
+      const name = String(fieldValue(master, "emp_name", "name") || employee.name || "").trim();
+      return name ? `${id} - ${name}` : id;
+    }).filter(Boolean);
+    const employeeList = missingNames.length
+      ? ` Missing employees: ${missingNames.join(", ")}.`
+      : "";
     if (!reuseExistingCycleData && sourceHasPayroll) {
       throw new ApiError(
-        `Payroll data already exists for ${sourceCycle.name}. Confirm to reuse those existing records for ${cycle.name}; no payroll rows will be copied or inserted.`,
+        `Payroll data already exists for ${sourceCycle.name}. Confirm to reuse those existing records for ${cycle.name}; no payroll rows will be copied or inserted.${employeeList}`,
         409,
         "EXISTING_CYCLE_DATA_AVAILABLE",
       );
     }
     throw new ApiError(
-      sourceCycle
-        ? `No payroll data was found in the shared source cycle ${sourceCycle.name} for ${cycle.name}. Check the source cycle's Payroll Data.`
-        : `No payroll history was found for the eligible employees of ${cycle.name}. The system checked this cycle, its shared Annual source, same-year New Joiner payroll and earlier Archived Annual payroll. Upload the missing previous-cycle payroll through Payroll Data / Historical Import before generating the Appraisal Sheet.`,
+      `Payroll history is missing for ${missingPayrollEmployees.length} eligible employee(s) in ${cycle.name}.${employeeList} The system checked this cycle, its shared Annual source, same-year New Joiner payroll and earlier Archived Annual payroll. Upload the missing payroll through Payroll Data / Historical Import before generating the Appraisal Sheet. Current-year new joiners are not required to have prior-cycle history.`,
       409,
     );
   }
