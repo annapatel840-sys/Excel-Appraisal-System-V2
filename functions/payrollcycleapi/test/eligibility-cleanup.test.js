@@ -89,6 +89,14 @@ async function setup() {
   const master = store.table(MASTER_T, null);
   await master.insertRow({ emp_id: 'E1', emp_name: 'A', emp_status: 'Active' });
   await master.insertRow({ emp_id: 'E2', emp_name: 'B', emp_status: 'Active' });
+  // Default test employees have prior payroll history. Tests for the missing
+  // payroll prerequisite explicitly remove these rows before applying criteria.
+  await store.table(PAYROLL_T, null).insertRows(
+    master.rows.map((row) => ({
+      emp_id: row.ROWID,
+      appraisal_cycle_name: 'HISTORICAL-ANNUAL',
+    })),
+  );
   const locations = store.table('74008000000022481', null);
   await locations.insertRow({ location_name: 'India', location_code: 'IN', status: 'Active' });
   await locations.insertRow({ location_name: 'Dubai', location_code: 'AE', status: 'Active' });
@@ -307,6 +315,12 @@ async function setup() {
     await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active', department: 'Sales', designation: 'Manager', joining_date: '2020-01-10' });
     await master.insertRow({ emp_id: 'E4', emp_name: 'D', emp_status: 'Active', department: 'Engineering', designation: 'Analyst', joining_date: '2025-08-01' });
     await master.insertRow({ emp_id: 'E5', emp_name: 'E', emp_status: 'Inactive', department: 'Engineering', designation: 'Analyst', joining_date: '2020-01-10' });
+    await ctx.store.table(PAYROLL_T, null).insertRows(
+      master.rows.filter((row) => ['E3', 'E4'].includes(row.emp_id)).map((row) => ({
+        emp_id: row.ROWID,
+        appraisal_cycle_name: 'HISTORICAL-ANNUAL',
+      })),
+    );
     const c = await ctx.mk('Annual R');
     await ctx.post('cycles/status/' + c.id, { status: 'Active' });
     return { ...ctx, c };
@@ -314,7 +328,8 @@ async function setup() {
   const ids = (elig) => elig.rows.map((r) => r.emp_id).sort();
 
   await t('Appraisal Sheet generation is blocked when cycle payroll has not been uploaded', async () => {
-    const { post, c } = await richSetup();
+    const { post, c, store } = await richSetup();
+    store.table(PAYROLL_T, null).rows.splice(0);
     await apply(post, c.id);
     const result = await post('generate-sheet', { cycleId: c.id });
     assert.strictEqual(result.status, 409, JSON.stringify(result.json));
@@ -324,6 +339,7 @@ async function setup() {
 
   await t('Appraisal Sheet generation names every eligible employee missing payroll history', async () => {
     const { post, c, store } = await richSetup();
+    store.table(PAYROLL_T, null).rows.splice(0);
     await apply(post, c.id);
     const master = store.table(MASTER_T, null).rows.find((row) => row.emp_id === 'E1');
     await store.table(PAYROLL_T, null).insertRow({
@@ -358,6 +374,19 @@ async function setup() {
     assert.match(result.json.message || result.json.error || '', /rating values/i);
   });
 
+
+  await t('Apply Criteria is blocked before writing Eligibility rows or audit when payroll is missing', async () => {
+    const { post, c, elig, store } = await richSetup();
+    store.table(PAYROLL_T, null).rows.splice(0);
+    const audit = store.table('74008000000034940', null);
+    const beforeAudit = audit.rows.length;
+    const result = await apply(post, c.id);
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    assert.match(result.json.message || result.json.error || '', /Payroll data is not updated/i);
+    assert.match(result.json.message || result.json.error || '', /E1 - A|E1/i);
+    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length, 0);
+    assert.strictEqual(audit.rows.length, beforeAudit, 'blocked generation must not create an audit entry');
+  });
 
   await t('apply criteria updates each active employee to Eligible or Not Eligible', async () => {
     const { post, c, elig, store } = await richSetup();
