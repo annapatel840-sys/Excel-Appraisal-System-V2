@@ -5591,6 +5591,31 @@ async function routeRequest(req, res, identity, resource, a) {
       if (!archived && String(existing.remarks || "").includes(SHEET_ARCHIVE_MARK)) {
         return sendJson(res, 409, { success: false, message: `${existing.name}'s Appraisal Sheet was moved to Payroll Data when it was archived, so it cannot be unarchived.` });
       }
+      if (!archived && cycleProcessOf(existing) === "Annual") {
+        const targetLocation = cycleLocationKey(existing);
+        const targetCore = cycleNameWithoutLocation(existing.name).trim().toLowerCase();
+        const targetYear = cycleYear(existing);
+        const targetType = cycleTypeOf(existing.name);
+        const blockingUnarchived = cycles.find((cycle) => {
+          if (cycle.id === id || cycle.archived || ["Cancelled", "Deleted"].includes(String(cycle.status || ""))) return false;
+          if (cycleProcessOf(cycle) !== "Annual") return false;
+          const otherLocation = cycleLocationKey(cycle);
+          const sameScope = !targetLocation || !otherLocation || targetLocation === otherLocation;
+          if (!sameScope) return false;
+          const sameSourceCycle =
+            targetCore === cycleNameWithoutLocation(cycle.name).trim().toLowerCase() &&
+            targetYear === cycleYear(cycle) &&
+            targetType === cycleTypeOf(cycle.name);
+          if (!targetLocation || !otherLocation) return !sameSourceCycle;
+          return true;
+        });
+        if (blockingUnarchived) {
+          return sendJson(res, 409, {
+            success: false,
+            message: `Cannot unarchive "${existing.name}" while "${blockingUnarchived.name}" is not archived for the same location.`,
+          });
+        }
+      }
       const otherActive = otherActiveCycle(id);
       if (!archived && existing.status === "Active" && otherActive) {
         return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" before unarchiving this active cycle.` });
