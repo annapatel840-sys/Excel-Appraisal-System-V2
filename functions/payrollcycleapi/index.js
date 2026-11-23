@@ -2631,26 +2631,47 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       inCycleLocation(feedbackCycle, master, locationRows)
     );
   });
-  const hasFeedback = eligibleFeedbackRows.some((row) =>
-    ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
+  // Validate feedback AND rating for every eligible employee individually.
+  // A single employee's upload must not make the whole cycle appear complete.
+  const feedbackCompletenessByMaster = new Map();
+  eligibleFeedbackRows.forEach((row) => {
+    const rawEmployee = referenceText(fieldValue(
+      row, "emp_ID", "emp_id", "employee_master_id", "employee_master_row_id", "employee_id", "emp_code",
+    )).toLowerCase();
+    const master = eligibleMasterByAnyKey.get(rawEmployee);
+    if (!master) return;
+    const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
+    if (!masterId) return;
+    const state = feedbackCompletenessByMaster.get(masterId) || { feedback: false, rating: false };
+    state.feedback = state.feedback || ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
       const value = fieldValue(row, field);
       return value !== undefined && value !== null && String(value).trim() !== "";
-    }),
-  );
-  const hasRating = eligibleFeedbackRows.some((row) =>
-    ["manager_rating", "client_rating"].some((field) => {
+    });
+    state.rating = state.rating || ["manager_rating", "client_rating"].some((field) => {
       const value = fieldValue(row, field);
       return value !== undefined && value !== null && String(value).trim() !== "";
-    }),
-  );
-  if (!eligibleFeedbackRows.length || !hasFeedback || !hasRating) {
-    const missing = [
-      !eligibleFeedbackRows.length ? "Feedback and Rating upload" : "",
-      !hasFeedback ? "feedback values" : "",
-      !hasRating ? "rating values" : "",
-    ].filter(Boolean).join(" and ");
+    });
+    feedbackCompletenessByMaster.set(masterId, state);
+  });
+  const missingFeedbackEmployees = [];
+  const missingRatingEmployees = [];
+  eligibleRows.forEach((employee) => {
+    const masterId = referenceText(employee.employeeMasterRowId || "");
+    const state = feedbackCompletenessByMaster.get(masterId) || { feedback: false, rating: false };
+    const label = `${String(employee.empId || "").trim()}${employee.name ? " - " + employee.name : ""}`;
+    if (!state.feedback) missingFeedbackEmployees.push(label);
+    if (!state.rating) missingRatingEmployees.push(label);
+  });
+  if (missingFeedbackEmployees.length || missingRatingEmployees.length) {
+    const details = [];
+    if (missingFeedbackEmployees.length) {
+      details.push(`feedback values missing for: ${missingFeedbackEmployees.slice(0, 30).join(", ")}${missingFeedbackEmployees.length > 30 ? ", ..." : ""}`);
+    }
+    if (missingRatingEmployees.length) {
+      details.push(`rating values missing for: ${missingRatingEmployees.slice(0, 30).join(", ")}${missingRatingEmployees.length > 30 ? ", ..." : ""}`);
+    }
     throw new ApiError(
-      `${missing} is required for the eligible employees of ${cycle.name}. The system checked this cycle and matching archived/shared history for employees in the selected location.`,
+      `Feedback and Rating are required for every eligible employee of ${cycle.name}. ${details.join(". ")}. The system checked this cycle and matching archived/shared history for employees in the selected location.`,
       409,
     );
   }
@@ -2837,7 +2858,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const master = employeeMasterById.get(masterId);
     const empId = String(employee.empId || "").trim();
     const saved = delegationByEmployee.get(masterId) || delegationByEmployee.get(empId);
-    const techEdValue = String(saved?.appraiser_tech_ed || employee.appraiser_tech_ed || master?.appraiser_tech_ed || "").trim();
+    // Generation requires the current-cycle Delegation assignment itself.
+    // Employee_Master's default Tech-ED is displayed as a starting value in
+    // Delegation, but must be saved there before Appraisal Sheet generation.
+    const techEdValue = String(saved?.appraiser_tech_ed || "").trim();
     if (!resolveEmployeeReference(techEdValue, employeeMasterRows)) missingTechEd.push(empId);
 
     const previousSource = payrollBaseSourceByMasterId.get(masterId) ||
