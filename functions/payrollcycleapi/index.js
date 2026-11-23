@@ -1028,6 +1028,15 @@ async function requirePayrollTables(adminApp) {
     locations: datastore.table(TABLES.locations),
     delegation: datastore.table(TABLES.delegation),
     previousDelegation: datastore.table(TABLES.previousDelegation),
+    // Designation Master tables are addressed by their Catalyst table names.
+    // The primary Designations table is resolved with a legacy-name fallback
+    // during generation; no new Data Store columns or tables are created.
+    designations: datastore.table("Designations"),
+    designationFallback: datastore.table("Designation"),
+    designationNext: datastore.table("Designation_Next"),
+    designationGroups: datastore.table("Designation_Groups"),
+    designationGroupMembers: datastore.table("Designation_Group_Members"),
+    designationConfig: datastore.table("Designation_Config"),
     lastEditNotes: datastore.table(TABLES.lastEditNotes),
     // Used only by the fast read-only GET paths (readTableFast); null when the
     // SDK instance has no ZCQL, in which case those reads use the paged reader.
@@ -2230,6 +2239,105 @@ function sameSheetValue(stored, next) {
   return false;
 }
 
+/* Validate Designation Master before any Appraisal_Sheet writes.
+   Mirrors designationmasterapi's read-only appraisal rules: S/M/G require
+   active mapped next designations; F (Free Select) is complete by definition. */
+async function validateGenerationDesignations(tables, cycle, eligibleRows, employeeMasterById) {
+  let designationRows;
+  try {
+    designationRows = await getAllRows(tables.designations);
+  } catch (primaryError) {
+    try {
+      designationRows = await getAllRows(tables.designationFallback);
+    } catch (fallbackError) {
+      throw new ApiError(
+        "Designation Master could not be checked. Verify that its Designations table is available before generating the Appraisal Sheet.",
+        409,
+      );
+    }
+  }
+  const [nextRows, groupRows, memberRows, configRows] = await Promise.all([
+    getAllRows(tables.designationNext),
+    getAllRows(tables.designationGroups),
+    getAllRows(tables.designationGroupMembers),
+    getAllRows(tables.designationConfig),
+  ]);
+  const cycleId = String(cycle.id);
+  const inCycle = designationRows.filter((row) => String(row.cycle_id || "") === cycleId);
+  const active = (row) => !["inactive", "false", "0", "no"].includes(String(row.status ?? "Active").trim().toLowerCase());
+  const ref = (value) => {
+    if (value && typeof value === "object") return String(value.ROWID ?? value.rowid ?? value.id ?? value.value ?? "").trim();
+    return String(value ?? "").trim();
+  };
+  const options = { S: false, M: false, G: false, F: false };
+  configRows.forEach((row) => {
+    const type = String(row.type || "").trim().toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(options, type)) {
+      options[type] = active(row);
+    }
+  });
+  if (!configRows.length) Object.keys(options).forEach((type) => { options[type] = true; });
+
+  const byName = new Map();
+  const byId = new Map(inCycle.map((row) => [String(row.ROWID || row.rowid || ""), row]));
+  inCycle.forEach((row) => {
+    const name = String(row.name || "").trim().toLowerCase();
+    if (name && !byName.has(name)) byName.set(name, row);
+  });
+  const groupMembers = new Map();
+  memberRows.forEach((row) => {
+    const groupId = ref(row.group_id);
+    if (!groupMembers.has(groupId)) groupMembers.set(groupId, []);
+    groupMembers.get(groupId).push(ref(row.des_id));
+  });
+  const missing = [];
+  eligibleRows.forEach((employee) => {
+    const masterId = String(employee.employeeMasterRowId || "");
+    const master = employeeMasterById.get(masterId);
+    const designation = String(employee.designation || master?.designation || "").trim();
+    const row = byName.get(designation.toLowerCase());
+    if (!designation || !row || !active(row)) {
+      missing.push({ empId: String(employee.empId || ""), designation, reason: "not present as an active designation in Designation Master" });
+      return;
+    }
+    const type = String(row.next_type || "").trim().toUpperCase();
+    if (!type || !options[type]) {
+      missing.push({ empId: String(employee.empId || ""), designation, reason: "next designation type is not configured or enabled" });
+      return;
+    }
+    if (type === "F") return;
+    let nextIds = [];
+    if (type === "S") {
+      const id = ref(row.single_next_designation);
+      if (id) nextIds = [id];
+    } else if (type === "M") {
+      nextIds = nextRows
+        .filter((item) => ref(item.designation_id) === String(row.ROWID || row.rowid || ""))
+        .map((item) => ref(item.next_id));
+    } else if (type === "G") {
+      const groupId = ref(row.group_id);
+      const groupExists = groupRows.some((item) => String(item.ROWID || item.rowid || "") === groupId && active(item));
+      if (groupExists) nextIds = groupMembers.get(groupId) || [];
+    }
+    const hasActiveNext = nextIds.some((id) => {
+      const next = byId.get(id);
+      return Boolean(next && active(next));
+    });
+    if (!hasActiveNext) {
+      missing.push({ empId: String(employee.empId || ""), designation, reason: "no active next designation is mapped (or the mapped designation is inactive)" });
+    }
+  });
+  if (missing.length) {
+    const details = missing.slice(0, 30).map((item) =>
+      `${item.empId || "Unknown employee"} — ${item.designation || "Blank designation"} (${item.reason})`,
+    );
+    throw new ApiError(
+      `Designation Master validation failed for ${missing.length} eligible employee(s): ${details.join("; ")}${missing.length > 30 ? "; ..." : ""}. Update Designation Master and map a next designation or choose Free Select.`,
+      409,
+    );
+  }
+}
+
 async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, options = {}) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
@@ -2720,6 +2828,49 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       if (key) delegationByEmployee.set(key, row);
     });
 
+  // All generation prerequisites are checked before preparing or writing rows.
+  const managerIdOf = strictEmployeeIdResolver(employeeMasterRows);
+  const missingManagers = [];
+  const missingTechEd = [];
+  eligibleRows.forEach((employee) => {
+    const masterId = String(employee.employeeMasterRowId || "");
+    const master = employeeMasterById.get(masterId);
+    const empId = String(employee.empId || "").trim();
+    const saved = delegationByEmployee.get(masterId) || delegationByEmployee.get(empId);
+    const techEdValue = String(saved?.appraiser_tech_ed || employee.appraiser_tech_ed || master?.appraiser_tech_ed || "").trim();
+    if (!resolveEmployeeReference(techEdValue, employeeMasterRows)) missingTechEd.push(empId);
+
+    const previousSource = payrollBaseSourceByMasterId.get(masterId) ||
+      payrollBaseSourceByMasterId.get(empId);
+    const previousManager = previousSource
+      ? fieldValue(previousSource, "Comp_Manager", "comp_manager", "comp_manager_name", "compManager", "compensation_manager")
+      : "";
+    const director = fieldValue(master || {}, "director", "director_name", "current_director", "director_emp_id");
+    const existing = sheetRows.find((row) =>
+      String(row.cycle_id || "") === String(cycle.id) &&
+      (String(row.emp_master_row_id || "") === masterId ||
+       String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase()),
+    );
+    const assigned = String(saved?.comp_manager || existing?.comp_manager || "").trim();
+    const defaultManager = managerIdOf(assigned) ||
+      managerIdOf(previousManager) ||
+      managerIdOf(director);
+    if (!defaultManager) missingManagers.push(empId);
+  });
+  if (missingManagers.length) {
+    throw new ApiError(
+      `Appraisal Sheet cannot be generated. Comp Manager is missing for: ${missingManagers.slice(0, 30).join(", ")}${missingManagers.length > 30 ? ", ..." : ""}. Set the previous year's Comp Manager or the current Director in Employee Master / Delegation for every listed employee.`,
+      409,
+    );
+  }
+  if (missingTechEd.length) {
+    throw new ApiError(
+      `Appraisal Sheet cannot be generated. Appraiser Tech-ED is not assigned for: ${missingTechEd.slice(0, 30).join(", ")}${missingTechEd.length > 30 ? ", ..." : ""}. Complete Delegation for every listed employee.`,
+      409,
+    );
+  }
+  await validateGenerationDesignations(tables, cycle, eligibleRows, employeeMasterById);
+
   const byKey = new Map();
   sheetRows.forEach((row) => {
     const rowCycle = String(row.cycle_id || "");
@@ -2928,13 +3079,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     ) {
       payload.appraiser_tech_ed = appraiserReference;
     }
-    // Appraisal_Sheet.comp_manager is text holding the Employee ID ("EMP001").
-    // It is only ever a person who exists in Employee_Master with a matching
-    // name; anything else is left blank (never kept as free text).
-    // Order: the Delegation assignment, then what the sheet already holds,
-    // then the usual defaults (Employee Master / previous cycle), and finally
-    // the Appraiser Tech-ED of this sheet row. If none of them is a real
-    // employee the Comp Manager stays blank and Delegation asks for one.
+    // Default Comp Manager: preserve an explicit Delegation / existing valid
+    // assignment; otherwise use the previous year's Comp Manager, then the
+    // current Director. Do not silently substitute the Tech-ED or Employee
+    // Master's unrelated Comp Manager field.
     const previousPayrollCompManager = previousPayrollBaseSource
       ? String(fieldValue(
           previousPayrollBaseSource,
@@ -2942,19 +3090,16 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
           "compensation_manager",
         ) ?? "").trim()
       : "";
+    const currentDirector = String(fieldValue(
+      employeeMasterById.get(masterId) || {},
+      "director", "director_name", "current_director", "director_emp_id",
+    ) ?? "").trim();
     const storedCompManager = String(existing?.comp_manager || "").trim();
     const delegatedId = compManagerEmployeeId(delegatedCompManager);
     const storedId = compManagerEmployeeId(storedCompManager);
-    const defaultId =
-      compManagerEmployeeId(String(employee.comp_manager ?? "").trim()) ||
-      compManagerEmployeeId(previousPayrollCompManager) ||
-      compManagerEmployeeId(appraiserReference) ||
-      compManagerEmployeeId(delegatedAppraiser) ||
-      compManagerEmployeeId(String(employee.appraiser_tech_ed ?? "").trim());
-    // Preserve an existing free-text/ambiguous assignment. Replacing it with
-    // a different default person would silently change an HR decision.
-    const finalCompManager = delegatedId || storedId ||
-      (storedCompManager ? storedCompManager : defaultId) || "";
+    const previousManagerId = compManagerEmployeeId(previousPayrollCompManager);
+    const directorId = compManagerEmployeeId(currentDirector);
+    const finalCompManager = delegatedId || storedId || previousManagerId || directorId || "";
     if (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager")) {
       // Write when it differs (this also blanks an old free-text value).
       if (finalCompManager !== storedCompManager && (finalCompManager || storedCompManager)) {
