@@ -105,8 +105,20 @@ const norm = (v) =>
 const keysOf = (v) => {
   const n = norm(v);
   if (!n) return [];
-  const m = n.match(/^(\S+)\s*-\s*(.+)$/);
-  return m ? [n, m[1], m[2]] : [n];
+  const out = new Set([n]);
+  // "EMP001 - Name", "Name - EMP001", "Name (EMP001)": every part is a way to name the same person.
+  n.split(/\s+-\s+/).forEach((p) => p.trim() && out.add(p.trim()));
+  const m = n.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (m) {
+    if (m[1]) out.add(m[1].trim());
+    out.add(m[2].trim());
+  }
+  const dash = n.match(/^(\S+)\s*-\s*(.+)$/);
+  if (dash) {
+    out.add(dash[1]);
+    out.add(dash[2]);
+  }
+  return [...out];
 };
 const sameOwner = (a, b) => {
   const kb = keysOf(b);
@@ -520,9 +532,19 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       "appraisal:budget-data-updated",
     ];
     events.forEach((name) => window.addEventListener(name, refresh));
+    // Real time: re-read from the server every minute while the tab is open, and when it is shown again.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 60000);
+    const onShow = () => {
+      if (document.visibilityState === "visible") load(true);
+    };
+    document.addEventListener("visibilitychange", onShow);
     return () => {
       seq.current += 1; // drop answers still in flight
       events.forEach((name) => window.removeEventListener(name, refresh));
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
     };
   }, [load]);
 
@@ -736,33 +758,41 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   /* ---- Tech-ED budget table (also feeds "Budget not given") ---- */
   const teRows = useMemo(() => {
     const owners = budget.techEdOwners || [];
-    const nameFor = (raw) => {
-      const hit = owners.find((o) =>
-        [o?.employee_id, o?.row_id, o?.ROWID, o?.assignment, o?.name, o?.email]
-          .filter(Boolean)
-          .some((a) => sameOwner(a, raw)),
-      );
-      return String(hit?.name || raw || "").trim();
+    const aliasesOf = (o) =>
+      [o?.employee_id, o?.row_id, o?.ROWID, o?.assignment, o?.name, o?.email, o?.email_id].filter(Boolean);
+    // One Tech-ED, whatever the value is written as (id, ROWID, name, email, "ID - Name").
+    const resolve = (raw) => {
+      const v = String(raw ?? "").trim();
+      if (!v) return null;
+      const hit = owners.find((o) => aliasesOf(o).some((a) => sameOwner(a, v)));
+      if (hit) {
+        const id = String(hit.employee_id || hit.row_id || hit.ROWID || hit.name || "");
+        const person = sheetRows.find((r) => sameOwner(r.empId, id));
+        return { key: norm(id), name: String(hit.name || person?.name || v).trim() };
+      }
+      const person = sheetRows.find((r) => sameOwner(r.empId, v));
+      if (person?.name) return { key: norm(person.empId), name: String(person.name).trim() };
+      return { key: norm(v), name: v };
     };
     const wanted = String(budget.activeBudgetCycleId || "");
     const map = new Map();
+    const find = (r) => {
+      if (map.has(r.key)) return r.key;
+      return [...map.keys()].find(
+        (k) => sameOwner(map.get(k).name, r.name) || sameOwner(k, r.name) || sameOwner(k, r.key),
+      );
+    };
     (budget.budgetRows || [])
       .filter((r) => !wanted || String(r.appraisal_cycle_id || "") === wanted)
       .forEach((r) => {
-        const name = nameFor(r.tech_ed_id);
-        if (!name) return;
-        // One row per Tech-ED: the same person can appear under an id, a name or "ID - Name".
-        const dupKey = [...map.keys()].find(
-          (k) => sameOwner(map.get(k).name, name) || sameOwner(k, name),
-        );
-        const key = dupKey || norm(name);
-        const applied = Number(
-          r.applied_budget || r.updated_budget || r.calculated_budget || 0,
-        );
+        const who = resolve(r.tech_ed_id);
+        if (!who) return;
+        const applied = Number(r.applied_budget || r.updated_budget || r.calculated_budget || 0);
+        const key = find(who) || who.key;
         const prev = map.get(key);
         if (prev && prev.budget) return;
         map.set(key, {
-          name,
+          name: prev?.name || who.name,
           team: Number(budget.employeeCounts?.[r.tech_ed_id] || 0),
           budget: applied > 0 ? applied : null,
           used: applied > 0 ? Number(r.utilization_percentage || 0) : null,
@@ -771,22 +801,18 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     // A Tech-ED with a team but no budget row at all is also "not given".
     const counts = new Map();
     (budget.locationEmployeeRows || []).forEach((e) => {
-      const o = String(
-        e.appraiser_tech_ed || e.tech_ed || e.appraiser || "",
-      ).trim();
-      if (!o) return;
-      const k = norm(o);
-      counts.set(k, { name: o, n: (counts.get(k)?.n || 0) + 1 });
+      const who = resolve(e.appraiser_tech_ed || e.tech_ed || e.appraiser || "");
+      if (!who) return;
+      const key = find(who) || who.key;
+      counts.set(key, { who, n: (counts.get(key)?.n || 0) + 1 });
     });
-    counts.forEach(({ name, n }) => {
-      const known = [...map.values()].some((x) => sameOwner(x.name, name));
-      if (!known)
-        map.set(norm(name), {
-          name: nameFor(name),
-          team: n,
-          budget: null,
-          used: null,
-        });
+    counts.forEach(({ who, n }, key) => {
+      if (map.has(key)) {
+        const cur = map.get(key);
+        if (!cur.team) map.set(key, { ...cur, team: n });
+        return;
+      }
+      map.set(key, { name: who.name, team: n, budget: null, used: null });
     });
     let list = [...map.values()];
     // Same people and same sums as the Overview Dashboard: Active + Eligible rows of the Appraisal Sheet.
@@ -794,15 +820,14 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       (r) => norm(r.status) === "active" && norm(r.eligibility) === "eligible",
     );
     if (live.length) {
-      list = list
-        .map((t) => {
-          const mine = live.filter((r) => sameOwner(t.name, r.appraiserTechED));
-          const used = t.budget ? (partsOf(mine).total / t.budget) * 100 : null;
-          return { ...t, team: mine.length, used };
-        })
-        // A Tech-ED with a budget but nobody in this location's sheet is not part of this view.
-        .filter((t) => t.team > 0 || t.budget == null);
+      list = list.map((t) => {
+        const mine = live.filter((r) => sameOwner(t.name, r.appraiserTechED));
+        const used = t.budget ? (partsOf(mine).total / t.budget) * 100 : null;
+        return { ...t, team: mine.length, used };
+      });
     }
+    // A Tech-ED with nobody in this location's cycle is not part of this view (no team, so nothing to flag).
+    list = list.filter((t) => t.team > 0);
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [
     budget.budgetRows,
