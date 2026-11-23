@@ -2392,32 +2392,61 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   // an incomplete Delegation is reported directly instead of being masked by
   // a separate missing-feedback error. Employee_Master defaults are not proof
   // that the current cycle's Delegation assignment was saved.
+  const readDelegationField = (row, ...names) => {
+    const keys = Object.keys(row || {});
+    for (const name of names) {
+      const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
+      if (actual !== undefined && row[actual] !== null && row[actual] !== undefined) {
+        return row[actual];
+      }
+    }
+    return "";
+  };
+  const normalizeDelegationKey = (value) => String(value ?? "").trim().toLowerCase();
+  const masterByEmpId = new Map();
+  employeeMasterRows.forEach((row) => {
+    const id = readDelegationField(row, "emp_id", "employee_id");
+    if (id) masterByEmpId.set(normalizeDelegationKey(id), row);
+  });
   const currentCycleDelegations = delegationRows.filter(
-    (row) => String(row.cycle_id || "").trim() === String(cycle.id).trim(),
+    (row) =>
+      normalizeDelegationKey(readDelegationField(row, "cycle_id", "appraisal_cycle_id")) ===
+      normalizeDelegationKey(cycle.id),
   );
   const missingSavedTechEd = [];
   eligibleRows.forEach((employee) => {
-    const masterId = String(employee.employeeMasterRowId || "").trim().toLowerCase();
-    const empId = String(employee.empId || "").trim().toLowerCase();
+    const empId = String(employee.empId || employee.emp_id || "").trim();
+    const master = masterByEmpId.get(normalizeDelegationKey(empId));
+    const masterId = normalizeDelegationKey(
+      employee.employeeMasterRowId ||
+      employee.employee_master_row_id ||
+      master?.ROWID ||
+      master?.rowid,
+    );
+    const employeeKey = normalizeDelegationKey(empId);
     const saved = currentCycleDelegations.find((row) => {
       const employeeKeys = [
-        row.emp_id,
-        row.employee_id,
-        row.emp_master_row_id,
-        row.employee_master_row_id,
-      ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-      return employeeKeys.includes(masterId) || employeeKeys.includes(empId);
+        readDelegationField(row, "emp_id"),
+        readDelegationField(row, "employee_id"),
+        readDelegationField(row, "emp_master_row_id"),
+        readDelegationField(row, "employee_master_row_id"),
+      ].map(normalizeDelegationKey).filter(Boolean);
+      return (masterId && employeeKeys.includes(masterId)) ||
+        (employeeKey && employeeKeys.includes(employeeKey));
     });
-    const techEd = String(saved?.appraiser_tech_ed || "").trim();
-    // Require a resolvable saved assignment on this cycle's Delegation row.
-    // A default on Employee_Master or a previous cycle must not satisfy this.
+    const techEd = readDelegationField(saved, "appraiser_tech_ed", "appraiser_tech_ed_id");
+    // Delegation stores the selected Tech-ED as Employee ID/name text. Resolve
+    // it against Employee_Master, but never fall back to a previous cycle.
     if (!saved || !resolveEmployeeReference(techEd, employeeMasterRows)) {
-      missingSavedTechEd.push(String(employee.empId || "Unknown employee"));
+      const employeeName = String(
+        employee.name || employee.emp_name || master?.emp_name || master?.name || "",
+      ).trim();
+      missingSavedTechEd.push(employeeName ? `${empId} - ${employeeName}` : (empId || "Unknown employee"));
     }
   });
   if (missingSavedTechEd.length) {
     throw new ApiError(
-      `Appraisal Sheet cannot be generated. Appraiser Tech-ED is not assigned in the current cycle's Delegation for: ${missingSavedTechEd.slice(0, 30).join(", ")}${missingSavedTechEd.length > 30 ? ", ..." : ""}. Save a valid Appraiser Tech-ED assignment in Delegation for every eligible employee.`,
+      `Appraisal Sheet cannot be generated. Appraiser Tech-ED is missing or invalid in the current cycle's Delegation for: ${missingSavedTechEd.slice(0, 30).join(", ")}${missingSavedTechEd.length > 30 ? ", ..." : ""}. Save a valid Appraiser Tech-ED assignment in Delegation for every eligible employee.`,
       409,
     );
   }
