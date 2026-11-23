@@ -414,16 +414,17 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     (fresh) => {
       const mine = ++seq.current;
       const live = () => seq.current === mine;
-      if (fresh) {
-        invalidatePayrollCycleReads();
-        invalidateEligibilityEmployees();
-        invalidateDelegationRoster();
-        try {
-          budgetReload.current?.();
-        } catch (_) {
-          /* budget refreshes on its own when it cannot be reloaded */
-        }
-      } else {
+      // Every load reads from the server. The shared reads (15 s to 90 s) and the saved roster copy are
+      // thrown away first, otherwise an item HR has just fixed on another screen is still listed here.
+      invalidatePayrollCycleReads();
+      invalidateEligibilityEmployees();
+      invalidateDelegationRoster();
+      try {
+        budgetReload.current?.();
+      } catch (_) {
+        /* budget refreshes on its own when it cannot be reloaded */
+      }
+      if (!fresh) {
         // A different location must never show the previous location's numbers.
         setCycle(null);
         setElig(null);
@@ -457,7 +458,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       return Promise.all([
         run(
           "cycle",
-          () => payrollCycleRequest("cycles", { fresh, query: { payrollReadiness: 1, location } }),
+          () => payrollCycleRequest("cycles", { fresh: true, query: { payrollReadiness: 1, location } }),
           (list) => setCycle(pickCycle(list, location) || { none: true }),
         ),
         run(
@@ -468,6 +469,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
               limit: 100000,
               search: "",
               location,
+              fresh: true,
             }),
           (r) =>
             setElig({
@@ -478,7 +480,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         ),
         run(
           "del",
-          () => fetchDelegationRoster({ fresh, location }),
+          () => fetchDelegationRoster({ fresh: true, location }),
           (rows) => setRoster(Array.isArray(rows) ? rows : []),
         ),
         run(
@@ -497,7 +499,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         ),
         run(
           "des",
-          () => loadDesignationMaster({ fresh, location }),
+          () => loadDesignationMaster({ fresh: true, location }),
           (d) => setDesMaster(d || { designations: [], options: {} }),
         ),
       ]).then(() => {
@@ -511,10 +513,16 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   useEffect(() => {
     load(false);
     const refresh = () => load(true);
-    window.addEventListener("appraisal:cycle-updated", refresh);
+    const events = [
+      "appraisal:cycle-updated",
+      "appraisal:employee-master-updated",
+      "appraisal:payroll-data-updated",
+      "appraisal:budget-data-updated",
+    ];
+    events.forEach((name) => window.addEventListener(name, refresh));
     return () => {
       seq.current += 1; // drop answers still in flight
-      window.removeEventListener("appraisal:cycle-updated", refresh);
+      events.forEach((name) => window.removeEventListener(name, refresh));
     };
   }, [load]);
 
@@ -534,18 +542,40 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       (roster || []).map((r) => norm(r.emp_id || r.employee_id)),
     );
 
+    // Current Comp Manager / Appraiser Tech-ED per employee, to spot requests that are already done.
+    const rosterBy = new Map();
+    (roster || []).forEach((r) => {
+      const id = norm(r.emp_id || r.employee_id);
+      if (id && !rosterBy.has(id)) rosterBy.set(id, r);
+    });
+    const seenReq = new Set();
+
     // Requests: Delegation "Pending" approvals, limited to this location's employees.
-    (reqs || []).forEach((q) => {
+    // Newest first, so when the same change was requested twice only the latest one is listed.
+    [...(reqs || [])]
+      .sort((a, b) => (Date.parse(b?.on) || 0) - (Date.parse(a?.on) || 0))
+      .forEach((q) => {
       if (norm(q.status) !== "pending") return;
       const emp = norm(q.empId || q.rowId);
       if (!isAllLocations(location) && roster && emp && !rosterIds.has(emp))
         return;
       const isScreen =
         norm(q.requestType) === "screen" || norm(q.field) === "screen";
-      const fieldLabel =
-        norm(q.field) === "app" || norm(q.field).includes("appraiser")
-          ? "Appraiser Tech-ED"
-          : "Comp Manager";
+      const isApp = norm(q.field) === "app" || norm(q.field).includes("appraiser");
+      const fieldLabel = isApp ? "Appraiser Tech-ED" : "Comp Manager";
+      const reqKey = [emp, isScreen ? "screen" : fieldLabel, norm(isScreen ? q.reason : q.newId)].join("|");
+      if (seenReq.has(reqKey)) return; // duplicate of a newer request
+      seenReq.add(reqKey);
+      if (!isScreen && emp && q.newId) {
+        // The roster already has the requested person: nothing is left to approve.
+        const cur = rosterBy.get(emp);
+        const now = cur
+          ? isApp
+            ? cur.appraiser_tech_ed
+            : cur.delegation_comp_manager || cur.comp_manager
+          : "";
+        if (now && sameOwner(now, q.newId)) return;
+      }
       out.req.push([
         C("Requests"),
         C(q.empName || q.empId || "—"),
@@ -566,7 +596,13 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     const eligRows = filterByLocation(elig?.data || [], location, locOf).filter(
       (e) => String(e.changeTag || e.eligibilityTag || "") !== "Removed",
     );
+    const seenElig = new Set();
     eligRows.filter(isActionNeededStatus).forEach((e) => {
+      const eid = norm(e.empId || e.name);
+      if (eid) {
+        if (seenElig.has(eid)) return; // same employee listed twice
+        seenElig.add(eid);
+      }
       const row = [
         C("Eligibility"),
         C(e.name || e.empId || "—"),
@@ -590,7 +626,13 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       );
       return hit ? statusOf(hit) : "";
     };
+    const seenDel = new Set();
     (roster || []).forEach((r) => {
+      const did = norm(r.emp_id || r.employee_id);
+      if (did) {
+        if (seenDel.has(did)) return; // same employee listed twice
+        seenDel.add(did);
+      }
       const comp = String(
         r.delegation_comp_manager || r.comp_manager || "",
       ).trim();
@@ -626,22 +668,23 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       };
       lettersState.letters
         .filter((l) => String(l.cycle) === cycleId)
+        .filter((l) => !["Replaced", "Dropped"].includes(l.status))
         .forEach((l) => {
           let type = "";
           let detail = "";
           let tone = "";
           if (l.status === "Failed")
-            [type, detail, tone] = ["Failed", "Send failed — resend", "a"];
+            [type, detail, tone] = ["Failed", `${l.family ? l.family + " letter: " : ""}Send failed — resend`, "a"];
           else if (l.status === "Reviewed")
             [type, detail, tone] = [
               "Reviewed",
-              "Reviewed — ready to send",
+              `${l.family ? l.family + " letter: " : ""}Reviewed — ready to send`,
               "b",
             ];
           else if (l.status === "Out of date")
             [type, detail, tone] = [
               "Alert",
-              "Appraisal sheet changed after the letter was made",
+              `${l.family ? l.family + " letter: " : ""}Appraisal sheet changed after the letter was made`,
               "v",
             ];
           if (!type) return;
@@ -659,8 +702,12 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     }
 
     // Designation: active designations with no next designation mapped (Designation Master > Not Mapped).
+    const seenDes = new Set();
     (desMaster?.designations || []).forEach((d) => {
       if (String(d?.status || "") !== "Active") return;
+      const dk = norm(`${d?.name}|${d?.department || ""}`);
+      if (seenDes.has(dk)) return; // same designation listed twice
+      seenDes.add(dk);
       const why = desUnmappedReason(d, desMaster?.options);
       if (!why) return;
       out.des.push([
