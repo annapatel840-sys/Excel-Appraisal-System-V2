@@ -1898,9 +1898,7 @@ export function TechEdBudgetDistribution() {
             item?.email,
             item?.email_id,
           ].filter(Boolean);
-          const rawMatchesOwner = aliases.some((alias) =>
-            ownerMatches(alias, [String(raw)]),
-          );
+          const rawMatchesOwner = ownerMatches(raw, aliases);
           return rawMatchesOwner && ownerMatches(item?.assignment, techOwnerIdentities);
         });
       });
