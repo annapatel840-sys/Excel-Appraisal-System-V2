@@ -2842,9 +2842,11 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
 
     const previousSource = payrollBaseSourceByMasterId.get(masterId) ||
       payrollBaseSourceByMasterId.get(empId);
-    const previousManager = previousSource
-      ? fieldValue(previousSource, "Comp_Manager", "comp_manager", "comp_manager_name", "compManager", "compensation_manager")
-      : "";
+    const previousManager = String(saved?.previous_comp_manager || "").trim() || (
+      previousSource
+        ? String(fieldValue(previousSource, "Comp_Manager", "comp_manager", "comp_manager_name", "compManager", "compensation_manager") || "").trim()
+        : ""
+    );
     const director = fieldValue(master || {}, "director", "director_name", "current_director", "director_emp_id");
     const existing = sheetRows.find((row) =>
       String(row.cycle_id || "") === String(cycle.id) &&
@@ -3083,13 +3085,15 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     // assignment; otherwise use the previous year's Comp Manager, then the
     // current Director. Do not silently substitute the Tech-ED or Employee
     // Master's unrelated Comp Manager field.
-    const previousPayrollCompManager = previousPayrollBaseSource
-      ? String(fieldValue(
-          previousPayrollBaseSource,
-          "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
-          "compensation_manager",
-        ) ?? "").trim()
-      : "";
+    const previousPayrollCompManager = String(savedDelegation?.previous_comp_manager || "").trim() || (
+      previousPayrollBaseSource
+        ? String(fieldValue(
+            previousPayrollBaseSource,
+            "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
+            "compensation_manager",
+          ) ?? "").trim()
+        : ""
+    );
     const currentDirector = String(fieldValue(
       employeeMasterById.get(masterId) || {},
       "director", "director_name", "current_director", "director_emp_id",
