@@ -1478,8 +1478,9 @@ export function AppraisalCycleMasterPage({
           ? "Upload as the data comes in · repeat any time · not required for any other step"
           : "Available after Activate",
         sharedSource ? "ok" : act ? "pd" : "lk",
-        // act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
-        sharedSource ? [] : [{ l: "Upload ›", id: "go-up-fr" }],
+        // Keep the upload action visible like Payroll, even when shared/history
+        // data exists; HR may still need to upload corrections for this cycle.
+        [{ l: "Upload ›", id: "go-up-fr" }],
       ),
       row(
         "Active",
