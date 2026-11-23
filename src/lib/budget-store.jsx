@@ -843,10 +843,44 @@ export function BudgetProvider({ children }) {
   } catch (x) {
     sheetRowsForTeam = [];
   }
-  // People on the Appraisal Sheet that the budget roster does not list (sheet rows are already
-  // limited to the selected location and the login), in the roster's own field names.
+  // The Appraisal Sheet is the source of truth for who is on a team. The budget roster can
+  // (a) miss a person the sheet shows, or (b) list them under another Tech-ED / Comp Manager
+  // spelling, so they fall out of the team after the full roster finishes loading (Team Size
+  // 18 for a few seconds, then 16). Fix both: sheet values win for every person on the sheet,
+  // and anyone missing from the roster is added, using the roster's own field names.
+  const sheetById = useMemo(() => {
+    const m = new Map();
+    sheetRowsForTeam.forEach((r) => {
+      const id = String(r.empId || "")
+        .trim()
+        .toLowerCase();
+      if (id) m.set(id, r);
+    });
+    return m;
+  }, [sheetRowsForTeam]);
+  const withSheetValues = (e) => {
+    const r = sheetById.get(
+      String(e.emp_id || e.employee_id || e.empId || "")
+        .trim()
+        .toLowerCase(),
+    );
+    if (!r) return e;
+    const out = { ...e, in_appraisal_sheet: true };
+    if (r.appraiserTechED) {
+      out.appraiser_tech_ed = r.appraiserTechED;
+      out.appraiser_tech_ed_appraisal_sheet = r.appraiserTechED;
+      out.appraiser_tech_ed_row_id = "";
+    }
+    const cm = r.compManagerDisplay || r.compManager;
+    if (cm) {
+      out.comp_manager = cm;
+      out.comp_manager_display = cm;
+      out.delegation_comp_manager = "";
+    }
+    return out;
+  };
   const sheetOnlyRows = useMemo(() => {
-    if (!sheetRowsForTeam.length) return [];
+    if (!sheetById.size) return [];
     const have = new Set(
       employeeRows
         .map((e) =>
@@ -857,10 +891,9 @@ export function BudgetProvider({ children }) {
         .filter(Boolean),
     );
     const extra = [];
-    sheetRowsForTeam.forEach((r) => {
+    sheetById.forEach((r, key) => {
+      if (have.has(key)) return;
       const id = String(r.empId || "").trim();
-      if (!id || have.has(id.toLowerCase())) return;
-      have.add(id.toLowerCase());
       extra.push({
         emp_id: id,
         employee_id: id,
@@ -880,21 +913,31 @@ export function BudgetProvider({ children }) {
       });
     });
     return extra;
-  }, [employeeRows, sheetRowsForTeam]);
+  }, [employeeRows, sheetById]);
   const employeeRowsWithSheet = useMemo(
     () =>
-      sheetOnlyRows.length ? [...employeeRows, ...sheetOnlyRows] : employeeRows,
-    [employeeRows, sheetOnlyRows],
+      sheetById.size
+        ? [...employeeRows.map(withSheetValues), ...sheetOnlyRows]
+        : employeeRows,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employeeRows, sheetOnlyRows, sheetById],
   );
   const locationEmployeeRows = useMemo(() => {
     if (isAllLocations(selectedLocation)) return employeeRowsWithSheet;
     const withLocation = employeeRows.filter((row) => locationOfRow(row));
     const matched = new Set(filterByLocation(withLocation, selectedLocation));
-    const base = employeeRows.filter(
-      (row) => !locationOfRow(row) || matched.has(row),
-    );
+    const base = employeeRows
+      .filter((row) => !locationOfRow(row) || matched.has(row))
+      .map(withSheetValues);
     return sheetOnlyRows.length ? [...base, ...sheetOnlyRows] : base;
-  }, [employeeRows, employeeRowsWithSheet, sheetOnlyRows, selectedLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    employeeRows,
+    employeeRowsWithSheet,
+    sheetOnlyRows,
+    sheetById,
+    selectedLocation,
+  ]);
 
   const rows = useMemo(
     () =>
