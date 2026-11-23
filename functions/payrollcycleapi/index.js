@@ -777,6 +777,16 @@ async function writeRowsInBatches(table, rows, kind, deadline) {
 
 const NOT_SAVED_TIME_LIMIT = "Not saved: the upload ran out of time. Upload this row again.";
 
+// "Close For Tech-ED" is an optional step inside an Active Annual cycle. The
+// cycle stays Active (every other rule keeps working); the step is recorded in
+// the remarks log and the latest of the two entries decides the state.
+const TECHED_CLOSE_MARK = "Tech-ED close:";
+const TECHED_REOPEN_MARK = "Tech-ED reopen:";
+function techEdClosedFromRemarks(remarks) {
+  const text = String(remarks || "");
+  return text.lastIndexOf(TECHED_CLOSE_MARK) > text.lastIndexOf(TECHED_REOPEN_MARK);
+}
+
 // Without a cancel_reason column the reason is kept in the remarks.
 function cancelReasonFromRemarks(row) {
   if (String(row.status || "") !== "Cancelled") return "";
@@ -818,6 +828,7 @@ function normalizeCycle(row) {
     changedBy: row.changed_by || "",
     changedAt: row.changed_at || "",
     archived: isTruthyFlag(row.archived),
+    techEdClosed: techEdClosedFromRemarks(row.remarks),
     hidden: isTruthyFlag(row.hidden),
     type: row.cycle_type || "",
     process: row.process || "",
@@ -5072,10 +5083,12 @@ async function routeRequest(req, res, identity, resource, a) {
         return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" first. Only one cycle can be Active at a time.` });
       }
       const verb = existing.status === "Closed" ? "Reopen" : status === "Active" ? "Activate" : "Close";
-      const remarks = remark ? appendRemark(existing.remarks, `${verb}: ${remark}`) : existing.remarks;
+      let remarks = remark ? appendRemark(existing.remarks, `${verb}: ${remark}`) : existing.remarks;
+      // Reopening a Closed cycle starts it again as plain Active.
+      if (verb === "Reopen" && techEdClosedFromRemarks(remarks)) remarks = appendRemark(remarks, `${TECHED_REOPEN_MARK} cycle reopened`);
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
       const row = { ROWID: id, status, changed_by: actor, changed_at: now };
-      if (remark) row.remarks = remarks;
+      if (remarks !== existing.remarks) row.remarks = remarks;
       // The process is locked at activation: store the one in use.
       if (status === "Active" && !existing.process) withOptionalColumns(columns, row, { process: cycleProcessOf(existing) });
       await tables.cycles.updateRow(row);
@@ -5092,6 +5105,25 @@ async function routeRequest(req, res, identity, resource, a) {
       }
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(eligibilityCleared !== null ? { eligibilityCleared } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
       return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync, eligibilityCleared } });
+    }
+
+    if (action === "teched") {
+      if (typeof body.techEdClosed !== "boolean") return sendJson(res, 400, { success: false, message: "techEdClosed must be true or false." });
+      const closing = body.techEdClosed;
+      const remark = String(body.remark || "").trim();
+      if (existing.archived || existing.status !== "Active") return sendJson(res, 409, { success: false, message: "Only an Active cycle can be closed or reopened for Tech-ED." });
+      if (cycleProcessOf(existing) !== "Annual") return sendJson(res, 409, { success: false, message: "Close For Tech-ED applies to Annual cycles only." });
+      if (techEdClosedFromRemarks(existing.remarks) === closing) {
+        return sendJson(res, 409, { success: false, message: closing ? "This cycle is already closed for Tech-ED." : "This cycle is not closed for Tech-ED." });
+      }
+      const entry = `${closing ? TECHED_CLOSE_MARK : TECHED_REOPEN_MARK} ${remark || (closing ? "closed for Tech-ED" : "reopened for correction")}`;
+      const remarks = appendRemark(existing.remarks, entry);
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      await tables.cycles.updateRow({ ROWID: id, remarks, changed_by: actor, changed_at: now });
+      const updated = { ...existing, remarks, techEdClosed: closing, changedBy: actor, changedAt: now };
+      const label = closing ? "Closed for Tech-ED" : "Reopened for correction";
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: label, details: { kind: "cycle", action: label, message: `${existing.name}: ${label}.`, cycleName: existing.name, newRemarks: remarks } });
+      return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "archive") {
