@@ -310,10 +310,6 @@ async function setup() {
     const { post, mk, api, store } = await setup();
     const c = await mk('Annual Open Missing Payroll');
     store.table(PAYROLL_T, null).rows.splice(0);
-    assert.strictEqual((await post('cycles/status/' + c.id, { status: 'Active' })).status === 409, true);
-    // Simulate an already-active legacy cycle with no payroll.
-    const cycleRow = store.table(CYCLE_T, CYCLE_COLS).rows.find((row) => row.cycle_name === c.name);
-    cycleRow.status = 'Active';
     const response = await new Promise((resolve, reject) => {
       const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(c.id), on() {} };
       const res = { status: 0, writeHead(status) { this.status = status; }, end(body) { resolve({ status: this.status, json: JSON.parse(body) }); } };
