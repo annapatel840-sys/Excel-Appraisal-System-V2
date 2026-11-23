@@ -270,7 +270,6 @@ export function FeedbackRatingMasterPage({
   batches: batchesProp,
   loading = false,
   error = "",
-  onUpload,
 }) {
   // BACKEND: replace these three with the real data (props or your own fetch).
   const CYCLES = cyclesProp || DEMO_CYCLES;
@@ -634,11 +633,7 @@ export function FeedbackRatingMasterPage({
       <div className="fb-tabrow">
         <span className="fb-title">Feedback &amp; Rating Master</span>
         <div className="tr-right" onClick={(e) => e.stopPropagation()}>
-          {typeof onUpload === "function" && (
-            <button className="btn pri" type="button" onClick={onUpload}>
-              Upload Feedback &amp; Rating
-            </button>
-          )}
+
           <span className="flt">
             <span className="lbl">Cycle</span>
             <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} disabled={!CYCLES.length} onChange={(e) => onCycle(e.target.value)}>
