@@ -40,10 +40,14 @@ function seed() {
     [T.payroll]: master.map((m, i) => ({ ROWID: 'P' + i, emp_id: m.ROWID, appraisal_cycle_name: 'C27', new_base_pay: 500000, Comp_Manager: 'EMP002' })),
     [T.feedback]: master.map((m, i) => ({ ROWID: 'F' + i, emp_ID: m.ROWID, appraisal_cycle_name: 'C27', manager_feedback: 'Good', manager_rating: 4 })),
     // Delegation (stores IDs and, for EMP007, a row ID).
-    [T.delegation]: [
-      { ROWID: 'D1', cycle_id: 'C27', emp_id: 'M1', comp_manager: 'EMP002', appraiser_tech_ed: 'EMP002' },
-      { ROWID: 'D7', cycle_id: 'C27', emp_id: 'M7', comp_manager: 'M1', appraiser_tech_ed: 'EMP002' },
-    ],
+    [T.delegation]: master.map((employee, index) => ({
+      ROWID: 'D' + (index + 1),
+      cycle_id: 'C27',
+      emp_id: employee.ROWID,
+      comp_manager: employee.emp_id === 'EMP007' ? 'M1' : 'EMP002',
+      appraiser_tech_ed: 'EMP002',
+      previous_comp_manager: employee.emp_id === 'EMP003' ? '' : 'EMP002',
+    })),
     // Existing sheet rows with the forms found in the live data.
     [T.sheet]: [
       { ROWID: 'S2', emp_id: 'EMP002', emp_master_row_id: 'M2', cycle_id: 'C27', comp_manager: 'EMP001 - Prabhu Parida' },
