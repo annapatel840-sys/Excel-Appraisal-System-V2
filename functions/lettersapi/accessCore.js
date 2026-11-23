@@ -93,7 +93,8 @@ const CMP = 'Compensation', HRO = 'HR Operations';
 /* Fields of the other screens (group = screen key). m = shown/system value (read-only), otherwise an input. */
 const fslug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 const SCREEN_FIELD_SPEC = {
-  employeeMaster: [['Employee ID', 'm'], 'Employee Name', 'Designation', 'Department', 'Reporting Manager', 'Director', 'Appraiser Tech-ED', 'Employee Type', 'Email ID', 'Date of Joining', 'Location', 'Cost Center', 'Organization Experience', 'Total Experience', 'Current Salary', 'Last Appraisal Month/Year', 'Employee Status', 'Exit Date', 'Remark'],
+  // Employee Master fields all arrive through the upload: 'u' = Upload only (Read / Hidden, never Edit).
+  employeeMaster: [['Employee ID', 'u'], ['Employee Name', 'u'], ['Designation', 'u'], ['Department', 'u'], ['Reporting Manager', 'u'], ['Director', 'u'], ['Appraiser Tech-ED', 'u'], ['Employee Type', 'u'], ['Email ID', 'u'], ['Date of Joining', 'u'], ['Location', 'u'], ['Cost Center', 'u'], ['Organization Experience', 'u'], ['Total Experience', 'u'], ['Current Salary', 'u'], ['Last Appraisal Month/Year', 'u'], ['Employee Status', 'u'], ['Exit Date', 'u'], ['Remark', 'u']],
   cycleMaster: ['Cycle Name', 'Cycle Type', 'Year', 'Process', 'Start Date', 'Close Date', 'Effective Date', ['Status', 'm'], 'Letters to Send', ['Mismatch', 'm'], 'Remarks'],
   locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Status'],
   budgetMaster: [['Tech-ED', 'm'], 'Budget %', 'Reason for Change', ['Allocated', 'm'], ['Updated', 'm'], ['Team Size', 'm'], 'Allotted to Comp Managers', ['Buffer', 'm']],
@@ -111,8 +112,8 @@ const SCREEN_FIELD_SPEC = {
 /* Screens only HR can open: other roles get Hidden on their fields by default. */
 const HR_FIELD_GROUPS = new Set(['employeeMaster', 'cycleMaster', 'locationMaster', 'budgetMaster', 'payrollMaster', 'feedbackRating', 'designationMaster', 'eligibility', 'payrollUpload', 'historicalImport']);
 const SCREEN_FIELD_CATALOG = [].concat(...Object.keys(SCREEN_FIELD_SPEC).map((scr) => SCREEN_FIELD_SPEC[scr].map((it) => {
-  const label = Array.isArray(it) ? it[0] : it, m = Array.isArray(it) && it[1] === 'm';
-  return fld(scr + '_' + fslug(label), label, m ? 'master' : 'input', { group: scr });
+  const label = Array.isArray(it) ? it[0] : it, tag = Array.isArray(it) ? it[1] : '';
+  return fld(scr + '_' + fslug(label), label, tag === 'u' ? 'upload' : tag === 'm' ? 'master' : 'input', { group: scr });
 })));
 
 const START_CATALOG = [
@@ -289,7 +290,9 @@ async function loadCatalog(zcql) {
   let src;
   if (rows.length) {
     const knownKeys = new Set(rows.map((r) => String(r.item_type || '') + '|' + String(r.item_key || '')));
-    const activeRows = rows.filter((r) => bool(r.active)).map(catalogRow);
+    // A built-in field's kind is defined in code (SCREEN_FIELD_SPEC), so rows seeded earlier pick up a kind change.
+    const builtKind = Object.fromEntries(START_CATALOG.filter((x) => x.type === 'field' && x.kind).map((x) => [x.key, x.kind]));
+    const activeRows = rows.filter((r) => bool(r.active)).map(catalogRow).map((x) => (x.type === 'field' && builtKind[x.key] ? Object.assign(x, { kind: builtKind[x.key] }) : x));
     // Add newly introduced built-in fields when the catalogue was seeded earlier.
     // Existing inactive entries stay inactive because their keys are still known.
     const missingDefaults = START_CATALOG.filter((item) => !knownKeys.has(item.type + '|' + item.key));
