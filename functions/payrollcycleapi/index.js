@@ -4597,10 +4597,16 @@ async function routeRequest(req, res, identity, resource, a) {
     let records = [];
     let masterRecords = [];
     let criteriaApplied = false;
+    const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch(() => ({ criteria: null }));
+    // Opening the Eligibility List is itself a guarded entry point: don't
+    // display an empty list as if it were ready when payroll is missing.
+    if (String(cycle.status || "").toLowerCase() === "active" && !cycle.archived &&
+        !await eligibilityCriteriaWasApplied(tables, cycle.id, await getAllRows(tables.eligibility))) {
+      await validatePayrollBeforeEligibility(tables, cycle, cleanCriteria(criteriaMeta.criteria || {}));
+    }
     const single = await getEligibilityRows(tables, cycle, actor);
     records = single.records;
     masterRecords = single.masterRecords;
-    const criteriaMeta = await readEligibilityCriteriaMeta(tables, cycle).catch(() => ({ criteria: null }));
     criteriaApplied = Boolean(single.criteriaApplied);
 
     return sendJson(res, 200, {
