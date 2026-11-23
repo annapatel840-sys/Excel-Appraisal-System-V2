@@ -1726,6 +1726,11 @@ app.post(
       if (!empId || !["comp", "app"].includes(field) || !assignment) {
         throw new HttpError(422, "Change " + (index + 1) + " needs an employee, assignment field, and new assignment.");
       }
+      // Tech-ED users may reassign only the Comp. Manager for employees
+      // currently mapped to them. Appraiser Tech-ED changes remain HR-only.
+      if (me.role === "techEd" && field !== "comp") {
+        throw new HttpError(403, "Tech-Ed can change only the Comp. Manager for employees mapped to them.");
+      }
       return { empId, field, assignment };
     });
 
@@ -1803,8 +1808,11 @@ app.post(
           master?.appraiser_tech_ed ||
           "";
         const assignedTechEdId = managerEmployeeId(currentTechEd);
-        if (!A.inScope(me, change.empId) && (!myEmployeeId || assignedTechEdId !== myEmployeeId)) {
-          throw new HttpError(403, "You do not have access to employee " + change.empId + ".");
+        // Delegation scope is based only on the employee's current Tech-ED
+        // assignment. A broader screen/access scope must not expose another
+        // Tech-ED's team in this facility.
+        if (!myEmployeeId || assignedTechEdId !== myEmployeeId) {
+          throw new HttpError(403, "You can change Comp. Managers only for employees mapped to you. Employee " + change.empId + " is outside your Tech-ED team.");
         }
       }
     } else if (me.role !== "hr") {
