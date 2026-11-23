@@ -46,11 +46,12 @@ const PROCESSES = [
   ["Exceptional", "Exceptional"],
   ["None", "No process"],
 ];
-// No new Annual-process cycle for a location while that location's previous one is
-// still open (Upcoming or Active); once it is Closed a new one can be set up.
+// A location can have only one unarchived Annual-process cycle at a time.
+// Closing is not enough; the previous cycle must be archived first.
+// Cancelled cycles are terminal and cannot be archived, so they do not block.
 // Exceptional and New Joiner cycles have no such limit.
 const ENFORCE_ONE_OPEN_ANNUAL = true;
-const OPEN_CYCLE_STATUSES = ["Upcoming", "Active"];
+const OPEN_CYCLE_STATUSES = ["Upcoming", "Active", "Closed"];
 
 // The setup form's All option creates one separate cycle for every active
 // Location Master location. The existing global Annual cycle remains separate.
@@ -1145,7 +1146,8 @@ export function AppraisalCycleMasterPage({
             c.process === "Annual" &&
             OPEN_CYCLE_STATUSES.includes(c.status) &&
             !c.archived &&
-            !isHidden(c) &&
+            c.status !== "Cancelled" &&
+            c.status !== "Deleted" &&
             sameLocationScope(c.location, location) &&
             !(
               isAllCycleLocation(c.location) &&

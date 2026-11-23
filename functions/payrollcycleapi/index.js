@@ -5424,6 +5424,36 @@ async function routeRequest(req, res, identity, resource, a) {
           return sendJson(res, 400, { success: false, message: "A past cycle must have ended before today." });
         }
       }
+      // Enforce one unarchived Annual-process cycle per location on the API.
+      // A Closed cycle continues to block until archived. Cancelled cycles are
+      // terminal and cannot be archived, so they do not block future cycles.
+      if (!past && fields.process === "Annual") {
+        const targetLocation = cycleLocationKey(fields);
+        const targetCore = cycleNameWithoutLocation(fields.name).trim().toLowerCase();
+        const targetYear = cycleYear({ name: fields.name });
+        const targetType = cycleTypeOf(fields.name);
+        const blocking = cycles.find((cycle) => {
+          if (cycle.archived || ["Cancelled", "Deleted"].includes(String(cycle.status || ""))) return false;
+          if (cycleProcessOf(cycle) !== "Annual") return false;
+          const otherLocation = cycleLocationKey(cycle);
+          const sameScope = !targetLocation || !otherLocation || targetLocation === otherLocation;
+          if (!sameScope) return false;
+          // Keep the existing All Locations parent + matching location-cycle
+          // pairing valid when both represent the same process/year.
+          const sameSourceCycle =
+            targetCore === cycleNameWithoutLocation(cycle.name).trim().toLowerCase() &&
+            targetYear === cycleYear(cycle) &&
+            targetType === cycleTypeOf(cycle.name);
+          if (!targetLocation || !otherLocation) return !sameSourceCycle;
+          return true;
+        });
+        if (blocking) {
+          return sendJson(res, 409, {
+            success: false,
+            message: `Archive "${blocking.name}" before creating another Annual-process cycle for ${fields.location === ALL_LOCATIONS ? "this location" : fields.location}.`,
+          });
+        }
+      }
       const pastNote = "Past cycle (history import only)";
       const row = withOptionalColumns(columns, {
         cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, status: past ? "Closed" : "Upcoming",
@@ -5560,6 +5590,31 @@ async function routeRequest(req, res, identity, resource, a) {
       if (archived && existing.status !== "Closed") return sendJson(res, 409, { success: false, message: "Close the cycle before archiving it." });
       if (!archived && String(existing.remarks || "").includes(SHEET_ARCHIVE_MARK)) {
         return sendJson(res, 409, { success: false, message: `${existing.name}'s Appraisal Sheet was moved to Payroll Data when it was archived, so it cannot be unarchived.` });
+      }
+      if (!archived && cycleProcessOf(existing) === "Annual") {
+        const targetLocation = cycleLocationKey(existing);
+        const targetCore = cycleNameWithoutLocation(existing.name).trim().toLowerCase();
+        const targetYear = cycleYear(existing);
+        const targetType = cycleTypeOf(existing.name);
+        const blockingUnarchived = cycles.find((cycle) => {
+          if (cycle.id === id || cycle.archived || ["Cancelled", "Deleted"].includes(String(cycle.status || ""))) return false;
+          if (cycleProcessOf(cycle) !== "Annual") return false;
+          const otherLocation = cycleLocationKey(cycle);
+          const sameScope = !targetLocation || !otherLocation || targetLocation === otherLocation;
+          if (!sameScope) return false;
+          const sameSourceCycle =
+            targetCore === cycleNameWithoutLocation(cycle.name).trim().toLowerCase() &&
+            targetYear === cycleYear(cycle) &&
+            targetType === cycleTypeOf(cycle.name);
+          if (!targetLocation || !otherLocation) return !sameSourceCycle;
+          return true;
+        });
+        if (blockingUnarchived) {
+          return sendJson(res, 409, {
+            success: false,
+            message: `Cannot unarchive "${existing.name}" while "${blockingUnarchived.name}" is not archived for the same location.`,
+          });
+        }
       }
       const otherActive = otherActiveCycle(id);
       if (!archived && existing.status === "Active" && otherActive) {
