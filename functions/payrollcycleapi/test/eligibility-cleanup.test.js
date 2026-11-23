@@ -89,12 +89,23 @@ async function setup() {
   const master = store.table(MASTER_T, null);
   await master.insertRow({ emp_id: 'E1', emp_name: 'A', emp_status: 'Active' });
   await master.insertRow({ emp_id: 'E2', emp_name: 'B', emp_status: 'Active' });
-  // Default test employees have prior payroll history. Tests for the missing
-  // payroll prerequisite explicitly remove these rows before applying criteria.
+  // Default test employees have prior Annual payroll history. Payroll_Data
+  // links to the source cycle ROWID, just like the live datastore.
+  const historyCycle = await store.table(CYCLE_T, CYCLE_COLS).insertRow({
+    cycle_name: 'Annual 2025',
+    start_date: '2025-01-01',
+    end_date: '2025-12-31',
+    effective_date: '2025-01-01',
+    cycle_type: 'Annual',
+    process: 'Annual',
+    status: 'Closed',
+    archived: true,
+    location: 'All',
+  });
   await store.table(PAYROLL_T, null).insertRows(
     master.rows.map((row) => ({
       emp_id: row.ROWID,
-      appraisal_cycle_name: 'HISTORICAL-ANNUAL',
+      appraisal_cycle_name: historyCycle.ROWID,
     })),
   );
   const locations = store.table('74008000000022481', null);
@@ -295,6 +306,19 @@ async function setup() {
     assert.deepStrictEqual(elig.rows.map((row) => row.emp_id), ['E1']);
   });
 
+  await t('opening Eligibility List is blocked when active cycle payroll is missing', async () => {
+    const { post, mk, api, store } = await setup();
+    const c = await mk('Annual Open Missing Payroll');
+    store.table(PAYROLL_T, null).rows.splice(0);
+    assert.strictEqual((await post('cycles/status/' + c.id, { status: 'Active' })).status === 409, true);
+    // Simulate an already-active legacy cycle with no payroll.
+    const cycleRow = store.table(CYCLE_T, CYCLE_COLS).rows.find((row) => row.cycle_name === c.name);
+    cycleRow.status = 'Active';
+    const response = await call(api, 'GET', 'eligibility&cycleId=' + c.id);
+    assert.strictEqual(response.status, 409, JSON.stringify(response.json));
+    assert.match(response.json.message || '', /Payroll data is not uploaded or updated/i);
+  });
+
   await t('GET eligibility does not seed employees before criteria are applied', async () => {
     const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
@@ -374,6 +398,20 @@ async function setup() {
     assert.match(result.json.message || result.json.error || '', /rating values/i);
   });
 
+
+  await t('cycle activation is blocked before changing status when payroll is missing', async () => {
+    const { post, mk, store, elig } = await setup();
+    const c = await mk('Annual Missing Payroll');
+    store.table(PAYROLL_T, null).rows.splice(0);
+    const audit = store.table('74008000000034940', null);
+    const beforeAudit = audit.rows.length;
+    const result = await post('cycles/status/' + c.id, { status: 'Active' });
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    assert.match(result.json.message || '', /Payroll data is not uploaded or updated/i);
+    assert.strictEqual((await call(store.api, 'GET', 'cycles')).json.data.find((item) => item.id === c.id).status, 'Upcoming');
+    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length, 0);
+    assert.strictEqual(audit.rows.length, beforeAudit);
+  });
 
   await t('Apply Criteria is blocked before writing Eligibility rows or audit when payroll is missing', async () => {
     const { post, c, elig, store } = await richSetup();
