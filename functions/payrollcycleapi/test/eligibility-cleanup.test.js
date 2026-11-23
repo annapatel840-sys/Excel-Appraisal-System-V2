@@ -318,7 +318,25 @@ async function setup() {
     await apply(post, c.id);
     const result = await post('generate-sheet', { cycleId: c.id });
     assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || result.json.error || '', /No payroll history was found for the eligible employees/i);
+    assert.match(result.json.message || result.json.error || '', /Payroll history is missing/i);
+    assert.match(result.json.message || result.json.error || '', /E1 - A|E1|E2 - B|E2/i);
+  });
+
+  await t('Appraisal Sheet generation names every eligible employee missing payroll history', async () => {
+    const { post, c, store } = await richSetup();
+    await apply(post, c.id);
+    const master = store.table(MASTER_T, null).rows.find((row) => row.emp_id === 'E1');
+    await store.table(PAYROLL_T, null).insertRow({
+      emp_id: master.ROWID,
+      appraisal_cycle_name: c.id,
+    });
+    const result = await post('generate-sheet', { cycleId: c.id });
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    const message = result.json.message || result.json.error || '';
+    assert.match(message, /E2 - B/i);
+    assert.match(message, /E3 - C/i);
+    assert.match(message, /E4 - D/i);
+    assert.doesNotMatch(message, /E1 - A/i);
   });
 
   await t('Appraisal Sheet generation requires cycle Feedback and Rating values', async () => {
