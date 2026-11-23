@@ -3360,7 +3360,9 @@ export default function DelegationScreen({
       if (!key) return;
       uniquePeople.set(key, { id: label, name: label, roles: [] });
     };
-    globalTechEdOptions.forEach((person) => add(`${person.id} - ${person.name}`));
+    // HR and Tech-ED must be able to select any active Employee_Master
+    // record as an Appraiser Tech-ED, not only people already assigned as one.
+    globalEmployeeOptions.forEach((person) => add(`${person.id} - ${person.name}`));
     rows.forEach((row) => add(row.app || row.te || ""));
     return Array.from(uniquePeople.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
