@@ -67,6 +67,9 @@ function load(selectedLocation) {
               start: String(picked.start ?? picked.start_date ?? "").trim(),
               end: String(picked.end ?? picked.end_date ?? picked.close_date ?? "").trim(),
               effective: String(picked.effective ?? picked.effective_date ?? "").trim(),
+              // Active Annual cycle that HR has closed for Tech-ED (still Active for HR).
+              techEdClosed:
+                isActiveCycle(picked) && isTruthyFlag(picked.techEdClosed),
             }
           : null,
       );
