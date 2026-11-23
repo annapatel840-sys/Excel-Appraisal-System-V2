@@ -2392,10 +2392,6 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
   // an incomplete Delegation is reported directly instead of being masked by
   // a separate missing-feedback error. Employee_Master defaults are not proof
   // that the current cycle's Delegation assignment was saved.
-  const earlyMasterByEmpId = new Map(employeeMasterRows.map((row) => [
-    String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
-    row,
-  ]));
   const currentCycleDelegations = delegationRows.filter(
     (row) => String(row.cycle_id || "").trim() === String(cycle.id).trim(),
   );

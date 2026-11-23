@@ -31,12 +31,17 @@ export const groupRows = (rows, keyFn) => {
     .sort((a, b) => a.key.localeCompare(b.key));
 };
 
-// "Edited" employees = people someone edited by hand on the Appraisal Sheet or
-// the Detailed Screen in the current cycle (audit entries made by those two
-// screens). Bulk edits, imports and status changes are not counted. The
-// Appraisal Sheet's notification bell and the Dashboard both use this, so the
-// two numbers always agree.
-const MANUAL_EDIT_SOURCES = new Set(["inline edit", "detail screen edit", "manual"]);
+// "Edited" employees = people someone edited on the Appraisal Sheet, the
+// Detailed Screen or by Bulk Edit in the current cycle (audit entries made by
+// those screens). Imports, status changes and Bulk restores are not counted.
+// The Appraisal Sheet's notification bell and the Dashboard both use this, so
+// the two numbers always agree.
+const MANUAL_EDIT_SOURCES = new Set([
+  "inline edit",
+  "detail screen edit",
+  "manual",
+  "bulk edit",
+]);
 export const isManualEditEntry = (entry) =>
   MANUAL_EDIT_SOURCES.has(String(entry?.source ?? "manual").trim().toLowerCase());
 
