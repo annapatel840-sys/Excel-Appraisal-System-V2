@@ -170,17 +170,24 @@ function matches(row, key, filter) {
 }
 
 export function applyFilters(rows, filters, search) {
-    const q = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase().replace(/\s+/g, " ");
+
+    // The search box says "Search employee name / ID / designation", so only the
+    // employee's own ID, name and designation are matched - each one on its own.
+    // (It used to also match department, manager, reporting manager and comp
+    // manager, so searching a manager's name listed all of their reports, and
+    // the fields were joined into one string, so a match could span two fields.)
+    const norm = (value) =>
+        String(value ?? "").toLowerCase().replace(/\s+/g, " ");
 
     return rows.filter((row) => {
         if (
             q &&
-            !(
-                `${row.empId || row.employeeId || row.emp_id || ""} ${row.name || row.emp_name || ""} ${row.department || ""} ${row.designation || ""} ${row.manager || ""} ${row.reportingManager || row.reporting_manager || ""} ${row.compManager || row.comp_manager || ""}`
-                    .toLowerCase()
-                    .replace(/\s+/g, " ")
-                    .includes(q)
-            )
+            ![
+                row.empId || row.employeeId || row.emp_id,
+                row.name || row.emp_name,
+                row.designation,
+            ].some((value) => norm(value).includes(q))
         ) {
             return false;
         }
