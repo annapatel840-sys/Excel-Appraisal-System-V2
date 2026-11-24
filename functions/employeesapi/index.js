@@ -2437,7 +2437,7 @@ async function enrichPreviousAppraisalValues(
             // New Joiner process=None cycles may remain Active; otherwise
             // their payroll is reusable only after explicit archival.
             (isArchivedCycle(item.cycle) ||
-              cycleStatusOf(item.cycle) === "active") &&
+              ["active", "closed"].includes(cycleStatusOf(item.cycle))) &&
             !["cancelled", "canceled"].includes(cycleStatusOf(item.cycle)),
         )
         .sort(
