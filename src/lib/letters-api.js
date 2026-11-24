@@ -40,6 +40,9 @@ async function request({ method = "GET", body, params, noRetry = false } = {}, a
     });
   } catch (error) {
     if (error?.name === "AbortError") {
+      // A slow first call is usually a cold start. The function is warm by now (and a template read already
+      // running on the server is shared), so a read is repeated once before the person sees an error.
+      if (method === "GET" && attempt < 1 && !noRetry) return request({ method, body, params, noRetry }, attempt + 1);
       throw new Error("The letters server did not answer in time. Please try again in a minute.");
     }
     throw error;
@@ -63,12 +66,21 @@ async function request({ method = "GET", body, params, noRetry = false } = {}, a
    start as soon as a letters screen opens (ping answers at once, with no login or database work),
    so the real requests that follow reach a warm function. At most once every 4 minutes. */
 let lastWarm = 0;
+let warmPromise = Promise.resolve();
 export function warmUp() {
-  if (Date.now() - lastWarm < 4 * 60 * 1000) return;
+  if (Date.now() - lastWarm < 4 * 60 * 1000) return warmPromise;
   lastWarm = Date.now();
   const url = new URL(API_URL);
   url.searchParams.set("view", "ping");
-  catalystFetch(url.toString(), { cache: "no-store" }).catch(() => {});
+  // Callers may wait for this (it never rejects and never takes longer than 25 s), so the real
+  // request that follows gets its own full time budget on a warm function.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  warmPromise = catalystFetch(url.toString(), { cache: "no-store", signal: controller.signal })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => clearTimeout(timer));
+  return warmPromise;
 }
 
 function fileToBase64(file) {

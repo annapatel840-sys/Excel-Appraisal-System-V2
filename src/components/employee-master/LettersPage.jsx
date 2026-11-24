@@ -442,11 +442,12 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
-  const expandPanel = () => {
-    const w = panelW < 500 ? 640 : 360;
+  // "+" widens the panel, "−" brings it back to the normal width (the default).
+  const setPanelSize = (w) => {
     setPanelW(w);
     writeText(RPW_KEY, String(w));
   };
+  const panelWide = panelW >= 500;
 
   const renderStatsTab = () => {
     const sc = S.letters;
@@ -632,7 +633,8 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             </>
           )}
         </div>
-        <button type="button" className="lt-rp-ic" title="Expand" onClick={expandPanel}>&#10530;</button>
+        <button type="button" className="lt-rp-ic" title="Wider" aria-label="Make the panel wider" disabled={panelWide} onClick={() => setPanelSize(640)}>+</button>
+        <button type="button" className="lt-rp-ic" title="Normal width" aria-label="Make the panel narrower" disabled={!panelWide} onClick={() => setPanelSize(360)}>&minus;</button>
         <button type="button" className="lt-rp-ic" title="Close" aria-label="Close panel" onClick={() => setPanelOpen(false)}>&#10005;</button>
       </div>
       <div className="lt-rp-tabs" role="tablist">
