@@ -5164,6 +5164,33 @@ module.exports = async function (req, res) {
       // value posted by the browser must not overwrite it.
       if (storedBase > 0) delete body.budget_base;
       const siblings = await getAllRows(app, "Budget_Distribution_Comp");
+      // Recalculate the Tech-Ed limit from its saved base and percentage.
+      // applied_budget is a cached amount and may be stale if a prior refresh
+      // did not run; the percentage formula is the source of truth.
+      const parentBase = n(value(parent, "budget_base"));
+      const parentPctRaw = value(parent, "percentage");
+      const parentPctIsSet =
+        parentPctRaw !== null &&
+        parentPctRaw !== undefined &&
+        String(parentPctRaw).trim() !== "";
+      const calculatedParentBudget =
+        parentBase > 0 && parentPctIsSet
+          ? (parentBase * n(parentPctRaw)) / 100
+          : n(value(parent, "applied_budget"));
+      // Existing Comp Manager allocations are recomputed from their own base
+      // and percentage. If a legacy row has no usable base/percentage snapshot,
+      // count its saved applied amount instead of silently treating it as zero.
+      const savedCompAllocation = (row) => {
+        const base = n(value(row, "budget_base"));
+        const pctRaw = value(row, "percentage");
+        const pctIsSet =
+          pctRaw !== null &&
+          pctRaw !== undefined &&
+          String(pctRaw).trim() !== "";
+        return base > 0 && pctIsSet
+          ? (base * n(pctRaw)) / 100
+          : n(value(row, "applied_budget"));
+      };
       const totalAfter =
         siblings
           .filter(
@@ -5176,14 +5203,9 @@ module.exports = async function (req, res) {
             const live = value(row, "current_headcount");
             return !(String(live).trim() !== "" && n(live) === 0);
           })
-          .reduce(
-            (sum, row) =>
-              sum +
-              (n(value(row, "budget_base")) * n(value(row, "percentage"))) /
-                100,
-            0,
-          ) + requestedApplied;
-      const parentBudget = n(value(parent, "applied_budget"));
+          .reduce((sum, row) => sum + savedCompAllocation(row), 0) +
+        requestedApplied;
+      const parentBudget = calculatedParentBudget;
       // One rupee of tolerance for floating point / rounding.
       if (totalAfter > parentBudget + 1) {
         return sendJson(res, 400, {
