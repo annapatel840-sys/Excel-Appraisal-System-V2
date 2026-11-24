@@ -896,6 +896,7 @@ app.get(
     ovs.forEach((o) => add(o.emp_id));
 
     send(res, {
+      build: "upload-only-fields-2026-11-24",
       version: v.version,
       me: me.user,
       cycleId,
