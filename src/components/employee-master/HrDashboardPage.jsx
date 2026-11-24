@@ -555,6 +555,44 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   const step = stepOf(activeCycle);
   const noCycle = status.cycle?.s === "ok" && !activeCycle;
 
+  /* ---- "EMP001 - Name": every person is shown with the employee id ---- */
+  const people = useMemo(() => {
+    const m = new Map();
+    const put = (id, name) => {
+      const i = String(id ?? "").trim();
+      const n = String(name ?? "").trim();
+      if (!i || !n) return;
+      const rec = { id: i, name: n };
+      [i, n, `${i} - ${n}`].forEach((x) => {
+        const k = norm(x);
+        if (k && !m.has(k)) m.set(k, rec);
+      });
+    };
+    (elig?.masterEmployees || []).forEach((e) => put(e.empId, e.name));
+    (elig?.data || []).forEach((e) => put(e.empId, e.name));
+    (roster || []).forEach((r) => put(r.emp_id || r.employee_id, r.name || r.emp_name));
+    sheetRows.forEach((r) => put(r.empId, r.name));
+    (budget.techEdOwners || []).forEach((o) => put(o?.employee_id, o?.name));
+    (budget.locationEmployeeRows || []).forEach((r) =>
+      put(r.emp_id || r.employee_id || r.empId, r.emp_name || r.name),
+    );
+    return m;
+  }, [elig, roster, sheetRows, budget.techEdOwners, budget.locationEmployeeRows]);
+  // Any value (id, name, "ID - Name") -> "ID - Name" when the person is known, else the value as given.
+  const labelOf = (value) => {
+    const v = String(value ?? "").trim();
+    if (!v || v === "—") return v;
+    const hit = keysOf(v).map((k) => people.get(k)).find(Boolean);
+    return hit ? `${hit.id} - ${hit.name}` : v;
+  };
+  // A name together with its id (when the id is known).
+  const labelFor = (name, id) => {
+    const n = String(name ?? "").trim();
+    const i = String(id ?? "").trim();
+    if (n && i) return norm(n).includes(norm(i)) ? n : `${i} - ${n}`;
+    return labelOf(n || i);
+  };
+
   /* ---- rows per screen ---- */
   const rowsBy = useMemo(() => {
     const out = { req: [], elig: [], del: [], bud: [], let: [], des: [] };
@@ -600,14 +638,14 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       }
       out.req.push([
         C("Requests"),
-        C(q.empName || q.empId || "—"),
+        C(labelFor(q.empName, q.empId) || "—"),
         isScreen ? pill("Screen", "v") : pill("Delegation", TONE.Delegation),
         C(
           isScreen
             ? q.reason || "Screen request"
-            : `${fieldLabel}: ${q.oldId || "—"} → ${q.newId || "—"}`,
+            : `${fieldLabel}: ${labelOf(q.oldId) || "—"} → ${labelOf(q.newId) || "—"}`,
         ),
-        C(q.byName || "—"),
+        C(labelFor(q.byName, q.byId || q.by_id || q.requestedById) || "—"),
         C(ageDays(q.on) == null ? "—" : `${ageDays(q.on)} d`),
         C(SCREENS.req.open, null),
       ]);
@@ -627,10 +665,10 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       }
       const row = [
         C("Eligibility"),
-        C(e.name || e.empId || "—"),
+        C(labelFor(e.name, e.empId) || "—"),
         pill("Action needed", "a"),
         C(`Status is ${statusOf(e)} — HR to decide`),
-        C(e.appraiser || e.rawEmployee?.appraiser_tech_ed || "—"),
+        C(labelOf(e.appraiser || e.rawEmployee?.appraiser_tech_ed) || "—"),
         C("—"),
         C(SCREENS.elig.open, null),
       ];
@@ -658,8 +696,8 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       const comp = String(
         r.delegation_comp_manager || r.comp_manager || "",
       ).trim();
-      const name = r.name || r.emp_name || r.emp_id || "—";
-      const te = String(r.appraiser_tech_ed || "").trim() || "—";
+      const name = labelFor(r.name || r.emp_name, r.emp_id || r.employee_id) || "—";
+      const te = labelOf(r.appraiser_tech_ed) || "—";
       let type = "";
       let detail = "";
       if (!comp) {
@@ -667,7 +705,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         detail = "Comp Manager cell is blank";
       } else if (isInactiveStatus({ status: statusOfPerson(comp) })) {
         type = "Comp Manager inactive";
-        detail = `${comp} is inactive`;
+        detail = `${labelOf(comp)} is inactive`;
       }
       if (!type) return;
       const row = [
@@ -686,7 +724,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     if (cycleId) {
       const nameOf = (id) => {
         const r = lettersState.sheet.find((x) => x.id === id);
-        return r?.name || r?.v?.name || id;
+        return labelFor(r?.name || r?.v?.name, r?.empId || r?.v?.empId) || id;
       };
       lettersState.letters
         .filter((l) => String(l.cycle) === cycleId)
@@ -753,6 +791,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     cycleId,
     lettersState,
     lettersVersion,
+    people,
   ]);
 
   /* ---- Tech-ED budget table (also feeds "Budget not given") ---- */
@@ -768,11 +807,16 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       if (hit) {
         const id = String(hit.employee_id || hit.row_id || hit.ROWID || hit.name || "");
         const person = sheetRows.find((r) => sameOwner(r.empId, id));
-        return { key: norm(id), name: String(hit.name || person?.name || v).trim() };
+        return {
+          key: norm(id),
+          name: String(hit.name || person?.name || v).trim(),
+          empId: String(hit.employee_id || person?.empId || "").trim(),
+        };
       }
       const person = sheetRows.find((r) => sameOwner(r.empId, v));
-      if (person?.name) return { key: norm(person.empId), name: String(person.name).trim() };
-      return { key: norm(v), name: v };
+      if (person?.name)
+        return { key: norm(person.empId), name: String(person.name).trim(), empId: String(person.empId || "").trim() };
+      return { key: norm(v), name: v, empId: "" };
     };
     const wanted = String(budget.activeBudgetCycleId || "");
     const map = new Map();
@@ -793,6 +837,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         if (prev && prev.budget) return;
         map.set(key, {
           name: prev?.name || who.name,
+          empId: prev?.empId || who.empId,
           team: Number(budget.employeeCounts?.[r.tech_ed_id] || 0),
           budget: applied > 0 ? applied : null,
           used: applied > 0 ? Number(r.utilization_percentage || 0) : null,
@@ -812,7 +857,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         if (!cur.team) map.set(key, { ...cur, team: n });
         return;
       }
-      map.set(key, { name: who.name, team: n, budget: null, used: null });
+      map.set(key, { name: who.name, empId: who.empId, team: n, budget: null, used: null });
     });
     let list = [...map.values()];
     // Same people and same sums as the Overview Dashboard: Active + Eligible rows of the Appraisal Sheet.
@@ -827,7 +872,9 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       });
     }
     // A Tech-ED with nobody in this location's cycle is not part of this view (no team, so nothing to flag).
-    list = list.filter((t) => t.team > 0);
+    list = list
+      .filter((t) => t.team > 0)
+      .map((t) => ({ ...t, label: labelFor(t.name, t.empId) }));
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [
     budget.budgetRows,
@@ -836,6 +883,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     budget.employeeCounts,
     budget.locationEmployeeRows,
     sheetRows,
+    people,
   ]);
 
   const budgetReady = !budget.loading && !budget.error;
@@ -846,10 +894,10 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       .map((t) => {
         const row = [
           C("Budget"),
-          C(t.name),
+          C(t.label || t.name),
           pill("Budget not given", "a"),
           C(`No budget allocated${cycleName ? ` for ${cycleName}` : ""}`),
-          C(t.name),
+          C(t.label || t.name),
           C("—"),
           C(SCREENS.bud.open, null),
         ];
@@ -916,26 +964,32 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       const v = String(n || "").trim();
       if (v.length > 2 && v !== "—") m.set(v.toLowerCase(), v);
     };
-    (elig?.masterEmployees || []).forEach((e) => add(e.name));
-    (roster || []).forEach((r) => add(r.name || r.emp_name));
+    (elig?.masterEmployees || []).forEach((e) => add(labelFor(e.name, e.empId)));
+    (roster || []).forEach((r) =>
+      add(labelFor(r.name || r.emp_name, r.emp_id || r.employee_id)),
+    );
     all.forEach((x) => {
       add(T(x.r[1]));
       add(T(x.r[4]));
     });
-    teRows.forEach((t) => add(t.name));
+    teRows.forEach((t) => add(t.label || t.name));
     return m;
-  }, [elig, roster, all, teRows]);
+  }, [elig, roster, all, teRows, people]);
   const findPerson = (q) =>
     [...directory.keys()]
-      .filter((k) => q.includes(k))
-      .sort((a, b) => b.length - a.length)[0] || null;
+      .map((k) => [
+        k,
+        Math.max(0, ...keysOf(k).filter((x) => x.length > 2 && q.includes(x)).map((x) => x.length)),
+      ])
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
   const personLine = (k) => {
-    const mine = all.filter((x) => norm(T(x.r[1])) === k);
+    const mine = all.filter((x) => sameOwner(T(x.r[1]), k));
     const team = all.filter(
-      (x) => norm(T(x.r[4])) === k && norm(T(x.r[1])) !== k,
+      (x) => sameOwner(T(x.r[4]), k) && !sameOwner(T(x.r[1]), k),
     );
-    const te = teRows.find((t) => norm(t.name) === k);
+    const te = teRows.find((t) => sameOwner(t.label || t.name, k));
     const parts = [];
     if (mine.length)
       parts.push(
@@ -1024,17 +1078,17 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
   const profile = (key) => {
     const name = directory.get(key) || key;
     const master = (elig?.masterEmployees || []).find(
-      (e) => norm(e.name) === key,
+      (e) => sameOwner(labelFor(e.name, e.empId), key),
     );
     const rosterRow = (roster || []).find(
-      (r) => norm(r.name || r.emp_name) === key,
+      (r) => sameOwner(labelFor(r.name || r.emp_name, r.emp_id || r.employee_id), key),
     );
-    const eligRow = (elig?.data || []).find((e) => norm(e.name) === key);
-    const mine = all.filter((x) => norm(T(x.r[1])) === key);
+    const eligRow = (elig?.data || []).find((e) => sameOwner(labelFor(e.name, e.empId), key));
+    const mine = all.filter((x) => sameOwner(T(x.r[1]), key));
     const asTech = all.filter(
-      (x) => norm(T(x.r[4])) === key && norm(T(x.r[1])) !== key,
+      (x) => sameOwner(T(x.r[4]), key) && !sameOwner(T(x.r[1]), key),
     );
-    const te = teRows.find((t) => norm(t.name) === key);
+    const te = teRows.find((t) => sameOwner(t.label || t.name, key));
     const techName = String(
       rosterRow?.appraiser_tech_ed ||
         master?.appraiser ||
@@ -1067,7 +1121,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         : "";
       h += sec(
         "Employee",
-        `${[des, st, loc].filter(Boolean).map(escHtml).join(" · ") || "—"}<br>Tech-ED: ${escHtml(techName || "—")} · Comp Manager: ${escHtml(comp || (rosterRow ? "blank" : "—"))}`,
+        `${[des, st, loc].filter(Boolean).map(escHtml).join(" · ") || "—"}<br>Tech-ED: ${escHtml(labelOf(techName) || "—")} · Comp Manager: ${escHtml(labelOf(comp) || (rosterRow ? "blank" : "—"))}`,
       );
     }
     if (eligRow)
@@ -1080,7 +1134,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
       te || (techName ? teRows.find((t) => sameOwner(t.name, techName)) : null);
     let bud = items("bud");
     if (bt)
-      bud = `${bt.budget == null ? `<span style="color:#b7791f">Budget not given</span> for ${escHtml(bt.name)}` : `Budget ${inr(bt.budget)} for Tech-ED ${escHtml(bt.name)}, used ${pct(bt.used)}%`}${bud.includes("Nothing") ? "" : `<br>${bud}`}`;
+      bud = `${bt.budget == null ? `<span style="color:#b7791f">Budget not given</span> for ${escHtml(bt.label || bt.name)}` : `Budget ${inr(bt.budget)} for Tech-ED ${escHtml(bt.label || bt.name)}, used ${pct(bt.used)}%`}${bud.includes("Nothing") ? "" : `<br>${bud}`}`;
     h += sec("Budget", bud);
     const reqs = [
       ...mine.filter((x) => x.k === "req"),
@@ -1115,10 +1169,10 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
     let out = "";
     const personKey = findPerson(q);
     const byName = all.filter(
-      (x) => q && q.includes(T(x.r[1]).toLowerCase()) && T(x.r[1]).length > 2,
+      (x) => q && keysOf(T(x.r[1])).some((k) => k.length > 2 && q.includes(k)),
     );
     const teName = [...new Set(all.map(te).filter((n) => n && n !== "—"))].find(
-      (n) => q.includes(n.toLowerCase()),
+      (n) => keysOf(n).some((k) => k.length > 2 && q.includes(k)),
     );
     if (!all.length)
       out = "Nothing needs attention for this location right now.";
@@ -1349,7 +1403,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
                   cols={["Tech-ED", "Team size", "Budget", "Used"]}
                   numCols={[1, 2]}
                   rows={teRows.map((t) => [
-                    C(t.name),
+                    C(t.label || t.name),
                     C(t.team),
                     t.budget == null
                       ? pill("Not given", "a")
