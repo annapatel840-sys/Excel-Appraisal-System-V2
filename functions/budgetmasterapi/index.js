@@ -2453,12 +2453,12 @@ async function calculateBudgetBases(
         const hidden = [true, 1, "true", "1", "yes"].includes(
           typeof candidate.hidden === "string" ? candidate.hidden.trim().toLowerCase() : candidate.hidden,
         );
-        // New Joiner process=None cycles may remain Active; once closed they
-        // become a history source only after explicit archival.
+        // Same-year New Joiner payroll is a historical source only after the
+        // cycle is explicitly archived.
         return /new[\s_-]*joiners?/i.test(candidateName) &&
           candidateYear === currentYear &&
           cycleMatchesEmployeeLocation(candidate, masterRow, activeCycleIsLocationScoped ? activeCycleLocation : "") &&
-          (isHistoricalCycle(candidate) || candidateStatus === "active") &&
+          isHistoricalCycle(candidate) &&
           !hidden &&
           !["cancelled", "canceled"].includes(candidateStatus);
       })
