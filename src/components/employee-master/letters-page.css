@@ -831,3 +831,16 @@
 .lt .lt-btn.pri[aria-busy="true"] { opacity: 1; color: #fff; font-weight: 800; cursor: progress; }
 .lt .lt-btn.main[aria-busy="true"] { background: #2560d4; border-color: #2560d4; }
 .lt .lt-btn.pri[aria-busy="true"] { background: #17385a; border-color: #17385a; }
+
+/* Panel Send button: bold white text. ".lt button { color: inherit }" is more specific than
+   ".lt-ag-send", so the text came out dark; this rule is scoped the same way to win. */
+.lt .lt-ag-send,
+.lt-rp .lt-ag-send { background: #2F6FED; color: #fff; font-weight: 800; }
+.lt .lt-ag-send:hover,
+.lt-rp .lt-ag-send:hover { background: #2560d4; color: #fff; }
+
+/* Panel = Employee Master panel look: plain cards (no blue left stripe), borderless header buttons. */
+.lt-rp-card, .lt-call { border-left: 1px solid var(--lt-line); background: #FBFCFE; }
+.lt .lt-rp-ic { border: 0; background: none; font-size: 15px; color: #6B7280; }
+.lt .lt-rp-ic:hover:not(:disabled) { color: #102A43; border: 0; }
+.lt .lt-rp-ic:disabled { opacity: .35; cursor: not-allowed; }
