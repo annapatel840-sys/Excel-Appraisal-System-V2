@@ -1361,7 +1361,8 @@ async function validatePayrollBeforeEligibility(tables, cycle, criteria = {}) {
   const usableHistoryCycle = (item) => !!item && !isCancelled(item) && (
     String(item.id) === String(cycle.id) ||
     (sharedSource && String(item.id) === String(sharedSource.id)) ||
-    (isNewJoiner(item) && cycleYear(item) === currentYear) ||
+    (isNewJoiner(item) && cycleYear(item) === currentYear &&
+      (Boolean(item.archived) || String(item.status || "").trim().toLowerCase() === "archived")) ||
     (isAnnual(item) && isBeforeCurrent(item))
   );
   const payrollReady = new Set();
@@ -2602,7 +2603,8 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
     // Payroll_Data is historical source data. Do not hide valid employee
     // payroll because its source cycle is still Upcoming, Active, or Closed.
-    if (isNewJoinerCycle(item)) return cycleYear(item) === currentYear;
+    if (isNewJoinerCycle(item)) return cycleYear(item) === currentYear &&
+      (Boolean(item.archived) || String(item.status || "").trim().toLowerCase() === "archived");
     return isAnnualCycle(item) && isBeforeCurrentCycle(item);
   };
   const payrollEmployeesWithHistory = new Set();
@@ -2792,7 +2794,7 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const usableNewJoiner =
       sameYearNewJoiner &&
       (Boolean(candidateCycle.archived) ||
-        ["active", "closed"].includes(String(candidateCycle.status || "").trim().toLowerCase()));
+        String(candidateCycle.status || "").trim().toLowerCase() === "archived");
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
       (!usableNewJoiner && !matchingSharedSource &&
