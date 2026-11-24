@@ -3112,11 +3112,14 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
     const previousNewBasePay = previousPayrollBaseSource
       ? fieldValue(previousPayrollBaseSource, "new_base_pay", "newBasePay")
       : undefined;
+    const currentBasePayColumn = appraisalSheetColumnByLower
+      ? appraisalSheetColumnByLower.get("current_annual_base_pay")
+      : "current_annual_base_pay";
     if (previousNewBasePay !== undefined && previousNewBasePay !== null && String(previousNewBasePay).trim() !== "" &&
-        (!appraisalSheetColumns || appraisalSheetColumns.has("current_annual_base_pay"))) {
-      // This source-owned field must override stale values on an existing sheet
-      // row as well as seed a new row.
-      payload.current_annual_base_pay = previousNewBasePay;
+        (!appraisalSheetColumns || currentBasePayColumn)) {
+      // This source-owned field must override stale / zero values on an existing
+      // sheet row as well as seed a new row. Use the live column casing.
+      payload[currentBasePayColumn || "current_annual_base_pay"] = previousNewBasePay;
     }
     if (payroll) {
       const payrollFieldMap = {
@@ -3134,25 +3137,31 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
         target_pb_criteria: ["target_pb_criteria", "target_performance_bonus_criteria"],
       };
       Object.entries(payrollFieldMap).forEach(([sheetField, payrollFields]) => {
-        // The destination column must exist in the live Appraisal_Sheet schema.
-        // Missing optional columns are skipped; they must not fail generation.
-        if (appraisalSheetColumns && !appraisalSheetColumns.has(sheetField)) return;
+        // Resolve destination columns case-insensitively because Catalyst
+        // schemas may retain Excel-style casing (for example total_CTC_with_rewards).
+        const destination = appraisalSheetColumnByLower
+          ? appraisalSheetColumnByLower.get(sheetField.toLowerCase())
+          : sheetField;
+        if (appraisalSheetColumns && !destination) return;
         const value = payrollFields
-          .map((field) => payroll[field])
+          .map((field) => fieldValue(payroll, field))
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
         if (value === undefined) return;
-        // Current Annual Base Pay is governed by the selected prior-cycle
-        // new_base_pay above. Do not let current-cycle payroll overwrite it.
+        // Current Annual Base Pay is governed by the selected previous payroll
+        // row's new_base_pay above. Do not let a different payroll field replace it.
         if (sheetField === "current_annual_base_pay") return;
-        // Other existing Appraisal Sheet inputs remain authoritative after generation.
-        const existingValue = existing?.[sheetField];
-        if (
-          !existing ||
-          existingValue === undefined ||
-          existingValue === null ||
-          String(existingValue).trim() === ""
-        ) {
-          payload[sheetField] = value;
+        // Preserve manually populated non-zero values, but repair zeros left by
+        // an earlier generation when payroll was missing or mapped incorrectly.
+        const existingValue = fieldValue(existing || {}, sheetField);
+        const existingNumber = Number(String(existingValue ?? "").replace(/,/g, "").trim());
+        const sourceNumber = Number(String(value).replace(/,/g, "").trim());
+        const existingIsEmptyOrZero =
+          existingValue === undefined || existingValue === null ||
+          String(existingValue).trim() === "" ||
+          (Number.isFinite(existingNumber) && existingNumber === 0 &&
+            Number.isFinite(sourceNumber) && sourceNumber !== 0);
+        if (!existing || existingIsEmptyOrZero) {
+          payload[destination || sheetField] = value;
         }
       });
     }
