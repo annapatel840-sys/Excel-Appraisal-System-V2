@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ClientPager, DataGrid, useGridView } from "./DataGrid";
 import { LtErrs, letterFontStyle, mergeLetterHtml, useLtGrid, usePaged } from "./letters-ui";
 import {
@@ -474,9 +475,47 @@ function makeTemplateDraft(template, S) {
   };
 }
 
-function FieldMenu({ S, family, onInsert, onClose }) {
+function FieldMenu({ S, family, onInsert, onClose, anchorRef }) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [pos, setPos] = useState(null);
+  const menuRef = useRef(null);
+
+  // Fixed to the viewport (like the reference), so the editor / pane never clips it.
+  useEffect(() => {
+    const place = () => {
+      const el = anchorRef?.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = 292;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      const top = r.bottom + 4;
+      setPos({ left, top, maxHeight: Math.max(220, Math.min(420, window.innerHeight - top - 12)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchorRef]);
+
+  // Close on Escape or a click outside (the Insert field button toggles it itself).
+  useEffect(() => {
+    const down = (e) => {
+      if (menuRef.current?.contains(e.target) || anchorRef?.current?.contains(e.target)) return;
+      onClose();
+    };
+    const key = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [anchorRef, onClose]);
+
   const allowed = showAll ? null : FAMILY_FIELD_MAP[String(family || "").toLowerCase()] || null;
   const groups = FAMILY_FIELD_GROUPS.map(([label, names]) => {
     const values = names.filter((name) => allTags(S).includes(name) && (!allowed || allowed.includes(label)) && name.toLowerCase().includes(query.toLowerCase()));
@@ -485,11 +524,25 @@ function FieldMenu({ S, family, onInsert, onClose }) {
   const known = FAMILY_FIELD_GROUPS.flatMap(([, names]) => names);
   const extras = allTags(S).filter((name) => !known.includes(name) && name.toLowerCase().includes(query.toLowerCase()));
   if (extras.length) groups.push(["Other Fields", extras]);
-  return (
-    <div className="lt-field-menu" role="dialog" aria-label="Insert Field">
-      <input autoFocus className="lt-field-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search fields" />
+  if (!pos) return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="lt-field-menu"
+      role="dialog"
+      aria-label="Insert Field"
+      style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight }}
+      onMouseDown={(e) => {
+        // keep the letter's text selection while clicking inside the menu (inputs still get focus)
+        if (!e.target.closest("input")) e.preventDefault();
+      }}
+    >
+      <div className="lt-field-searchrow">
+        <input autoFocus className="lt-field-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search fields" />
+        <button type="button" className="lt-field-x" aria-label="Close" title="Close" onClick={onClose}>&#10005;</button>
+      </div>
       <label className="lt-field-all"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show all fields, not only for this family</label>
-      <div className="lt-field-options">
+      <div className="lt-field-options" style={{ maxHeight: Math.max(120, pos.maxHeight - 96) }}>
         {groups.map(([label, names]) => (
           <div key={label}>
             <div className="lt-field-group-title">{label}</div>
@@ -498,7 +551,8 @@ function FieldMenu({ S, family, onInsert, onClose }) {
         ))}
         {!groups.length && <div className="lt-field-empty">No Matching Fields.</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -515,6 +569,7 @@ const AlignIcon = ({ kind }) => {
 };
 
 function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, font, size, lineSpacing, setFont, setSize, setLineSpacing, fieldOpen, setFieldOpen, S, family }) {
+  const fieldBtnRef = useRef(null);
   const run = (command, value = null) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -584,8 +639,8 @@ function EditorToolbar({ editorRef, rangeRef, onDirty, onInsertField, onImport, 
       {button("redo", "Redo", "↷")}
       <span className="lt-format-divider" />
       <div className="lt-field-picker-wrap">
-        <button type="button" className="lt-btn sm2" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert field ▾</button>
-        {fieldOpen && <FieldMenu S={S} family={family} onInsert={onInsertField} onClose={() => setFieldOpen(false)} />}
+        <button ref={fieldBtnRef} type="button" className="lt-btn sm2" onMouseDown={(e) => e.preventDefault()} onClick={() => setFieldOpen((value) => !value)}>Insert field ▾</button>
+        {fieldOpen && <FieldMenu S={S} family={family} onInsert={onInsertField} onClose={() => setFieldOpen(false)} anchorRef={fieldBtnRef} />}
       </div>
       <span className="lt-sp" />
       <button type="button" className="lt-btn sm2 lt-import-button" onMouseDown={(e) => e.preventDefault()} onClick={onImport}>Import from Word</button>

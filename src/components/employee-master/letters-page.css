@@ -393,18 +393,34 @@
   position: relative;
 }
 .lt-field-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 30;
-  width: 280px;
-  max-height: 380px;
+  position: fixed;
+  z-index: 2000;
+  width: 292px;
   padding: 10px;
   border: 1px solid #d1d5db;
   border-radius: 9px;
   background: #fff;
-  box-shadow: 0 12px 30px rgba(16, 42, 67, .18);
+  box-shadow: 0 12px 30px rgba(16, 42, 67, .22);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
+.lt-field-menu, .lt-field-menu * { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif !important; }
+.lt-field-searchrow { display: flex; align-items: center; gap: 6px; flex: none; }
+.lt-field-searchrow .lt-field-search { flex: 1; min-width: 0; }
+.lt-field-x {
+  flex: none;
+  width: 30px;
+  height: 34px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lt-field-x:hover { border-color: #102a43; color: #102a43; background: #eaf2ff; }
 .lt-field-search {
   width: 100%;
   height: 34px;
@@ -413,6 +429,7 @@
   padding: 0 9px;
 }
 .lt-field-all {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -422,7 +439,8 @@
   font-weight: 600;
 }
 .lt-field-options {
-  max-height: 270px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
 }
 .lt-field-group-title {
@@ -772,8 +790,8 @@
 
 /* right panel: fixed to the viewport edge, like the reference */
 .lt-rp { position: fixed; right: 24px; top: 116px; bottom: 20px; width: 360px; z-index: 30; border-radius: 12px; box-shadow: 0 8px 28px rgba(16,42,67,.18); }
-.lt-flap { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 30; writing-mode: vertical-rl; background: #102A43; color: #fff !important; border: 0; border-radius: 8px 0 0 8px; padding: 16px 8px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: .04em; cursor: pointer; }
-.lt-flap:hover { background: #1559A6; }
+.lt-flap { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 30; writing-mode: vertical-rl; background: var(--app-brand, #173b63); color: #fff !important; border: 0; border-radius: 8px 0 0 8px; padding: 14px 7px; font-family: 'Inter', system-ui, sans-serif; font-size: 12px; font-weight: 700; line-height: normal; white-space: nowrap; cursor: pointer; }
+.lt-flap:hover { opacity: .9; }
 .lt-rp-body { flex: 1 1 0; min-height: 0; overflow: auto; }
 .lt-rp-foot { flex: none; border-top: 1px solid var(--lt-line); padding: 8px 10px; background: #fff; }
 .lt-rp-foot form { display: flex; gap: 6px; }
@@ -790,12 +808,14 @@
 /* preview modal body scrolls, footer stays */
 .lt-preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; background: #E5E7EB; padding: 16px; }
 
-/* panel: white text on the navy header/tabs, Inter throughout */
+/* panel: same look as the Employee Master panel (white header, light-blue active tab, brand "Panel" tab), Inter throughout */
 .lt-rp, .lt-rp * { font-family: 'Inter', system-ui, sans-serif; }
-.lt-rp-head, .lt-rp-hd, .lt-rp-tabs { background: #102A43; color: #fff; }
-.lt-rp-head *, .lt-rp-hd *, .lt-rp-tabs * { color: #fff; }
-.lt-rp-tabs button { background: transparent; opacity: .75; }
-.lt-rp-tabs button[aria-selected="true"] { opacity: 1; border-bottom: 2px solid #fff; }
+.lt-rp-head { background: #fff; color: #102A43; }
+.lt-rp-head .lt-rp-who, .lt-rp-head .lt-rp-who b { color: #102A43; }
+.lt-rp-tabs { background: #FAFAFB; }
+.lt-rp-tabs button { background: none; color: #6B7280; display: flex; align-items: center; justify-content: center; gap: 6px; opacity: 1; }
+.lt-rp-tabs button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #2F6FED; }
+.lt-rp-tabs button[aria-selected="true"] { color: #1D4FA8; font-weight: 800; background: #E8F0FE; border-bottom: 2px solid #2F6FED; }
 /* Keep the row actions separated and match Preview to the Menu button exactly. */
 .lt .lt-row-actions { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .lt .lt-row-actions .lt-btn.pri { background: var(--lt-navy); border-color: var(--lt-navy); color: #fff; }
