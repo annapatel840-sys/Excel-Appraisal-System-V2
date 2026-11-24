@@ -130,13 +130,13 @@ function setSync(next) {
 // Letters screen opens; {force:true} is the Retry button.
 export function syncTemplates({ force = false, location } = {}) {
   if (!api.TEMPLATES_ON_SERVER) return Promise.resolve();
-  api.warmUp();
+  const warm = api.warmUp();
   const loc = !location || /^all( locations)?$/i.test(String(location).trim()) ? "" : String(location).trim();
   if (syncing && !force && syncingFor === loc) return syncing;
   syncingFor = loc;
   setSync({ status: "loading", message: "" });
-  syncing = api
-    .loadServerTemplates(loc)
+  syncing = warm
+    .then(() => api.loadServerTemplates(loc))
     .then(({ templates, problems }) => {
       run("HR", (st) => core.applyServerTemplates(st, templates));
       if (problems.length) setSync({ status: "error", message: problems.map((x) => x.message).join(" ") });

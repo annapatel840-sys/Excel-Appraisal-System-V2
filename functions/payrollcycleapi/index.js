@@ -3061,7 +3061,27 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
         const value = sourceAliases
           .map((name) => fieldValue(feedback, name))
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
-        if (value !== undefined) payload[destination || destinationAliases[0]] = value;
+        if (value === undefined) return;
+
+        const targetField = destination || destinationAliases[0];
+        if (String(targetField).toLowerCase() === "gross_margin") {
+          // Appraisal_Sheet.gross_margin is a Catalyst bigint column. Feedback
+          // uploads may contain decimal numbers or comma-formatted numeric
+          // strings, so normalize to a safe whole number before writing.
+          const rawGrossMargin = typeof value === "number"
+            ? value
+            : Number(String(value).replace(/,/g, "").trim());
+          const grossMargin = Math.round(rawGrossMargin);
+          if (!Number.isFinite(rawGrossMargin) || !Number.isSafeInteger(grossMargin)) {
+            throw new ApiError(
+              `Invalid Gross Margin for ${empId || "an employee"}: expected a valid numeric value that can be stored as a whole number.`,
+              400,
+            );
+          }
+          payload[targetField] = grossMargin;
+        } else {
+          payload[targetField] = value;
+        }
       });
 
       // Feedback table versions differ: RR may be stored as revenue_released,

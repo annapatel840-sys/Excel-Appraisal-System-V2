@@ -420,6 +420,22 @@ const BulkOperations = forwardRef(function BulkOperations(
       offlineApi: live.current.offlineApi,
       logoUrl,
       cycle: live.current.cycle,
+      // History, Scenarios and Restore previous values are for HR only (not Tech-ED / Comp Manager).
+      get canUseHistory() {
+        const l = live.current;
+        const role = String(
+          (l.access && (l.access.role || l.access.roleLabel)) || "",
+        )
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+        return (
+          (l.budgetCtx && l.budgetCtx.isHR === true) ||
+          role === "hr" ||
+          role === "hradmin" ||
+          role === "humanresources" ||
+          role === "hroperation"
+        );
+      },
       get canApply() {
         return APPLY_ENABLED && !live.current.readOnly;
       },

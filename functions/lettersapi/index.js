@@ -303,6 +303,14 @@ async function readConfig(app, bucketName, key) {
   }
 }
 
+// The published versions of one template, newest first.
+function historyOf(idx, row) {
+  return idx.versions
+    .filter((v) => text(v.tpl_id) === text(row.tpl_id))
+    .map((v) => ({ ver: Number(v.tpl_version) || 0, by: text(v.published_by), on: text(v.published_on), note: text(v.note), file: text(v.docx_file) }))
+    .sort((a, b) => b.ver - a.ver);
+}
+
 function shape(row, cfg, history) {
   return {
     id: text(row.tpl_id),
@@ -366,11 +374,7 @@ async function readTemplates(app, onlyLocation) {
           problems.push({ id: text(row.tpl_id), location: text(row.location), message: `"${text(row.name)}" (${text(row.location)}) could not be read from bucket "${text(row.bucket)}".` });
           return null;
         }
-        const history = idx.versions
-          .filter((v) => text(v.tpl_id) === text(row.tpl_id))
-          .map((v) => ({ ver: Number(v.tpl_version) || 0, by: text(v.published_by), on: text(v.published_on), note: text(v.note), file: text(v.docx_file) }))
-          .sort((a, b) => b.ver - a.ver);
-        return shape(row, cfg, history);
+        return shape(row, cfg, historyOf(idx, row));
       }),
     );
     templates.push(...part.filter(Boolean));
@@ -415,53 +419,71 @@ async function sendDocx(app, res, id, ver) {
 
 /* ---------- writing ---------- */
 async function saveTemplate(app, actor, payload) {
+  // Step timings go to the function log, so a slow save shows WHICH call was slow.
+  const t0 = Date.now();
+  let tLap = t0;
+  const lap = (what) => {
+    const now = Date.now();
+    console.log(`lettersapi: saveTemplate ${what} +${now - tLap} ms (total ${now - t0} ms)`);
+    tLap = now;
+  };
   const tpl = cleanTemplate(payload.template);
   const docx = decodeDocx(payload.docx);
   // The location must be an active Location Master location; it decides the bucket.
-  const loc = (await locationMap(app)).get(tpl.location.toLowerCase());
+  const loc = await findLocation(app, tpl.location);
   if (!loc) throw fail(400, `"${tpl.location}" is not an active location in Location Master.`);
   tpl.location = loc.name;
+  lap("location");
   const note = clip(text(payload.note), 250);
-  const { lists } = await readIndexes(app);
-  const found = await (async () => {
-    for (const { loc: l, idx } of lists) {
-      const row = idx.templates.find((r) => text(r.tpl_id) === tpl.id);
-      if (row) return { loc: l, row };
-    }
-    return null;
-  })();
-  const current = found ? found.row : null;
+  const sentVer = payload.baseVer == null ? null : Math.max(0, Number(payload.baseVer) || 0);
+
+  // Read ONLY this location's template list (one Stratus call). A template never leaves its
+  // location, and one name may exist once per location, so no other bucket is needed here.
+  const first = await readIndex(app, loc.bucket);
+  lap(`read list of ${loc.bucket}`);
+  const current = first.templates.find((r) => text(r.tpl_id) === tpl.id) || null;
   const currentVer = current ? Number(current.tpl_version) || 0 : 0;
-  if (current && text(current.location).toLowerCase() !== loc.name.toLowerCase()) {
-    throw fail(400, `This template belongs to ${text(current.location)} and cannot be moved to ${loc.name}. Clone it and choose the other location.`);
+
+  // An edit of a saved template (baseVer > 0) that is not in this location's list may live in
+  // another location. Only then are the other buckets read (rare; a new template never does this).
+  if (!current && sentVer) {
+    const { lists } = await readIndexes(app);
+    const elsewhere = lists.find(({ idx }) => idx.templates.some((r) => text(r.tpl_id) === tpl.id));
+    if (elsewhere) {
+      const row = elsewhere.idx.templates.find((r) => text(r.tpl_id) === tpl.id);
+      if (text(row.location).toLowerCase() !== loc.name.toLowerCase()) {
+        throw fail(400, `This template belongs to ${text(row.location)} and cannot be moved to ${loc.name}. Clone it and choose the other location.`);
+      }
+    }
+    lap("scan other locations");
   }
 
   // One template per name and location: "Hike Letter" can exist once for each location.
-  const dup = lists
-    .flatMap(({ idx }) => idx.templates)
-    .find((r) => text(r.tpl_id) !== tpl.id && text(r.name).toLowerCase() === tpl.name.toLowerCase() && text(r.location).toLowerCase() === tpl.location.toLowerCase());
+  const dup = first.templates.find((r) => text(r.tpl_id) !== tpl.id && text(r.name).toLowerCase() === tpl.name.toLowerCase());
   if (dup) throw fail(409, `A template named "${tpl.name}" already exists for ${tpl.location || "All locations"}.`);
 
   // Optimistic check: the screen sends the version it started from.
-  if (current && payload.baseVer != null && Number(payload.baseVer) !== currentVer) {
+  if (current && sentVer != null && sentVer !== currentVer) {
     throw fail(409, `Someone else published version ${currentVer} of this template. Reload the Letters screen and try again.`);
   }
-  const baseVer = payload.baseVer == null ? 0 : Math.max(0, Number(payload.baseVer) || 0);
+  const baseVer = sentVer == null ? 0 : sentVer;
   const ver = (current ? currentVer : baseVer) + 1;
 
   // A save without a new Word file keeps pointing at the previous one.
   let docxFile = current ? text(current.docx_file) : "";
   let docxKey = current ? text(current.docx_key) : "";
+  const config = JSON.stringify({ ...tpl, ver, file: docx ? docx.fileName : docxFile });
+  if (Buffer.byteLength(config) > MAX_CONFIG_BYTES) throw fail(413, "The template (letter text, logo and signature) is too large.");
+  const configKey = objectKey(tpl.id, ver, "config.json");
+  const writes = [putObject(app, loc.bucket, configKey, Buffer.from(config, "utf8"), "application/json")];
   if (docx) {
     docxFile = docx.fileName;
     docxKey = objectKey(tpl.id, ver, docx.fileName);
-    await putObject(app, loc.bucket, docxKey, docx.buf, DOCX_TYPE);
+    writes.push(putObject(app, loc.bucket, docxKey, docx.buf, DOCX_TYPE));
   }
-
-  const config = JSON.stringify({ ...tpl, ver, file: docxFile });
-  if (Buffer.byteLength(config) > MAX_CONFIG_BYTES) throw fail(413, "The template (letter text, logo and signature) is too large.");
-  const configKey = objectKey(tpl.id, ver, "config.json");
-  await putObject(app, loc.bucket, configKey, Buffer.from(config, "utf8"), "application/json");
+  // The letter and the Word file go up together (the gate lets two calls run at once).
+  await Promise.all(writes);
+  lap(`write ${writes.length} file(s)`);
 
   const on = stamp();
   const row = {
@@ -496,9 +518,11 @@ async function saveTemplate(app, actor, payload) {
   });
   await writeIndex(app, loc.bucket, idx);
   forgetTemplates();
+  lap("write list");
 
-  const { templates } = await loadTemplates(app, loc.name);
-  return templates.find((t) => t.id === tpl.id);
+  // Answer from what was just written. (It used to read the whole location again - the list and
+  // every template's file - only to hand back this one template.)
+  return shape(row, { ...tpl, ver, file: docxFile }, historyOf(idx, row));
 }
 
 async function setActive(app, payload) {
@@ -568,6 +592,16 @@ async function locationMapCached(app) {
   const map = await locationMap(app);
   locationCache = { at: Date.now(), map };
   return map;
+}
+// A location that is not in the 60 s copy may have just been added or re-activated in Location_Master:
+// ask the Data Store once more before saying it does not exist.
+async function findLocation(app, name) {
+  const key = text(name).toLowerCase();
+  const hit = (await locationMapCached(app)).get(key);
+  if (hit) return hit;
+  const map = await locationMap(app);
+  locationCache = { at: Date.now(), map };
+  return map.get(key) || null;
 }
 const configBucket = () => process.env.LETTERS_CONFIG_BUCKET || `${BUCKET_PREFIX()}-config`;
 const lettersConfig = require("./lettersConfig")({ configBucket, putObject, getObjectBuffer, fail, text });

@@ -85,7 +85,11 @@ const MIN_COL_W = 100; // label + filter icon stay visible
 const VIEW_KEY = "fbo_view_v2";
 const NOTES_KEY = "feedbackRatingMaster.notes.v2";
 const NOTE_DRAFT_KEY = "feedbackRatingMaster.noteDraft";
-const RPW_KEY = "feedbackRatingMaster.panelWidth";
+// Same panel sizes as the Letters panel: opens small, "+" widens one step at a time up to the maximum.
+const PANEL_MIN = 320;
+const PANEL_STEP = 80;
+const PANEL_MAX = 760;
+const panelMax = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, window.innerWidth - 48));
 
 /* ============================== DEMO data (remove when wired) ============================== */
 const DEMO_CYCLES = [
@@ -336,10 +340,7 @@ export function FeedbackRatingMasterPage({
   const [noteText, setNoteText] = useState(() => lsGet(NOTE_DRAFT_KEY, ""));
   const [noteTie, setNoteTie] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelW, setPanelW] = useState(() => {
-    const w = parseInt(lsGet(RPW_KEY, "0"), 10) || 0;
-    return w ? Math.max(320, Math.min(760, w)) : 360;
-  });
+  const [panelW, setPanelW] = useState(PANEL_MIN);
   const [pt, setPt] = useState("view");
   const [pp, setPp] = useState("cols");
   const [toast, setToast] = useState("");
@@ -392,15 +393,11 @@ export function FeedbackRatingMasterPage({
   useEffect(() => {
     const move = (e) => {
       if (!dragRef.current) return;
-      setPanelW(Math.max(320, Math.min(760, window.innerWidth - 24 - e.clientX)));
+      setPanelW(Math.max(PANEL_MIN, Math.min(panelMax(), window.innerWidth - 24 - e.clientX)));
     };
     const up = () => {
       if (dragRef.current) {
         dragRef.current = false;
-        setPanelW((w) => {
-          lsSet(RPW_KEY, String(w));
-          return w;
-        });
       }
     };
     document.addEventListener("mousemove", move);
@@ -949,17 +946,11 @@ export function FeedbackRatingMasterPage({
               <div className="rp-who">
                 <b>Feedback &amp; Rating master</b> · {cycName(cid)} · {effLabel} · {scope.length} employees
               </div>
-              <button
-                className="rp-ic"
-                type="button"
-                title="Expand"
-                onClick={() => {
-                  const nw = panelW < 500 ? 640 : 360;
-                  setPanelW(nw);
-                  lsSet(RPW_KEY, String(nw));
-                }}
-              >
-                ⤢
+              <button className="rp-ic" type="button" title="Wider" aria-label="Make the panel wider" disabled={panelW >= panelMax()} onClick={() => setPanelW((w) => Math.min(panelMax(), w + PANEL_STEP))}>
+                +
+              </button>
+              <button className="rp-ic" type="button" title="Narrower" aria-label="Make the panel narrower" disabled={panelW <= PANEL_MIN} onClick={() => setPanelW((w) => Math.max(PANEL_MIN, w - PANEL_STEP))}>
+                &minus;
               </button>
               <button className="rp-ic" type="button" title="Close" aria-label="Close panel" onClick={() => setPanelOpen(false)}>
                 ✕
@@ -1062,7 +1053,7 @@ export function FeedbackRatingMasterPage({
       </div>
 
       {!panelOpen && (
-        <button className="flap" type="button" aria-label="Open panel" onClick={(e) => { e.stopPropagation(); setPanelOpen(true); }}>
+        <button className="flap" type="button" aria-label="Open panel" onClick={(e) => { e.stopPropagation(); setPanelW(PANEL_MIN); setPanelOpen(true); }}>
           Panel ›
         </button>
       )}
@@ -1120,7 +1111,7 @@ const FB_CSS = `
 .fb-root .fb-toolbar .sp{margin-left:auto}
 .fb-root .note{background:var(--info-bg);border:1px solid var(--info-border);color:var(--info);border-radius:10px;padding:9px 12px}
 .fb-root .tiles2{display:flex;gap:10px;flex-wrap:wrap;padding:12px 14px 0}
-.fb-root .tile{flex:1;min-width:150px;border:1px solid var(--line);border-radius:10px;padding:12px;border-left:5px solid var(--main)}
+.fb-root .tile{flex:1;min-width:150px;border:1px solid var(--line);border-radius:10px;padding:12px}
 .fb-root .tile small{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:capitalize;letter-spacing:.05em;display:block}
 .fb-root .tile b{display:block;font-size:20px;font-weight:800;color:var(--navy);margin-top:4px;font-variant-numeric:tabular-nums}.fb-root .tile em{font-style:normal;font-size:11.5px;font-weight:700}
 .fb-root .twx{border:1px solid var(--th-line);border-radius:8px;overflow:auto;margin:12px 14px 0;max-height:calc(100vh - 372px);min-height:240px}
@@ -1168,28 +1159,28 @@ const FB_CSS = `
 .fb-cm .ft{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
 .fb-cm .btn{border:1px solid #D1D5DB;background:#fff;border-radius:6px;padding:4px 10px;font:inherit;font-weight:700;cursor:pointer}
 .fb-cm .btn.pri{background:#102A43;border-color:#102A43;color:#fff}
-.fb-root .flap{position:fixed;right:0;top:38%;z-index:41;background:var(--navy);color:#fff;border:0;border-radius:8px 0 0 8px;width:30px;padding:14px 0;writing-mode:vertical-rl;font-weight:800;font-size:12px;letter-spacing:.02em;cursor:pointer;box-shadow:-2px 2px 8px rgba(16,42,67,.18)}.fb-root .flap:hover{background:#17385a}
+.fb-root .flap{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:41;writing-mode:vertical-rl;background:var(--app-brand,#173b63);color:#fff;border:0;border-radius:8px 0 0 8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer}.fb-root .flap:hover{opacity:.9}
 .fb-root .rp{position:fixed;right:24px;top:116px;bottom:20px;background:#fff;border:1px solid var(--rp-line);border-radius:12px;box-shadow:0 10px 30px rgba(16,42,67,.18);display:flex;flex-direction:column;z-index:40;font-size:12px}
 .fb-root .rp-grip{position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:2}.fb-root .rp-grip::after{content:"";position:absolute;left:2px;top:50%;width:4px;height:36px;margin-top:-18px;border-radius:3px;background:#D1D5DB}.fb-root .rp-grip:hover::after{background:var(--rp-accent)}
 .fb-root .rp-head{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 16px;border-bottom:1px solid var(--rp-line);flex:none}
 .fb-root .rp-who{flex:1;min-width:0;font-size:12px;color:#374151;line-height:1.35}.fb-root .rp-who b{color:var(--navy);font-size:13px}
-.fb-root .rp-ic{flex:none;border:1px solid #D1D5DB;background:#fff;border-radius:6px;height:26px;min-width:26px;padding:0 6px;font-size:13px;color:#374151;cursor:pointer}.fb-root .rp-ic:hover{border-color:var(--rp-accent);color:var(--rp-accent)}
+.fb-root .rp-ic{flex:none;border:0;background:none;height:26px;min-width:26px;padding:0 6px;font-size:15px;color:#6B7280;cursor:pointer}.fb-root .rp-ic:hover:not(:disabled){color:#102A43}.fb-root .rp-ic:disabled{opacity:.35;cursor:not-allowed}
 .fb-root .rp-tabs{display:flex;border-bottom:1px solid var(--rp-line);flex:none;background:#FAFAFB}
-.fb-root .rp-tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:9px 0;font-size:13px;font-weight:600;color:var(--rp-muted);cursor:pointer;white-space:nowrap}
-.fb-root .rp-tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--rp-accent);font-weight:800}
+.fb-root .rp-tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:10px 0;font-size:13px;font-weight:600;color:var(--rp-muted);cursor:pointer;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px}.fb-root .rp-tabs button:before{content:"";width:8px;height:8px;border-radius:50%;background:#2F6FED}
+.fb-root .rp-tabs button[aria-selected="true"]{color:#1D4FA8;border-bottom-color:#2F6FED;font-weight:800;background:#E8F0FE}
 .fb-root .rp-subs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 4px 16px;flex:none}
 .fb-root .rp-subs button{border:1px solid #D1D5DB;background:#fff;border-radius:14px;padding:3px 10px;font-size:11.5px;color:#374151;cursor:pointer}
 .fb-root .rp-subs button[aria-pressed="true"]{background:var(--rp-accent-soft);border-color:#CBD2DA;color:var(--ink);font-weight:700}
 .fb-root .rp-body{flex:1;min-height:0;overflow:auto;padding:6px 14px 14px 16px}
 .fb-root .rp-foot{flex:none;border-top:1px solid var(--rp-line);padding:8px 14px 8px 16px}
 .fb-root .rp-foot form{display:flex;gap:8px;margin:0}.fb-root .rp-foot input{flex:1;min-width:0;height:30px;border:1px solid #CBD5DA;border-radius:6px;padding:0 10px;font-size:12px}
-.fb-root .ag-send{height:30px;padding:0 13px;border:0;border-radius:6px;background:#102A43;color:#fff;font-weight:700;font-size:12px;cursor:pointer}
+.fb-root .ag-send{height:30px;padding:0 12px;border:0;border-radius:8px;background:#2F6FED;color:#fff;font-weight:800;font-size:12px;cursor:pointer}.fb-root .ag-send:hover{background:#2560d4}
 .fb-root .rp-note{font-size:10.5px;color:var(--rp-muted);margin-top:4px}
 .fb-root .rp-info{border:1px solid var(--rp-line);background:#F7F8FA;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12px}
-.fb-root .rp-card{border:1px solid var(--rp-line);border-left:5px solid var(--main);border-radius:8px;padding:10px 12px;margin-top:8px}
+.fb-root .rp-card{border:1px solid var(--rp-line);border-radius:8px;padding:10px 12px;margin-top:8px;background:#FBFCFE}
 .fb-root .rp-card h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--rp-muted);text-transform:capitalize}
 .fb-root .rp-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-variant-numeric:tabular-nums}.fb-root .rp-row+.rp-row{border-top:1px dashed #EEF0F3}
-.fb-root .rp-call{border:1px solid var(--rp-line);border-left:5px solid var(--main);border-radius:8px;padding:9px 12px;margin-top:8px;background:#fff}
+.fb-root .rp-call{border:1px solid var(--rp-line);border-radius:8px;padding:9px 12px;margin-top:8px;background:#FBFCFE}
 .fb-root .rp-call .tg{font-size:10px;font-weight:800;text-transform:capitalize;color:var(--info);background:var(--info-bg);border-radius:4px;padding:2px 7px}
 .fb-root .rp-call .ln{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-weight:700}
 .fb-root .rp-call .sub{color:var(--rp-muted);margin-top:2px;font-weight:400;font-size:12px}
