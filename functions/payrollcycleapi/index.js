@@ -2789,13 +2789,13 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
     const sameYearNewJoiner = isNewJoinerCycle(candidateCycle) && sourceYear && sourceYear === currentYear;
     const priorAnnual = isAnnualCycle(candidateCycle) && isBeforeCurrentCycle(candidateCycle);
-    const activeNewJoiner =
+    const usableNewJoiner =
       sameYearNewJoiner &&
-      String(candidateCycle.status || "").trim().toLowerCase() === "active" &&
-      !candidateCycle.archived;
+      (Boolean(candidateCycle.archived) ||
+        ["active", "closed"].includes(String(candidateCycle.status || "").trim().toLowerCase()));
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
-      (!activeNewJoiner && !matchingSharedSource &&
+      (!usableNewJoiner && !matchingSharedSource &&
         !(priorAnnual && !isCancelledPayrollCycle(candidateCycle)))
     )
       return;
@@ -3120,6 +3120,29 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0, o
       // This source-owned field must override stale / zero values on an existing
       // sheet row as well as seed a new row. Use the live column casing.
       payload[currentBasePayColumn || "current_annual_base_pay"] = previousNewBasePay;
+    }
+    // Previous Total Rewards is sourced from the same selected historical
+    // payroll row as Current Annual Base Pay. Resolve the live Appraisal_Sheet
+    // column name because deployments may use either legacy column alias.
+    const previousTotalRewards = previousPayrollBaseSource
+      ? fieldValue(previousPayrollBaseSource, "total_CTC_with_rewards", "total_ctc_with_rewards", "total_ctc")
+      : undefined;
+    const previousTotalRewardsColumn = appraisalSheetColumnByLower
+      ? ["previous_year_CTC_with_rewards", "previous_appraisal_total_ctc_with_rewards"]
+          .map((name) => appraisalSheetColumnByLower.get(name.toLowerCase())).find(Boolean)
+      : "previous_appraisal_total_ctc_with_rewards";
+    if (previousTotalRewards !== undefined && previousTotalRewards !== null &&
+        String(previousTotalRewards).trim() !== "" &&
+        (!appraisalSheetColumns || previousTotalRewardsColumn)) {
+      const existingPreviousTotal = fieldValue(existing || {}, "previous_year_CTC_with_rewards", "previous_appraisal_total_ctc_with_rewards");
+      const existingPreviousNumber = Number(String(existingPreviousTotal ?? "").replace(/[,₹\\s]/g, "").trim());
+      const sourcePreviousNumber = Number(String(previousTotalRewards).replace(/[,₹\\s]/g, "").trim());
+      if (!existing || existingPreviousTotal === undefined || existingPreviousTotal === null ||
+          String(existingPreviousTotal).trim() === "" ||
+          (Number.isFinite(existingPreviousNumber) && existingPreviousNumber === 0 &&
+            Number.isFinite(sourcePreviousNumber) && sourcePreviousNumber !== 0)) {
+        payload[previousTotalRewardsColumn || "previous_appraisal_total_ctc_with_rewards"] = previousTotalRewards;
+      }
     }
     if (payroll) {
       const payrollFieldMap = {
