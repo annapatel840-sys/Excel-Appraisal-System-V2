@@ -43,7 +43,10 @@ import "./letters-page.css";
  */
 
 const VIS_KEY = "letters_vis_v2";
-const RPW_KEY = "letters_rpw";
+// The right panel opens small; "+" widens it one step at a time up to the maximum, "-" steps back.
+const PANEL_MIN = 320;
+const PANEL_STEP = 80;
+const PANEL_MAX = 760;
 const NOTES_KEY = "letters_notes";
 const SECTIONS = ["Annual", "Exceptional"];
 const CONFIG_TABS = [
@@ -121,7 +124,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   const [tplSel, setTplSel] = useState("");
   const [ptab, setPtab] = useState("stats");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelW, setPanelW] = useState(() => Math.max(320, Math.min(760, parseInt(readText(RPW_KEY), 10) || 360)));
+  const [panelW, setPanelW] = useState(PANEL_MIN);
   const [moreOpen, setMoreOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -429,25 +432,23 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   const startResize = (e) => {
     e.preventDefault();
-    let w = panelW;
-    const move = (ev) => {
-      w = Math.max(320, Math.min(760, window.innerWidth - 24 - ev.clientX));
-      setPanelW(w);
-    };
+    const move = (ev) => setPanelW(Math.max(PANEL_MIN, Math.min(panelMax(), window.innerWidth - 24 - ev.clientX)));
     const up = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
-      writeText(RPW_KEY, String(w));
     };
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
-  // "+" widens the panel, "−" brings it back to the normal width (the default).
-  const setPanelSize = (w) => {
-    setPanelW(w);
-    writeText(RPW_KEY, String(w));
+  // The widest the panel may get: the fixed maximum, or less on a narrow window.
+  const panelMax = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, window.innerWidth - 48));
+  // "+" adds one step (until the maximum), "−" takes one step back (until the small size).
+  const widenPanel = () => setPanelW((w) => Math.min(panelMax(), w + PANEL_STEP));
+  const narrowPanel = () => setPanelW((w) => Math.max(PANEL_MIN, w - PANEL_STEP));
+  const openPanel = () => {
+    setPanelW(PANEL_MIN); // always opens small
+    setPanelOpen(true);
   };
-  const panelWide = panelW >= 500;
 
   const renderStatsTab = () => {
     const sc = S.letters;
@@ -633,8 +634,8 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             </>
           )}
         </div>
-        <button type="button" className="lt-rp-ic" title="Wider" aria-label="Make the panel wider" disabled={panelWide} onClick={() => setPanelSize(640)}>+</button>
-        <button type="button" className="lt-rp-ic" title="Normal width" aria-label="Make the panel narrower" disabled={!panelWide} onClick={() => setPanelSize(360)}>&minus;</button>
+        <button type="button" className="lt-rp-ic" title="Wider" aria-label="Make the panel wider" disabled={panelW >= panelMax()} onClick={widenPanel}>+</button>
+        <button type="button" className="lt-rp-ic" title="Narrower" aria-label="Make the panel narrower" disabled={panelW <= PANEL_MIN} onClick={narrowPanel}>&minus;</button>
         <button type="button" className="lt-rp-ic" title="Close" aria-label="Close panel" onClick={() => setPanelOpen(false)}>&#10005;</button>
       </div>
       <div className="lt-rp-tabs" role="tablist">
@@ -832,7 +833,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} config={config} />}
           {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} sync={sync} selectedId={tplSel} setSelectedId={setTplSel} />}
         </div>
-        {panelOpen ? renderPanel() : <button type="button" className="lt-flap" aria-label="Open panel" onClick={() => setPanelOpen(true)}>Panel ›</button>}
+        {panelOpen ? renderPanel() : <button type="button" className="lt-flap" aria-label="Open panel" onClick={openPanel}>Panel ›</button>}
       </div>
       {renderPreview()}
       {toastEl}

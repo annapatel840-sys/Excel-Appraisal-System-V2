@@ -823,3 +823,11 @@
 .lt .lt-row-actions .lt-btn.success { background: #16a34a; border-color: #16a34a; color: #fff; }
 .lt .lt-row-actions .lt-btn.success:hover:not(:disabled) { background: #15803d; }
 .lt .lt-row-actions .lt-btn:disabled { opacity: .55; cursor: not-allowed; }
+/* Save buttons: bold white text, and while a save is running they stay solid
+   (they used to fade to a pale blue with barely readable text). */
+.lt .lt-btn.main,
+.lt .lt-btn.pri { color: #fff; font-weight: 800; }
+.lt .lt-btn.main[aria-busy="true"],
+.lt .lt-btn.pri[aria-busy="true"] { opacity: 1; color: #fff; font-weight: 800; cursor: progress; }
+.lt .lt-btn.main[aria-busy="true"] { background: #2560d4; border-color: #2560d4; }
+.lt .lt-btn.pri[aria-busy="true"] { background: #17385a; border-color: #17385a; }

@@ -254,7 +254,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add} disabled={saving}>+ Add Rule</button>
-            <button type="button" className="lt-btn pri" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Rules"}</button>
+            <button type="button" className="lt-btn pri" onClick={save} disabled={saving} aria-busy={saving}>{saving ? "Saving..." : "Save Rules"}</button>
             <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
@@ -398,7 +398,7 @@ export function FieldsTab({ S, actor, ui, toast, config }) {
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add}>+ Add Field</button>
-            <button type="button" className="lt-btn pri" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Fields"}</button>
+            <button type="button" className="lt-btn pri" onClick={save} disabled={saving} aria-busy={saving}>{saving ? "Saving..." : "Save Fields"}</button>
             <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
@@ -781,7 +781,7 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
         <input className="lt-editor-name" value={draft.name} onChange={(e) => update({ name: e.target.value })} aria-label="Template Name" placeholder="Template Name" />
         <span className="lt-sp" />
         <button type="button" className="lt-btn" onClick={() => onPreview(syncEditor())}>Preview</button>
-        <button type="button" className="lt-btn main" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : "Save"}</button>
+        <button type="button" className="lt-btn main" disabled={saving} aria-busy={saving} onClick={handleSave}>{saving ? "Saving…" : "Save"}</button>
       </div>
       <LockNote S={S} />
       <LtErrs errs={errs} />
