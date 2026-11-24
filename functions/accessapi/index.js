@@ -849,9 +849,23 @@ app.get(
       if (p.empId) em[norm(p.empId)] = p;
     });
     const emByEmail = {};
+    const emByName = {};
+    const ambiguousEmNames = new Set();
+    const personNameKey = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\\s+/g, " ")
+        .trim();
     Object.values(em).forEach((p) => {
       if (p.email) emByEmail[p.email] = p;
+      const nameKey = personNameKey(p.name);
+      if (!nameKey) return;
+      if (emByName[nameKey]) ambiguousEmNames.add(nameKey);
+      else emByName[nameKey] = p;
     });
+    ambiguousEmNames.forEach((key) => delete emByName[key]);
     const tracked = new Set(
       roles
         .filter((r) => r.source === "catalyst" && !r.retired && r.catalystRole)
@@ -878,7 +892,15 @@ app.get(
     Object.keys(shown.techEd).concat(Object.keys(shown.compMgr)).forEach(add);
     // Every Catalyst app user is listed, with their Catalyst role (tracked or not).
     (users || []).forEach((u) => {
-      const p = emByEmail[u.email];
+      // Email is the primary identity link. Catalyst sometimes returns a
+      // different/blank email alias for the same login, so use an exact,
+      // unique full-name match as a safe fallback. Never guess when Employee
+      // Master contains duplicate names.
+      const p =
+        emByEmail[String(u.email || "").trim().toLowerCase()] ||
+        (ambiguousEmNames.has(personNameKey(u.name))
+          ? null
+          : emByName[personNameKey(u.name)]);
       const row = p
         ? add(p.empId)
         : (people[norm(u.email)] = people[norm(u.email)] || {
@@ -888,6 +910,7 @@ app.get(
             active: true,
             inEM: false,
           });
+      if (p && !row.email) row.email = String(u.email || "").trim().toLowerCase();
       row.catalystRole = u.role || "";
       row.catalystUser = true;
       if (!row.name || row.name === row.empId) row.name = u.name || row.name;
