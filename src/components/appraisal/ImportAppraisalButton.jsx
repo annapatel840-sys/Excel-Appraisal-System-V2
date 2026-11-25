@@ -40,6 +40,22 @@ const normalizeEmpId = (value) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
 
+// Employee names are compared on letters/digits only, case-insensitive.
+const normalizeName = (value) =>
+  String(value === null || value === undefined ? "" : value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const NAME_HEADERS = new Set(["employeename", "name", "employee"]);
+
+// Text from the file and the sheet are "the same" when they match, or one holds the other
+// (the grid shows Comp. Manager as "EMP060 - Ravi Rao" while the file may carry the raw value).
+const sameText = (a, b) => {
+  const x = normalizeName(a);
+  const y = normalizeName(b);
+  return x === y || (x !== "" && y !== "" && (x.includes(y) || y.includes(x)));
+};
+
 // Returns the value to store, or undefined when the cell is not valid.
 // `raw` is the real cell value: a number stays a number (never the rounded text Excel shows).
 const cellToValue = (column, raw) => {
@@ -198,6 +214,10 @@ export function useAppraisalImport({ onDone } = {}) {
   const [changes, setChanges] = useState([]);
   const [notes, setNotes] = useState([]);
   const [unmatchedIds, setUnmatchedIds] = useState([]);
+  // Cells changed in the file but in columns that import cannot update (read-only / calculated).
+  const [blockedEdits, setBlockedEdits] = useState([]);
+  // Rows whose Emp ID and Employee Name point to different employees.
+  const [mismatchRows, setMismatchRows] = useState([]);
 
   const [undoOpen, setUndoOpen] = useState(false);
   const [undoResult, setUndoResult] = useState("");
@@ -241,6 +261,8 @@ export function useAppraisalImport({ onDone } = {}) {
     setChanges([]);
     setNotes([]);
     setUnmatchedIds([]);
+    setBlockedEdits([]);
+    setMismatchRows([]);
     setSheetRows([]);
     setHeaders([]);
     setMapping({});
@@ -279,10 +301,16 @@ export function useAppraisalImport({ onDone } = {}) {
         return;
       }
 
+      const autoMapping = autoMap(fileHeaders);
       setSheetRows(fileRows);
       setHeaders(fileHeaders);
-      setMapping(autoMap(fileHeaders));
-      setStep("map");
+      setMapping(autoMapping);
+
+      // The file has an Emp ID column: no manual mapping needed. Every matching column is
+      // mapped and compared with the sheet, so only the cells that were changed show up.
+      const hasEmpColumn = Object.values(autoMapping).some((m) => m.key === EMP_KEY);
+      if (hasEmpColumn) buildChanges(fileRows, fileHeaders, autoMapping);
+      else setStep("map");
     } catch (error) {
       console.error("Appraisal import failed:", error);
       setMessage(error?.message || "That file could not be read. Use the exported sheet format.");
@@ -314,30 +342,57 @@ export function useAppraisalImport({ onDone } = {}) {
   }, [mapping, importColumns]);
 
   /* ---------- review (what will change) ---------- */
-  const buildChanges = () => {
+  const buildChanges = (
+    fileRows = sheetRows,
+    fileHeaders = headers,
+    fileMapping = mapping,
+  ) => {
     const columnByKey = new Map(importColumns.map((c) => [c.key, c]));
-    const empHeader = Object.keys(mapping).find((h) => mapping[h].key === EMP_KEY);
+    const empHeader = Object.keys(fileMapping).find((h) => fileMapping[h].key === EMP_KEY);
+    const nameHeader = fileHeaders.find((h) => NAME_HEADERS.has(normalizeHeader(h)));
     const byEmpId = new Map(rows.map((row) => [normalizeEmpId(row.empId), row]));
+    // Names that belong to exactly one employee (used when the Emp ID is missing or unknown).
+    const byName = new Map();
+    rows.forEach((row) => {
+      const key = normalizeName(row.name);
+      if (!key) return;
+      byName.set(key, byName.has(key) ? null : row);
+    });
 
     const found = [];
     const unmatchedList = [];
+    const mismatchList = [];
     const skippedTitles = [];
     const invalidList = [];
-    const readOnlyEdits = new Map();
+    const blocked = [];
     let blankHike = 0;
+    let matchedByName = 0;
 
-    sheetRows.forEach((sheetRow) => {
+    fileRows.forEach((sheetRow) => {
       const rawEmpId = String(sheetRow[empHeader] ?? "").trim();
-      if (!rawEmpId) return;
+      const rawName = nameHeader ? String(sheetRow[nameHeader] ?? "").trim() : "";
+      if (!rawEmpId && !rawName) return;
 
-      const row = byEmpId.get(normalizeEmpId(rawEmpId));
+      // Emp ID + Employee Name identify the employee.
+      let row = rawEmpId ? byEmpId.get(normalizeEmpId(rawEmpId)) : undefined;
+      if (row && rawName && !sameText(row.name, rawName)) {
+        mismatchList.push({ empId: rawEmpId, fileName: rawName, sheetName: row.name });
+        return;
+      }
+      if (!row && rawName) {
+        const byNameRow = byName.get(normalizeName(rawName));
+        if (byNameRow) {
+          row = byNameRow;
+          matchedByName += 1;
+        }
+      }
       if (!row) {
-        unmatchedList.push(rawEmpId);
+        unmatchedList.push(rawEmpId || rawName);
         return;
       }
 
       const mapped = {};
-      Object.entries(mapping).forEach(([header, target]) => {
+      Object.entries(fileMapping).forEach(([header, target]) => {
         if (target.key && target.key !== EMP_KEY) mapped[target.key] = sheetRow[header];
       });
 
@@ -350,17 +405,28 @@ export function useAppraisalImport({ onDone } = {}) {
           : undefined;
       const eligibility = fileEligibility !== undefined ? fileEligibility : row.eligibleForPromotion;
 
-      // Read-only columns whose file value differs from the sheet: reported, never imported.
-      headers.forEach((header) => {
-        if (mapping[header]?.key || !readOnlyReason(header)) return;
+      // Columns that cannot be imported (read-only): a changed cell is reported, never imported.
+      // Calculated columns are skipped: Excel recalculates them whenever an input changes.
+      fileHeaders.forEach((header) => {
+        if (fileMapping[header]?.key || !readOnlyReason(header)) return;
         const column = columnByHeader.get(normalizeHeader(header));
+        if (!column || column.computed || column.key === "name") return;
         const fileValue = cellToValue(column, sheetRow[header]);
         if (fileValue === undefined || fileValue === "") return;
         const sheetValue = row[column.key];
         const differs = NUMERIC_TYPES.has(column.type)
           ? Math.abs(Number(sheetValue || 0) - Number(fileValue)) > 0.0001
-          : String(sheetValue ?? "").trim() !== String(fileValue).trim();
-        if (differs) readOnlyEdits.set(header, (readOnlyEdits.get(header) || 0) + 1);
+          : !sameText(sheetValue, fileValue) && !sameText(row[`${column.key}Raw`], fileValue);
+        if (differs) {
+          blocked.push({
+            empId: row.empId,
+            name: row.name,
+            label: column.label,
+            reason: readOnlyReason(header),
+            before: sheetValue === null || sheetValue === undefined || sheetValue === "" ? "—" : String(sheetValue),
+            after: String(fileValue),
+          });
+        }
       });
 
       Object.keys(mapped).forEach((key) => {
@@ -397,6 +463,15 @@ export function useAppraisalImport({ onDone } = {}) {
         const before = row[key] === null || row[key] === undefined ? "" : String(row[key]);
         const after = String(nextValue);
         if (before === after) return;
+        // Same number written differently (27000 vs 27000.0000001): not a change.
+        if (
+          NUMERIC_TYPES.has(column.type) &&
+          before !== "" &&
+          after !== "" &&
+          Math.abs(Number(before) - Number(after)) < 0.00001
+        ) {
+          return;
+        }
 
         found.push({
           rowId: row.id,
@@ -412,9 +487,18 @@ export function useAppraisalImport({ onDone } = {}) {
     });
 
     const noteList = [];
+    if (matchedByName)
+      noteList.push(`${matchedByName} row(s) matched by Employee Name because the Emp ID was not found`);
     if (unmatchedList.length)
       noteList.push(
-        `${unmatchedList.length} row(s) had no matching Emp ID (e.g. ${unmatchedList.slice(0, 5).join(", ")})`,
+        `${unmatchedList.length} row(s) had no matching employee (e.g. ${unmatchedList.slice(0, 5).join(", ")})`,
+      );
+    if (mismatchList.length)
+      noteList.push(
+        `${mismatchList.length} row(s) skipped because Emp ID and Employee Name belong to different employees (e.g. ${mismatchList
+          .slice(0, 3)
+          .map((m) => `${m.empId}: file "${m.fileName}" vs sheet "${m.sheetName}"`)
+          .join("; ")})`,
       );
     if (invalidList.length)
       noteList.push(
@@ -427,18 +511,17 @@ export function useAppraisalImport({ onDone } = {}) {
           .slice(0, 5)
           .join(", ")})`,
       );
-    if (readOnlyEdits.size)
-      noteList.push(
-        `changed in the file but read-only in the sheet, so NOT imported: ${[...readOnlyEdits.entries()]
-          .map(([header, count]) => `${header} (${count} row${count === 1 ? "" : "s"})`)
-          .join(", ")}`,
-      );
-    const skippedHeaders = headers.filter((h) => !mapping[h]?.key);
-    if (skippedHeaders.length) noteList.push(`${skippedHeaders.length} column(s) not imported`);
+    const unknownHeaders = fileHeaders.filter(
+      (h) => !fileMapping[h]?.key && !columnByHeader.get(normalizeHeader(h)) && !NAME_HEADERS.has(normalizeHeader(h)),
+    );
+    if (unknownHeaders.length)
+      noteList.push(`${unknownHeaders.length} unknown column(s) ignored (${unknownHeaders.slice(0, 4).join(", ")})`);
 
     setChanges(found);
     setNotes(noteList);
     setUnmatchedIds(unmatchedList);
+    setMismatchRows(mismatchList);
+    setBlockedEdits(blocked);
     setStep("review");
   };
 
@@ -649,7 +732,7 @@ export function useAppraisalImport({ onDone } = {}) {
         <button type="button" onClick={close} className={btnGhost}>
           Cancel
         </button>
-        <button type="button" onClick={buildChanges} disabled={!!mapState.error} className={btnPrimary}>
+        <button type="button" onClick={() => buildChanges()} disabled={!!mapState.error} className={btnPrimary}>
           Review changes
         </button>
       </>,
@@ -698,6 +781,36 @@ export function useAppraisalImport({ onDone } = {}) {
               <div className="px-3 py-2 text-[11px] text-slate-500">
                 Showing the first {MAX_PREVIEW_ROWS} of {changes.length} changes. All will be applied.
               </div>
+            )}
+          </div>
+        )}
+        {blockedEdits.length > 0 && (
+          <div className="max-h-[220px] overflow-auto border-t border-[#e2e8f0] px-4 py-2.5">
+            <div className="mb-1 text-[11px] font-semibold text-amber-700">
+              Changed in the file but NOT imported (these sheet columns cannot be updated by import):
+            </div>
+            <table className="w-full border-collapse text-[11px]">
+              <tbody>
+                {blockedEdits.slice(0, 50).map((edit, index) => (
+                  <tr key={`${edit.empId}-${edit.label}-${index}`} className="border-b border-[#eef2f7]">
+                    <td className="py-1 pr-2 text-slate-700">
+                      {edit.name}
+                      <span className="ml-1 text-slate-400">{edit.empId}</span>
+                    </td>
+                    <td className="py-1 pr-2 text-slate-600">
+                      {edit.label} <span className="text-slate-400">({edit.reason})</span>
+                    </td>
+                    <td className="py-1 tabular-nums">
+                      <span className="text-slate-400">{edit.before}</span>
+                      {" → "}
+                      <span className="font-semibold text-slate-600">{edit.after}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {blockedEdits.length > 50 && (
+              <div className="pt-1 text-[11px] text-slate-500">Showing the first 50 of {blockedEdits.length}.</div>
             )}
           </div>
         )}
