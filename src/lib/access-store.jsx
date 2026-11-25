@@ -13,10 +13,13 @@ import { isAllLocations, matchesLocation, useSelectedLocation } from "./location
 const CACHE_KEY = "access-me-cache-v1";
 const LEVEL_RANK = { none: 0, view: 1, edit: 2 };
 
-// Once HR has pressed "Close For Tech-ED" in Appraisal Cycle Master, Tech-ED logins get read
-// access only (every Edit screen becomes View, no edit actions) until the cycle is reopened
-// for correction. HR and other roles are not affected.
+// Cycle locks (Appraisal Cycle Master):
+//  - "Close For Tech-ED": Tech-ED AND Comp Manager logins get read access only (every Edit screen
+//    becomes View, no edit actions) until the cycle is reopened for correction. HR can still edit.
+//  - "Close Cycle" (status Closed): EVERY role, HR included, is read-only. Only the screens in
+//    CYCLE_CLOSED_KEEP_SCREENS stay usable, so HR can still Reopen / Archive the cycle.
 const TECHED_LOCK_KEEP_SCREENS = new Set(["settings"]); // personal preferences, not cycle data
+const CYCLE_CLOSED_KEEP_SCREENS = new Set(["settings", "cycleMaster", "access"]); // preferences + cycle controls
 const TECHED_LOCK_BLOCKED_ACTIONS = new Set([
   "bulkEdit",
   "allotNextLevel",
@@ -24,8 +27,12 @@ const TECHED_LOCK_BLOCKED_ACTIONS = new Set([
   "changeBudgetConfig",
   "delegateRequest",
 ]);
-const isTechEdRole = (role) =>
-  String(role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("teched");
+const compactRole = (role) => String(role || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const isTechEdRole = (role) => compactRole(role).includes("teched");
+const isCompManagerRole = (role) => {
+  const r = compactRole(role);
+  return r.includes("compmgr") || r.includes("compmanager") || r.includes("compensationmanager");
+};
 
 // HR Operations tabs (EmployeeMaster ?tab=...) → screen key.
 export const HR_TAB_SCREENS = {
@@ -140,6 +147,7 @@ export function AccessProvider({ children }) {
   const [selectedLocation] = useSelectedLocation();
   const { info: cycleInfo } = useCurrentCycleInfo();
   const cycleTechEdClosed = cycleInfo?.techEdClosed === true;
+  const cycleClosed = String(cycleInfo?.status || "").trim().toLowerCase() === "closed";
 
   useEffect(() => {
     let active = true;
@@ -181,23 +189,31 @@ export function AccessProvider({ children }) {
     }
     const actions = (ok && me.actions) || {};
     const fields = (ok && me.fields) || {};
-    // Cycle closed for Tech-ED + a Tech-ED login = read-only.
-    const techEdLocked = ok && cycleTechEdClosed && isTechEdRole(me.role || me.roleLabel);
+    const roleName = me?.role || me?.roleLabel;
+    // Cycle closed for Tech-ED + a Tech-ED or Comp Manager login = read-only (HR can still edit).
+    const techEdLocked =
+      ok && cycleTechEdClosed && (isTechEdRole(roleName) || isCompManagerRole(roleName));
+    // Cycle Closed = read-only for everyone, HR included (until HR reopens it).
+    const cycleLocked = ok && cycleClosed;
+    const anyLocked = techEdLocked || cycleLocked;
 
     const screenLevel = (key) => {
       if (!ok) return "edit";
       const level = resolveScreenLevel(screens, key);
-      return techEdLocked && level === "edit" && !TECHED_LOCK_KEEP_SCREENS.has(key) ? "view" : level;
+      if (level !== "edit") return level;
+      if (cycleLocked && !CYCLE_CLOSED_KEEP_SCREENS.has(key)) return "view";
+      if (techEdLocked && !TECHED_LOCK_KEEP_SCREENS.has(key)) return "view";
+      return level;
     };
     const canScreen = (key, level = "view") =>
       LEVEL_RANK[screenLevel(key)] >= (LEVEL_RANK[level] ?? 1);
     const canAction = (key) =>
-      !ok ? true : actions[key] === true && !(techEdLocked && TECHED_LOCK_BLOCKED_ACTIONS.has(key));
+      !ok ? true : actions[key] === true && !(anyLocked && TECHED_LOCK_BLOCKED_ACTIONS.has(key));
     const fieldLimit = (key) => {
       if (!ok) return "edit";
       const limit = fields[key];
       if (limit === "read" || limit === "hidden") return limit;
-      return techEdLocked ? "read" : "edit";
+      return anyLocked ? "read" : "edit";
     };
 
     return {
@@ -208,6 +224,7 @@ export function AccessProvider({ children }) {
       error: state.error,
       denied: !state.loading && !ok && enforced,
       techEdLocked,
+      cycleLocked,
       role: ok ? me.role || "" : "",
       roleLabel: ok ? me.roleLabel || me.role || "" : "",
       user: ok ? me.user || null : null,
@@ -222,7 +239,7 @@ export function AccessProvider({ children }) {
       screenFieldLimit: (screen, label) => fieldLimit(screenFieldKey(screen, label)),
       reload,
     };
-  }, [state, reload, selectedLocation, cycleTechEdClosed]);
+  }, [state, reload, selectedLocation, cycleTechEdClosed, cycleClosed]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }

@@ -125,10 +125,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(row('R27').hike_amount, 50000);
   });
 
-  await t('without an Active cycle nothing is saved (409), no fallback row', async () => {
+  await t('a Closed cycle is read-only for everyone, HR included: nothing is saved, no fallback row', async () => {
     seed('Closed');
     const r = await patch({ emp_id: 'EMP022', allocated_pb_amount: 30 });
-    assert.strictEqual(r.status, 409, JSON.stringify(r.json));
+    assert.ok([403, 409].includes(r.status), JSON.stringify(r.json));
     assert.ok(DB[T.sheet].every((x) => x.allocated_pb_amount === null));
   });
 

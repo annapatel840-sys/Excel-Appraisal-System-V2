@@ -4968,8 +4968,16 @@ async function updateEmployee(req, res) {
   const selectedCycleStatus = String(
     currentCycle?.status ?? currentCycle?.cycle_status ?? currentCycle?.appraisal_status ?? "",
   ).trim().toLowerCase();
-  if (selectedCycleStatus === "closed" && a?.role !== "hr") {
-    throw new access.HttpError(403, "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.");
+  // Closed cycle: read-only for everyone, HR included (HR reopens it in Appraisal Cycle Master).
+  if (selectedCycleStatus === "closed") {
+    throw new access.HttpError(403, "This appraisal cycle is Closed and read-only. Reopen it in Appraisal Cycle Master to make changes.");
+  }
+  // "Close For Tech-ED" (latest mark in the cycle remarks): Tech-ED and Comp Manager are read-only; HR can still edit.
+  if (selectedCycleStatus === "active" && a?.role !== "hr") {
+    const cycleRemarks = String(currentCycle?.remarks ?? "");
+    if (cycleRemarks.lastIndexOf("Tech-ED close:") > cycleRemarks.lastIndexOf("Tech-ED reopen:")) {
+      throw new access.HttpError(403, "This cycle is closed for Tech-ED and Comp Manager. Only HR can edit until it is reopened for correction.");
+    }
   }
   if (
     selectedCycleStatus === "archived" ||
