@@ -28,6 +28,10 @@ const MAX_PREVIEW_ROWS = 300;
 const EMP_KEY = "empId";
 const SKIP = "";
 
+// Never written by import: the identity columns, and the two columns that Delegation manages
+// (the grid shows them resolved as "EMP001 - Name", so a file value cannot be compared safely).
+const NEVER_IMPORT = new Set(["name", "empId", "compManager", "appraiserTechED"]);
+
 const normalizeHeader = (value) =>
   String(value === null || value === undefined ? "" : value)
     .toLowerCase()
@@ -161,11 +165,13 @@ export function useAppraisalImport({ onDone } = {}) {
   } = useAppraisal();
   const access = useAccess();
 
-  // Columns this login can update (access rules) and that are not calculated.
+  // Every column this login can update (access rules) that is not calculated and not in
+  // NEVER_IMPORT: a changed cell in any of them is imported, not only the "editable" inputs.
   const importColumns = useMemo(
     () =>
       COLUMNS.filter(
-        (column) => column.editable && !column.computed && access.canEditField(column.key),
+        (column) =>
+          !column.computed && !NEVER_IMPORT.has(column.key) && access.canEditField(column.key),
       ),
     [access],
   );
@@ -198,7 +204,11 @@ export function useAppraisalImport({ onDone } = {}) {
     const column = columnByHeader.get(normalizeHeader(header));
     if (!column || column.key === EMP_KEY) return "";
     if (importColumns.some((c) => c.key === column.key)) return "";
-    return column.computed ? "Calculated" : column.editable ? "No edit access" : "Read-only";
+    return column.computed
+      ? "Calculated"
+      : NEVER_IMPORT.has(column.key)
+        ? "Managed elsewhere"
+        : "No edit access";
   };
 
   const fileInputRef = useRef(null);
@@ -787,7 +797,7 @@ export function useAppraisalImport({ onDone } = {}) {
         {blockedEdits.length > 0 && (
           <div className="max-h-[220px] overflow-auto border-t border-[#e2e8f0] px-4 py-2.5">
             <div className="mb-1 text-[11px] font-semibold text-amber-700">
-              Changed in the file but NOT imported (these sheet columns cannot be updated by import):
+              Changed in the file but NOT imported (calculated, managed in Delegation, or no edit access):
             </div>
             <table className="w-full border-collapse text-[11px]">
               <tbody>
