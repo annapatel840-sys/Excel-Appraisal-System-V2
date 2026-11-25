@@ -971,7 +971,7 @@ async function readTechEdOwners(app, sourceRows) {
       readField(row, [
         "appraiser_tech_ed",
         "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed1",
+        "appraiser_tech_ed",
         "appraiser_tech_ed_id",
         "appraiser_teched",
         "tech_ed_id",
@@ -1138,7 +1138,7 @@ async function readEmployeeRoster(app) {
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_row_id",
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_id",
           "appraiser_teched",
@@ -1148,7 +1148,7 @@ async function readEmployeeRoster(app) {
           readField(master, [
             "appraiser_tech_ed",
             "appraiser_tech_ed_row_id",
-            "appraiser_tech_ed1",
+            "appraiser_tech_ed",
             "appraiser_tech_ed_id",
             "appraiser_teched",
             "tech_ed_id",
@@ -1305,7 +1305,7 @@ async function readEmployeeRoster(app) {
           readField(row, [
             "appraiser_tech_ed",
             "appraiser_tech_ed_row_id",
-            "appraiser_tech_ed1",
+            "appraiser_tech_ed",
           ]),
         ),
         status: employeeStatus,
@@ -1605,7 +1605,7 @@ function filterOwn(
               employee.appraiser_tech_ed_appraisal_sheet ||
               employee.appraiser_tech_ed ||
               employee.appraiser_tech_ed_id ||
-              employee.appraiser_tech_ed1 ||
+              employee.appraiser_tech_ed ||
               "";
             const key = ownerKey(raw);
             const linked = techEdOwners.find((item) =>
@@ -2374,7 +2374,7 @@ async function calculateBudgetBases(
     const employeeId = employeeKeyFor(rawEmployeeId);
     if (!employeeId) return;
     const techEdFields = [
-      "appraiser_tech_ed1",
+      "appraiser_tech_ed",
       "appraiser_tech_ed_appraisal_sheet",
       "appraiser_tech_ed_row_id",
       "appraiser_tech_ed_id",
@@ -3320,7 +3320,7 @@ async function calculateBudgetBases(
           ? sheetEmployee.eligible
           : rawStatus === "active" && explicitlyEligible;
       const rawTech = firstValue(masterRow, [
-        "appraiser_tech_ed1",
+        "appraiser_tech_ed",
         "appraiser_tech_ed_row_id",
         "appraiser_tech_ed_id",
         "appraiser_tech_ed",
@@ -3383,7 +3383,7 @@ async function calculateBudgetBases(
           "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_teched",
           "appraiserTechED",
           "appraiserTechEd",
@@ -3537,7 +3537,7 @@ async function calculateBudgetBases(
           "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_teched",
           "appraiserTechED",
           "appraiserTechEd",
@@ -4589,11 +4589,11 @@ module.exports = async function (req, res) {
         return transferMasterById.get(first) || transferMasterByRowId.get(first) || null;
       };
       const techOfSheet = (row) => {
-        const direct = row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed ||
+        const direct = row.appraiser_tech_ed_id || row.appraiser_tech_ed || row.appraiser_tech_ed ||
           row.appraiser_teched || row.tech_ed_id || row.tech_ed;
         const master = masterOfSheetEmployee(row);
         const assignment = direct || (master && (
-          master.appraiser_tech_ed1 || master.appraiser_tech_ed_row_id ||
+          master.appraiser_tech_ed || master.appraiser_tech_ed_row_id ||
           master.appraiser_tech_ed_id || master.appraiser_tech_ed ||
           master.appraiser_teched || master.tech_ed_id || master.tech_ed
         )) || "";
@@ -4713,7 +4713,7 @@ module.exports = async function (req, res) {
             emp_id: referenceText(row.emp_id),
             employee_id: referenceText(row.employee_id),
             emp_code: referenceText(row.emp_code),
-            tech_ed: referenceText(row.appraiser_tech_ed_id || row.appraiser_tech_ed1 || row.appraiser_tech_ed || row.tech_ed_id || row.tech_ed),
+            tech_ed: referenceText(row.appraiser_tech_ed_id || row.appraiser_tech_ed || row.appraiser_tech_ed || row.tech_ed_id || row.tech_ed),
             comp_manager: referenceText(row.comp_manager || row.comp_manager_id || row.compManager || row.comp_manager_name || row.comp_manager_display),
             effective_comp_manager: compOfSheet(row),
           })).slice(0, 3),

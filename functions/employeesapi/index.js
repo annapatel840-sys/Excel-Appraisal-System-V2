@@ -698,14 +698,14 @@ async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
 }
 
 /* Tech-ED ownership by Employee_Master ROWID.
-   Appraisal_Sheet.appraiser_tech_ed1 (lookup) stores the Tech-ED's
+   Appraisal_Sheet.appraiser_tech_ed (lookup) stores the Tech-ED's
    Employee_Master ROWID. Older rows hold "EMPxxxx - Name" text, which is
    resolved to the same ROWID through the employee ID. */
 function techEdOwnerRowId(row, master, employeeMasterMap) {
   const candidates = [
-    row.appraiser_tech_ed1,
     row.appraiser_tech_ed,
-    master.appraiser_tech_ed1,
+    row.appraiser_tech_ed,
+    master.appraiser_tech_ed,
     master.appraiser_tech_ed,
   ]
     .map(function (value) {
@@ -1034,7 +1034,7 @@ function buildEmployeeMasterMap(masterRows) {
     const rowId = String(row.ROWID || row.rowid || row.id || "").trim();
 
     // Index by both the stable employee ID and Catalyst Row ID. The new
-    // Appraisal_Sheet.appraiser_tech_ed1 lookup stores Employee_Master.ROWID.
+    // Appraisal_Sheet.appraiser_tech_ed lookup stores Employee_Master.ROWID.
     if (empId) map.set(empId, row);
     if (rowId) map.set(rowId, row);
   });
@@ -2625,7 +2625,7 @@ async function enrichPreviousAppraisalValues(
       assignmentDisplay(
         firstNonEmpty(assignmentHistoryRow || {}, [
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_tech_ed",
           "Tech_ED",
           "tech_ed",
@@ -2636,7 +2636,7 @@ async function enrichPreviousAppraisalValues(
         ]) ||
           firstNonEmpty(previousAssignmentPayroll || {}, [
             "appraiser_tech_ed_id",
-            "appraiser_tech_ed1",
+            "appraiser_tech_ed",
             "appraiser_tech_ed",
             "Tech_ED",
             "tech_ed",
@@ -3307,7 +3307,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           "",
         employeeMasterMap,
       ),
-      // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
+      // appraiser_tech_ed is a lookup to Employee_Master.ROWID. Resolve it
       // to the actual Tech-Ed employee identity so the grid displays ID - Name
       // and the backend's Tech-Ed access filter can match the signed-in user.
       // Separate Appraisal_Sheet assignment for budget headcounts. Do not
@@ -3315,7 +3315,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // a Tech-Ed count when the current appraisal row is unassigned/different.
       // Keep the real Employee_Master ROWID for identity/authorization matching.
       // The UI must use the resolved label below, never this raw foreign key.
-      appraiser_tech_ed_row_id: String(row.appraiser_tech_ed1 || "").trim(),
+      appraiser_tech_ed_row_id: String(row.appraiser_tech_ed || "").trim(),
       // Tech-ED owner as Employee_Master ROWID (lookup value, or resolved from
       // legacy "EMPxxxx - Name" text). Used for Tech-ED access by row ID.
       appraiser_tech_ed_owner_row_id: techEdOwnerRowId(
@@ -3325,7 +3325,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       ),
       appraiser_tech_ed_appraisal_sheet: (() => {
         const techEdLookupId = String(
-          row.appraiser_tech_ed1 || row.appraiser_tech_ed || "",
+          row.appraiser_tech_ed || row.appraiser_tech_ed || "",
         ).trim();
         const techEdEmployee = techEdLookupId
           ? employeeMasterMap.get(techEdLookupId) ||
@@ -3346,9 +3346,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       })(),
       appraiser_tech_ed: (() => {
         const techEdLookupId = String(
-          row.appraiser_tech_ed1 ||
+          row.appraiser_tech_ed ||
             row.appraiser_tech_ed ||
-            master.appraiser_tech_ed1 ||
+            master.appraiser_tech_ed ||
             master.appraiser_tech_ed ||
             "",
         ).trim();

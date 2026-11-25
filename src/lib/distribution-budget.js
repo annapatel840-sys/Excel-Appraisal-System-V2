@@ -541,7 +541,7 @@ export function useDistributionBudget() {
                 employee.appraiser_tech_ed_appraisal_sheet ||
                 employee.appraiser_tech_ed ||
                 employee.appraiser_tech_ed_id ||
-                employee.appraiser_tech_ed1 ||
+                employee.appraiser_tech_ed ||
                 employee.appraiser_teched ||
                 employee.appraiserTechED ||
                 employee.tech_ed ||
@@ -571,7 +571,7 @@ export function useDistributionBudget() {
             row.tech_ed_id ||
             row.tech_ed ||
             row.appraiser_tech_ed ||
-            row.appraiser_tech_ed1 ||
+            row.appraiser_tech_ed ||
             "",
         ) || "",
       ).trim();
@@ -588,7 +588,7 @@ export function useDistributionBudget() {
             row.tech_ed_id ||
             row.tech_ed ||
             row.appraiser_tech_ed ||
-            row.appraiser_tech_ed1,
+            row.appraiser_tech_ed,
         ) === normalizeOwner(loginEmployee.row_id || loginEmployee.ROWID),
       );
     const directMatches = allRows.filter(ownerMatchesLogin);
@@ -689,7 +689,7 @@ export function useDistributionBudget() {
           employee.appraiser_tech_ed,
           employee.appraiser_tech_ed_id,
           employee.appraiser_tech_ed_row_id,
-          employee.appraiser_tech_ed1,
+          employee.appraiser_tech_ed,
           employee.appraiser_teched,
           employee.appraiserTechED,
           employee.tech_ed,
@@ -928,7 +928,7 @@ export function useDistributionBudget() {
           employee.appraiser_tech_ed_appraisal_sheet ||
           employee.appraiser_tech_ed ||
           employee.appraiser_tech_ed_id ||
-          employee.appraiser_tech_ed1 ||
+          employee.appraiser_tech_ed ||
           employee.appraiser_teched ||
           employee.appraiserTechED ||
           employee.tech_ed ||
@@ -1168,7 +1168,7 @@ export function useDistributionBudget() {
           employee.appraiser_tech_ed_appraisal_sheet ||
           employee.appraiser_tech_ed_row_id ||
           employee.appraiser_tech_ed_id ||
-          employee.appraiser_tech_ed1 ||
+          employee.appraiser_tech_ed ||
           employee.tech_ed ||
           employee.tech_ed_id ||
           "",
