@@ -190,7 +190,6 @@ export function FilterTh({ tf, col, rz, noFilter = false, className = "", style 
         <ColumnFilter
           boxed
           alwaysBelow
-          scrollToHeader
           allowGroup={false}
           columnKey={col.key}
           label={col.label}
