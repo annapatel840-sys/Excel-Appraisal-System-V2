@@ -146,6 +146,30 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(row().target_pb_next_year, 12500.75);
   });
 
+  await t('unset promotion eligibility matches the roster display default No', async () => {
+    // The API maps a blank datastore value to "No" for the grid. Saving an
+    // unrelated title/eligibility edit must not be rejected as a false conflict.
+    row().eligible_for_promotion = '';
+    const result = await save({
+      eligible_for_promotion: 'Yes',
+      new_title: 'Senior Engineer',
+      expected: { eligible_for_promotion: 'No', new_title: '' },
+    });
+    assert.strictEqual(result.status, 200, JSON.stringify(result.json));
+    assert.strictEqual(row().eligible_for_promotion, 'Yes');
+    assert.strictEqual(row().new_title, 'Senior Engineer');
+  });
+
+  await t('a genuine promotion eligibility change still conflicts', async () => {
+    row().eligible_for_promotion = 'Yes';
+    const result = await save({
+      eligible_for_promotion: 'No',
+      expected: { eligible_for_promotion: 'No' },
+    });
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    assert.strictEqual(row().eligible_for_promotion, 'Yes');
+  });
+
   await t('fields the grid derives on load are not checked', async () => {
     const r = await save({ current_annual_base_pay: 510000, expected: { current_annual_base_pay: 999 } });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
