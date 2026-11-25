@@ -122,9 +122,6 @@
 // let seq = 0;
 
 // const nextId = () => `a${Date.now()}-${seq++}`;
-// Import batches keep a real 0 in the audit text (not blank) so "Undo last import" can put 0 back.
-const isImportBatch = (batchId) => String(batchId || "").includes("IMP-");
-const auditText = (value, exact) => (exact && value === 0 ? "0" : String(value || ""));
 
 // /* ============================================================
 // CATALYST API
