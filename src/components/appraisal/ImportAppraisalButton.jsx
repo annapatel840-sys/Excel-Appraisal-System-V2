@@ -167,6 +167,24 @@ export function useAppraisalImport({ onDone } = {}) {
     return map;
   }, [importColumns]);
 
+  // Every sheet column by header text: used to say "read-only in the sheet" for columns
+  // that exist but cannot be updated (calculated, or not editable).
+  const columnByHeader = useMemo(() => {
+    const map = new Map();
+    COLUMNS.forEach((column) => {
+      map.set(normalizeHeader(column.label), column);
+      map.set(normalizeHeader(column.key), column);
+    });
+    return map;
+  }, []);
+
+  const readOnlyReason = (header) => {
+    const column = columnByHeader.get(normalizeHeader(header));
+    if (!column || column.key === EMP_KEY) return "";
+    if (importColumns.some((c) => c.key === column.key)) return "";
+    return column.computed ? "Calculated" : column.editable ? "No edit access" : "Read-only";
+  };
+
   const fileInputRef = useRef(null);
 
   // step: "" (closed) | "map" | "review" | "error"
@@ -305,6 +323,7 @@ export function useAppraisalImport({ onDone } = {}) {
     const unmatchedList = [];
     const skippedTitles = [];
     const invalidList = [];
+    const readOnlyEdits = new Map();
     let blankHike = 0;
 
     sheetRows.forEach((sheetRow) => {
@@ -331,11 +350,33 @@ export function useAppraisalImport({ onDone } = {}) {
           : undefined;
       const eligibility = fileEligibility !== undefined ? fileEligibility : row.eligibleForPromotion;
 
+      // Read-only columns whose file value differs from the sheet: reported, never imported.
+      headers.forEach((header) => {
+        if (mapping[header]?.key || !readOnlyReason(header)) return;
+        const column = columnByHeader.get(normalizeHeader(header));
+        const fileValue = cellToValue(column, sheetRow[header]);
+        if (fileValue === undefined || fileValue === "") return;
+        const sheetValue = row[column.key];
+        const differs = NUMERIC_TYPES.has(column.type)
+          ? Math.abs(Number(sheetValue || 0) - Number(fileValue)) > 0.0001
+          : String(sheetValue ?? "").trim() !== String(fileValue).trim();
+        if (differs) readOnlyEdits.set(header, (readOnlyEdits.get(header) || 0) + 1);
+      });
+
       Object.keys(mapped).forEach((key) => {
         const column = columnByKey.get(key);
         if (!column) return;
 
         const nextValue = cellToValue(column, mapped[key]);
+        // A value the sheet already holds is "no change", even when it is not in the dropdown list
+        // (e.g. an existing title such as "Senior Software Engineer").
+        if (
+          nextValue === undefined &&
+          String(mapped[key] ?? "").trim().toLowerCase() ===
+            String(row[key] ?? "").trim().toLowerCase()
+        ) {
+          return;
+        }
         if (nextValue === undefined) {
           invalidList.push(`${row.empId} ${column.label}="${String(mapped[key]).slice(0, 24)}"`);
           return;
@@ -386,8 +427,14 @@ export function useAppraisalImport({ onDone } = {}) {
           .slice(0, 5)
           .join(", ")})`,
       );
+    if (readOnlyEdits.size)
+      noteList.push(
+        `changed in the file but read-only in the sheet, so NOT imported: ${[...readOnlyEdits.entries()]
+          .map(([header, count]) => `${header} (${count} row${count === 1 ? "" : "s"})`)
+          .join(", ")}`,
+      );
     const skippedHeaders = headers.filter((h) => !mapping[h]?.key);
-    if (skippedHeaders.length) noteList.push(`not imported: ${skippedHeaders.join(", ")}`);
+    if (skippedHeaders.length) noteList.push(`${skippedHeaders.length} column(s) not imported`);
 
     setChanges(found);
     setNotes(noteList);
@@ -573,7 +620,13 @@ export function useAppraisalImport({ onDone } = {}) {
                     </td>
                     <td className="px-3 py-1.5 text-[11px]">
                       {!target.key ? (
-                        <span className="text-amber-700">Not mapped</span>
+                        readOnlyReason(header) ? (
+                          <span className="text-slate-500" title="This sheet column cannot be updated by import">
+                            {readOnlyReason(header)} in sheet
+                          </span>
+                        ) : (
+                          <span className="text-amber-700">Not mapped</span>
+                        )
                       ) : target.auto ? (
                         <span className="text-emerald-700">Auto</span>
                       ) : (
