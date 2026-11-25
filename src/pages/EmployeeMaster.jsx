@@ -3235,6 +3235,7 @@ import { EligibilityCriteria } from "@/components/employee-master/EligibilityCri
 import { EligibilityList } from "@/components/employee-master/EligibilityList";
 import { EligibilityModal } from "@/components/employee-master/EligibilityModal";
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
+import { ImportMappingModal } from "@/components/employee-master/ImportMappingModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { HistoricalImportPage } from "@/components/employee-master/HistoricalImportPage";
@@ -4017,6 +4018,10 @@ export function EmployeeMaster() {
   const [previewWarnings, setPreviewWarnings] = useState([]);
 
   const [importPreparing, setImportPreparing] = useState(false);
+
+  // Roster import, step 1: the file's columns mapped to Employee Master fields (before the preview).
+  // { fileName, rows, headers, mapping: { header: fieldKey | "" } }
+  const [rosterMap, setRosterMap] = useState(null);
 
   const [importSubmitting, setImportSubmitting] = useState(false);
 
@@ -5045,6 +5050,37 @@ export function EmployeeMaster() {
      FILE HANDLERS
      ============================================================ */
 
+  // Fields a roster file can update (the ones the backend stores), without the key.
+  const rosterMapTargets = FIELD_DEFS.filter(
+    (field) => field.key !== "empId" && ROSTER_FIELD_TO_CATALYST[field.key],
+  ).map((field) => ({ key: field.key, label: field.label }));
+
+  const autoMapRosterHeaders = (headers) => {
+    const used = new Set();
+    const mapping = {};
+
+    headers.forEach((header) => {
+      const field = findFieldForHeader(header);
+      let key = "";
+
+      if (field && field.key === "empId") {
+        key = "empId";
+      } else if (field && ROSTER_FIELD_TO_CATALYST[field.key]) {
+        key = field.key;
+      }
+
+      // One column per field: a repeated header is left for the user to map.
+      if (key && !used.has(key)) {
+        used.add(key);
+        mapping[header] = key;
+      } else {
+        mapping[header] = "";
+      }
+    });
+
+    return mapping;
+  };
+
   const handleRosterFile = async (file) => {
     if (!canEditEmployees || importPreparing) {
       return;
@@ -5055,11 +5091,71 @@ export function EmployeeMaster() {
 
       const rows = await readFile(file);
 
+      if (!rows.length) {
+        throw new Error(`${file.name} has no data rows.`);
+      }
+
+      const headers = Object.keys(rows[0]).filter(
+        (header) => String(header).trim() !== "",
+      );
+      const mapping = autoMapRosterHeaders(headers);
+
+      if (!Object.values(mapping).includes("empId")) {
+        throw new Error(
+          `${file.name} has no Emp ID column. Download the template or export, fill it and import that file.`,
+        );
+      }
+
+      // Show the mapping first; the comparison runs when the user continues.
+      setRosterMap({ fileName: file.name, rows, headers, mapping });
+    } catch (error) {
+      showBanner(
+        "Import failed",
+        error?.message || "Unable to read the file.",
+        true,
+      );
+    } finally {
+      setImportPreparing(false);
+    }
+  };
+
+  const changeRosterMapping = (header, key) =>
+    setRosterMap((current) => {
+      if (!current) return current;
+      // Emp ID is fixed: it cannot be unmapped, and no other column can take it.
+      if (current.mapping[header] === "empId" || key === "empId") return current;
+      return { ...current, mapping: { ...current.mapping, [header]: key } };
+    });
+
+  const reviewRosterImport = async () => {
+    if (!rosterMap || importPreparing) {
+      return;
+    }
+
+    try {
+      setImportPreparing(true);
+
+      // Rename each mapped column to its field label so the existing comparison reads it.
+      const labelOf = (key) =>
+        key === "empId"
+          ? "Emp ID"
+          : FIELD_DEFS.find((field) => field.key === key)?.label || key;
+
+      const mappedRows = rosterMap.rows.map((row) => {
+        const next = {};
+
+        Object.entries(rosterMap.mapping).forEach(([header, key]) => {
+          if (key) next[labelOf(key)] = row[header];
+        });
+
+        return next;
+      });
+
       // Compare against the complete employee list, not the current page.
       const fullEmployees = await fetchAllEmployeeMasterEmployees();
 
       const { changes, warnings } = buildRosterImportChanges(
-        rows,
+        mappedRows,
         fullEmployees,
       );
 
@@ -5070,12 +5166,20 @@ export function EmployeeMaster() {
     } catch (error) {
       showBanner(
         "Import failed",
-        error?.message || "Unable to read the file.",
+        error?.message || "Unable to compare the file with the employee list.",
         true,
       );
     } finally {
       setImportPreparing(false);
     }
+  };
+
+  // Preview -> back to the mapping (the file and mapping are kept).
+  const backToRosterMapping = () => {
+    setPreviewOpen(false);
+    setPreviewChanges([]);
+    setPreviewWarnings([]);
+    setPendingImportType(null);
   };
 
   const handleEligibilityFile = async (file) => {
@@ -5657,6 +5761,7 @@ export function EmployeeMaster() {
     setPreviewChanges([]);
     setPreviewWarnings([]);
     setPendingImportType(null);
+    setRosterMap(null);
   };
 
   /* In-flight guard: prevents double POSTs from repeated clicks. */
@@ -6621,6 +6726,29 @@ export function EmployeeMaster() {
             IMPORT PREVIEW
             ====================================================== */}
 
+        <ImportMappingModal
+          open={!!rosterMap && !previewOpen}
+          title="Employee Import - map columns"
+          fileName={rosterMap?.fileName || ""}
+          rowCount={rosterMap?.rows?.length || 0}
+          headers={rosterMap?.headers || []}
+          mapping={rosterMap?.mapping || {}}
+          targets={rosterMapTargets}
+          keyField="empId"
+          keyLabel="Emp ID"
+          sampleOf={(header) => {
+            const hit = (rosterMap?.rows || []).find(
+              (row) => String(row[header] ?? "").trim() !== "",
+            );
+            const text = hit ? String(hit[header]).trim() : "";
+            return text.length > 28 ? `${text.slice(0, 27)}...` : text;
+          }}
+          busy={importPreparing}
+          onChange={changeRosterMapping}
+          onCancel={() => setRosterMap(null)}
+          onContinue={reviewRosterImport}
+        />
+
         <ImportPreviewModal
           open={previewOpen}
           title={
@@ -6628,11 +6756,19 @@ export function EmployeeMaster() {
               ? "Eligibility Import Preview"
               : "Employee Import Preview"
           }
+          message={
+            pendingImportType === "roster"
+              ? `${previewChanges.filter((c) => c.isNew).length} new employee(s) will be added, ${
+                  previewChanges.filter((c) => !c.isNew).length
+                } existing employee(s) will be updated. Only changed values are listed.`
+              : ""
+          }
           changes={previewChanges}
           warnings={previewWarnings}
           submitting={importSubmitting}
           onCancel={closePreview}
           onConfirm={confirmImport}
+          onBack={pendingImportType === "roster" ? backToRosterMapping : undefined}
         />
 
         {/* ======================================================

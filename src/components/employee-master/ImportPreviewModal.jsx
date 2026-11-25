@@ -10,6 +10,7 @@ export function ImportPreviewModal({
   submitting = false,
   onCancel,
   onConfirm,
+  onBack,
 }) {
   if (!open) {
     return null;
@@ -123,6 +124,16 @@ export function ImportPreviewModal({
 
         {/* Footer */}
         <div className="flex justify-end gap-2 border-t px-5 py-4">
+          {onBack && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onBack}
+              disabled={submitting}
+            >
+              Back
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
