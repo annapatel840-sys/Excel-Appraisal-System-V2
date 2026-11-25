@@ -15,13 +15,14 @@ import {
   lettersLocked,
   pick,
   ruleMessages,
+  rulesOfLocation,
   sourceOf,
   tagsIn,
   templateMessages,
   tplOf,
   valuesFor,
 } from "@/lib/letters-core";
-import { MAX_DOCX_BYTES } from "@/lib/letters-api";
+import { CONFIG_ON_SERVER, MAX_DOCX_BYTES } from "@/lib/letters-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import * as store from "@/lib/letters-store";
 import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
@@ -59,13 +60,14 @@ function Toolbar({ title, hint, children }) {
 const uniq = (list) => [...new Set(list.filter((x) => x !== undefined && x !== null && String(x).trim() !== ""))];
 
 /* Rules and fields are stored on the server. This note says when the screen is still loading
-   them, could not load them, or when nothing is stored yet (this browser then shows its own copy). */
-function ConfigNote({ config, what, actor, toast, setErrs }) {
+   them, could not load them, or when nothing is stored yet. Rules are kept per location (in that
+   location's own bucket); fields are the same for every location. */
+function ConfigNote({ config, what, actor, toast, setErrs, location, ruleCount }) {
   const [busy, setBusy] = useState(false);
   if (!config) return null;
   const line = { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" };
   if (config.status === "loading") {
-    return <div className="lt-note lt-in-note" style={line}>Loading the letter {what} from the server...</div>;
+    return <div className="lt-note lt-in-note" style={line}>Loading the letter {what}{what === "rules" && location ? " of " + location : ""} from the server...</div>;
   }
   if (config.status === "error") {
     return (
@@ -75,13 +77,28 @@ function ConfigNote({ config, what, actor, toast, setErrs }) {
       </div>
     );
   }
-  if (config.status === "ok" && !config.exists) {
+  if (what === "rules") {
+    if (!location) {
+      return <div className="lt-note lt-in-note" style={line}>This shows the rules of every location. Choose one location in the top bar to add or change its rules: each location has its own rules and its own templates.</div>;
+    }
+    if (config.status === "ok" && !config.exists) {
+      return (
+        <div className="lt-note lt-in-note" style={line}>
+          {ruleCount
+            ? `${location} has no saved rules yet. The ${ruleCount} shown come from the earlier shared list and use ${location}'s own templates. Press Edit Rules, then Save Rules, to keep them for ${location}.`
+            : `No rules are saved for ${location} yet. Import ${location}'s templates in Templates first, then press Edit Rules and + Add Rule.`}
+        </div>
+      );
+    }
+    return null;
+  }
+  if (config.status === "ok" && !config.fieldsExists) {
     const keep = async () => {
       setBusy(true);
       try {
-        await store.saveCurrentConfigToServer(actor);
+        await store.saveCurrentFieldsToServer(actor);
         setErrs([]);
-        toast("Rules and fields stored on the server");
+        toast("Fields stored on the server");
       } catch (e) {
         setErrs([e?.message || "They could not be stored on the server."]);
       } finally {
@@ -90,8 +107,8 @@ function ConfigNote({ config, what, actor, toast, setErrs }) {
     };
     return (
       <div className="lt-note warn lt-in-note" style={line}>
-        <span>Nothing is stored on the server yet, so this screen shows the rules and fields of this browser only. Store them once and everyone sees the same {what}; they then stay until someone edits or deletes them.</span>
-        <button type="button" className="lt-btn sm pri" disabled={busy} onClick={keep}>{busy ? "Storing..." : "Store rules and fields on the server"}</button>
+        <span>No fields are stored on the server yet, so this screen shows the fields of this browser only. Store them once and everyone sees the same {what}; they then stay until someone edits or deletes them.</span>
+        <button type="button" className="lt-btn sm pri" disabled={busy} onClick={keep}>{busy ? "Storing..." : "Store fields on the server"}</button>
       </div>
     );
   }
@@ -103,16 +120,30 @@ const configBlocksEdit = (config) => !!config && (config.status === "loading" ||
 
 /* ====================== Letter Rules ====================== */
 
-export function RulesTab({ S, actor, ui, toast, config }) {
+export function RulesTab({ S, actor, ui, toast, config, location }) {
+  // Rules belong to one location. "All locations" (no location) can be looked at but not edited.
+  const loc = CONFIG_ON_SERVER && !isAllLocations(location) ? String(location || "") : "";
+  const viewOnly = CONFIG_ON_SERVER && !loc;
   const [draft, setDraft] = useState(null);
   const [errs, setErrs] = useState([]);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [baseRev, setBaseRev] = useState(0); // server revision this edit started from
   const ed = !!draft;
-  const rs = ed ? draft : S.rules;
+  const shownRules = CONFIG_ON_SERVER ? (loc ? rulesOfLocation(S, loc) : S.rules) : S.rules;
+  const rs = ed ? draft : shownRules;
   const ruleFields = S.fields.filter((f) => f.rules);
-  const bad = ed ? ruleMessages(S, rs) : {};
+  const bad = ed ? ruleMessages(S, rs, loc) : {};
+  // The loaded rules must be the ones of the location in the top bar (it may have just changed).
+  const wrongLocation = CONFIG_ON_SERVER && !!config && config.status === "ok" && String(config.location || "").toLowerCase() !== loc.toLowerCase();
+  useEffect(() => {
+    if (wrongLocation) store.syncConfig({ location: loc });
+  }, [wrongLocation, loc]);
+  // Changing the location while editing would save the draft into the wrong place: drop it.
+  useEffect(() => {
+    setDraft(null);
+    setErrs([]);
+  }, [loc]);
   // Choices come from the data (cycles, organizations, templates and the rules themselves), not a fixed list.
   const cycleTypes = uniq(["Any", "Annual", "Exceptional", ...S.cycles.map((c) => c.type), ...rs.map((r) => r.cycle)]);
   const orgChoices = uniq(["Any", ...S.orgs, ...S.sheet.map((r) => r.org), ...rs.map((r) => r.org)]);
@@ -135,7 +166,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
     const go = (why) => {
       setReason(why || "");
       setBaseRev(config ? config.rev : 0);
-      setDraft(copy(S.rules));
+      setDraft(copy(shownRules));
       setErrs([]);
     };
     if (lettersLocked(S)) ui.askReason("Why are you changing the rules?", go);
@@ -146,7 +177,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
     setErrs([]);
   };
   const add = () =>
-    setDraft((d) => [...d, { id: "R" + (Date.now() % 100000), name: "", family: "", cycle: "Any", org: "Any", cond: {}, type: "", tpl: "", prio: 9, active: false }]);
+    setDraft((d) => [...d, { id: "R" + (Date.now() % 100000), name: "", family: "", cycle: "Any", org: "Any", cond: {}, type: "", tpl: "", prio: 9, active: false, ...(loc ? { location: loc } : {}) }]);
   const remove = (id) => setDraft((d) => d.filter((r) => r.id !== id));
   const save = async () => {
     if (Object.keys(bad).length) {
@@ -156,7 +187,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
     setSaving(true);
     try {
       // Stored on the server first; the screen only changes when that worked.
-      const n = await store.saveRules(draft, reason, actor, baseRev);
+      const n = await store.saveRules(draft, reason, actor, baseRev, loc);
       setDraft(null);
       setErrs([]);
       toast(n ? "Rules saved" : "No changes");
@@ -230,7 +261,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
         ed ? (
           <select className="lt-cell-in" value={r.tpl} onChange={(e) => setRule(r.id, { tpl: e.target.value })}>
             <option value="">Choose Template</option>
-            {templateChoices(S, r.tpl).map((t) => (
+            {templateChoices(S, r.tpl, loc).map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
@@ -241,6 +272,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
         ),
     },
     { key: "active", label: "Active", w: 80, get: (r) => (r.active ? "Yes" : "No"), render: (r) => (ed ? <input type="checkbox" checked={!!r.active} onChange={(e) => toggleActive(r, e.target.checked)} /> : r.active ? "Yes" : "No") },
+    ...(viewOnly ? [{ key: "loc", label: "Location", w: 110, get: (r) => r.location || "" }] : []),
     { key: "gets", label: "Gets it now", w: 90, get: (r) => String(cnt[r.id] || 0), sv: (r) => cnt[r.id] || 0, render: (r) => <span className="lt-num">{cnt[r.id] || 0}</span> },
     ...(ed ? [{ key: "x", label: "", w: 44, fixed: true, get: () => "", render: (r) => <button type="button" className="lt-ib" title="Remove Rule" onClick={() => remove(r.id)}>✕</button> }] : []),
   ];
@@ -250,7 +282,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
   const badKeys = Object.keys(bad);
   return (
     <>
-      <Toolbar title="Letter Rules" hint="One Letter Per Family; The Matching Rule With The Lowest Priority Number Wins.">
+      <Toolbar title={"Letter Rules" + (loc ? " \u00b7 " + loc : "")} hint="One Letter Per Family; The Matching Rule With The Lowest Priority Number Wins.">
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add} disabled={saving}>+ Add Rule</button>
@@ -258,12 +290,12 @@ export function RulesTab({ S, actor, ui, toast, config }) {
             <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
-          <button type="button" className="lt-btn pri" onClick={startEdit} disabled={configBlocksEdit(config)}>Edit Rules</button>
+          <button type="button" className="lt-btn pri" onClick={startEdit} disabled={configBlocksEdit(config) || viewOnly || wrongLocation} title={viewOnly ? "Choose a location in the top bar to edit its rules" : undefined}>Edit Rules</button>
         )}
       </Toolbar>
       {ui.el}
       <div className="lt-content">
-        <ConfigNote config={config} what="rules" actor={actor} toast={toast} setErrs={setErrs} />
+        <ConfigNote config={config} what="rules" actor={actor} toast={toast} setErrs={setErrs} location={loc} ruleCount={shownRules.length} />
         <LockNote S={S} />
         <LtErrs errs={errs} />
         {badKeys.length > 0 && (
@@ -279,7 +311,7 @@ export function RulesTab({ S, actor, ui, toast, config }) {
           </div>
         )}
         <div className="lt-cfg">
-          <DataGrid defs={defs} grid={grid} allRows={rs} rows={view} rowKey={(r) => r.id} emptyText="No Rules." />
+          <DataGrid defs={defs} grid={grid} allRows={rs} rows={view} rowKey={(r) => r.id} emptyText={loc ? "No rules for " + loc + " yet." : "No Rules."} />
         </div>
         <datalist id="lt-fam">
           {familyChoices.map((f) => (
@@ -309,7 +341,7 @@ export function FieldsTab({ S, actor, ui, toast, config }) {
   const startEdit = () => {
     const go = (why) => {
       setReason(why || "");
-      setBaseRev(config ? config.rev : 0);
+      setBaseRev(config ? config.fieldsRev : 0);
       setDraft(copy(S.fields));
       setErrs([]);
     };
@@ -880,7 +912,14 @@ function TemplateEditor({ S, draft, setDraft, onSave, onCancel, onPreview, onDir
 
 /* Rules name a template; templates with the same name are the same letter for
    different locations, so the rule list shows each name once. */
-function templateChoices(S, current) {
+function templateChoices(S, current, location) {
+  // A rule belongs to one location, so it can only use that location's own templates.
+  if (CONFIG_ON_SERVER && location) {
+    const here = String(location).trim().toLowerCase();
+    return S.tpls
+      .filter((t) => !t.builtIn && String(t.location || "").trim().toLowerCase() === here && (t.active !== false || t.id === current))
+      .map((t) => ({ id: t.id, label: t.name }));
+  }
   const seen = {};
   const out = [];
   const cur = tplOf(S, current);
@@ -895,7 +934,8 @@ function templateChoices(S, current) {
   });
   return out;
 }
-const rulesUsing = (S, t) => S.rules.filter((r) => templateGroup(S, r.tpl).some((x) => x.id === t.id));
+// A rule with a location names exactly one template; an old rule without one names the whole same-name group.
+const rulesUsing = (S, t) => S.rules.filter((r) => (r.location ? r.tpl === t.id : templateGroup(S, r.tpl).some((x) => x.id === t.id)));
 
 // Active Location Master names (same source as the Appraisal Cycle screen), plus any
 // location already on the Appraisal Sheet so the list is never empty.
