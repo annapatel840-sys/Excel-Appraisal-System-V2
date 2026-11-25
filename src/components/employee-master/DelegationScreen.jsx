@@ -574,23 +574,10 @@
       a.name.localeCompare(b.name),
     );
   }, [globalEmployeeOptions]);
-  // Tech-ED users may reassign only among the Comp. Managers already
-  // mapped under their own team. Build these options from the complete
-  // cycle roster, not the global Employee Master employee list.
-  const techEdCompManagerPeople = useMemo(() => {
-    const uniquePeople = new Map();
-    rows.forEach((row) => {
-      const label = resolveName(row.comp || "");
-      if (!label) return;
-      const id = label.match(/^([a-z]*\\d+)\\s*-/i)?.[1] || label;
-      const key = normText(id);
-      if (!key) return;
-      uniquePeople.set(key, { id: label, name: label, roles: [] });
-    });
-    return Array.from(uniquePeople.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [rows, resolveName]);
+  // Tech-ED Comp. Manager selection must show the complete Active
+  // Employee_Master list, including employees not previously assigned as
+  // Comp. Managers. This matches the HR dropdown and allows new assignments.
+  const techEdCompManagerPeople = people;
   // Appraiser Tech-ED options use the same Active-only Employee_Master
   // list. Existing inactive assignments remain visible in their cells, but
   // are not offered as selectable dropdown options.
