@@ -1645,7 +1645,7 @@ function eligibilityStatusOf(row) {
   return "Pending";
 }
 
-function shapeEligibilityRow(row, master) {
+function shapeEligibilityRow(row, master, locations = []) {
   const eligibilityStatus = eligibilityStatusOf(row);
   return {
     ...master,
@@ -1654,6 +1654,9 @@ function shapeEligibilityRow(row, master) {
     empId: String(master.emp_id || row.emp_id || ""),
     name: String(master.emp_name || master.name || ""),
     designation: String(master.designation || ""),
+    // Eligibility_List rows can contain a blank/stale location field. Always
+    // display the canonical location from the linked Employee_Master record.
+    location: employeeLocationName(master, locations),
     department: String(master.department || ""),
     organization: String(master.department || ""),
     doj: master.joining_date || master.date_of_join || "",
@@ -1708,7 +1711,7 @@ async function getEligibilityRows(tables, cycle, actor = "") {
       // Defence in depth: never display a row whose linked Employee_Master
       // record belongs to a different location than the selected cycle.
       return master && inCycleLocation(cycle, master, locations)
-        ? shapeEligibilityRow(row, master)
+        ? shapeEligibilityRow(row, master, locations)
         : null;
     })
     .filter(Boolean);
