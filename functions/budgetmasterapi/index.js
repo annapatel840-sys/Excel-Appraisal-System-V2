@@ -1301,13 +1301,13 @@ async function readEmployeeRoster(app) {
             "previous_joining_bonus",
           ]) || 0,
         ),
-        appraiser_tech_ed_row_id: String(
+        appraiser_tech_ed_row_id: referenceText(
           readField(row, [
             "appraiser_tech_ed",
             "appraiser_tech_ed_row_id",
             "appraiser_tech_ed1",
-          ]) || "",
-        ).trim(),
+          ]),
+        ),
         status: employeeStatus,
         eligible_status: eligibleStatus,
       };
