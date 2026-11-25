@@ -6,6 +6,7 @@ import {
   Search,
   Upload,
   X,
+  Undo2,
 } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
@@ -143,7 +144,22 @@ export function SheetPage() {
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
-  const { openImportPicker, importUi } = useAppraisalImport();
+  const { openImportPicker, importUi, canUndoImport, lastImport, openUndoImport } =
+    useAppraisalImport({
+      onDone: (count, info) => {
+        if (info && info.undo) {
+          showNotice(
+            info.cells
+              ? `Import undone: ${info.cells} cell(s) restored.${
+                  info.kept ? ` ${info.kept} cell(s) changed after the import were left as they are.` : ""
+                }`
+              : "Nothing was restored: the cells were changed after the import.",
+          );
+        } else if (count) {
+          showNotice(`Import applied: ${count} cell(s) updated.`);
+        }
+      },
+    });
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
 
@@ -516,6 +532,32 @@ export function SheetPage() {
                       >
                         <Upload className="size-4" />
                         <span>Import</span>
+                      </button>
+                    )}
+                    {canImport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!canUndoImport}
+                        title={
+                          canUndoImport
+                            ? `Undo the last import (${lastImport?.cells || 0} cells) for this cycle`
+                            : "No import to undo for this cycle"
+                        }
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px]",
+                          canUndoImport
+                            ? "text-[#334155] hover:bg-[#f1f5f9]"
+                            : "cursor-not-allowed text-slate-300",
+                        )}
+                        onClick={() => {
+                          if (!canUndoImport) return;
+                          setMenuOpen(false);
+                          openUndoImport();
+                        }}
+                      >
+                        <Undo2 className="size-4" />
+                        <span>Undo last import</span>
                       </button>
                     )}
 

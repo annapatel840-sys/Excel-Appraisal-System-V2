@@ -122,6 +122,9 @@
 // let seq = 0;
 
 // const nextId = () => `a${Date.now()}-${seq++}`;
+// Import batches keep a real 0 in the audit text (not blank) so "Undo last import" can put 0 back.
+const isImportBatch = (batchId) => String(batchId || "").includes("IMP-");
+const auditText = (value, exact) => (exact && value === 0 ? "0" : String(value || ""));
 
 // /* ============================================================
 // CATALYST API
@@ -2484,6 +2487,9 @@ const AppraisalContext = createContext(null);
 let seq = 0;
 
 const nextId = () => `a${Date.now()}-${seq++}`;
+// Import batches keep a real 0 in the audit text (not blank) so "Undo last import" can put 0 back.
+const isImportBatch = (batchId) => String(batchId || "").includes("IMP-");
+const auditText = (value, exact) => (exact && value === 0 ? "0" : String(value || ""));
 
 /* ============================================================
 CATALYST API
@@ -3524,7 +3530,8 @@ export function AppraisalProvider({ children }) {
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
   const [cycleStatus, setCycleStatus] = useState("");
-  const readOnlyCycle = cycleStatus.toLowerCase() === "closed" && !isHRUser;
+  // Closed cycle: read-only for every role, HR included (HR reopens it in Appraisal Cycle Master).
+  const readOnlyCycle = cycleStatus.toLowerCase() === "closed";
 
   // While the rows on screen come from the browser's saved copy (see
   // roster-snapshot.js) and the fresh roster has not arrived yet, edits are
@@ -3944,7 +3951,7 @@ export function AppraisalProvider({ children }) {
   // otherwise one failed refresh would leave the sheet permanently uneditable.
   const rejectWhileShowingSaved = useCallback(() => {
     if (readOnlyCycle) {
-      setSaveError("This appraisal cycle is Closed. Tech-ED and Comp Manager access is read-only.");
+      setSaveError("This appraisal cycle is Closed and read-only. Reopen it in Appraisal Cycle Master to make changes.");
       return true;
     }
     if (!showingSavedRef.current || !loadingRef.current) return false;
@@ -4085,8 +4092,8 @@ export function AppraisalProvider({ children }) {
         empId: row.empId,
         employeeName: row.name,
         field: labelOf(key),
-        from: String(before || ""),
-        to: String(next || ""),
+        from: auditText(before, isImportBatch(batchId)),
+        to: auditText(next, isImportBatch(batchId)),
         source: source || "Inline edit",
         ...(batchId ? { batchId } : {}),
         appraisalYear: APPRAISAL_YEAR,
@@ -4229,8 +4236,8 @@ export function AppraisalProvider({ children }) {
             empId: row.empId,
             employeeName: row.name,
             field: labelOf(key),
-            from: String(before || ""),
-            to: String(next || ""),
+            from: auditText(before, isImportBatch(batchId)),
+            to: auditText(next, isImportBatch(batchId)),
             source,
             ...(batchId ? { batchId } : {}),
             appraisalYear: APPRAISAL_YEAR,
@@ -4380,11 +4387,108 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   const updateLinkedCells = useCallback(
-    (id, fieldValues, source = "Inline edit") => {
+    (id, fieldValues, source = "Inline edit", batchId) => {
       if (rejectEmptyHike(fieldValues || {})) return 0;
-      return applyLinkedFieldsEdit(id, fieldValues, source);
+      return applyLinkedFieldsEdit(id, fieldValues, source, batchId);
     },
     [applyLinkedFieldsEdit, rejectEmptyHike],
+  );
+
+  /* ==========================================================
+  IMPORT HISTORY + UNDO LAST IMPORT
+
+  Every Import Apply is one batch (batchId "IMP-...", source "Import") in the
+  audit trail of the current cycle (the cycle name already carries the
+  location). Undo writes the old values back as a batch "R-IMP-..." with source
+  "Import undo". A cell edited by someone after the import is left as it is.
+  ========================================================== */
+
+  const getImportScope = useCallback(
+    () => ({ cycle: APPRAISAL_YEAR, location: APPRAISAL_LOCATION }),
+    [],
+  );
+
+  const fetchImportHistory = useCallback(async () => {
+    if (!APPRAISAL_YEAR) return [];
+    return currentCycleAudit(
+      await fetchAuditHistoryFromCatalyst("", {
+        source: "Import,Import undo",
+        appraisalYear: APPRAISAL_YEAR,
+        limit: 20000,
+      }),
+    );
+  }, []);
+
+  const undoImportBatch = useCallback(
+    (batch) => {
+      const result = { rows: 0, cells: 0, kept: 0, skipped: 0 };
+      if (!batch || !batch.id || !Array.isArray(batch.entries) || !batch.entries.length) return result;
+      if (rejectWhileShowingSaved()) return result;
+
+      const empKey = (v) => String(v || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const numeric = new Set(["currency", "number", "decimal", "percent"]);
+      const byEmp = new Map();
+      batch.entries.forEach((entry) => {
+        const key = keyOfLabel(entry.field);
+        if (!key) {
+          result.skipped += 1;
+          return;
+        }
+        const k = empKey(entry.empId);
+        if (!byEmp.has(k)) byEmp.set(k, []);
+        byEmp.get(k).push({ ...entry, key });
+      });
+
+      const undoBatchId = "R-" + batch.id;
+
+      byEmp.forEach((list, k) => {
+        const row = rowsRef.current.find((item) => empKey(item.empId) === k);
+        if (!row) {
+          result.skipped += list.length;
+          return;
+        }
+        const values = {};
+        list.forEach((entry) => {
+          // Only put back a value that is still the one the import wrote.
+          if (auditText(row[entry.key], true) !== String(entry.to ?? "")) {
+            result.kept += 1;
+            return;
+          }
+          const column = COLUMNS.find((item) => item.key === entry.key);
+          const from = String(entry.from ?? "");
+          if (column && numeric.has(column.type)) {
+            if (from === "") {
+              // Hike fields cannot be blank (the Data Store refuses it).
+              if (entry.key === "hikeAmount" || entry.key === "hikePct") {
+                result.skipped += 1;
+                return;
+              }
+              values[entry.key] = "";
+              return;
+            }
+            const number = Number(from);
+            if (!Number.isFinite(number)) {
+              result.skipped += 1;
+              return;
+            }
+            values[entry.key] = number;
+            return;
+          }
+          values[entry.key] = from === "" ? null : from;
+        });
+        if (!Object.keys(values).length) return;
+        const written = applyLinkedFieldsEdit(row.id, values, "Import undo", undoBatchId);
+        if (written) {
+          result.rows += 1;
+          result.cells += written;
+        } else {
+          result.skipped += Object.keys(values).length;
+        }
+      });
+
+      return result;
+    },
+    [applyLinkedFieldsEdit, rejectWhileShowingSaved],
   );
 
   /* ==========================================================
@@ -4773,6 +4877,9 @@ export function AppraisalProvider({ children }) {
       refreshAuditHistory,
       fetchBulkHistory,
       requestData,
+      fetchImportHistory,
+      undoImportBatch,
+      getImportScope,
     }),
     [
       locationRows,
@@ -4798,6 +4905,9 @@ export function AppraisalProvider({ children }) {
       refreshAuditHistory,
       fetchBulkHistory,
       requestData,
+      fetchImportHistory,
+      undoImportBatch,
+      getImportScope,
     ],
   );
 
