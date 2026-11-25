@@ -162,11 +162,13 @@ export function RulesTab({ S, actor, ui, toast, config, location }) {
   const setRule = (id, patch) => setDraft((d) => d.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const setCond = (id, fid, v) => setDraft((d) => d.map((r) => (r.id === id ? { ...r, cond: { ...(r.cond || {}), [fid]: v } } : r)));
 
-  const startEdit = () => {
+  const blankRule = () => ({ id: "R" + (Date.now() % 100000), name: "", family: "", cycle: "Any", org: "Any", cond: {}, type: "", tpl: "", prio: 9, active: false, ...(loc ? { location: loc } : {}) });
+  // "Edit Rules" opens the existing rules for changes; "+ Add Rule" opens them with one new blank rule at the end.
+  const startEdit = (withNew = false) => {
     const go = (why) => {
       setReason(why || "");
       setBaseRev(config ? config.rev : 0);
-      setDraft(copy(shownRules));
+      setDraft(withNew ? [...copy(shownRules), blankRule()] : copy(shownRules));
       setErrs([]);
     };
     if (lettersLocked(S)) ui.askReason("Why are you changing the rules?", go);
@@ -176,8 +178,7 @@ export function RulesTab({ S, actor, ui, toast, config, location }) {
     setDraft(null);
     setErrs([]);
   };
-  const add = () =>
-    setDraft((d) => [...d, { id: "R" + (Date.now() % 100000), name: "", family: "", cycle: "Any", org: "Any", cond: {}, type: "", tpl: "", prio: 9, active: false, ...(loc ? { location: loc } : {}) }]);
+  const add = () => setDraft((d) => [...d, blankRule()]);
   const remove = (id) => setDraft((d) => d.filter((r) => r.id !== id));
   const save = async () => {
     if (Object.keys(bad).length) {
@@ -283,6 +284,7 @@ export function RulesTab({ S, actor, ui, toast, config, location }) {
   return (
     <>
       <Toolbar title={"Letter Rules" + (loc ? " \u00b7 " + loc : "")} hint="One Letter Per Family; The Matching Rule With The Lowest Priority Number Wins.">
+        {/* "+ Add Rule" is always first, "Edit Rules" next to it: Add makes a new rule, Edit changes the existing ones. */}
         {ed ? (
           <>
             <button type="button" className="lt-btn" onClick={add} disabled={saving}>+ Add Rule</button>
@@ -290,7 +292,10 @@ export function RulesTab({ S, actor, ui, toast, config, location }) {
             <button type="button" className="lt-btn" onClick={cancel} disabled={saving}>Cancel</button>
           </>
         ) : (
-          <button type="button" className="lt-btn pri" onClick={startEdit} disabled={configBlocksEdit(config) || viewOnly || wrongLocation} title={viewOnly ? "Choose a location in the top bar to edit its rules" : undefined}>Edit Rules</button>
+          <>
+            <button type="button" className="lt-btn" onClick={() => startEdit(true)} disabled={configBlocksEdit(config) || viewOnly || wrongLocation} title={viewOnly ? "Choose a location in the top bar to add rules" : undefined}>+ Add Rule</button>
+            <button type="button" className="lt-btn pri" onClick={() => startEdit(false)} disabled={configBlocksEdit(config) || viewOnly || wrongLocation} title={viewOnly ? "Choose a location in the top bar to edit its rules" : undefined}>Edit Rules</button>
+          </>
         )}
       </Toolbar>
       {ui.el}
