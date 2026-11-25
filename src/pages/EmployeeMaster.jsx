@@ -1561,7 +1561,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //     if (unresolvedAppraisers.length > 0) {
 //       warnings.push(
-//         `Appraiser / Tech-ED not updated (name must match exactly one employee, or use "EMPxxxx - Name"): ${unresolvedAppraisers.join(
+//         `Appraiser / Tech-ED not updated (use an Emp ID, "EMPxxxx - Name", or a name matching exactly one employee): ${unresolvedAppraisers.join(
 //           "; ",
 //         )}`,
 //       );
@@ -3237,6 +3237,7 @@ import { EligibilityList } from "@/components/employee-master/EligibilityList";
 import { EligibilityModal } from "@/components/employee-master/EligibilityModal";
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { ImportMappingModal } from "@/components/employee-master/ImportMappingModal";
+import { UndoImportModal } from "@/components/employee-master/UndoImportModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { HistoricalImportPage } from "@/components/employee-master/HistoricalImportPage";
@@ -3358,6 +3359,8 @@ const ROSTER_IMPORT_COLUMNS = [
   { key: "skillType", label: "Skill Type", api: null },
   { key: "exitDate", label: "Exit Date", api: null },
 ];
+
+const ROSTER_LAST_IMPORT_KEY = "em-last-roster-import";
 
 const ROSTER_IMPORT_BY_KEY = new Map(ROSTER_IMPORT_COLUMNS.map((c) => [c.key, c]));
 
@@ -4154,6 +4157,28 @@ export function EmployeeMaster() {
 
   const importSubmittingRef = useRef(false);
 
+  // Last roster import (kept in this browser) so it can be undone from Menu.
+  const [lastRosterImport, setLastRosterImport] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ROSTER_LAST_IMPORT_KEY) || "null");
+      return saved && Array.isArray(saved.items) ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const [undoImportOpen, setUndoImportOpen] = useState(false);
+  const [undoImportBusy, setUndoImportBusy] = useState(false);
+
+  const saveLastRosterImport = (value) => {
+    setLastRosterImport(value);
+    try {
+      if (value) localStorage.setItem(ROSTER_LAST_IMPORT_KEY, JSON.stringify(value));
+      else localStorage.removeItem(ROSTER_LAST_IMPORT_KEY);
+    } catch {
+      /* storage unavailable: undo still works until the page is closed */
+    }
+  };
+
   const [eligibilityReloadKey, setEligibilityReloadKey] = useState(0);
 
   const fileInputRef = useRef(null);
@@ -4944,18 +4969,24 @@ export function EmployeeMaster() {
     }
 
     const unresolvedAppraisers = [];
+    const unsavedChanged = [];
     const invalidCells = [];
     const nameless = [];
 
     byId.forEach((record, key) => {
       const existing = existingById.get(key);
       const fields = {};
+      const before = {};
       const diffs = [];
 
       /* Bare appraiser names are resolved to "EMPxxxx - Name". */
       const appraiser = String(record.appraiser ?? "").trim();
       if (appraiser && !isCanonicalPersonValue(appraiser)) {
-        const matches = employeesByName.get(appraiser.toLowerCase()) || [];
+        // A bare Emp ID ("EMP001") is accepted as well as a name.
+        const byIdMatch = existingById.get(normalizeEmpId(appraiser));
+        const matches = byIdMatch
+          ? [byIdMatch]
+          : employeesByName.get(appraiser.toLowerCase()) || [];
 
         if (matches.length === 1) {
           record.appraiser = `${matches[0].empId} - ${matches[0].name}`;
@@ -4970,7 +5001,20 @@ export function EmployeeMaster() {
       }
 
       ROSTER_IMPORT_COLUMNS.forEach((column) => {
-        if (column.key === "empId" || !column.api) return;
+        if (column.key === "empId") return;
+
+        // Columns with no Employee Master field cannot be saved. When the file
+        // holds a different value, say so instead of a bare "No changes found".
+        if (!column.api) {
+          const fileValue = String(record[column.key] ?? "").trim();
+          const tableValue = String(
+            existing?.[column.key] ?? existing?.rawEmployee?.[column.key] ?? "",
+          ).trim();
+          if (existing && fileValue !== "" && fileValue !== tableValue) {
+            unsavedChanged.push(`${record.empId} ${column.label}`);
+          }
+          return;
+        }
 
         let value = String(record[column.key] ?? "").trim();
         if (value === "") return; // blank cells never overwrite
@@ -4996,23 +5040,24 @@ export function EmployeeMaster() {
           }
         }
 
-        const before = existing ? currentRosterValue(existing, column) : "";
+        const beforeValue = existing ? currentRosterValue(existing, column) : "";
         let same;
 
         if (column.numeric) {
-          same = before !== "" && Number(before) === Number(value);
+          same = beforeValue !== "" && Number(beforeValue) === Number(value);
         } else if (column.date) {
-          same = before !== "" && rosterIsoDate(before) === value;
+          same = beforeValue !== "" && rosterIsoDate(beforeValue) === value;
         } else {
-          same = before === value;
+          same = beforeValue === value;
         }
 
         if (existing && same) return;
 
         fields[column.api] = value;
+        before[column.api] = existing ? beforeValue : "";
         diffs.push({
           field: column.label,
-          from: existing ? before : "",
+          from: existing ? beforeValue : "",
           to: column.date ? fmtDojLabel(value) : value,
         });
       });
@@ -5032,6 +5077,7 @@ export function EmployeeMaster() {
           empId: existing.empId,
           name: String(record.name ?? "").trim() || existing.name || "",
           fields,
+          before,
           diffs,
           isNew: false,
           previousStatus: existing.status,
@@ -5059,6 +5105,14 @@ export function EmployeeMaster() {
     if (unsaved.length > 0) {
       warnings.push(
         `Not saved by Employee Master import (no Employee Master field): ${unsaved.join(", ")}.`,
+      );
+    }
+
+    if (unsavedChanged.length > 0) {
+      warnings.push(
+        `Changed in the file but not saved (Employee Master has no field for it): ${unsavedChanged.slice(0, 6).join("; ")}${
+          unsavedChanged.length > 6 ? `; ...and ${unsavedChanged.length - 6} more` : ""
+        }`,
       );
     }
 
@@ -6020,6 +6074,19 @@ export function EmployeeMaster() {
         });
       });
 
+      saveLastRosterImport({
+        id: `IMP-${Date.now()}`,
+        at: new Date().toISOString(),
+        by: auditUserName,
+        items: previewChanges.map((change) => ({
+          empId: change.empId,
+          name: change.name,
+          isNew: !!change.isNew,
+          fields: change.fields || {},
+          before: change.before || {},
+        })),
+      });
+
       closePreview();
 
       setRefreshKey((value) => value + 1);
@@ -6042,6 +6109,115 @@ export function EmployeeMaster() {
         error?.message || "Unable to import employees to Catalyst.",
         true,
       );
+    }
+  };
+
+  /* ============================================================
+     UNDO LAST ROSTER IMPORT
+     Puts back the old values of the employees the import updated. A value
+     changed again after the import is left alone. New employees cannot be
+     removed from here (there is no delete for Employee Master).
+     ============================================================ */
+
+  const undoLastRosterImport = async () => {
+    if (!lastRosterImport || undoImportBusy || !canEditEmployees) return;
+
+    setUndoImportBusy(true);
+
+    try {
+      const current = await fetchAllEmployeeMasterEmployees();
+      const currentById = new Map(
+        current.map((employee) => [normalizeEmpId(employee.empId), employee]),
+      );
+      const columnByApi = new Map(
+        ROSTER_IMPORT_COLUMNS.filter((column) => column.api).map((column) => [column.api, column]),
+      );
+
+      let restoredEmployees = 0;
+      let restoredCells = 0;
+      let kept = 0;
+      let notRemoved = 0;
+      let failed = 0;
+
+      for (const item of lastRosterImport.items) {
+        if (item.isNew) {
+          notRemoved += 1;
+          continue;
+        }
+
+        const employee = currentById.get(normalizeEmpId(item.empId));
+        if (!employee) {
+          failed += 1;
+          continue;
+        }
+
+        const values = {};
+
+        Object.entries(item.fields).forEach(([api, imported]) => {
+          const column = columnByApi.get(api);
+          if (!column) return;
+
+          const nowValue = currentRosterValue(employee, column);
+          const stillImported = column.numeric
+            ? Number(nowValue) === Number(imported)
+            : column.date
+              ? rosterIsoDate(nowValue) === imported
+              : nowValue === imported;
+
+          if (!stillImported) {
+            kept += 1;
+            return;
+          }
+
+          const old = String(item.before?.[api] ?? "");
+
+          // A blank number or date cannot be written back (the Data Store refuses it).
+          if (old === "" && (column.numeric || column.date)) {
+            kept += 1;
+            return;
+          }
+
+          values[api] = column.date ? rosterIsoDate(old) || old : old;
+        });
+
+        if (Object.keys(values).length === 0) continue;
+
+        try {
+          await updateEmployeeMasterRecord(item.empId, values);
+          restoredEmployees += 1;
+          restoredCells += Object.keys(values).length;
+
+          if (values.emp_status !== undefined) {
+            addEmployeeMasterAudit({
+              empId: item.empId,
+              employeeName: item.name,
+              oldValue: item.fields.emp_status,
+              newValue: values.emp_status,
+            });
+          }
+        } catch (error) {
+          console.error("Undo import failed for", item.empId, error);
+          failed += 1;
+        }
+      }
+
+      saveLastRosterImport(null);
+      setUndoImportOpen(false);
+      setRefreshKey((value) => value + 1);
+      invalidateEligibilityList();
+
+      const parts = [
+        `${restoredCells} value(s) put back for ${restoredEmployees} employee(s).`,
+      ];
+      if (kept) parts.push(`${kept} value(s) left as they were changed after the import.`);
+      if (notRemoved) parts.push(`${notRemoved} newly added employee(s) were not removed.`);
+      if (failed) parts.push(`${failed} employee(s) could not be updated.`);
+
+      showBanner("Import undone", parts.join(" "), failed > 0);
+    } catch (error) {
+      showBanner("Undo failed", error?.message || "Unable to undo the last import.", true);
+    } finally {
+      setUndoImportBusy(false);
     }
   };
 
@@ -6476,6 +6652,11 @@ export function EmployeeMaster() {
                   : undefined
               }
               onDownloadData={exportRosterEmployees}
+              onUndoImport={
+                canEditEmployees && lastRosterImport
+                  ? () => setUndoImportOpen(true)
+                  : undefined
+              }
               onAuditHistory={
                 access.canAction("viewAudit")
                   ? () => openAuditHistory("status")
@@ -6876,6 +7057,14 @@ export function EmployeeMaster() {
           onCancel={closePreview}
           onConfirm={confirmImport}
           onBack={pendingImportType === "roster" ? backToRosterMapping : undefined}
+        />
+
+        <UndoImportModal
+          open={undoImportOpen}
+          batch={lastRosterImport}
+          busy={undoImportBusy}
+          onCancel={() => setUndoImportOpen(false)}
+          onConfirm={undoLastRosterImport}
         />
 
         {/* ======================================================

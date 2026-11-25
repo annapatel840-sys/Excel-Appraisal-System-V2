@@ -4,6 +4,7 @@ import {
   FileSpreadsheet,
   History,
   Search,
+  Undo2,
   Upload,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ export function EmployeeMasterToolbar({
   onDownloadTemplate,
   onUpload,
   onDownloadData,
+  onUndoImport,
   onAuditHistory,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -114,6 +116,13 @@ export function EmployeeMasterToolbar({
               <button type="button" role="menuitem" onClick={run(onUpload)}>
                 <Upload size={14} />
                 <span>Upload Employee Data</span>
+              </button>
+            )}
+
+            {onUndoImport && (
+              <button type="button" role="menuitem" onClick={run(onUndoImport)}>
+                <Undo2 size={14} />
+                <span>Undo last import</span>
               </button>
             )}
 

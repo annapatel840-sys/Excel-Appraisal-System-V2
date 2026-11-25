@@ -51,7 +51,9 @@ export function ImportPreviewModal({
 
           {changes.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              No changes found.
+              {warnings.length > 0
+                ? "Nothing in this file can be saved. See the notes above."
+                : "No changes found."}
             </div>
           ) : (
             <div className="overflow-hidden rounded-lg border">
