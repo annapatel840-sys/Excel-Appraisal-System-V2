@@ -1954,27 +1954,12 @@ export function TechEdBudgetDistribution() {
     isCompManagerLogin,
     selectedCompManager,
   ]);
-  // Hide Comp Manager allocations that have no Appraisal Sheet employees
-  // in the currently selected location. Keep the underlying allocation data
-  // intact so switching locations restores the correct rows.
-  const visibleCmNodes = useMemo(
-    () =>
-      cmNodes.filter((node) =>
-        assignedTeam.some((employee) =>
-          managerIdentityMatches(
-            employee.delegation_comp_manager ||
-              employee.comp_manager ||
-              employee.comp_manager_id ||
-              employee.compManager ||
-              employee.comp_manager_name ||
-              employee.comp_manager_display ||
-              "",
-            node.name,
-          ),
-        ),
-      ),
-    [cmNodes, assignedTeam],
-  );
+  // cmNodes is already built from the active-cycle Appraisal_Sheet roster
+  // and the saved Comp Manager allocation rows. Do not apply a second
+  // locationEmployeeRows/assignedTeam filter here: that list loads on a
+  // separate path and can briefly be empty or stale, causing valid managers
+  // to flash and then disappear from the allocation table.
+  const visibleCmNodes = cmNodes;
   const allTeam = assignedTeam;
   const myPct = isCompManagerView
     ? num(selectedManagerNode?.pct)
