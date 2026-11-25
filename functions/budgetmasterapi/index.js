@@ -3375,13 +3375,15 @@ async function calculateBudgetBases(
       const employee = employeeByIdForSheetCount.get(
         employeeKeyFor(rawEmployeeId),
       );
+      // Delegation approval writes the current lookup to appraiser_tech_ed.
+      // Legacy aliases may still carry the previous Tech-Ed assignment.
       const rawTechEd =
         firstValue(sheetRow, [
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "appraiserTechED",
           "appraiserTechEd",
@@ -3527,13 +3529,15 @@ async function calculateBudgetBases(
           "employee_id_text",
         ]) || idOf(sheetRow);
       const employee = rawSheetEmployeeById.get(employeeKeyFor(rawEmployeeId));
+      // Use the current Appraisal_Sheet assignments saved by Delegation.
+      // Stale compatibility columns must not win over these live fields.
       const rawTechEd =
         firstValue(sheetRow, [
-          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
           "appraiser_tech_ed_appraisal_sheet",
           "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "appraiserTechED",
           "appraiserTechEd",
@@ -3545,13 +3549,13 @@ async function calculateBudgetBases(
       const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
       const rawCompManager =
         firstValue(sheetRow, [
-          "delegation_comp_manager",
-          "delegation_comp_manager_id",
           "comp_manager",
           "comp_manager_id",
           "comp_manager_row_id",
           "comp_manager_name",
           "comp_manager_emp_id",
+          "delegation_comp_manager",
+          "delegation_comp_manager_id",
           "compManager",
           "compManagerId",
         ]) || employee?.compManager;
