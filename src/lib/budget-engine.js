@@ -1,4 +1,9 @@
-import { activeSymbol, moneyCompact, moneyWithSymbol, usesLakhGrouping } from "./currency-format";
+import {
+  activeSymbol,
+  moneyCompact,
+  moneyWithSymbol,
+  usesLakhGrouping,
+} from "./currency-format";
 // Pure helpers for the Budget Allocation / Team Changes feature.
 // Ported from the standalone "Detail Screen & Budget" HTML prototype so the
 // same math is used by DetailScreenPage, TeamChangesPage and
@@ -285,7 +290,9 @@ export const TYPE_LABEL = {
 // "₹ 12.50 L" for lakh-grouped formats, "AED 1.25 M" otherwise (selected location's currency + format).
 export function fmtLakh(n) {
   const v = Number(n) || 0;
-  return usesLakhGrouping() ? `${activeSymbol()} ${(v / 1e5).toFixed(2)} L` : moneyCompact(v);
+  return usesLakhGrouping()
+    ? `${activeSymbol()} ${(v / 1e5).toFixed(2)} L`
+    : moneyCompact(v);
 }
 
 export function fmtInr(n) {
@@ -517,33 +524,52 @@ export function buildChangeLog(eligibilityEvents, gridSupervisorChanges) {
   });
 
   (gridSupervisorChanges || []).forEach((ev) => {
-    log.push({
-      date: ev.date,
-      empId: ev.empId,
-      name: ev.name,
-      type: "in",
-      manager: ev.to,
-      from: ev.from,
-      to: ev.to,
-      source: "Appraisal grid",
-    });
-    log.push({
-      date: ev.date,
-      empId: ev.empId,
-      name: ev.name,
-      type: "out",
-      manager: ev.from,
-      from: ev.from,
-      to: ev.to,
-      source: "Appraisal grid",
-    });
+    // A first assignment has no "from" side, so there is nothing to transfer
+    // out of; only the "in" row is meaningful.
+    const hasFrom = ev.from && ev.from !== "—";
+    const hasTo = ev.to && ev.to !== "—";
+    if (hasTo)
+      log.push({
+        date: ev.date,
+        empId: ev.empId,
+        name: ev.name,
+        type: "in",
+        manager: ev.to,
+        from: ev.from,
+        to: ev.to,
+        source: ev.source || "Appraisal grid",
+        at: ev.at || "",
+        key: ev.id || "",
+      });
+    if (hasFrom)
+      log.push({
+        date: ev.date,
+        empId: ev.empId,
+        name: ev.name,
+        type: "out",
+        manager: ev.from,
+        from: ev.from,
+        to: ev.to,
+        source: ev.source || "Appraisal grid",
+        at: ev.at || "",
+        key: ev.id || "",
+      });
   });
 
-  log.sort((a, b) => b.date.localeCompare(a.date));
+  // Newest first; the exact timestamp breaks ties within one day.
+  log.sort(
+    (a, b) =>
+      String(b.date).localeCompare(String(a.date)) ||
+      String(b.at || "").localeCompare(String(a.at || "")),
+  );
 
+  // A moved employee can change several times (A→B, then B→C), so the key must
+  // include the move itself, not just the employee and manager.
   const seen = new Set();
   return log.filter((x) => {
-    const k = x.empId + "|" + x.manager;
+    const k = x.key
+      ? x.key + "|" + x.type
+      : [x.empId, x.manager, x.type, x.date, x.from, x.to, x.source].join("|");
     if (seen.has(k)) return false;
     seen.add(k);
     return true;

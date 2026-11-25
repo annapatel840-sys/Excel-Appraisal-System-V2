@@ -41,23 +41,86 @@ const BATCH = 200; // Data Store insertRows / deleteRows limit
 
 const DELEGATION_DATA_TABLE_ID = "74008000000036124";
 const APPRAISAL_SHEET_TABLE_ID = "74008000000039094";
+const AUDIT_TABLE_ID = "74008000000034940"; // Appraisal_Audit
+const AUDIT_TABLE_NAME = "Appraisal_Audit";
+// Every Delegation change (Comp. Manager / Appraiser Tech-ED) is appended to
+// Appraisal_Audit with this source so the Team Changes screen can list it.
+// batch_id = "delegation:<cycleId>:<timestamp>".
+const TEAM_CHANGE_SOURCE = "Delegation";
+const TEAM_CHANGE_FIELDS = {
+  comp_manager: "Comp. Manager",
+  appraiser_tech_ed: "Appraiser Tech-ED",
+};
 
-async function upsertDelegationData(ap, { cycleId, empId, status, field, assignment, updatedBy }) {
+// Append team-change rows. Never throws: the assignment itself is already
+// saved, and a failed log write must not turn a good save into an error.
+async function recordTeamChanges(ap, rows) {
+  const list = (rows || []).filter(
+    (r) =>
+      r &&
+      r.emp_id &&
+      r.field_name &&
+      String(r.old_value || "") !== String(r.new_value || ""),
+  );
+  if (!list.length) return 0;
+  try {
+    const table = ap.admin.datastore().table(AUDIT_TABLE_ID);
+    const payload = list.map((r) => ({
+      emp_id: String(r.emp_id).slice(0, 100),
+      employee_name: String(r.employee_name || "").slice(0, 200),
+      field_name: r.field_name,
+      old_value: String(r.old_value || "").slice(0, 250),
+      new_value: String(r.new_value || "").slice(0, 250),
+      changed_by: String(r.changed_by || "").slice(0, 200),
+      changed_at: r.changed_at || nowDT(),
+      source: TEAM_CHANGE_SOURCE,
+      batch_id: String(r.batch_id || "").slice(0, 100),
+      appraisal_year: String(r.appraisal_year || "").slice(0, 100),
+    }));
+    for (let i = 0; i < payload.length; i += BATCH) {
+      await A.whenNotBusy(() => table.insertRows(payload.slice(i, i + BATCH)));
+    }
+    return payload.length;
+  } catch (error) {
+    console.error(
+      "Team change log write failed (assignment was saved):",
+      error,
+    );
+    return 0;
+  }
+}
+
+async function upsertDelegationData(
+  ap,
+  { cycleId, empId, status, field, assignment, updatedBy },
+) {
   const cycleKey = String(cycleId || "").trim();
   const employeeKey = String(empId || "").trim();
-  if (!cycleKey || !employeeKey) throw new HttpError(422, "Cycle and employee are required to save Delegation data.");
+  if (!cycleKey || !employeeKey)
+    throw new HttpError(
+      422,
+      "Cycle and employee are required to save Delegation data.",
+    );
 
   const zcql = ap.admin.zcql();
   const employeeConfig = SETTINGS.employeeMaster;
   const masters = await selectAll(zcql, employeeConfig.table);
-  const master = masters.find((row) =>
-    String(row[employeeConfig.empId] || "").trim().toLowerCase() === employeeKey.toLowerCase() ||
-    String(row.ROWID || "").trim() === employeeKey
+  const master = masters.find(
+    (row) =>
+      String(row[employeeConfig.empId] || "")
+        .trim()
+        .toLowerCase() === employeeKey.toLowerCase() ||
+      String(row.ROWID || "").trim() === employeeKey,
   );
-  if (!master) throw new HttpError(404, "Employee " + employeeKey + " was not found in Employee Master.");
+  if (!master)
+    throw new HttpError(
+      404,
+      "Employee " + employeeKey + " was not found in Employee Master.",
+    );
 
   const masterRowId = String(master.ROWID || master.rowid || "").trim();
-  if (!masterRowId) throw new HttpError(422, "Employee Master record has no row ID.");
+  if (!masterRowId)
+    throw new HttpError(422, "Employee Master record has no row ID.");
   const datastore = ap.admin.datastore();
   const table = datastore.table(DELEGATION_DATA_TABLE_ID);
   const existingRows = await selectAll(
@@ -65,9 +128,12 @@ async function upsertDelegationData(ap, { cycleId, empId, status, field, assignm
     SETTINGS.delegation.table,
     SETTINGS.delegation.cycleColumn + " = '" + q(cycleKey) + "'",
   );
-  const existing = existingRows.find((row) =>
-    String(row.emp_id || "").trim() === masterRowId ||
-    String(row.emp_id || "").trim().toLowerCase() === employeeKey.toLowerCase()
+  const existing = existingRows.find(
+    (row) =>
+      String(row.emp_id || "").trim() === masterRowId ||
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === employeeKey.toLowerCase(),
   );
   const row = {
     cycle_id: cycleKey,
@@ -77,24 +143,30 @@ async function upsertDelegationData(ap, { cycleId, empId, status, field, assignm
     updated_at: nowDT(),
   };
 
-  if (existing?.previous_comp_manager) row.previous_comp_manager = existing.previous_comp_manager;
-  if (existing?.previous_appraiser_tech_ed) row.previous_appraiser_tech_ed = existing.previous_appraiser_tech_ed;
-  if (field === "comp" && assignment !== undefined) row.comp_manager = String(assignment || "").trim();
-  if (field === "app" && assignment !== undefined) row.appraiser_tech_ed = String(assignment || "").trim();
+  if (existing?.previous_comp_manager)
+    row.previous_comp_manager = existing.previous_comp_manager;
+  if (existing?.previous_appraiser_tech_ed)
+    row.previous_appraiser_tech_ed = existing.previous_appraiser_tech_ed;
+  if (field === "comp" && assignment !== undefined)
+    row.comp_manager = String(assignment || "").trim();
+  if (field === "app" && assignment !== undefined)
+    row.appraiser_tech_ed = String(assignment || "").trim();
 
   if (existing) {
     const rowId = String(existing.ROWID || existing.rowid || "").trim();
-    if (!rowId) throw new HttpError(500, "Existing Delegation record has no ROWID.");
+    if (!rowId)
+      throw new HttpError(500, "Existing Delegation record has no ROWID.");
     await table.updateRow({ ...row, ROWID: rowId });
   } else {
-    if (!row.comp_manager) row.comp_manager = String(master.comp_manager || "").trim();
-    if (!row.appraiser_tech_ed) row.appraiser_tech_ed = String(master.appraiser_tech_ed || "").trim();
+    if (!row.comp_manager)
+      row.comp_manager = String(master.comp_manager || "").trim();
+    if (!row.appraiser_tech_ed)
+      row.appraiser_tech_ed = String(master.appraiser_tech_ed || "").trim();
     row.previous_comp_manager = "";
     row.previous_appraiser_tech_ed = "";
     await table.insertRow(row);
   }
 }
-
 
 function apps(req) {
   return {
@@ -116,14 +188,12 @@ function sendError(res, err) {
       .status(200)
       .json({ ok: false, status: err.status, error: err.message, enforced });
   console.error(err); // server-side log only (Catalyst function logs)
-  res
-    .status(500)
-    .json({
-      ok: false,
-      status: 500,
-      error: "Server error. Please try again.",
-      enforced,
-    });
+  res.status(500).json({
+    ok: false,
+    status: 500,
+    error: "Server error. Please try again.",
+    enforced,
+  });
 }
 function send(res, body) {
   res.json(Object.assign({ ok: true, enforced: A.isEnforced() }, body));
@@ -169,14 +239,12 @@ app.get(
     const ap = apps(req);
     const a = await A.check(ap.user, ap.admin);
     if (a.denied)
-      return res
-        .status(200)
-        .json({
-          ok: false,
-          status: a.denied.status,
-          error: a.denied.message,
-          enforced: false,
-        });
+      return res.status(200).json({
+        ok: false,
+        status: a.denied.status,
+        error: a.denied.message,
+        enforced: false,
+      });
     const { dryRun, ...rest } = a; // eslint-disable-line no-unused-vars
     send(res, rest);
   }),
@@ -276,16 +344,26 @@ const SHEET_ORDER_KIND = "sheet-order";
 const SHEET_ORDER_PIECE = 80;
 
 const sheetOrderRows = async (ap) =>
-  (await selectAll(ap.admin.zcql(), T.log)).filter(
-    (row) => String(row.kind || "").trim().startsWith(SHEET_ORDER_KIND),
+  (await selectAll(ap.admin.zcql(), T.log)).filter((row) =>
+    String(row.kind || "")
+      .trim()
+      .startsWith(SHEET_ORDER_KIND),
   );
 
 // The order is kept per location: the location name ("All" = All Locations) is saved
 // in the row's `role` column. Rows saved before locations existed have role "hr".
-const sheetLocation = (value) => String(value || "").trim().slice(0, 60) || "All";
-const rowLocation = (row) => String(row.role || "").trim().toLowerCase();
+const sheetLocation = (value) =>
+  String(value || "")
+    .trim()
+    .slice(0, 60) || "All";
+const rowLocation = (row) =>
+  String(row.role || "")
+    .trim()
+    .toLowerCase();
 const rowsOfLocation = (rows, location) =>
-  rows.filter((row) => rowLocation(row) === sheetLocation(location).toLowerCase());
+  rows.filter(
+    (row) => rowLocation(row) === sheetLocation(location).toLowerCase(),
+  );
 
 // Batches, newest first, each rebuilt to { batch, rows, order } (order is [] when incomplete).
 const sheetOrderBatches = (rows) => {
@@ -320,7 +398,10 @@ app.get(
     const ap = apps(req);
     const a = await A.check(ap.user, ap.admin);
     if (a.denied) throw a.denied;
-    const rows = rowsOfLocation(await sheetOrderRows(ap), req.query && req.query.location);
+    const rows = rowsOfLocation(
+      await sheetOrderRows(ap),
+      req.query && req.query.location,
+    );
     const good = sheetOrderBatches(rows).find((entry) => entry.order.length);
     send(res, {
       found: rows.length,
@@ -375,14 +456,26 @@ app.post(
     // letting the order silently revert on refresh.
     const allRows = await sheetOrderRows(ap);
     const saved = rowsOfLocation(allRows, location);
-    const mine = sheetOrderBatches(saved).find((entry) => entry.batch === batch);
+    const mine = sheetOrderBatches(saved).find(
+      (entry) => entry.batch === batch,
+    );
     if (!mine || JSON.stringify(mine.order) !== JSON.stringify(unique))
       throw new HttpError(
         500,
-        "The column order was not saved correctly (wrote " + pieces.length +
-          " pieces, read back " + (mine ? mine.rows.length : 0) +
-          (mine ? " with " + mine.rows.reduce((n, row) => n + String(row.reason || "").length, 0) : "") +
-          " of " + text.length + " characters). Please tell the developer.",
+        "The column order was not saved correctly (wrote " +
+          pieces.length +
+          " pieces, read back " +
+          (mine ? mine.rows.length : 0) +
+          (mine
+            ? " with " +
+              mine.rows.reduce(
+                (n, row) => n + String(row.reason || "").length,
+                0,
+              )
+            : "") +
+          " of " +
+          text.length +
+          " characters). Please tell the developer.",
       );
     // Keep only the newest batch of this location, and drop rows saved before
     // locations existed (best effort: a failed clean-up never fails the save).
@@ -472,9 +565,15 @@ app.get(
     }
     const latestById = new Map();
     const compareRequestEvents = (x, y) => {
-      const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));
+      const byTime = String(x.changed_at || "").localeCompare(
+        String(y.changed_at || ""),
+      );
       if (byTime) return byTime;
-      return String(x.ROWID || "").localeCompare(String(y.ROWID || ""), undefined, { numeric: true });
+      return String(x.ROWID || "").localeCompare(
+        String(y.ROWID || ""),
+        undefined,
+        { numeric: true },
+      );
     };
     rows
       .filter((r) => String(r.kind || "").startsWith(DELEGATION_REQUEST_PREFIX))
@@ -487,12 +586,17 @@ app.get(
         const previousStatus = previous
           ? delegationStatusFromKind(previous.kind)
           : "";
-        const isDecision = currentStatus === "approved" || currentStatus === "rejected";
+        const isDecision =
+          currentStatus === "approved" || currentStatus === "rejected";
         const previousIsPending = previousStatus === "pending";
         const previousIsDecision =
           previousStatus === "approved" || previousStatus === "rejected";
-        if (!previous || (isDecision && previousIsPending) ||
-            ((isDecision === previousIsDecision) && compareRequestEvents(previous, row) <= 0)) {
+        if (
+          !previous ||
+          (isDecision && previousIsPending) ||
+          (isDecision === previousIsDecision &&
+            compareRequestEvents(previous, row) <= 0)
+        ) {
           latestById.set(key, row);
         }
       });
@@ -502,7 +606,8 @@ app.get(
         (r) =>
           r.cycleId === activeCycleId &&
           (a.role === "hr" ||
-            String(r.byId).toLowerCase() === String(a.user.email || "").toLowerCase()),
+            String(r.byId).toLowerCase() ===
+              String(a.user.email || "").toLowerCase()),
       )
       .sort((x, y) => String(y.on).localeCompare(String(x.on)));
     send(res, { requests });
@@ -548,9 +653,14 @@ app.post(
       } else {
         throw new HttpError(422, "Unsupported request type.");
       }
-      const activeCycleId = String(await A.activeCycleId(ap.admin.zcql()) || "").trim();
+      const activeCycleId = String(
+        (await A.activeCycleId(ap.admin.zcql())) || "",
+      ).trim();
       if (!activeCycleId) {
-        throw new HttpError(409, "Create and activate an appraisal cycle before submitting delegation requests.");
+        throw new HttpError(
+          409,
+          "Create and activate an appraisal cycle before submitting delegation requests.",
+        );
       }
       const id =
         "DR-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
@@ -676,14 +786,30 @@ app.post(
           s.empId + " = '" + q(empId) + "'",
         );
         // Appraisal_Sheet keeps earlier cycles: change only the Active cycle's row.
-        const activeCycles = (await selectAll(
-          ap.admin.zcql(),
-          SETTINGS.cycle.table,
-          SETTINGS.cycle.statusColumn + " = '" + SETTINGS.cycle.activeValue + "'",
-        )).filter((c) => !["true", "1", "yes"].includes(String(c.archived ?? "").trim().toLowerCase()));
-        const activeCycleId = activeCycles.length ? String(activeCycles[0].ROWID || "") : "";
+        const activeCycles = (
+          await selectAll(
+            ap.admin.zcql(),
+            SETTINGS.cycle.table,
+            SETTINGS.cycle.statusColumn +
+              " = '" +
+              SETTINGS.cycle.activeValue +
+              "'",
+          )
+        ).filter(
+          (c) =>
+            !["true", "1", "yes"].includes(
+              String(c.archived ?? "")
+                .trim()
+                .toLowerCase(),
+            ),
+        );
+        const activeCycleId = activeCycles.length
+          ? String(activeCycles[0].ROWID || "")
+          : "";
         const found = activeCycleId
-          ? allSheetRows.filter((r) => String(r.cycle_id || "") === activeCycleId)
+          ? allSheetRows.filter(
+              (r) => String(r.cycle_id || "") === activeCycleId,
+            )
           : allSheetRows;
         const datastore = ap.admin.datastore();
         if (!found.length) {
@@ -695,7 +821,10 @@ app.post(
             SETTINGS.employeeMaster.empId + " = '" + q(empId) + "'",
           );
           if (!masters.length)
-            throw new HttpError(404, "Employee " + empId + " was not found in Employee Master.");
+            throw new HttpError(
+              404,
+              "Employee " + empId + " was not found in Employee Master.",
+            );
           await datastore.table("74008000000035727").updateRow({
             ROWID: masters[0].ROWID,
             [column]: newId,
@@ -723,9 +852,15 @@ app.post(
           const selectedName = parts ? parts[2].trim() : newId.trim();
           const master = masterRows.find((person) => {
             const rowId = String(person.ROWID || person.rowid || "").trim();
-            const empIdValue = String(person[SETTINGS.employeeMaster.empId] || "").trim();
-            const nameValue = String(person[SETTINGS.employeeMaster.name] || "").trim();
-            const emailValue = String(person[SETTINGS.employeeMaster.email] || "").trim();
+            const empIdValue = String(
+              person[SETTINGS.employeeMaster.empId] || "",
+            ).trim();
+            const nameValue = String(
+              person[SETTINGS.employeeMaster.name] || "",
+            ).trim();
+            const emailValue = String(
+              person[SETTINGS.employeeMaster.email] || "",
+            ).trim();
             return (
               rowId === newId ||
               normalizePerson(rowId) === selectedKey ||
@@ -736,7 +871,9 @@ app.post(
               normalizePerson(nameValue) === normalizePerson(selectedName)
             );
           });
-          const masterRowId = String((master && (master.ROWID || master.rowid)) || "").trim();
+          const masterRowId = String(
+            (master && (master.ROWID || master.rowid)) || "",
+          ).trim();
           if (!masterRowId || !/^\d+$/.test(masterRowId)) {
             throw new HttpError(
               422,
@@ -763,6 +900,55 @@ app.post(
           assignment: newId,
           updatedBy: a.user.email || a.user.name || "",
         });
+        // Approved Tech-Ed requests are team changes too.
+        try {
+          const cycleKey = String(meta.cycleId || activeCycleId || "").trim();
+          const labelOf = async (value) => {
+            const raw = String(value || "").trim();
+            if (!raw || /\s+-\s+/.test(raw)) return raw;
+            const found = await selectAll(
+              ap.admin.zcql(),
+              SETTINGS.employeeMaster.table,
+              SETTINGS.employeeMaster.empId + " = '" + q(raw) + "'",
+            );
+            const person = found[0];
+            if (!person) return raw;
+            return (
+              String(person[SETTINGS.employeeMaster.empId] || "").trim() +
+              " - " +
+              String(person[SETTINGS.employeeMaster.name] || "").trim()
+            );
+          };
+          const empMaster = (
+            await selectAll(
+              ap.admin.zcql(),
+              SETTINGS.employeeMaster.table,
+              SETTINGS.employeeMaster.empId + " = '" + q(empId) + "'",
+            )
+          )[0];
+          await recordTeamChanges(ap, [
+            {
+              emp_id: empId,
+              employee_name: String(
+                empMaster?.[SETTINGS.employeeMaster.name] || meta.empName || "",
+              ),
+              field_name:
+                field === "comp" ? "comp_manager" : "appraiser_tech_ed",
+              old_value: await labelOf(meta.oldId),
+              new_value: await labelOf(newId),
+              changed_by: String(
+                meta.byName || row.role || row.changed_by || a.user.email || "",
+              ),
+              batch_id: "delegation:" + cycleKey + ":" + Date.now(),
+              appraisal_year: "",
+            },
+          ]);
+        } catch (logError) {
+          console.error(
+            "Approved delegation; team change log failed:",
+            logError,
+          );
+        }
         // Version invalidation is helpful but must not turn a successful
         // assignment update into a failed approval if AccessVersion is locked.
         try {
@@ -772,11 +958,17 @@ app.post(
             "Delegation approved for " + empId,
           );
         } catch (versionError) {
-          console.error("Delegation approved; access version refresh failed:", versionError);
+          console.error(
+            "Delegation approved; access version refresh failed:",
+            versionError,
+          );
         }
       }
 
-      if (status === "rejected" && String(meta.requestType || "delegation").toLowerCase() !== "screen") {
+      if (
+        status === "rejected" &&
+        String(meta.requestType || "delegation").toLowerCase() !== "screen"
+      ) {
         await upsertDelegationData(ap, {
           cycleId: String(meta.cycleId || "").trim(),
           empId: String(row.target || "").trim(),
@@ -897,7 +1089,11 @@ app.get(
       // unique full-name match as a safe fallback. Never guess when Employee
       // Master contains duplicate names.
       const p =
-        emByEmail[String(u.email || "").trim().toLowerCase()] ||
+        emByEmail[
+          String(u.email || "")
+            .trim()
+            .toLowerCase()
+        ] ||
         (ambiguousEmNames.has(personNameKey(u.name))
           ? null
           : emByName[personNameKey(u.name)]);
@@ -910,7 +1106,10 @@ app.get(
             active: true,
             inEM: false,
           });
-      if (p && !row.email) row.email = String(u.email || "").trim().toLowerCase();
+      if (p && !row.email)
+        row.email = String(u.email || "")
+          .trim()
+          .toLowerCase();
       row.catalystRole = u.role || "";
       row.catalystUser = true;
       if (!row.name || row.name === row.empId) row.name = u.name || row.name;
@@ -1588,15 +1787,13 @@ app.post(
       n += scr.length + act.length;
     }
     if (!(await selectAll(zcql, T.version)).length) {
-      await ds
-        .table(T.version)
-        .insertRow({
-          version_key: "ACCESS",
-          version: 1,
-          changed_by: me.user.email,
-          changed_at: at,
-          why: "Seed",
-        });
+      await ds.table(T.version).insertRow({
+        version_key: "ACCESS",
+        version: 1,
+        changed_by: me.user.email,
+        changed_at: at,
+        why: "Seed",
+      });
       n++;
     }
     A.resetCache();
@@ -1649,8 +1846,13 @@ app.get(
       if (value === undefined || value === null) return "";
       if (typeof value === "object") {
         return String(
-          value.ROWID || value.rowid || value.id || value.ID ||
-          value.value || value.lookup_id || ""
+          value.ROWID ||
+            value.rowid ||
+            value.id ||
+            value.ID ||
+            value.value ||
+            value.lookup_id ||
+            "",
         ).trim();
       }
       return String(value).trim();
@@ -1659,10 +1861,16 @@ app.get(
     // or an expanded object. Query by cycle first; if ZCQL returns no rows
     // for a lookup comparison, safely filter the Delegation rows by the
     // resolved cycle ROWID instead of showing an empty screen.
-    let rows = await selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleRowId) + "'");
+    let rows = await selectAll(
+      zcql,
+      d.table,
+      d.cycleColumn + " = '" + q(cycleRowId) + "'",
+    );
     if (!rows.length) {
       const allDelegationRows = await selectAll(zcql, d.table);
-      rows = allDelegationRows.filter((row) => lookupId(row[d.cycleColumn]) === cycleRowId);
+      rows = allDelegationRows.filter(
+        (row) => lookupId(row[d.cycleColumn]) === cycleRowId,
+      );
     }
     const masterByRowId = new Map();
     const masterByEmpId = new Map();
@@ -1728,32 +1936,55 @@ app.post(
     const me = await A.check(ap.user, ap.admin);
     if (me.denied) throw me.denied;
     if (!["hr", "techEd"].includes(me.role)) {
-      throw new HttpError(403, "Only HR Admin or Tech-Ed can save Delegation assignments.");
+      throw new HttpError(
+        403,
+        "Only HR Admin or Tech-Ed can save Delegation assignments.",
+      );
     }
 
     const body = req.body || {};
     const cycleId = String(body.cycleId || "").trim();
     const changes = Array.isArray(body.changes)
       ? body.changes
-      : [{ empId: body.empId, field: body.field, assignment: body.assignment, reason: body.reason }];
+      : [
+          {
+            empId: body.empId,
+            field: body.field,
+            assignment: body.assignment,
+            reason: body.reason,
+          },
+        ];
     if (!cycleId || !/^\d{1,30}$/.test(cycleId)) {
       throw new HttpError(422, "A valid appraisal cycle is required.");
     }
     if (!changes.length || changes.length > 1000) {
-      throw new HttpError(422, "Provide between 1 and 1000 Delegation changes.");
+      throw new HttpError(
+        422,
+        "Provide between 1 and 1000 Delegation changes.",
+      );
     }
 
     const normalizedChanges = changes.map((change, index) => {
       const empId = String(change?.empId || "").trim();
-      const field = String(change?.field || "").trim().toLowerCase();
+      const field = String(change?.field || "")
+        .trim()
+        .toLowerCase();
       const assignment = String(change?.assignment || "").trim();
       if (!empId || !["comp", "app"].includes(field) || !assignment) {
-        throw new HttpError(422, "Change " + (index + 1) + " needs an employee, assignment field, and new assignment.");
+        throw new HttpError(
+          422,
+          "Change " +
+            (index + 1) +
+            " needs an employee, assignment field, and new assignment.",
+        );
       }
       // Tech-ED users may reassign only the Comp. Manager for employees
       // currently mapped to them. Appraiser Tech-ED changes remain HR-only.
       if (me.role === "techEd" && field !== "comp") {
-        throw new HttpError(403, "Tech-Ed can change only the Comp. Manager for employees mapped to them.");
+        throw new HttpError(
+          403,
+          "Tech-Ed can change only the Comp. Manager for employees mapped to them.",
+        );
       }
       return { empId, field, assignment };
     });
@@ -1767,27 +1998,53 @@ app.post(
     const [masters, delegationRows, sheetRows, cycles] = await Promise.all([
       selectAll(zcql, e.table),
       selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
-      selectAll(zcql, SETTINGS.appraisalSheet.table, "cycle_id = '" + q(cycleId) + "'"),
-      selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
+      selectAll(
+        zcql,
+        SETTINGS.appraisalSheet.table,
+        "cycle_id = '" + q(cycleId) + "'",
+      ),
+      selectAll(
+        zcql,
+        SETTINGS.cycle.table,
+        SETTINGS.cycle.idColumn + " = " + cycleId,
+      ),
     ]);
-    const cycleStatus = String(cycles[0]?.[SETTINGS.cycle.statusColumn] || "").trim().toLowerCase();
+    const cycleStatus = String(cycles[0]?.[SETTINGS.cycle.statusColumn] || "")
+      .trim()
+      .toLowerCase();
     if (!cycles.length) {
       throw new HttpError(404, "Appraisal cycle not found.");
     }
     // Closed cycles remain fully manageable by HR. Tech-Ed and Comp Manager
     // are restricted to viewing them; only HR may save closed-cycle delegation.
     if (cycleStatus !== "active" && me.role !== "hr") {
-      throw new HttpError(403, "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.");
+      throw new HttpError(
+        403,
+        "Closed appraisal cycles are read-only for Tech-Ed and Comp Manager.",
+      );
     }
-    if (["archived", "hidden"].includes(cycleStatus) || cycles[0]?.archived === true || cycles[0]?.hidden === true) {
+    if (
+      ["archived", "hidden"].includes(cycleStatus) ||
+      cycles[0]?.archived === true ||
+      cycles[0]?.hidden === true
+    ) {
       throw new HttpError(409, "Archived appraisal cycles cannot be changed.");
     }
 
     const masterByEmployeeId = new Map(
-      masters.map((row) => [String(row[e.empId] || "").trim().toLowerCase(), row]).filter(([id]) => id),
+      masters
+        .map((row) => [
+          String(row[e.empId] || "")
+            .trim()
+            .toLowerCase(),
+          row,
+        ])
+        .filter(([id]) => id),
     );
     const masterByRowId = new Map(
-      masters.map((row) => [String(row.ROWID || row.rowid || "").trim(), row]).filter(([id]) => id),
+      masters
+        .map((row) => [String(row.ROWID || row.rowid || "").trim(), row])
+        .filter(([id]) => id),
     );
     const selectedEmployeeId = (assignment) => {
       const parts = assignment.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
@@ -1799,26 +2056,45 @@ app.post(
       const id = selectedEmployeeId(raw);
       if (masterByEmployeeId.has(id)) return id;
       const byRowId = masterByRowId.get(raw);
-      if (byRowId) return String(byRowId[e.empId] || "").trim().toLowerCase();
-      const byName = masters.filter((row) =>
-        String(row[e.name] || "").trim().toLowerCase() === raw.toLowerCase()
+      if (byRowId)
+        return String(byRowId[e.empId] || "")
+          .trim()
+          .toLowerCase();
+      const byName = masters.filter(
+        (row) =>
+          String(row[e.name] || "")
+            .trim()
+            .toLowerCase() === raw.toLowerCase(),
       );
-      return byName.length === 1 ? String(byName[0][e.empId] || "").trim().toLowerCase() : id;
+      return byName.length === 1
+        ? String(byName[0][e.empId] || "")
+            .trim()
+            .toLowerCase()
+        : id;
     };
     const sheetByEmployeeId = new Map();
     sheetRows.forEach((row) => {
-      const id = String(row[SETTINGS.appraisalSheet.empId] || "").trim().toLowerCase();
+      const id = String(row[SETTINGS.appraisalSheet.empId] || "")
+        .trim()
+        .toLowerCase();
       if (id && !sheetByEmployeeId.has(id)) sheetByEmployeeId.set(id, row);
     });
     const delegationByEmployeeId = new Map();
     delegationRows.forEach((row) => {
       const storedEmployeeKey = String(row[d.empId] || "").trim();
-      const master = masterByRowId.get(storedEmployeeKey) || masterByEmployeeId.get(storedEmployeeKey.toLowerCase());
-      const id = String(master?.[e.empId] || "").trim().toLowerCase();
-      if (id && !delegationByEmployeeId.has(id)) delegationByEmployeeId.set(id, row);
+      const master =
+        masterByRowId.get(storedEmployeeKey) ||
+        masterByEmployeeId.get(storedEmployeeKey.toLowerCase());
+      const id = String(master?.[e.empId] || "")
+        .trim()
+        .toLowerCase();
+      if (id && !delegationByEmployeeId.has(id))
+        delegationByEmployeeId.set(id, row);
     });
     if (me.role === "techEd") {
-      const myEmployeeId = String(me.user.empId || "").trim().toLowerCase();
+      const myEmployeeId = String(me.user.empId || "")
+        .trim()
+        .toLowerCase();
       for (const change of normalizedChanges) {
         const master = masterByEmployeeId.get(change.empId.toLowerCase());
         const sheet = sheetByEmployeeId.get(change.empId.toLowerCase());
@@ -1836,20 +2112,35 @@ app.post(
         // assignment. A broader screen/access scope must not expose another
         // Tech-ED's team in this facility.
         if (!myEmployeeId || assignedTechEdId !== myEmployeeId) {
-          throw new HttpError(403, "You can change Comp. Managers only for employees mapped to you. Employee " + change.empId + " is outside your Tech-ED team.");
+          throw new HttpError(
+            403,
+            "You can change Comp. Managers only for employees mapped to you. Employee " +
+              change.empId +
+              " is outside your Tech-ED team.",
+          );
         }
       }
     } else if (me.role !== "hr") {
       for (const change of normalizedChanges) {
         if (!A.inScope(me, change.empId)) {
-          throw new HttpError(403, "You do not have access to employee " + change.empId + ".");
+          throw new HttpError(
+            403,
+            "You do not have access to employee " + change.empId + ".",
+          );
         }
       }
     }
-    const selectedIds = new Set(normalizedChanges.map((change) => selectedEmployeeId(change.assignment)));
+    const selectedIds = new Set(
+      normalizedChanges.map((change) => selectedEmployeeId(change.assignment)),
+    );
     for (const id of selectedIds) {
       if (!masterByEmployeeId.has(id)) {
-        throw new HttpError(422, "Selected assignment " + id + " could not be matched to Employee Master.");
+        throw new HttpError(
+          422,
+          "Selected assignment " +
+            id +
+            " could not be matched to Employee Master.",
+        );
       }
     }
 
@@ -1859,17 +2150,62 @@ app.post(
       const id = String(row[d.empId] || "").trim();
       if (!id) return;
       if (!existingByMasterId.has(id)) existingByMasterId.set(id, row);
-      if (!existingByEmployeeId.has(id.toLowerCase())) existingByEmployeeId.set(id.toLowerCase(), row);
+      if (!existingByEmployeeId.has(id.toLowerCase()))
+        existingByEmployeeId.set(id.toLowerCase(), row);
     });
+
+    // "EMP001 - Name" label for an Employee ID, Employee_Master ROWID or
+    // already-formatted value, so Team Changes reads the same as the grid.
+    const personLabel = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      if (/\s+-\s+/.test(raw)) return raw;
+      const person =
+        masterByEmployeeId.get(raw.toLowerCase()) || masterByRowId.get(raw);
+      if (!person) return raw;
+      const id = String(person[e.empId] || "").trim();
+      const name = String(person[e.name] || "").trim();
+      return id && name ? id + " - " + name : name || id || raw;
+    };
+    // Snapshot "from" values BEFORE the patches below overwrite the maps.
+    const previousByChange = new Map();
+    for (const change of normalizedChanges) {
+      const master = masterByEmployeeId.get(change.empId.toLowerCase());
+      const masterRowId = String(master?.ROWID || master?.rowid || "").trim();
+      const delegationRow =
+        existingByMasterId.get(masterRowId) ||
+        existingByEmployeeId.get(change.empId.toLowerCase());
+      const sheetRow = sheetByEmployeeId.get(change.empId.toLowerCase());
+      const delegationColumn =
+        change.field === "comp" ? d.compManagerId : d.appraiserTechEdId;
+      const sheetColumn =
+        change.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+      previousByChange.set(
+        change,
+        personLabel(delegationRow?.[delegationColumn]) ||
+          personLabel(sheetRow?.[sheetColumn]) ||
+          "",
+      );
+    }
 
     const patchByEmployee = new Map();
     for (const change of normalizedChanges) {
       const master = masterByEmployeeId.get(change.empId.toLowerCase());
-      if (!master) throw new HttpError(404, "Employee " + change.empId + " was not found in Employee Master.");
+      if (!master)
+        throw new HttpError(
+          404,
+          "Employee " + change.empId + " was not found in Employee Master.",
+        );
       const masterRowId = String(master.ROWID || master.rowid || "").trim();
-      if (!masterRowId) throw new HttpError(422, "Employee Master record for " + change.empId + " has no row ID.");
+      if (!masterRowId)
+        throw new HttpError(
+          422,
+          "Employee Master record for " + change.empId + " has no row ID.",
+        );
       const key = masterRowId;
-      const existing = existingByMasterId.get(masterRowId) || existingByEmployeeId.get(change.empId.toLowerCase());
+      const existing =
+        existingByMasterId.get(masterRowId) ||
+        existingByEmployeeId.get(change.empId.toLowerCase());
       let entry = patchByEmployee.get(key);
       if (!entry) {
         const patch = {
@@ -1879,7 +2215,8 @@ app.post(
           updated_by: me.user.email || me.user.name || "",
           updated_at: nowDT(),
         };
-        if (existing) patch.ROWID = String(existing.ROWID || existing.rowid || "");
+        if (existing)
+          patch.ROWID = String(existing.ROWID || existing.rowid || "");
         else {
           patch.previous_comp_manager = "";
           patch.previous_appraiser_tech_ed = "";
@@ -1887,7 +2224,9 @@ app.post(
         entry = { existing: !!existing, patch };
         patchByEmployee.set(key, entry);
       }
-      entry.patch[change.field === "comp" ? d.compManagerId : d.appraiserTechEdId] = change.assignment;
+      entry.patch[
+        change.field === "comp" ? d.compManagerId : d.appraiserTechEdId
+      ] = change.assignment;
       existingByMasterId.set(masterRowId, entry.patch);
     }
 
@@ -1912,20 +2251,27 @@ app.post(
     // a sheet row yet get them when HR generates the sheet.
     const sheetRowsByEmployee = new Map();
     sheetRows.forEach((row) => {
-      const id = String(row[SETTINGS.appraisalSheet.empId] || "").trim().toLowerCase();
+      const id = String(row[SETTINGS.appraisalSheet.empId] || "")
+        .trim()
+        .toLowerCase();
       if (!id) return;
       if (!sheetRowsByEmployee.has(id)) sheetRowsByEmployee.set(id, []);
       sheetRowsByEmployee.get(id).push(row);
     });
     const sheetPatchByRowId = new Map();
     for (const change of normalizedChanges) {
-      const selected = masterByEmployeeId.get(selectedEmployeeId(change.assignment));
-      const column = change.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
-      const stored = change.field === "comp"
-        ? String(selected[e.empId] || "").trim()
-        : String(selected.ROWID || selected.rowid || "").trim();
+      const selected = masterByEmployeeId.get(
+        selectedEmployeeId(change.assignment),
+      );
+      const column =
+        change.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+      const stored =
+        change.field === "comp"
+          ? String(selected[e.empId] || "").trim()
+          : String(selected.ROWID || selected.rowid || "").trim();
       if (!stored) continue;
-      for (const row of sheetRowsByEmployee.get(change.empId.toLowerCase()) || []) {
+      for (const row of sheetRowsByEmployee.get(change.empId.toLowerCase()) ||
+        []) {
         const rowId = String(row.ROWID || row.rowid || "").trim();
         if (!rowId || String(row[column] ?? "").trim() === stored) continue;
         const patch = sheetPatchByRowId.get(rowId) || { ROWID: rowId };
@@ -1936,11 +2282,47 @@ app.post(
     const sheetUpdates = Array.from(sheetPatchByRowId.values());
     const sheetTable = ap.admin.datastore().table(APPRAISAL_SHEET_TABLE_ID);
     for (let i = 0; i < sheetUpdates.length; i += BATCH) {
-      await A.whenNotBusy(() => sheetTable.updateRows(sheetUpdates.slice(i, i + BATCH)));
+      await A.whenNotBusy(() =>
+        sheetTable.updateRows(sheetUpdates.slice(i, i + BATCH)),
+      );
     }
 
+    // Record who moved from where to where, for the Team Changes screen.
+    const changedAt = nowDT();
+    const changeBatch = "delegation:" + cycleId + ":" + Date.now();
+    const cycleLabel = String(
+      cycles[0]?.[SETTINGS.cycle.nameColumn] || "",
+    ).trim();
+    const teamChangesLogged = await recordTeamChanges(
+      ap,
+      normalizedChanges.map((change) => {
+        const master = masterByEmployeeId.get(change.empId.toLowerCase());
+        const selected = masterByEmployeeId.get(
+          selectedEmployeeId(change.assignment),
+        );
+        return {
+          emp_id: String(master?.[e.empId] || change.empId).trim(),
+          employee_name: String(master?.[e.name] || "").trim(),
+          field_name:
+            change.field === "comp" ? "comp_manager" : "appraiser_tech_ed",
+          old_value: previousByChange.get(change) || "",
+          new_value: selected
+            ? personLabel(String(selected[e.empId] || "").trim())
+            : change.assignment,
+          changed_by: me.user.email || me.user.name || "",
+          changed_at: changedAt,
+          batch_id: changeBatch,
+          appraisal_year: cycleLabel,
+        };
+      }),
+    );
+
     try {
-      await A.bumpVersion(ap.admin, me.user.email || "", "Delegation saved for " + normalizedChanges.length + " assignment(s)");
+      await A.bumpVersion(
+        ap.admin,
+        me.user.email || "",
+        "Delegation saved for " + normalizedChanges.length + " assignment(s)",
+      );
     } catch (error) {
       console.error("Delegation saved; access version refresh failed:", error);
     }
@@ -1952,7 +2334,83 @@ app.post(
       inserted: inserts.length,
       updated: updates.length,
       sheetRowsUpdated: sheetUpdates.length,
+      teamChangesLogged,
     });
+  }),
+);
+
+/* GET /delegation/changes?cycleId= — Team Changes feed.
+   Delegation saves (and approved Tech-Ed requests) are logged in
+   Appraisal_Audit with source "Delegation". HR sees every change; Tech-Ed
+   and Comp Manager see only the employees in their scope, or moves into /
+   out of their own team (matched on the manager label). */
+app.get(
+  "/delegation/changes",
+  asyncRoute(async (req, res) => {
+    const ap = apps(req);
+    const me = await A.check(ap.user, ap.admin);
+    if (me.denied) throw me.denied;
+    if (!["hr", "techEd", "compMgr"].includes(me.role)) {
+      throw new HttpError(403, "You do not have access to Team Changes.");
+    }
+    let cycleId = String(req.query.cycleId || "").trim();
+    if (!cycleId)
+      cycleId = String((await A.activeCycleId(ap.admin.zcql())) || "").trim();
+    if (!cycleId || !/^\d{1,30}$/.test(cycleId)) {
+      send(res, { changes: [], cycleId: "" });
+      return;
+    }
+    const zcql = ap.admin.zcql();
+    const rows = await selectAll(
+      zcql,
+      AUDIT_TABLE_NAME,
+      "source = '" + q(TEAM_CHANGE_SOURCE) + "'",
+    );
+    const prefix = "delegation:" + cycleId + ":";
+    const myEmpId = String(me.user.empId || "")
+      .trim()
+      .toLowerCase();
+    const myName = String(me.user.name || "")
+      .trim()
+      .toLowerCase();
+    const mentionsMe = (label) => {
+      const text = String(label || "")
+        .trim()
+        .toLowerCase();
+      if (!text) return false;
+      const id = (text.split(/\s+-\s+/)[0] || "").trim();
+      return (
+        (myEmpId && id === myEmpId) || (myName && text.endsWith(" - " + myName))
+      );
+    };
+    const changes = rows
+      .filter((row) => String(row.batch_id || "").startsWith(prefix))
+      .filter((row) => TEAM_CHANGE_FIELDS[String(row.field_name || "")])
+      .filter((row) => {
+        if (me.role === "hr") return true;
+        const empId = String(row.emp_id || "").trim();
+        let inScope = false;
+        try {
+          inScope = A.inScope(me, empId);
+        } catch (_) {}
+        return (
+          inScope || mentionsMe(row.old_value) || mentionsMe(row.new_value)
+        );
+      })
+      .map((row) => ({
+        id: String(row.ROWID || row.rowid || ""),
+        date: String(row.changed_at || "").slice(0, 10),
+        at: String(row.changed_at || ""),
+        empId: String(row.emp_id || ""),
+        name: String(row.employee_name || row.emp_id || ""),
+        field: String(row.field_name || ""),
+        fieldLabel: TEAM_CHANGE_FIELDS[String(row.field_name || "")],
+        from: String(row.old_value || ""),
+        to: String(row.new_value || ""),
+        by: String(row.changed_by || ""),
+      }))
+      .sort((x, y) => String(y.at).localeCompare(String(x.at)));
+    send(res, { changes, cycleId });
   }),
 );
 // Unexpected failures in Generate Delegation are returned with their reason (rule messages
@@ -1963,381 +2421,429 @@ const withReason = (label, fn) => async (req, res) => {
   } catch (err) {
     if (err instanceof HttpError) throw err;
     console.error(label, err);
-    throw new HttpError(500, label + ": " + ((err && err.message) || "unexpected error"));
+    throw new HttpError(
+      500,
+      label + ": " + ((err && err.message) || "unexpected error"),
+    );
   }
 };
 app.post(
   "/delegation/fill",
-  asyncRoute(withReason("Delegation generation failed", async (req, res) => {
-    const ap = apps(req);
-    const me = await requireHR(ap);
-    const zcql = ap.admin.zcql(),
-      ds = ap.admin.datastore();
-    const body = req.body || {};
-    const cycleId = String(body.cycleId || "").trim();
-    const replace = bool(body.replace);
-    if (!cycleId || !/^\d{1,30}$/.test(cycleId))
-      throw new HttpError(422, "Pick a cycle.");
-    const c = SETTINGS.cycle,
-      d = SETTINGS.delegation,
-      e = SETTINGS.employeeMaster,
-      s = SETTINGS.appraisalSheet;
-    const cyc = await selectAll(zcql, c.table, c.idColumn + " = " + cycleId);
-    if (!cyc.length) throw new HttpError(404, "Cycle not found.");
+  asyncRoute(
+    withReason("Delegation generation failed", async (req, res) => {
+      const ap = apps(req);
+      const me = await requireHR(ap);
+      const zcql = ap.admin.zcql(),
+        ds = ap.admin.datastore();
+      const body = req.body || {};
+      const cycleId = String(body.cycleId || "").trim();
+      const replace = bool(body.replace);
+      if (!cycleId || !/^\d{1,30}$/.test(cycleId))
+        throw new HttpError(422, "Pick a cycle.");
+      const c = SETTINGS.cycle,
+        d = SETTINGS.delegation,
+        e = SETTINGS.employeeMaster,
+        s = SETTINGS.appraisalSheet;
+      const cyc = await selectAll(zcql, c.table, c.idColumn + " = " + cycleId);
+      if (!cyc.length) throw new HttpError(404, "Cycle not found.");
 
-    // Read the two cycle-scoped tables first. Appraisal_Sheet is historical
-    // and grows every cycle, so it must never be scanned wholesale here.
-    const [existing, eligibilityRows, emRows] = await Promise.all([
-      selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
-      selectAll(zcql, "Eligibility_List", "appraisal_cycle_id = '" + q(cycleId) + "'"),
-      selectAll(zcql, e.table),
-    ]);
+      // Read the two cycle-scoped tables first. Appraisal_Sheet is historical
+      // and grows every cycle, so it must never be scanned wholesale here.
+      const [existing, eligibilityRows, emRows] = await Promise.all([
+        selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
+        selectAll(
+          zcql,
+          "Eligibility_List",
+          "appraisal_cycle_id = '" + q(cycleId) + "'",
+        ),
+        selectAll(zcql, e.table),
+      ]);
 
-    // Eligibility_List.emp_id is normally the business employee ID. Older
-    // rows/imports can hold the Employee_Master lookup ROWID instead, while
-    // employee_master_id is the explicit lookup column. Resolve all supported
-    // forms to the canonical Employee_Master emp_id before building the roster.
-    const masterByEmpId = new Map();
-    const masterByRowId = new Map();
-    emRows.forEach((master) => {
-      const empId = String(master[e.empId] || "").trim();
-      const rowId = String(master.ROWID || master.rowid || "").trim();
-      if (empId) masterByEmpId.set(norm(empId), master);
-      if (rowId) masterByRowId.set(rowId, master);
-    });
-    const eligibleStatus = (row) => {
-      // Eligibility_List rows can contain both the current and legacy status
-      // aliases. Prefer the first populated value, not merely the first
-      // truthy property: an empty primary column must not hide "Eligible".
-      const raw = [
-        row?.eligibility_status,
-        row?.eligible_status,
-        row?.eligibility,
-        row?.eligible,
-      ].find((value) => value !== undefined && value !== null && String(value).trim() !== "");
-      const normalized = String(raw || "").trim().toLowerCase().replace(/[ _-]+/g, "");
-      return ["eligible", "yes", "true", "1"].includes(normalized);
-    };
-    const requestedEligibleIds = Array.from(new Set(
-      eligibilityRows
-        .filter(eligibleStatus)
-        .map((row) => {
-          const empRef = String(row.emp_id || "").trim();
-          const masterRef = String(row.employee_master_id || "").trim();
-          const master =
-            masterByEmpId.get(norm(empRef)) ||
-            masterByRowId.get(empRef) ||
-            masterByRowId.get(masterRef) ||
-            masterByEmpId.get(norm(masterRef));
-          // Keep the business employee ID as a final lookup key. This also
-          // covers rows whose optional lookup reference was not populated.
-          const canonicalId = master ? master[e.empId] : empRef;
-          return masterByEmpId.has(norm(canonicalId)) ? norm(canonicalId) : "";
-        })
-        .filter(Boolean)
-    ));
-    if (!requestedEligibleIds.length) {
-      throw new HttpError(
-        422,
-        "No employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
+      // Eligibility_List.emp_id is normally the business employee ID. Older
+      // rows/imports can hold the Employee_Master lookup ROWID instead, while
+      // employee_master_id is the explicit lookup column. Resolve all supported
+      // forms to the canonical Employee_Master emp_id before building the roster.
+      const masterByEmpId = new Map();
+      const masterByRowId = new Map();
+      emRows.forEach((master) => {
+        const empId = String(master[e.empId] || "").trim();
+        const rowId = String(master.ROWID || master.rowid || "").trim();
+        if (empId) masterByEmpId.set(norm(empId), master);
+        if (rowId) masterByRowId.set(rowId, master);
+      });
+      const eligibleStatus = (row) => {
+        // Eligibility_List rows can contain both the current and legacy status
+        // aliases. Prefer the first populated value, not merely the first
+        // truthy property: an empty primary column must not hide "Eligible".
+        const raw = [
+          row?.eligibility_status,
+          row?.eligible_status,
+          row?.eligibility,
+          row?.eligible,
+        ].find(
+          (value) =>
+            value !== undefined &&
+            value !== null &&
+            String(value).trim() !== "",
+        );
+        const normalized = String(raw || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[ _-]+/g, "");
+        return ["eligible", "yes", "true", "1"].includes(normalized);
+      };
+      const requestedEligibleIds = Array.from(
+        new Set(
+          eligibilityRows
+            .filter(eligibleStatus)
+            .map((row) => {
+              const empRef = String(row.emp_id || "").trim();
+              const masterRef = String(row.employee_master_id || "").trim();
+              const master =
+                masterByEmpId.get(norm(empRef)) ||
+                masterByRowId.get(empRef) ||
+                masterByRowId.get(masterRef) ||
+                masterByEmpId.get(norm(masterRef));
+              // Keep the business employee ID as a final lookup key. This also
+              // covers rows whose optional lookup reference was not populated.
+              const canonicalId = master ? master[e.empId] : empRef;
+              return masterByEmpId.has(norm(canonicalId))
+                ? norm(canonicalId)
+                : "";
+            })
+            .filter(Boolean),
+        ),
       );
-    }
+      if (!requestedEligibleIds.length) {
+        throw new HttpError(
+          422,
+          "No employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
+        );
+      }
 
-    // Keep Employee_Master for manager-name resolution, but query Appraisal_Sheet
-    // only for this cycle's eligible employees. The previous fallback fetched
-    // every historical appraisal row when cycle-column filters returned none.
-    // ZCQL allows at most 10 conditions in a WHERE clause (selectAll adds one more for
-    // paging), so one condition per employee cannot be used. Look employees up with IN
-    // lists (a single condition each); if IN is not accepted, fall back to OR groups of 8.
-    const selectSheetRows = async () => {
-      const out = [];
-      const IN_CHUNK = 25,
-        OR_CHUNK = 8;
-      for (let i = 0; i < requestedEligibleIds.length; i += IN_CHUNK) {
-        const ids = requestedEligibleIds.slice(i, i + IN_CHUNK);
-        try {
-          const where =
-            s.empId + " IN (" + ids.map((id) => "'" + q(id) + "'").join(", ") + ")";
-          out.push(...(await selectAll(zcql, s.table, where)));
-        } catch (err) {
-          console.error("sheet IN lookup failed, using OR groups", err);
-          for (let j = 0; j < ids.length; j += OR_CHUNK) {
-            const where = ids
-              .slice(j, j + OR_CHUNK)
-              .map((id) => s.empId + " = '" + q(id) + "'")
-              .join(" OR ");
+      // Keep Employee_Master for manager-name resolution, but query Appraisal_Sheet
+      // only for this cycle's eligible employees. The previous fallback fetched
+      // every historical appraisal row when cycle-column filters returned none.
+      // ZCQL allows at most 10 conditions in a WHERE clause (selectAll adds one more for
+      // paging), so one condition per employee cannot be used. Look employees up with IN
+      // lists (a single condition each); if IN is not accepted, fall back to OR groups of 8.
+      const selectSheetRows = async () => {
+        const out = [];
+        const IN_CHUNK = 25,
+          OR_CHUNK = 8;
+        for (let i = 0; i < requestedEligibleIds.length; i += IN_CHUNK) {
+          const ids = requestedEligibleIds.slice(i, i + IN_CHUNK);
+          try {
+            const where =
+              s.empId +
+              " IN (" +
+              ids.map((id) => "'" + q(id) + "'").join(", ") +
+              ")";
             out.push(...(await selectAll(zcql, s.table, where)));
+          } catch (err) {
+            console.error("sheet IN lookup failed, using OR groups", err);
+            for (let j = 0; j < ids.length; j += OR_CHUNK) {
+              const where = ids
+                .slice(j, j + OR_CHUNK)
+                .map((id) => s.empId + " = '" + q(id) + "'")
+                .join(" OR ");
+              out.push(...(await selectAll(zcql, s.table, where)));
+            }
           }
         }
-      }
-      return out;
-    };
-    const sheetRows = await selectSheetRows();
-    // Employee_Master indexes
-    const em = {},
-      byName = {};
-    emRows.forEach((r) => {
-      const id = String(r[e.empId] || "").trim();
-      if (!id) return;
-      em[norm(id)] = { id, row: r };
-      const k = nameKey(r[e.name]);
-      if (k) (byName[k] = byName[k] || new Set()).add(id);
-    });
-    const sheet = {}; // last Appraisal_Sheet row per employee
-    sheetRows.forEach((r) => {
-      const id = String(r[s.empId] || "").trim();
-      if (id) sheet[norm(id)] = r;
-    });
+        return out;
+      };
+      const sheetRows = await selectSheetRows();
+      // Employee_Master indexes
+      const em = {},
+        byName = {};
+      emRows.forEach((r) => {
+        const id = String(r[e.empId] || "").trim();
+        if (!id) return;
+        em[norm(id)] = { id, row: r };
+        const k = nameKey(r[e.name]);
+        if (k) (byName[k] = byName[k] || new Set()).add(id);
+      });
+      const sheet = {}; // last Appraisal_Sheet row per employee
+      sheetRows.forEach((r) => {
+        const id = String(r[s.empId] || "").trim();
+        if (id) sheet[norm(id)] = r;
+      });
 
-    const unmatchedTech = new Map(),
-      unmatchedComp = new Map(),
-      ambiguousComp = new Map();
-    const canon = (id) =>
-      em[norm(id)] ? em[norm(id)].id : String(id).trim().toUpperCase();
-    function techEdOf(empKey) {
-      const raw = String(
-        (em[empKey] && em[empKey].row.appraiser_tech_ed) ||
-          (sheet[empKey] && sheet[empKey].appraiser_tech_ed) ||
-          "",
-      ).trim();
-      if (!raw) return "";
-      const mm = raw.match(EMP_REF_RE);
-      if (mm) return canon(mm[1]);
-      if (em[norm(raw)]) return em[norm(raw)].id; // a bare emp id
-      tally(unmatchedTech, raw, { value: raw });
-      return "";
-    }
-    function compMgrOf(empKey) {
-      const raw = String(
-        (sheet[empKey] && sheet[empKey].comp_manager) ||
-          (em[empKey] && (em[empKey].row.director || em[empKey].row.comp_manager)) ||
-          "",
-      ).trim();
-      if (!raw) return "";
-      const mm = raw.match(EMP_REF_RE);
-      if (mm) return canon(mm[1]);
-      if (em[norm(raw)]) return em[norm(raw)].id;
-      const k = nameKey(raw.replace(EMP_REF_RE, ""));
-      const hits = k && byName[k] ? Array.from(byName[k]) : [];
-      if (hits.length === 1) return hits[0];
-      if (hits.length > 1) {
-        tally(ambiguousComp, raw, { name: raw, candidates: hits });
+      const unmatchedTech = new Map(),
+        unmatchedComp = new Map(),
+        ambiguousComp = new Map();
+      const canon = (id) =>
+        em[norm(id)] ? em[norm(id)].id : String(id).trim().toUpperCase();
+      function techEdOf(empKey) {
+        const raw = String(
+          (em[empKey] && em[empKey].row.appraiser_tech_ed) ||
+            (sheet[empKey] && sheet[empKey].appraiser_tech_ed) ||
+            "",
+        ).trim();
+        if (!raw) return "";
+        const mm = raw.match(EMP_REF_RE);
+        if (mm) return canon(mm[1]);
+        if (em[norm(raw)]) return em[norm(raw)].id; // a bare emp id
+        tally(unmatchedTech, raw, { value: raw });
         return "";
       }
-      tally(unmatchedComp, raw, { name: raw });
-      return "";
-    }
-
-    // Delegation must be generated only from the active cycle's explicit
-    // Eligibility_List decisions. Ignore inactive employees and any employee
-    // without an Eligible decision; do not fall back to the full master roster.
-    const eligibleIds = new Set(
-      eligibilityRows
-        .filter(eligibleStatus)
-        .map((row) => {
-          const empRef = String(row.emp_id || "").trim();
-          const masterRef = String(row.employee_master_id || "").trim();
-          const master =
-            masterByEmpId.get(norm(empRef)) ||
-            masterByRowId.get(empRef) ||
-            masterByRowId.get(masterRef) ||
-            masterByEmpId.get(norm(masterRef));
-          const canonicalId = master ? master[e.empId] : empRef;
-          return masterByEmpId.has(norm(canonicalId)) ? norm(canonicalId) : "";
-        })
-        .filter((id) => id && em[id] &&
-          String(
-            [em[id].row[e.status], em[id].row.status]
-              .find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "Active",
-          ).trim().toLowerCase() === "active")
-    );
-    // Never replace a cycle's Delegation with an empty list.
-    if (!eligibleIds.size)
-      throw new HttpError(
-        422,
-        "No active employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
-      );
-    const keys = Array.from(eligibleIds);
-    // Delegation.emp_id is a lookup to Employee_Master and is stored as
-    // the Employee_Master ROWID, while the fill keys above are employee IDs
-    // such as EMP001. Index existing rows by the canonical employee ID so
-    // repeated POST /delegation/fill calls with replace:false are idempotent.
-    const employeeIdByMasterRowId = new Map();
-    emRows.forEach((employee) => {
-      const rowId = String(employee.ROWID || employee.rowid || "").trim();
-      const employeeId = String(employee[e.empId] || "").trim();
-      if (rowId && employeeId) {
-        employeeIdByMasterRowId.set(rowId, employeeId);
-      }
-    });
-    const existingBy = {};
-    const duplicateExistingRowIds = [];
-    const rowFreshness = (row) =>
-      String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "");
-    existing.forEach((row) => {
-      const storedEmployeeRef = String(row[d.empId] || "").trim();
-      const canonicalEmployeeId =
-        employeeIdByMasterRowId.get(storedEmployeeRef) ||
-        (em[norm(storedEmployeeRef)] && em[norm(storedEmployeeRef)].id) ||
-        storedEmployeeRef;
-      const key = norm(canonicalEmployeeId);
-      if (!key) return;
-      const prior = existingBy[key];
-      if (!prior) {
-        existingBy[key] = row;
-        return;
-      }
-      // Keep the newest row for this employee/cycle and remove stale duplicates.
-      // This also repairs duplicates created by earlier non-idempotent fill calls.
-      if (rowFreshness(row) > rowFreshness(prior)) {
-        duplicateExistingRowIds.push(String(prior.ROWID || prior.rowid || "").trim());
-        existingBy[key] = row;
-      } else {
-        duplicateExistingRowIds.push(String(row.ROWID || row.rowid || "").trim());
-      }
-    });
-    const staleDuplicateIds = duplicateExistingRowIds.filter(Boolean);
-    if (!replace && staleDuplicateIds.length) {
-      await deleteMany(ds.table("74008000000036124"), staleDuplicateIds);
-    }
-    const at = nowDT();
-    let techSet = 0,
-      compSet = 0,
-      skipped = 0,
-      selfCleared = 0;
-    const rows = [];
-    keys.forEach((k) => {
-      if (!replace && existingBy[k]) {
-        skipped++;
-        return;
-      }
-      const empId = em[k] ? em[k].id : String(sheet[k][s.empId]).trim();
-      // Nobody appraises themselves. A self-assignment (e.g. Employee Master
-      // names the employee as their own Tech-ED) falls back to the employee's
-      // Employee Master director / Comp Manager; if that is also the employee,
-      // or blank, the field is left empty for HR to assign.
-      const isSelf = (id) => Boolean(id) && norm(id) === norm(empId);
-      const masterRef = (raw) => {
-        const text = String(raw || "").trim();
-        if (!text) return "";
-        const mm = text.match(EMP_REF_RE);
+      function compMgrOf(empKey) {
+        const raw = String(
+          (sheet[empKey] && sheet[empKey].comp_manager) ||
+            (em[empKey] &&
+              (em[empKey].row.director || em[empKey].row.comp_manager)) ||
+            "",
+        ).trim();
+        if (!raw) return "";
+        const mm = raw.match(EMP_REF_RE);
         if (mm) return canon(mm[1]);
-        return em[norm(text)] ? em[norm(text)].id : "";
-      };
-      const masterRow = (em[k] && em[k].row) || {};
-      let t = techEdOf(k),
-        cm = compMgrOf(k);
-      if (isSelf(t)) {
-        const fallback = masterRef(masterRow.director) || masterRef(masterRow.comp_manager);
-        t = isSelf(fallback) ? "" : fallback;
-        selfCleared++;
+        if (em[norm(raw)]) return em[norm(raw)].id;
+        const k = nameKey(raw.replace(EMP_REF_RE, ""));
+        const hits = k && byName[k] ? Array.from(byName[k]) : [];
+        if (hits.length === 1) return hits[0];
+        if (hits.length > 1) {
+          tally(ambiguousComp, raw, { name: raw, candidates: hits });
+          return "";
+        }
+        tally(unmatchedComp, raw, { name: raw });
+        return "";
       }
-      if (isSelf(cm)) {
-        const fallback = masterRef(masterRow.comp_manager) || masterRef(masterRow.director);
-        cm = isSelf(fallback) ? "" : fallback;
-        selfCleared++;
-      }
-      if (t) techSet++;
-      if (cm) compSet++;
-      // Delegation.cycle_id and Delegation.emp_id are lookup fields.
-      // Store their Data Store ROWIDs; assignment columns are plain varchar fields
-      // and store the selected employees' employee IDs.
-      const employeeMasterRowId = String(
-        (em[k] && (em[k].row.ROWID || em[k].row.rowid)) || "",
-      ).trim();
-      if (!employeeMasterRowId) {
-        skipped++;
-        return;
-      }
-      rows.push({
-        [d.cycleColumn]: cycleId,
-        [d.empId]: employeeMasterRowId,
-        [d.compManagerId]: cm,
-        [d.appraiserTechEdId]: t,
-        director: String((() => {
-          const masterRow = (em[k] && em[k].row) || {};
-          const directorKey = Object.keys(masterRow).find((key) =>
-            ["director", "director_name", "director name", "director_full_name"].includes(
-              key.trim().toLowerCase()
-            )
-          );
-          return directorKey ? masterRow[directorKey] : "";
-        })() || "").trim(),
-        previous_comp_manager: "",
-        previous_appraiser_tech_ed: "",
-        status: "Active",
-        updated_by: me.user.email,
-        updated_at: at,
-      });
-    });
 
-    if (!rows.length) {
-      throw new HttpError(
-        422,
-        "No Delegation rows could be prepared. The eligible employees could not be matched to active Employee Master records. Existing Delegation rows were left untouched.",
+      // Delegation must be generated only from the active cycle's explicit
+      // Eligibility_List decisions. Ignore inactive employees and any employee
+      // without an Eligible decision; do not fall back to the full master roster.
+      const eligibleIds = new Set(
+        eligibilityRows
+          .filter(eligibleStatus)
+          .map((row) => {
+            const empRef = String(row.emp_id || "").trim();
+            const masterRef = String(row.employee_master_id || "").trim();
+            const master =
+              masterByEmpId.get(norm(empRef)) ||
+              masterByRowId.get(empRef) ||
+              masterByRowId.get(masterRef) ||
+              masterByEmpId.get(norm(masterRef));
+            const canonicalId = master ? master[e.empId] : empRef;
+            return masterByEmpId.has(norm(canonicalId))
+              ? norm(canonicalId)
+              : "";
+          })
+          .filter(
+            (id) =>
+              id &&
+              em[id] &&
+              String(
+                [em[id].row[e.status], em[id].row.status].find(
+                  (value) =>
+                    value !== undefined &&
+                    value !== null &&
+                    String(value).trim() !== "",
+                ) || "Active",
+              )
+                .trim()
+                .toLowerCase() === "active",
+          ),
       );
-    }
-
-    const t = ds.table("74008000000036124");
-    let deleted = 0,
-      inserted = [];
-    if (replace && existing.length) {
-      await deleteMany(
-        t,
-        existing.map((r) => r.ROWID),
-      );
-      deleted = existing.length;
-    }
-    try {
-      inserted = await insertMany(t, rows);
-    } catch (err) {
-      // best effort: undo partial insert and put the old rows back
-      try {
-        const mine = await selectAll(
-          zcql,
-          d.table,
-          d.cycleColumn + " = '" + q(cycleId) + "'",
+      // Never replace a cycle's Delegation with an empty list.
+      if (!eligibleIds.size)
+        throw new HttpError(
+          422,
+          "No active employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
         );
-        const old = new Set(existing.map((r) => String(r.ROWID)));
+      const keys = Array.from(eligibleIds);
+      // Delegation.emp_id is a lookup to Employee_Master and is stored as
+      // the Employee_Master ROWID, while the fill keys above are employee IDs
+      // such as EMP001. Index existing rows by the canonical employee ID so
+      // repeated POST /delegation/fill calls with replace:false are idempotent.
+      const employeeIdByMasterRowId = new Map();
+      emRows.forEach((employee) => {
+        const rowId = String(employee.ROWID || employee.rowid || "").trim();
+        const employeeId = String(employee[e.empId] || "").trim();
+        if (rowId && employeeId) {
+          employeeIdByMasterRowId.set(rowId, employeeId);
+        }
+      });
+      const existingBy = {};
+      const duplicateExistingRowIds = [];
+      const rowFreshness = (row) =>
+        String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "");
+      existing.forEach((row) => {
+        const storedEmployeeRef = String(row[d.empId] || "").trim();
+        const canonicalEmployeeId =
+          employeeIdByMasterRowId.get(storedEmployeeRef) ||
+          (em[norm(storedEmployeeRef)] && em[norm(storedEmployeeRef)].id) ||
+          storedEmployeeRef;
+        const key = norm(canonicalEmployeeId);
+        if (!key) return;
+        const prior = existingBy[key];
+        if (!prior) {
+          existingBy[key] = row;
+          return;
+        }
+        // Keep the newest row for this employee/cycle and remove stale duplicates.
+        // This also repairs duplicates created by earlier non-idempotent fill calls.
+        if (rowFreshness(row) > rowFreshness(prior)) {
+          duplicateExistingRowIds.push(
+            String(prior.ROWID || prior.rowid || "").trim(),
+          );
+          existingBy[key] = row;
+        } else {
+          duplicateExistingRowIds.push(
+            String(row.ROWID || row.rowid || "").trim(),
+          );
+        }
+      });
+      const staleDuplicateIds = duplicateExistingRowIds.filter(Boolean);
+      if (!replace && staleDuplicateIds.length) {
+        await deleteMany(ds.table("74008000000036124"), staleDuplicateIds);
+      }
+      const at = nowDT();
+      let techSet = 0,
+        compSet = 0,
+        skipped = 0,
+        selfCleared = 0;
+      const rows = [];
+      keys.forEach((k) => {
+        if (!replace && existingBy[k]) {
+          skipped++;
+          return;
+        }
+        const empId = em[k] ? em[k].id : String(sheet[k][s.empId]).trim();
+        // Nobody appraises themselves. A self-assignment (e.g. Employee Master
+        // names the employee as their own Tech-ED) falls back to the employee's
+        // Employee Master director / Comp Manager; if that is also the employee,
+        // or blank, the field is left empty for HR to assign.
+        const isSelf = (id) => Boolean(id) && norm(id) === norm(empId);
+        const masterRef = (raw) => {
+          const text = String(raw || "").trim();
+          if (!text) return "";
+          const mm = text.match(EMP_REF_RE);
+          if (mm) return canon(mm[1]);
+          return em[norm(text)] ? em[norm(text)].id : "";
+        };
+        const masterRow = (em[k] && em[k].row) || {};
+        let t = techEdOf(k),
+          cm = compMgrOf(k);
+        if (isSelf(t)) {
+          const fallback =
+            masterRef(masterRow.director) || masterRef(masterRow.comp_manager);
+          t = isSelf(fallback) ? "" : fallback;
+          selfCleared++;
+        }
+        if (isSelf(cm)) {
+          const fallback =
+            masterRef(masterRow.comp_manager) || masterRef(masterRow.director);
+          cm = isSelf(fallback) ? "" : fallback;
+          selfCleared++;
+        }
+        if (t) techSet++;
+        if (cm) compSet++;
+        // Delegation.cycle_id and Delegation.emp_id are lookup fields.
+        // Store their Data Store ROWIDs; assignment columns are plain varchar fields
+        // and store the selected employees' employee IDs.
+        const employeeMasterRowId = String(
+          (em[k] && (em[k].row.ROWID || em[k].row.rowid)) || "",
+        ).trim();
+        if (!employeeMasterRowId) {
+          skipped++;
+          return;
+        }
+        rows.push({
+          [d.cycleColumn]: cycleId,
+          [d.empId]: employeeMasterRowId,
+          [d.compManagerId]: cm,
+          [d.appraiserTechEdId]: t,
+          director: String(
+            (() => {
+              const masterRow = (em[k] && em[k].row) || {};
+              const directorKey = Object.keys(masterRow).find((key) =>
+                [
+                  "director",
+                  "director_name",
+                  "director name",
+                  "director_full_name",
+                ].includes(key.trim().toLowerCase()),
+              );
+              return directorKey ? masterRow[directorKey] : "";
+            })() || "",
+          ).trim(),
+          previous_comp_manager: "",
+          previous_appraiser_tech_ed: "",
+          status: "Active",
+          updated_by: me.user.email,
+          updated_at: at,
+        });
+      });
+
+      if (!rows.length) {
+        throw new HttpError(
+          422,
+          "No Delegation rows could be prepared. The eligible employees could not be matched to active Employee Master records. Existing Delegation rows were left untouched.",
+        );
+      }
+
+      const t = ds.table("74008000000036124");
+      let deleted = 0,
+        inserted = [];
+      if (replace && existing.length) {
         await deleteMany(
           t,
-          mine.filter((r) => !old.has(String(r.ROWID))).map((r) => r.ROWID),
+          existing.map((r) => r.ROWID),
         );
-        if (replace && existing.length)
-          await insertMany(t, existing.map(strip));
-      } catch (e2) {
-        console.error("delegation fill undo failed", e2);
+        deleted = existing.length;
       }
-      console.error("delegation fill failed", err);
-      throw new HttpError(
-        500,
-        "Saving Delegation failed; the previous rows were restored. Please try again.",
+      try {
+        inserted = await insertMany(t, rows);
+      } catch (err) {
+        // best effort: undo partial insert and put the old rows back
+        try {
+          const mine = await selectAll(
+            zcql,
+            d.table,
+            d.cycleColumn + " = '" + q(cycleId) + "'",
+          );
+          const old = new Set(existing.map((r) => String(r.ROWID)));
+          await deleteMany(
+            t,
+            mine.filter((r) => !old.has(String(r.ROWID))).map((r) => r.ROWID),
+          );
+          if (replace && existing.length)
+            await insertMany(t, existing.map(strip));
+        } catch (e2) {
+          console.error("delegation fill undo failed", e2);
+        }
+        console.error("delegation fill failed", err);
+        throw new HttpError(
+          500,
+          "Saving Delegation failed; the previous rows were restored. Please try again.",
+        );
+      }
+      const version = await A.bumpVersion(
+        ap.admin,
+        me.user.email,
+        "Delegation filled for cycle " + cycleId,
       );
-    }
-    const version = await A.bumpVersion(
-      ap.admin,
-      me.user.email,
-      "Delegation filled for cycle " + cycleId,
-    );
-    send(res, {
-      cycleId,
-      replace,
-      employees: keys.length,
-      inserted: inserted.length || rows.length,
-      deleted,
-      skipped,
-      techEdSet: techSet,
-      compManagerSet: compSet,
-      // Self-assignments replaced by the director / Comp Manager (or left empty).
-      selfAssignmentsCleared: selfCleared,
-      unmatched: {
-        techEd: Array.from(unmatchedTech.values()),
-        compManager: Array.from(unmatchedComp.values()),
-      },
-      ambiguous: { compManager: Array.from(ambiguousComp.values()) },
-      version,
-    });
-  })),
+      send(res, {
+        cycleId,
+        replace,
+        employees: keys.length,
+        inserted: inserted.length || rows.length,
+        deleted,
+        skipped,
+        techEdSet: techSet,
+        compManagerSet: compSet,
+        // Self-assignments replaced by the director / Comp Manager (or left empty).
+        selfAssignmentsCleared: selfCleared,
+        unmatched: {
+          techEd: Array.from(unmatchedTech.values()),
+          compManager: Array.from(unmatchedComp.values()),
+        },
+        ambiguous: { compManager: Array.from(ambiguousComp.values()) },
+        version,
+      });
+    }),
+  ),
 );
 
 module.exports = app;

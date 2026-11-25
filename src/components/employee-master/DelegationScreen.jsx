@@ -2469,6 +2469,7 @@ import { createPortal } from "react-dom";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { notifyTeamChangesUpdated } from "@/lib/team-changes-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
@@ -2990,36 +2991,77 @@ export default function DelegationScreen({
       }
       // The roster request remains location-scoped for the selected cycle.
       // Dropdown options are loaded separately from the full Employee_Master.
-      const firstPromise = fetchDelegationRoster({ fresh: !initial, location: selectedLocation });
+      const firstPromise = fetchDelegationRoster({
+        fresh: !initial,
+        location: selectedLocation,
+      });
       firstPromise.catch(() => {}); // reported where it is awaited below
       const cycles = await payrollCycleRequest("cycles");
       const allLocationsSelected =
         !selectedLocation ||
-        ["all", "all locations"].includes(String(selectedLocation).trim().toLowerCase());
-      const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-        const status = String(cycle.status ?? cycle.cycle_status ?? "")
-          .trim()
-          .toLowerCase();
-        const archived = ["true", "1", "yes"].includes(
-          String(cycle.archived ?? "").trim().toLowerCase(),
+        ["all", "all locations"].includes(
+          String(selectedLocation).trim().toLowerCase(),
         );
-        const hidden = ["true", "1", "yes"].includes(
-          String(cycle.hidden ?? "").trim().toLowerCase(),
-        );
-        const cycleLocation = String(cycle.location || "").trim().toLowerCase();
-        return status === "active" && !archived && !hidden &&
-          (allLocationsSelected || cycleLocation === String(selectedLocation).trim().toLowerCase());
-      }) || (Array.isArray(cycles) ? cycles : [])
-        .filter((cycle) => {
-          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-          const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
-          const hidden = ["true", "1", "yes"].includes(String(cycle.hidden ?? "").trim().toLowerCase());
-          const cycleLocation = String(cycle.location || "").trim().toLowerCase();
-          return status === "closed" && !archived && !hidden &&
-            (allLocationsSelected || cycleLocation === String(selectedLocation).trim().toLowerCase());
-        })
-        .sort((a, b) => String(b.end_date || b.effective_date || b.start_date || "")
-          .localeCompare(String(a.end_date || a.effective_date || a.start_date || "")))[0] || null;
+      const active =
+        (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+          const status = String(cycle.status ?? cycle.cycle_status ?? "")
+            .trim()
+            .toLowerCase();
+          const archived = ["true", "1", "yes"].includes(
+            String(cycle.archived ?? "")
+              .trim()
+              .toLowerCase(),
+          );
+          const hidden = ["true", "1", "yes"].includes(
+            String(cycle.hidden ?? "")
+              .trim()
+              .toLowerCase(),
+          );
+          const cycleLocation = String(cycle.location || "")
+            .trim()
+            .toLowerCase();
+          return (
+            status === "active" &&
+            !archived &&
+            !hidden &&
+            (allLocationsSelected ||
+              cycleLocation === String(selectedLocation).trim().toLowerCase())
+          );
+        }) ||
+        (Array.isArray(cycles) ? cycles : [])
+          .filter((cycle) => {
+            const status = String(cycle.status ?? cycle.cycle_status ?? "")
+              .trim()
+              .toLowerCase();
+            const archived = ["true", "1", "yes"].includes(
+              String(cycle.archived ?? "")
+                .trim()
+                .toLowerCase(),
+            );
+            const hidden = ["true", "1", "yes"].includes(
+              String(cycle.hidden ?? "")
+                .trim()
+                .toLowerCase(),
+            );
+            const cycleLocation = String(cycle.location || "")
+              .trim()
+              .toLowerCase();
+            return (
+              status === "closed" &&
+              !archived &&
+              !hidden &&
+              (allLocationsSelected ||
+                cycleLocation === String(selectedLocation).trim().toLowerCase())
+            );
+          })
+          .sort((a, b) =>
+            String(
+              b.end_date || b.effective_date || b.start_date || "",
+            ).localeCompare(
+              String(a.end_date || a.effective_date || a.start_date || ""),
+            ),
+          )[0] ||
+        null;
       if (!active) {
         freshApplied = true;
         setActiveCycleId("");
@@ -3147,10 +3189,12 @@ export default function DelegationScreen({
           .filter((person) => person.id);
         setGlobalTechEdOptions(options);
         setGlobalEmployeeOptions(
-          (Array.isArray(employees) ? employees : []).map((person) => ({
-            id: String(person.empId || "").trim(),
-            name: String(person.name || "").trim(),
-          })).filter((person) => person.id),
+          (Array.isArray(employees) ? employees : [])
+            .map((person) => ({
+              id: String(person.empId || "").trim(),
+              name: String(person.name || "").trim(),
+            }))
+            .filter((person) => person.id),
         );
         return options;
       })
@@ -3213,7 +3257,10 @@ export default function DelegationScreen({
           };
         });
       // Keep changes of this session that could not be saved yet.
-      setAudit((l) => [...l.filter((entry) => entry.saved === false), ...saved]);
+      setAudit((l) => [
+        ...l.filter((entry) => entry.saved === false),
+        ...saved,
+      ]);
       setAuditError("");
     } catch (error) {
       if (seq !== auditSeq.current) return;
@@ -3362,7 +3409,9 @@ export default function DelegationScreen({
     };
     // HR and Tech-ED must be able to select any active Employee_Master
     // record as an Appraiser Tech-ED, not only people already assigned as one.
-    globalEmployeeOptions.forEach((person) => add(`${person.id} - ${person.name}`));
+    globalEmployeeOptions.forEach((person) =>
+      add(`${person.id} - ${person.name}`),
+    );
     rows.forEach((row) => add(row.app || row.te || ""));
     return Array.from(uniquePeople.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -4254,6 +4303,8 @@ export default function DelegationScreen({
         );
       }
       setStagedChanges({});
+      // Delegation changes are logged server-side; refresh Team Changes.
+      notifyTeamChangesUpdated();
       // The grid already reflects these staged assignments. Save also writes
       // them onto the Appraisal Sheet (accessapi), so the sheet and budget
       // screens reload their data; Generate stays an HR-only operation.
@@ -4747,11 +4798,19 @@ export default function DelegationScreen({
                                   className={
                                     "in" + (prev && cur !== prev ? " c" : "")
                                   }
-                                  disabled={editLocked || (isTechEdUser && f !== "comp")}
+                                  disabled={
+                                    editLocked || (isTechEdUser && f !== "comp")
+                                  }
                                   value={cur}
-                                  people={isTechEdUser
-                                    ? (f === "app" ? techEdPeople : techEdCompManagerPeople)
-                                    : (f === "app" ? techEdPeople : people)}
+                                  people={
+                                    isTechEdUser
+                                      ? f === "app"
+                                        ? techEdPeople
+                                        : techEdCompManagerPeople
+                                      : f === "app"
+                                        ? techEdPeople
+                                        : people
+                                  }
                                   onOpen={loadGlobalTechEdOptions}
                                   onSelect={(person) => {
                                     if (directAssignment(f)) {
@@ -4852,7 +4911,7 @@ export default function DelegationScreen({
         </div>
 
         {/* HR approval panel only. Tech-Ed assignments are direct saves now. */}
-        {(
+        {
           <div className={"dg-side" + (reqOpen ? " open" : "")}>
             {reqOpen ? (
               <div className="dg-panel">
@@ -4917,7 +4976,9 @@ export default function DelegationScreen({
                         <b>{auditEmployeeCount}</b> employee(s) changed ·{" "}
                         <b>{auditSorted.length}</b> change(s)
                       </div>
-                      {auditError && <div className="aud-err">{auditError}</div>}
+                      {auditError && (
+                        <div className="aud-err">{auditError}</div>
+                      )}
                       <div className="rq-list">
                         {!auditSorted.length && (
                           <div className="none">No changes yet.</div>
@@ -4939,9 +5000,7 @@ export default function DelegationScreen({
                             </div>
                             <div className="m">
                               {a.field}
-                              {a.from || a.to
-                                ? `: ${a.from || "—"} `
-                                : ""}
+                              {a.from || a.to ? `: ${a.from || "—"} ` : ""}
                               {(a.from || a.to) && (
                                 <span className="ar">→ {a.to || "—"}</span>
                               )}
@@ -4972,113 +5031,113 @@ export default function DelegationScreen({
                       </button>
                     </>
                   ) : (
-                  <div className="rq-list">
-                    {!shownReqs.length && (
-                      <div className="none">
-                        {activeTab === "Pending"
-                          ? "No pending requests."
-                          : "No decided requests yet."}
-                      </div>
-                    )}
-                    {shownReqs.map((q) => (
-                      <div className="req" key={q.id}>
-                        <div className="n">
-                          <span>
-                            {q.empId} · {q.empName}
-                          </span>
-                          <span
-                            className={
-                              "tag " +
-                              (q.status === "Approved"
-                                ? "cf"
-                                : q.status === "Pending" ||
-                                    q.status === "Rejected"
-                                  ? "pd"
-                                  : "gr")
-                            }
-                          >
-                            {q.status}
-                          </span>
+                    <div className="rq-list">
+                      {!shownReqs.length && (
+                        <div className="none">
+                          {activeTab === "Pending"
+                            ? "No pending requests."
+                            : "No decided requests yet."}
                         </div>
-                        <div className="m">
-                          {q.requestType === "screen"
-                            ? "Screen Request"
-                            : FIELDS[q.field]}
-                          {q.requestType === "screen"
-                            ? ""
-                            : `: ${nameOf(q.oldId) || "—"}`}{" "}
-                          {q.requestType !== "screen" && (
-                            <span className="ar">→ {nameOf(q.newId)}</span>
-                          )}
-                          <br />
-                          {isHR ? (
-                            <>
-                              Raised by <b>{q.byName}</b>
-                              {q.requestedRole ? ` (${q.requestedRole})` : ""}
-                            </>
-                          ) : (
-                            "Raised"
-                          )}{" "}
-                          · {fmt(q.on)} · {q.no}
-                          <br />
-                          Reason: {q.reason}
-                          {q.status !== "Pending" && q.decidedBy && (
-                            <>
-                              <br />
-                              {q.status} by {q.decidedBy} · {fmt(q.decidedOn)}
-                            </>
-                          )}
-                          {q.remarks && (
-                            <>
-                              <br />
-                              HR remarks: {q.remarks}
-                            </>
-                          )}
-                        </div>
-                        {q.status === "Pending" &&
-                          !locked &&
-                          !showingSaved &&
-                          (!isHR || canApprove) &&
-                          (isHR ? (
-                            <>
-                              <input
-                                className="fld"
-                                placeholder="HR remarks (mandatory if rejecting)"
-                                maxLength={2000}
-                                value={remarks[q.id] || ""}
-                                onChange={(e) =>
-                                  setRemarks({
-                                    ...remarks,
-                                    [q.id]: e.target.value,
-                                  })
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="btn p sm"
-                                onClick={() => decide(q, true)}
-                              >
-                                Approve
-                              </button>{" "}
-                              <button
-                                type="button"
-                                className="btn sm r"
-                                onClick={() => decide(q, false)}
-                              >
-                                Reject
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              className="btn sm r"
-                              onClick={() => withdraw(q)}
+                      )}
+                      {shownReqs.map((q) => (
+                        <div className="req" key={q.id}>
+                          <div className="n">
+                            <span>
+                              {q.empId} · {q.empName}
+                            </span>
+                            <span
+                              className={
+                                "tag " +
+                                (q.status === "Approved"
+                                  ? "cf"
+                                  : q.status === "Pending" ||
+                                      q.status === "Rejected"
+                                    ? "pd"
+                                    : "gr")
+                              }
                             >
-                              Withdraw
-                            </button>
-                          ))}
-                      </div>
-                    ))}
-                  </div>
+                              {q.status}
+                            </span>
+                          </div>
+                          <div className="m">
+                            {q.requestType === "screen"
+                              ? "Screen Request"
+                              : FIELDS[q.field]}
+                            {q.requestType === "screen"
+                              ? ""
+                              : `: ${nameOf(q.oldId) || "—"}`}{" "}
+                            {q.requestType !== "screen" && (
+                              <span className="ar">→ {nameOf(q.newId)}</span>
+                            )}
+                            <br />
+                            {isHR ? (
+                              <>
+                                Raised by <b>{q.byName}</b>
+                                {q.requestedRole ? ` (${q.requestedRole})` : ""}
+                              </>
+                            ) : (
+                              "Raised"
+                            )}{" "}
+                            · {fmt(q.on)} · {q.no}
+                            <br />
+                            Reason: {q.reason}
+                            {q.status !== "Pending" && q.decidedBy && (
+                              <>
+                                <br />
+                                {q.status} by {q.decidedBy} · {fmt(q.decidedOn)}
+                              </>
+                            )}
+                            {q.remarks && (
+                              <>
+                                <br />
+                                HR remarks: {q.remarks}
+                              </>
+                            )}
+                          </div>
+                          {q.status === "Pending" &&
+                            !locked &&
+                            !showingSaved &&
+                            (!isHR || canApprove) &&
+                            (isHR ? (
+                              <>
+                                <input
+                                  className="fld"
+                                  placeholder="HR remarks (mandatory if rejecting)"
+                                  maxLength={2000}
+                                  value={remarks[q.id] || ""}
+                                  onChange={(e) =>
+                                    setRemarks({
+                                      ...remarks,
+                                      [q.id]: e.target.value,
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="btn p sm"
+                                  onClick={() => decide(q, true)}
+                                >
+                                  Approve
+                                </button>{" "}
+                                <button
+                                  type="button"
+                                  className="btn sm r"
+                                  onClick={() => decide(q, false)}
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="btn sm r"
+                                onClick={() => withdraw(q)}
+                              >
+                                Withdraw
+                              </button>
+                            ))}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
@@ -5100,7 +5159,7 @@ export default function DelegationScreen({
               </div>
             )}
           </div>
-        )}
+        }
       </div>
 
       {/* ------------------------------ modals */}
@@ -5167,8 +5226,13 @@ export default function DelegationScreen({
           >
             <option value="">— choose —</option>
             {(isTechEdUser
-              ? (bulk.field === "app" ? techEdPeople : techEdCompManagerPeople)
-              : (bulk.field === "app" ? techEdPeople : people)).map((p) => (
+              ? bulk.field === "app"
+                ? techEdPeople
+                : techEdCompManagerPeople
+              : bulk.field === "app"
+                ? techEdPeople
+                : people
+            ).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {p.roles.join(", ")}
               </option>
@@ -5318,12 +5382,7 @@ export default function DelegationScreen({
         </Modal>
       )}
       {modal?.type === "audit" && (
-        <Modal
-          title="Audit trail"
-          wide
-          closable
-          onClose={() => setModal(null)}
-        >
+        <Modal title="Audit trail" wide closable onClose={() => setModal(null)}>
           <div className="note" style={{ marginTop: 0, marginBottom: 8 }}>
             {isHR
               ? "Showing changes made by all users."
@@ -5390,7 +5449,14 @@ export default function DelegationScreen({
 /* Searchable person dropdown. Typing only filters the list; the field is
    populated only when a person is picked from the list. */
 const PERSON_LIST_LIMIT = 100;
-function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }) {
+function PersonCombobox({
+  value,
+  people,
+  disabled,
+  className,
+  onSelect,
+  onOpen,
+}) {
   const inputRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -5400,9 +5466,7 @@ function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }
   const matches = useMemo(() => {
     if (!open) return [];
     const q = query.trim().toLowerCase();
-    return q
-      ? people.filter((p) => p.name.toLowerCase().includes(q))
-      : people;
+    return q ? people.filter((p) => p.name.toLowerCase().includes(q)) : people;
   }, [open, query, people]);
   const shown = matches.slice(0, PERSON_LIST_LIMIT);
 
@@ -5433,7 +5497,9 @@ function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }
   };
 
   const flip =
-    rect && typeof window !== "undefined" && rect.bottom + 250 > window.innerHeight;
+    rect &&
+    typeof window !== "undefined" &&
+    rect.bottom + 250 > window.innerHeight;
 
   return (
     <>
@@ -5516,7 +5582,11 @@ function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }
                     padding: "7px 10px",
                     cursor: "pointer",
                     background:
-                      i === active ? "#EAF1FD" : p.id === value ? "#F1F5F9" : "transparent",
+                      i === active
+                        ? "#EAF1FD"
+                        : p.id === value
+                          ? "#F1F5F9"
+                          : "transparent",
                     fontWeight: p.id === value ? 700 : 400,
                   }}
                 >
@@ -5525,7 +5595,13 @@ function PersonCombobox({ value, people, disabled, className, onSelect, onOpen }
               ))
             )}
             {matches.length > shown.length && (
-              <div style={{ padding: "6px 10px", color: "#6b7280", fontSize: 11.5 }}>
+              <div
+                style={{
+                  padding: "6px 10px",
+                  color: "#6b7280",
+                  fontSize: 11.5,
+                }}
+              >
                 {matches.length - shown.length} more - keep typing to narrow
               </div>
             )}
@@ -5542,7 +5618,9 @@ function Modal({ title, children, foot, onClose, wide, closable }) {
       className="dg-ov"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className={"mdl" + (wide ? " wide" : "") + (closable ? " fixhead" : "")}>
+      <div
+        className={"mdl" + (wide ? " wide" : "") + (closable ? " fixhead" : "")}
+      >
         {closable ? (
           <div className="mh mh-bar">
             <span>{title}</span>

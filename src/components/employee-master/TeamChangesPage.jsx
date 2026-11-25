@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { useBudget } from "@/lib/budget-store";
+import { useTeamChanges } from "@/lib/team-changes-api";
 import {
   buildChangeLog,
   dateText,
@@ -17,12 +18,31 @@ import {
   useTableFilters,
 } from "./FilterableTable";
 
-const TC_W = { date: 130, name: 200, empId: 120, change: 150, from: 190, to: 190, source: 200 };
+const TC_W = {
+  date: 130,
+  name: 200,
+  empId: 120,
+  change: 150,
+  from: 190,
+  to: 190,
+  source: 200,
+};
 const TC_COLS = [
-  { key: "date", label: "Date", kind: "text", get: (c) => dateText(c.date), sort: (c) => c.date },
+  {
+    key: "date",
+    label: "Date",
+    kind: "text",
+    get: (c) => dateText(c.date),
+    sort: (c) => c.date,
+  },
   { key: "name", label: "Employee", kind: "text", get: (c) => c.name },
   { key: "empId", label: "Emp ID", kind: "text", get: (c) => c.empId },
-  { key: "change", label: "Change", kind: "text", get: (c) => TYPE_LABEL[c.type] || c.type },
+  {
+    key: "change",
+    label: "Change",
+    kind: "text",
+    get: (c) => TYPE_LABEL[c.type] || c.type,
+  },
   { key: "from", label: "From", kind: "text", get: (c) => c.from },
   { key: "to", label: "To", kind: "text", get: (c) => c.to },
   { key: "source", label: "Source", kind: "text", get: (c) => c.source },
@@ -42,16 +62,28 @@ export function TeamChangesPage() {
     isHR,
     hierarchy,
     eligibilityEvents,
-    gridSupervisorChanges,
+    activeBudgetCycleId,
     allocationSnapshot = { date: "", teams: {} },
   } = useBudget();
+  // Transfers come from Delegation: every saved Comp. Manager / Appraiser
+  // Tech-ED change is logged on the server and listed here. The server already
+  // limits non-HR users to their own scope.
+  const {
+    changes: gridSupervisorChanges,
+    loading: changesLoading,
+    error: changesError,
+  } = useTeamChanges(activeBudgetCycleId);
 
   const [type, setType] = useState("all");
   const [manager, setManager] = useState("all");
   const [search, setSearch] = useState("");
 
-  const safeEligibilityEvents = Array.isArray(eligibilityEvents) ? eligibilityEvents : [];
-  const safeGridSupervisorChanges = Array.isArray(gridSupervisorChanges) ? gridSupervisorChanges : [];
+  const safeEligibilityEvents = Array.isArray(eligibilityEvents)
+    ? eligibilityEvents
+    : [];
+  const safeGridSupervisorChanges = Array.isArray(gridSupervisorChanges)
+    ? gridSupervisorChanges
+    : [];
   const safeHierarchy = hierarchy || {};
 
   const allChanges = useMemo(
@@ -59,10 +91,16 @@ export function TeamChangesPage() {
     [safeEligibilityEvents, safeGridSupervisorChanges],
   );
 
+  // Delegation changes are already scoped server-side. Eligibility events
+  // (when configured) still follow the manager tree for non-HR users.
   const scoped = useMemo(() => {
     if (isHR) return allChanges;
     const tree = subtreeOf(safeHierarchy, currentUser.name);
-    return allChanges.filter((c) => tree.indexOf(c.manager) > -1);
+    return allChanges.filter(
+      (c) =>
+        String(c.source || "").startsWith("Delegation") ||
+        tree.indexOf(c.manager) > -1,
+    );
   }, [allChanges, isHR, safeHierarchy, currentUser]);
 
   const managers = [];
@@ -155,7 +193,7 @@ export function TeamChangesPage() {
 
           <span className="ml-auto text-xs text-slate-500">
             Resigned / Added come from the eligibility list · Transfers come
-            from the appraisal grid
+            from Delegation (Comp. Manager / Appraiser Tech-ED changes)
           </span>
         </div>
 
@@ -183,10 +221,14 @@ export function TeamChangesPage() {
               {tf.rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-4 text-slate-500">
-                    {safeEligibilityEvents.length === 0 &&
-                    safeGridSupervisorChanges.length === 0
-                      ? "Team-change data is not configured."
-                      : "No changes match these filters."}
+                    {changesLoading
+                      ? "Loading team changes…"
+                      : changesError
+                        ? changesError
+                        : safeEligibilityEvents.length === 0 &&
+                            safeGridSupervisorChanges.length === 0
+                          ? "No team changes yet. Changes saved on the Delegation screen will appear here."
+                          : "No changes match these filters."}
                   </td>
                 </tr>
               )}

@@ -344,7 +344,6 @@
 //   const [drafts, setDrafts] = useState({});
 //   const [applyingPct, setApplyingPct] = useState(false);
 
-
 //   const assignedTeam = useMemo(() => {
 //     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
 //     return employeeRows.filter((employee) => {
@@ -1349,6 +1348,7 @@ import {
   byDate,
   readTechEdOriginalCount,
   writeTechEdOriginalCount,
+  compManagerOfRow,
 } from "@/lib/distribution-budget";
 import { splitStamp } from "@/lib/budget-audit-local";
 import {
@@ -1675,7 +1675,8 @@ export function TechEdBudgetDistribution() {
   const [transferParentId, setTransferParentId] = useState("");
   const [transferDestination, setTransferDestination] = useState("");
   const [transferPercentage, setTransferPercentage] = useState("");
-  const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] = useState([]);
+  const [selectedTransferEmployeeIds, setSelectedTransferEmployeeIds] =
+    useState([]);
   const [transferring, setTransferring] = useState(false);
 
   // The source must be the authenticated Comp Manager, never a row inferred
@@ -1693,17 +1694,28 @@ export function TechEdBudgetDistribution() {
           const parent = budgetDistributionRows.find(
             (item) => String(item.id) === String(row.budget_distribution_id),
           );
-          const rowCycle = String(row.appraisal_cycle_id || parent?.appraisal_cycle_id || "").trim();
+          const rowCycle = String(
+            row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
+          ).trim();
           return !rowCycle || rowCycle === String(activeCycleId);
         })
         .map((row) => String(row.budget_distribution_id || "").trim())
         .filter(Boolean),
     );
-    return budgetDistributionRows.filter((parent) =>
-      ownParentIds.has(String(parent.id || "").trim()) &&
-      (!parent.appraisal_cycle_id || String(parent.appraisal_cycle_id) === String(activeCycleId)),
+    return budgetDistributionRows.filter(
+      (parent) =>
+        ownParentIds.has(String(parent.id || "").trim()) &&
+        (!parent.appraisal_cycle_id ||
+          String(parent.appraisal_cycle_id) === String(activeCycleId)),
     );
-  }, [isCompManagerView, activeCycleId, budgetCompManagerTransferOptions, budgetDistributionRows, user, employeeRows]);
+  }, [
+    isCompManagerView,
+    activeCycleId,
+    budgetCompManagerTransferOptions,
+    budgetDistributionRows,
+    user,
+    employeeRows,
+  ]);
 
   useEffect(() => {
     if (transferParentRows.length === 1) {
@@ -1711,34 +1723,49 @@ export function TechEdBudgetDistribution() {
       if (onlyId && transferParentId !== onlyId) setTransferParentId(onlyId);
       return;
     }
-    if (transferParentId && !transferParentRows.some((row) => String(row.id) === String(transferParentId))) {
+    if (
+      transferParentId &&
+      !transferParentRows.some(
+        (row) => String(row.id) === String(transferParentId),
+      )
+    ) {
       setTransferParentId("");
       setTransferDestination("");
       setSelectedTransferEmployeeIds([]);
     }
   }, [transferParentRows, transferParentId]);
 
-  const selectedTransferParent = transferParentRows.find(
-    (parent) => String(parent.id) === String(transferParentId),
-  ) || null;
+  const selectedTransferParent =
+    transferParentRows.find(
+      (parent) => String(parent.id) === String(transferParentId),
+    ) || null;
   const transferManagerRows = useMemo(() => {
     if (!selectedTransferParent) return [];
-    return budgetCompManagerTransferOptions.filter((row) =>
-      String(row.budget_distribution_id || "") === String(selectedTransferParent.id) &&
-      (!row.appraisal_cycle_id ||
-        String(row.appraisal_cycle_id) === String(activeCycleId)),
+    return budgetCompManagerTransferOptions.filter(
+      (row) =>
+        String(row.budget_distribution_id || "") ===
+          String(selectedTransferParent.id) &&
+        (!row.appraisal_cycle_id ||
+          String(row.appraisal_cycle_id) === String(activeCycleId)),
     );
   }, [selectedTransferParent, budgetCompManagerTransferOptions, activeCycleId]);
   // Sibling allocations are destinations only; the source is identity-locked
   // to the signed-in Comp Manager.
-  const transferSourceRows = transferManagerRows.filter(isSignedInTransferSource);
-  const transferDestinationRows = transferManagerRows.filter((row) =>
-    !isSignedInTransferSource(row),
+  const transferSourceRows = transferManagerRows.filter(
+    isSignedInTransferSource,
   );
-  const selectedTransferSourceRow = transferSourceRows.length === 1 ? transferSourceRows[0] : null;
+  const transferDestinationRows = transferManagerRows.filter(
+    (row) => !isSignedInTransferSource(row),
+  );
+  const selectedTransferSourceRow =
+    transferSourceRows.length === 1 ? transferSourceRows[0] : null;
   const transferSource = selectedTransferSourceRow
-    ? String(selectedTransferSourceRow.comp_manager_display ||
-        selectedTransferSourceRow.comp_manager || selectedTransferSourceRow.comp_manager_id || "")
+    ? String(
+        selectedTransferSourceRow.comp_manager_display ||
+          selectedTransferSourceRow.comp_manager ||
+          selectedTransferSourceRow.comp_manager_id ||
+          "",
+      )
     : "";
   const transferEmployeeRows = useMemo(() => {
     if (!selectedTransferParent || !transferSource) return [];
@@ -1750,15 +1777,9 @@ export function TechEdBudgetDistribution() {
     return locationEmployeeRows
       .filter((employee) => {
         if (employee.in_appraisal_sheet !== true) return false;
-        const employeeManager =
-          employee.delegation_comp_manager ||
-          employee.comp_manager ||
-          employee.comp_manager_id ||
-          employee.compManager ||
-          employee.comp_manager_name ||
-          employee.comp_manager_display ||
-          "";
-        if (!managerIdentityMatches(employeeManager, transferSource)) return false;
+        const employeeManager = compManagerOfRow(employee);
+        if (!managerIdentityMatches(employeeManager, transferSource))
+          return false;
         const employeeTechEd =
           employee.appraiser_tech_ed_row_id ||
           employee.appraiser_tech_ed_appraisal_sheet ||
@@ -1770,33 +1791,57 @@ export function TechEdBudgetDistribution() {
           employee.techEd ||
           "";
         const linkedTechEd = techEdOwners.find((owner) =>
-          [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
+          [
+            owner?.employee_id,
+            owner?.row_id,
+            owner?.ROWID,
+            owner?.assignment,
+            owner?.name,
+          ]
             .filter(Boolean)
             .some((alias) => ownerMatches(alias, employeeTechEd)),
         );
-        return ownerMatches(linkedTechEd?.assignment || employeeTechEd, rawTechEd);
+        return ownerMatches(
+          linkedTechEd?.assignment || employeeTechEd,
+          rawTechEd,
+        );
       })
       .map((employee) => ({
         ...employee,
         __transferEmployeeId: String(
-          employee.empId || employee.emp_id || employee.employeeId ||
-          employee.employee_id || employee.emp_code || "",
+          employee.empId ||
+            employee.emp_id ||
+            employee.employeeId ||
+            employee.employee_id ||
+            employee.emp_code ||
+            "",
         ).trim(),
       }))
       .filter((employee) => employee.__transferEmployeeId)
       .sort((a, b) =>
-        String(a.__transferEmployeeId).localeCompare(String(b.__transferEmployeeId), undefined, { numeric: true }),
+        String(a.__transferEmployeeId).localeCompare(
+          String(b.__transferEmployeeId),
+          undefined,
+          { numeric: true },
+        ),
       );
-  }, [selectedTransferParent, transferSource, locationEmployeeRows, techEdOwners]);
+  }, [
+    selectedTransferParent,
+    transferSource,
+    locationEmployeeRows,
+    techEdOwners,
+  ]);
   const selectedTransferEmployees = transferEmployeeRows.filter((employee) =>
     selectedTransferEmployeeIds.includes(employee.__transferEmployeeId),
   );
   const selectedTransferUtilization = selectedTransferEmployees.reduce(
-    (sum, employee) =>
-      sum + employeeUtilized(employee),
+    (sum, employee) => sum + employeeUtilized(employee),
     0,
   );
-  const transferSourceApplied = Math.max(0, num(selectedTransferSourceRow?.applied_budget));
+  const transferSourceApplied = Math.max(
+    0,
+    num(selectedTransferSourceRow?.applied_budget),
+  );
   // Selected employees' utilization is released from the source allocation
   // when they move, but the transferable amount can never exceed the source's
   // remaining allocated budget itself.
@@ -1809,10 +1854,14 @@ export function TechEdBudgetDistribution() {
         selectedTransferUtilization,
     ),
   );
-  const transferPercentageValue = Math.min(100, Math.max(0, Number(transferPercentage) || 0));
-  const transferCalculatedAmount = Math.round(
-    (transferAvailableAmount * transferPercentageValue / 100) * 100,
-  ) / 100;
+  const transferPercentageValue = Math.min(
+    100,
+    Math.max(0, Number(transferPercentage) || 0),
+  );
+  const transferCalculatedAmount =
+    Math.round(
+      ((transferAvailableAmount * transferPercentageValue) / 100) * 100,
+    ) / 100;
   async function transferCompManagerTeam() {
     const percentage = Number(transferPercentage);
     if (
@@ -1824,20 +1873,27 @@ export function TechEdBudgetDistribution() {
       percentage > 100 ||
       !(transferCalculatedAmount > 0) ||
       transferring
-    ) return;
+    )
+      return;
     setTransferring(true);
     setErr("");
     try {
-      await updateBudget("", {
-        tech_ed_id: selectedTransferParent?.appraiser_tech_ed_id ||
-          selectedTransferParent?.tech_ed_id ||
-          selectedTransferParent?.tech_ed || "",
-        appraisal_cycle_id: activeCycleId,
-        source_comp_manager_id: transferSource,
-        destination_comp_manager_id: transferDestination,
-        transferred_percentage: percentage,
-        employee_ids: selectedTransferEmployeeIds,
-      }, "comp_manager_transfer");
+      await updateBudget(
+        "",
+        {
+          tech_ed_id:
+            selectedTransferParent?.appraiser_tech_ed_id ||
+            selectedTransferParent?.tech_ed_id ||
+            selectedTransferParent?.tech_ed ||
+            "",
+          appraisal_cycle_id: activeCycleId,
+          source_comp_manager_id: transferSource,
+          destination_comp_manager_id: transferDestination,
+          transferred_percentage: percentage,
+          employee_ids: selectedTransferEmployeeIds,
+        },
+        "comp_manager_transfer",
+      );
       setTransferDestination("");
       setTransferPercentage("");
       setSelectedTransferEmployeeIds([]);
@@ -1855,15 +1911,16 @@ export function TechEdBudgetDistribution() {
   const selectedCompManager = isCompManagerView
     ? selectedManagerNode?.name || ""
     : "";
-  const selectedCompManagerBudgetRow = isCompManagerView && selectedManagerNode
-    ? {
-        id: selectedManagerNode.liveId,
-        calculated_budget: selectedManagerNode.original,
-        applied_budget: selectedManagerNode.updated,
-        original_headcount: selectedManagerNode.team0,
-        total_utilization: selectedManagerNode.liveUtilized,
-      }
-    : null;
+  const selectedCompManagerBudgetRow =
+    isCompManagerView && selectedManagerNode
+      ? {
+          id: selectedManagerNode.liveId,
+          calculated_budget: selectedManagerNode.original,
+          applied_budget: selectedManagerNode.updated,
+          original_headcount: selectedManagerNode.team0,
+          total_utilization: selectedManagerNode.liveUtilized,
+        }
+      : null;
 
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
@@ -1885,7 +1942,10 @@ export function TechEdBudgetDistribution() {
         employee.appraiser_tech_ed1,
         employee.tech_ed,
         employee.tech_ed_id,
-      ].filter((value) => value !== null && value !== undefined && String(value).trim());
+      ].filter(
+        (value) =>
+          value !== null && value !== undefined && String(value).trim(),
+      );
       const belongsToTechEd = rawAssignments.some((raw) => {
         if (ownerMatches(raw, techOwnerIdentities)) return true;
         return techEdOwners.some((item) => {
@@ -1899,7 +1959,10 @@ export function TechEdBudgetDistribution() {
             item?.email_id,
           ].filter(Boolean);
           const rawMatchesOwner = ownerMatches(raw, aliases);
-          return rawMatchesOwner && ownerMatches(item?.assignment, techOwnerIdentities);
+          return (
+            rawMatchesOwner &&
+            ownerMatches(item?.assignment, techOwnerIdentities)
+          );
         });
       });
       // A Tech-ED team is matched through every available Appraisal Sheet
@@ -1907,14 +1970,7 @@ export function TechEdBudgetDistribution() {
       // while others store the Employee ID or display label.
       if (!isCompManagerLogin && !belongsToTechEd) return false;
       if (!isCompManagerView) return true;
-      const manager =
-        employee.delegation_comp_manager ||
-        employee.comp_manager ||
-        employee.comp_manager_id ||
-        employee.compManager ||
-        employee.comp_manager_name ||
-        employee.comp_manager_display ||
-        "";
+      const manager = compManagerOfRow(employee);
       return (
         Boolean(selectedCompManager) &&
         managerIdentityMatches(manager, selectedCompManager)
@@ -1939,9 +1995,11 @@ export function TechEdBudgetDistribution() {
           employee.id ||
           "",
       );
-      const key = employeeIdentity || normalizeOwner(
-        employee.name || employee.emp_name || employee.employee_name || "",
-      );
+      const key =
+        employeeIdentity ||
+        normalizeOwner(
+          employee.name || employee.emp_name || employee.employee_name || "",
+        );
       if (key && !uniqueEmployees.has(key)) uniqueEmployees.set(key, employee);
     });
     return Array.from(uniqueEmployees.values());
@@ -2055,8 +2113,8 @@ export function TechEdBudgetDistribution() {
     ? num(selectedCompManagerBudgetRow?.applied_budget)
     : num(myUpdated);
   const budgetCardOriginalTeam = isCompManagerView
-    ? (num(selectedCompManagerBudgetRow?.original_headcount) ||
-      num(selectedManagerNode?.team0))
+    ? num(selectedCompManagerBudgetRow?.original_headcount) ||
+      num(selectedManagerNode?.team0)
     : team0;
   const usedPct = budgetCardUpdated ? (used / budgetCardUpdated) * 100 : 0;
   const over = usedPct > 100;
@@ -2242,21 +2300,25 @@ export function TechEdBudgetDistribution() {
 
   // Rows behind the Allocation table's column filters (display only).
   const allocItems = [
-    ...(assignedTeam.length ? [{
-      self: true,
-      level: LEVELS[0],
-      owner: String(loginTechOwner).split(/\s+-\s+/)[1] || myName,
-      base: hasLiveAllocation ? parentBudgetBaseForDisplay : "",
-      original: hasLiveAllocation ? myOriginal : "",
-      updated: hasLiveAllocation ? myUpdated : "",
-      change: hasLiveAllocation ? myUpdated - myOriginal : "",
-      team0,
-      team: currentTeamCount,
-      last: dateText(myHistory[0].date),
-      lastSort:
-        String(myHistory[0].date || "") + String(myHistory[0].time || ""),
-      pct: myPct,
-    }] : []),
+    ...(assignedTeam.length
+      ? [
+          {
+            self: true,
+            level: LEVELS[0],
+            owner: String(loginTechOwner).split(/\s+-\s+/)[1] || myName,
+            base: hasLiveAllocation ? parentBudgetBaseForDisplay : "",
+            original: hasLiveAllocation ? myOriginal : "",
+            updated: hasLiveAllocation ? myUpdated : "",
+            change: hasLiveAllocation ? myUpdated - myOriginal : "",
+            team0,
+            team: currentTeamCount,
+            last: dateText(myHistory[0].date),
+            lastSort:
+              String(myHistory[0].date || "") + String(myHistory[0].time || ""),
+            pct: myPct,
+          },
+        ]
+      : []),
     ...visibleCmNodes.map((n) => ({
       node: n,
       level: LEVELS[1],
@@ -2371,7 +2433,11 @@ export function TechEdBudgetDistribution() {
                   {budgetCardHasAllocation ? lakh(budgetCardUpdated) : "—"}
                 </div>
                 <div className="d">
-                  {budgetCardHasAllocation ? <Chg d={budgetCardUpdated - budgetCardOriginal} /> : "—"}
+                  {budgetCardHasAllocation ? (
+                    <Chg d={budgetCardUpdated - budgetCardOriginal} />
+                  ) : (
+                    "—"
+                  )}
                 </div>
               </div>
               <div>
@@ -2384,8 +2450,14 @@ export function TechEdBudgetDistribution() {
               {isCompManagerView ? (
                 <div>
                   <div className="f-label">Remaining</div>
-                  <div className={"v" + (budgetCardUpdated - used < 0 ? " over" : "")}>
-                    {budgetCardHasAllocation ? lakh(budgetCardUpdated - used) : "—"}
+                  <div
+                    className={
+                      "v" + (budgetCardUpdated - used < 0 ? " over" : "")
+                    }
+                  >
+                    {budgetCardHasAllocation
+                      ? lakh(budgetCardUpdated - used)
+                      : "—"}
                   </div>
                   <div className="d mut">Updated budget − utilised</div>
                 </div>
@@ -2431,119 +2503,578 @@ export function TechEdBudgetDistribution() {
 
       {/* COMP_MANAGER_TRANSFER START */}
       {isCompManagerPreview && (
-        <div style={{ marginTop: 10, padding: "10px 14px", border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff", color: "#1e40af", fontSize: 13 }}>
-          Comp Manager View As is a preview only. Team and budget transfer actions are available after signing in with the actual Comp Manager account.
+        <div
+          style={{
+            marginTop: 10,
+            padding: "10px 14px",
+            border: "1px solid #bfdbfe",
+            borderRadius: 10,
+            background: "#eff6ff",
+            color: "#1e40af",
+            fontSize: 13,
+          }}
+        >
+          Comp Manager View As is a preview only. Team and budget transfer
+          actions are available after signing in with the actual Comp Manager
+          account.
         </div>
       )}
       {isCompManagerLogin && (
-        <section className="cm-transfer-compact" style={{ marginTop: 10, overflow: "hidden", border: "1px solid #dbe5f0", borderRadius: 13, background: "#fff", boxShadow: "0 5px 16px rgba(15, 42, 70, .06)" }}>
-          <div style={{ padding: "10px 16px", background: "linear-gradient(115deg, #102f4f 0%, #1d5279 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <section
+          className="cm-transfer-compact"
+          style={{
+            marginTop: 10,
+            overflow: "hidden",
+            border: "1px solid #dbe5f0",
+            borderRadius: 13,
+            background: "#fff",
+            boxShadow: "0 5px 16px rgba(15, 42, 70, .06)",
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 16px",
+              background: "linear-gradient(115deg, #102f4f 0%, #1d5279 100%)",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(255,255,255,.14)", fontSize: 18 }}>⇄</div>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 9,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "rgba(255,255,255,.14)",
+                  fontSize: 18,
+                }}
+              >
+                ⇄
+              </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 750, letterSpacing: ".1px" }}>Team & Budget Transfer</div>
-                <div style={{ marginTop: 2, fontSize: 11, color: "#d7e7f5" }}>Move selected employees and a chosen budget amount to another Comp Manager under your Tech-Ed</div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 750,
+                    letterSpacing: ".1px",
+                  }}
+                >
+                  Team & Budget Transfer
+                </div>
+                <div style={{ marginTop: 2, fontSize: 11, color: "#d7e7f5" }}>
+                  Move selected employees and a chosen budget amount to another
+                  Comp Manager under your Tech-Ed
+                </div>
               </div>
             </div>
-            <span style={{ padding: "5px 9px", borderRadius: 30, background: "rgba(255,255,255,.12)", color: "#e8f3fb", fontSize: 12, fontWeight: 600 }}>Active cycle · {cycleLabel || "—"}</span>
+            <span
+              style={{
+                padding: "5px 9px",
+                borderRadius: 30,
+                background: "rgba(255,255,255,.12)",
+                color: "#e8f3fb",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              Active cycle · {cycleLabel || "—"}
+            </span>
           </div>
 
-          <div style={{ padding: 12, background: "linear-gradient(180deg, #f7faff 0%, #fff 100%)" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9 }}>
+          <div
+            style={{
+              padding: 12,
+              background: "linear-gradient(180deg, #f7faff 0%, #fff 100%)",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                gap: 9,
+              }}
+            >
               <div style={{ minWidth: 0 }}>
-                <label htmlFor="cmTransferTechEd" style={{ display: "block", marginBottom: 4, color: "#35516d", fontSize: 11, fontWeight: 700, letterSpacing: ".3px" }}>1 · SELECT TECH-ED</label>
-                <select id="cmTransferTechEd" value={transferParentId} onChange={(event) => {
-                  setTransferParentId(event.target.value);
-                  setTransferDestination("");
-                  setTransferPercentage("");
-                  setSelectedTransferEmployeeIds([]);
-                }} style={{ width: "100%", minHeight: 36, border: "1px solid #cbd8e6", borderRadius: 10, background: "#fff", padding: "7px 10px", color: "#173b5b", fontWeight: 600 }}>
+                <label
+                  htmlFor="cmTransferTechEd"
+                  style={{
+                    display: "block",
+                    marginBottom: 4,
+                    color: "#35516d",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: ".3px",
+                  }}
+                >
+                  1 · SELECT TECH-ED
+                </label>
+                <select
+                  id="cmTransferTechEd"
+                  value={transferParentId}
+                  onChange={(event) => {
+                    setTransferParentId(event.target.value);
+                    setTransferDestination("");
+                    setTransferPercentage("");
+                    setSelectedTransferEmployeeIds([]);
+                  }}
+                  style={{
+                    width: "100%",
+                    minHeight: 36,
+                    border: "1px solid #cbd8e6",
+                    borderRadius: 10,
+                    background: "#fff",
+                    padding: "7px 10px",
+                    color: "#173b5b",
+                    fontWeight: 600,
+                  }}
+                >
                   <option value="">Choose your Tech-Ed</option>
                   {transferParentRows.map((parent) => {
-                    const raw = parent.appraiser_tech_ed_id || parent.tech_ed_id || parent.tech_ed || "";
+                    const raw =
+                      parent.appraiser_tech_ed_id ||
+                      parent.tech_ed_id ||
+                      parent.tech_ed ||
+                      "";
                     const linked = techEdOwners.find((owner) =>
-                      [owner?.employee_id, owner?.row_id, owner?.ROWID, owner?.assignment, owner?.name]
-                        .filter(Boolean).some((alias) => ownerMatches(alias, raw)),
+                      [
+                        owner?.employee_id,
+                        owner?.row_id,
+                        owner?.ROWID,
+                        owner?.assignment,
+                        owner?.name,
+                      ]
+                        .filter(Boolean)
+                        .some((alias) => ownerMatches(alias, raw)),
                     );
                     const label = linked?.assignment || raw || "Tech-Ed";
-                    return <option key={parent.id} value={parent.id}>{label}</option>;
+                    return (
+                      <option key={parent.id} value={parent.id}>
+                        {label}
+                      </option>
+                    );
                   })}
                 </select>
               </div>
 
               <div style={{ minWidth: 0 }}>
-                <label style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700, letterSpacing: ".3px" }}>2 · TRANSFER FROM (YOU)</label>
-                <div style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", border: "1px solid #cbd8e6", borderRadius: 10, background: "#f1f6fb", color: "#173b5b", fontWeight: 700 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 10, background: transferSource ? "#0f9f78" : "#f59e0b" }} />
-                  {transferSource || (selectedTransferParent ? "Identity not matched" : "Select a Tech-Ed")}
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: 7,
+                    color: "#35516d",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: ".3px",
+                  }}
+                >
+                  2 · TRANSFER FROM (YOU)
+                </label>
+                <div
+                  style={{
+                    minHeight: 44,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    padding: "9px 12px",
+                    border: "1px solid #cbd8e6",
+                    borderRadius: 10,
+                    background: "#f1f6fb",
+                    color: "#173b5b",
+                    fontWeight: 700,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 10,
+                      background: transferSource ? "#0f9f78" : "#f59e0b",
+                    }}
+                  />
+                  {transferSource ||
+                    (selectedTransferParent
+                      ? "Identity not matched"
+                      : "Select a Tech-Ed")}
                 </div>
               </div>
 
               <div style={{ minWidth: 0 }}>
-                <label htmlFor="cmTransferDestination" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700, letterSpacing: ".3px" }}>3 · TRANSFER TO</label>
-                <select id="cmTransferDestination" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} disabled={!transferSource} style={{ width: "100%", minHeight: 44, border: "1px solid #cbd8e6", borderRadius: 10, background: transferSource ? "#fff" : "#f1f5f9", padding: "9px 12px", color: "#173b5b" }}>
+                <label
+                  htmlFor="cmTransferDestination"
+                  style={{
+                    display: "block",
+                    marginBottom: 7,
+                    color: "#35516d",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: ".3px",
+                  }}
+                >
+                  3 · TRANSFER TO
+                </label>
+                <select
+                  id="cmTransferDestination"
+                  value={transferDestination}
+                  onChange={(event) =>
+                    setTransferDestination(event.target.value)
+                  }
+                  disabled={!transferSource}
+                  style={{
+                    width: "100%",
+                    minHeight: 44,
+                    border: "1px solid #cbd8e6",
+                    borderRadius: 10,
+                    background: transferSource ? "#fff" : "#f1f5f9",
+                    padding: "9px 12px",
+                    color: "#173b5b",
+                  }}
+                >
                   <option value="">Choose destination Comp Manager</option>
                   {transferDestinationRows.map((row) => {
-                    const label = row.comp_manager_display || row.comp_manager || row.comp_manager_id;
-                    return <option key={row.id || label} value={label}>{label}</option>;
+                    const label =
+                      row.comp_manager_display ||
+                      row.comp_manager ||
+                      row.comp_manager_id;
+                    return (
+                      <option key={row.id || label} value={label}>
+                        {label}
+                      </option>
+                    );
                   })}
                 </select>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 1.1fr) repeat(2, minmax(135px, .7fr))", gap: 9, marginTop: 10 }}>
-              <div style={{ padding: 10, borderRadius: 10, border: "1px solid #dbe5f0", background: "#fff" }}>
-                <label htmlFor="cmTransferPercentage" style={{ display: "block", marginBottom: 7, color: "#35516d", fontSize: 12, fontWeight: 700 }}>BUDGET PERCENTAGE TO TRANSFER</label>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "minmax(190px, 1.1fr) repeat(2, minmax(135px, .7fr))",
+                gap: 9,
+                marginTop: 10,
+              }}
+            >
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #dbe5f0",
+                  background: "#fff",
+                }}
+              >
+                <label
+                  htmlFor="cmTransferPercentage"
+                  style={{
+                    display: "block",
+                    marginBottom: 7,
+                    color: "#35516d",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  BUDGET PERCENTAGE TO TRANSFER
+                </label>
                 <div style={{ position: "relative" }}>
-                  <input id="cmTransferPercentage" type="number" min="0" max="100" step="0.01" value={transferPercentage} onChange={(event) => setTransferPercentage(event.target.value)} disabled={!transferSource || !transferDestination} placeholder="Enter percentage (e.g. 25)" style={{ width: "100%", minHeight: 36, border: "1px solid #cbd8e6", borderRadius: 9, padding: "8px 42px 8px 11px", fontSize: 14, fontWeight: 700, color: "#173b5b" }} />
-                  <span style={{ position: "absolute", right: 13, top: 11, color: "#647b92", fontWeight: 700 }}>%</span>
+                  <input
+                    id="cmTransferPercentage"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={transferPercentage}
+                    onChange={(event) =>
+                      setTransferPercentage(event.target.value)
+                    }
+                    disabled={!transferSource || !transferDestination}
+                    placeholder="Enter percentage (e.g. 25)"
+                    style={{
+                      width: "100%",
+                      minHeight: 36,
+                      border: "1px solid #cbd8e6",
+                      borderRadius: 9,
+                      padding: "8px 42px 8px 11px",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#173b5b",
+                    }}
+                  />
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 13,
+                      top: 11,
+                      color: "#647b92",
+                      fontWeight: 700,
+                    }}
+                  >
+                    %
+                  </span>
                 </div>
-                <div style={{ marginTop: 7, color: "#71869b", fontSize: 11 }}>Enter 1–100% of the available budget</div>
+                <div style={{ marginTop: 7, color: "#71869b", fontSize: 11 }}>
+                  Enter 1–100% of the available budget
+                </div>
               </div>
-              <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
-                <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>AVAILABLE TO TRANSFER</div>
-                <div style={{ marginTop: 8, color: "#087f68", fontSize: 18, fontWeight: 800 }}>{lakh(transferAvailableAmount)}</div>
-                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>Maximum transferable amount</div>
-                <div style={{ marginTop: 9, paddingTop: 9, borderTop: "1px solid #e5edf5", color: "#35516d", fontSize: 12 }}>Amount you are giving: <strong style={{ color: "#087f68", fontSize: 15 }}>{lakh(transferCalculatedAmount)}</strong></div>
+              <div
+                style={{
+                  padding: 15,
+                  borderRadius: 12,
+                  border: "1px solid #dbe5f0",
+                  background: "#fff",
+                }}
+              >
+                <div
+                  style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}
+                >
+                  AVAILABLE TO TRANSFER
+                </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    color: "#087f68",
+                    fontSize: 18,
+                    fontWeight: 800,
+                  }}
+                >
+                  {lakh(transferAvailableAmount)}
+                </div>
+                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>
+                  Maximum transferable amount
+                </div>
+                <div
+                  style={{
+                    marginTop: 9,
+                    paddingTop: 9,
+                    borderTop: "1px solid #e5edf5",
+                    color: "#35516d",
+                    fontSize: 12,
+                  }}
+                >
+                  Amount you are giving:{" "}
+                  <strong style={{ color: "#087f68", fontSize: 15 }}>
+                    {lakh(transferCalculatedAmount)}
+                  </strong>
+                </div>
               </div>
-              <div style={{ padding: 15, borderRadius: 12, border: "1px solid #dbe5f0", background: "#fff" }}>
-                <div style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}>EMPLOYEES SELECTED</div>
-                <div style={{ marginTop: 8, color: "#173b5b", fontSize: 21, fontWeight: 800 }}>{selectedTransferEmployees.length}<span style={{ color: "#8193a5", fontSize: 13, fontWeight: 500 }}> / {transferEmployeeRows.length}</span></div>
-                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>Only selected employees will move</div>
+              <div
+                style={{
+                  padding: 15,
+                  borderRadius: 12,
+                  border: "1px solid #dbe5f0",
+                  background: "#fff",
+                }}
+              >
+                <div
+                  style={{ color: "#647b92", fontSize: 12, fontWeight: 700 }}
+                >
+                  EMPLOYEES SELECTED
+                </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    color: "#173b5b",
+                    fontSize: 21,
+                    fontWeight: 800,
+                  }}
+                >
+                  {selectedTransferEmployees.length}
+                  <span
+                    style={{ color: "#8193a5", fontSize: 13, fontWeight: 500 }}
+                  >
+                    {" "}
+                    / {transferEmployeeRows.length}
+                  </span>
+                </div>
+                <div style={{ marginTop: 3, color: "#8193a5", fontSize: 11 }}>
+                  Only selected employees will move
+                </div>
               </div>
             </div>
 
-            <div style={{ marginTop: 10, border: "1px solid #dbe5f0", borderRadius: 13, overflow: "hidden", background: "#fff" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "8px 12px", background: "#f5f8fc", borderBottom: "1px solid #e4ebf3" }}>
+            <div
+              style={{
+                marginTop: 10,
+                border: "1px solid #dbe5f0",
+                borderRadius: 13,
+                overflow: "hidden",
+                background: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  padding: "8px 12px",
+                  background: "#f5f8fc",
+                  borderBottom: "1px solid #e4ebf3",
+                }}
+              >
                 <div>
-                  <div style={{ color: "#173b5b", fontSize: 13, fontWeight: 750 }}>4 · SELECT EMPLOYEES</div>
-                  <div style={{ marginTop: 3, color: "#71869b", fontSize: 12 }}>Choose which employees should move to the destination manager</div>
+                  <div
+                    style={{ color: "#173b5b", fontSize: 13, fontWeight: 750 }}
+                  >
+                    4 · SELECT EMPLOYEES
+                  </div>
+                  <div style={{ marginTop: 3, color: "#71869b", fontSize: 12 }}>
+                    Choose which employees should move to the destination
+                    manager
+                  </div>
                 </div>
                 {transferEmployeeRows.length > 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <button type="button" onClick={() => setSelectedTransferEmployeeIds(transferEmployeeRows.map((employee) => employee.__transferEmployeeId))} style={{ border: 0, background: "transparent", color: "#17669a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Select all</button>
-                    <button type="button" onClick={() => setSelectedTransferEmployeeIds([])} style={{ border: 0, background: "transparent", color: "#647b92", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Clear</button>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedTransferEmployeeIds(
+                          transferEmployeeRows.map(
+                            (employee) => employee.__transferEmployeeId,
+                          ),
+                        )
+                      }
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        color: "#17669a",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTransferEmployeeIds([])}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        color: "#647b92",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Clear
+                    </button>
                   </div>
                 )}
               </div>
               <div style={{ padding: 8 }}>
                 {!selectedTransferParent ? (
-                  <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#64748b", fontSize: 13 }}>Choose one of your Tech-Ed allocations to load its Comp Manager team.</div>
+                  <div
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      background: "#f8fafc",
+                      color: "#64748b",
+                      fontSize: 13,
+                    }}
+                  >
+                    Choose one of your Tech-Ed allocations to load its Comp
+                    Manager team.
+                  </div>
                 ) : !transferSource ? (
-                  <div style={{ padding: 14, borderRadius: 10, background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", fontSize: 13 }}>Your signed-in Comp Manager identity could not be matched to an allocation under this Tech-Ed. No source manager has been selected.</div>
+                  <div
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      background: "#fff7ed",
+                      color: "#9a3412",
+                      border: "1px solid #fed7aa",
+                      fontSize: 13,
+                    }}
+                  >
+                    Your signed-in Comp Manager identity could not be matched to
+                    an allocation under this Tech-Ed. No source manager has been
+                    selected.
+                  </div>
                 ) : transferEmployeeRows.length === 0 ? (
-                  <div style={{ padding: 14, borderRadius: 10, background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0", fontSize: 13 }}>No current-cycle Appraisal Sheet employees are assigned to {transferSource} under this Tech-Ed. Existing transfers may already have moved this team.</div>
+                  <div
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      background: "#f8fafc",
+                      color: "#475569",
+                      border: "1px solid #e2e8f0",
+                      fontSize: 13,
+                    }}
+                  >
+                    No current-cycle Appraisal Sheet employees are assigned to{" "}
+                    {transferSource} under this Tech-Ed. Existing transfers may
+                    already have moved this team.
+                  </div>
                 ) : (
-                  <div style={{ maxHeight: "clamp(88px, 15vh, 150px)", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 5, paddingRight: 4 }}>
+                  <div
+                    style={{
+                      maxHeight: "clamp(88px, 15vh, 150px)",
+                      overflowY: "auto",
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(210px, 1fr))",
+                      gap: 5,
+                      paddingRight: 4,
+                    }}
+                  >
                     {transferEmployeeRows.map((employee) => {
                       const employeeId = employee.__transferEmployeeId;
-                      const employeeName = employee.empName || employee.emp_name || employee.employee_name || employee.name || "";
-                      const checked = selectedTransferEmployeeIds.includes(employeeId);
+                      const employeeName =
+                        employee.empName ||
+                        employee.emp_name ||
+                        employee.employee_name ||
+                        employee.name ||
+                        "";
+                      const checked =
+                        selectedTransferEmployeeIds.includes(employeeId);
                       return (
-                        <label key={employeeId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", border: "1px solid " + (checked ? "#8bc8b8" : "#e5ebf2"), borderRadius: 9, background: checked ? "#effaf6" : "#fff", cursor: "pointer", color: "#284761", fontSize: 12 }}>
-                          <input type="checkbox" checked={checked} onChange={(event) => setSelectedTransferEmployeeIds((current) => event.target.checked ? [...current, employeeId] : current.filter((id) => id !== employeeId))} />
-                          <span style={{ fontWeight: 700, color: "#173b5b" }}>{employeeId}</span>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employeeName}</span>
+                        <label
+                          key={employeeId}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "6px 8px",
+                            border:
+                              "1px solid " + (checked ? "#8bc8b8" : "#e5ebf2"),
+                            borderRadius: 9,
+                            background: checked ? "#effaf6" : "#fff",
+                            cursor: "pointer",
+                            color: "#284761",
+                            fontSize: 12,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) =>
+                              setSelectedTransferEmployeeIds((current) =>
+                                event.target.checked
+                                  ? [...current, employeeId]
+                                  : current.filter((id) => id !== employeeId),
+                              )
+                            }
+                          />
+                          <span style={{ fontWeight: 700, color: "#173b5b" }}>
+                            {employeeId}
+                          </span>
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {employeeName}
+                          </span>
                         </label>
                       );
                     })}
@@ -2552,18 +3083,66 @@ export function TechEdBudgetDistribution() {
               </div>
             </div>
 
-            {err && <div style={{ marginTop: 14, padding: 11, borderRadius: 9, background: "#fff1f2", border: "1px solid #fecdd3", color: "#be123c", fontSize: 13 }}>{err}</div>}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
-              <div style={{ color: "#71869b", fontSize: 12 }}>The original allocation snapshot is not changed by this transfer.</div>
-              <button type="button" className="budget-save-btn" onClick={transferCompManagerTeam} disabled={!transferParentId || !transferSource || !transferDestination || !selectedTransferEmployeeIds.length || !(Number(transferPercentage) > 0) || Number(transferPercentage) > 100 || !(transferCalculatedAmount > 0) || transferring} style={{ minHeight: 38, padding: "0 17px", borderRadius: 10, fontWeight: 750, boxShadow: "0 5px 14px rgba(18, 48, 79, .16)" }}>
-                {transferring ? "Transferring…" : "Transfer selected employees & budget"}
+            {err && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 11,
+                  borderRadius: 9,
+                  background: "#fff1f2",
+                  border: "1px solid #fecdd3",
+                  color: "#be123c",
+                  fontSize: 13,
+                }}
+              >
+                {err}
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: 10,
+              }}
+            >
+              <div style={{ color: "#71869b", fontSize: 12 }}>
+                The original allocation snapshot is not changed by this
+                transfer.
+              </div>
+              <button
+                type="button"
+                className="budget-save-btn"
+                onClick={transferCompManagerTeam}
+                disabled={
+                  !transferParentId ||
+                  !transferSource ||
+                  !transferDestination ||
+                  !selectedTransferEmployeeIds.length ||
+                  !(Number(transferPercentage) > 0) ||
+                  Number(transferPercentage) > 100 ||
+                  !(transferCalculatedAmount > 0) ||
+                  transferring
+                }
+                style={{
+                  minHeight: 38,
+                  padding: "0 17px",
+                  borderRadius: 10,
+                  fontWeight: 750,
+                  boxShadow: "0 5px 14px rgba(18, 48, 79, .16)",
+                }}
+              >
+                {transferring
+                  ? "Transferring…"
+                  : "Transfer selected employees & budget"}
               </button>
             </div>
           </div>
         </section>
       )}
       {/* COMP_MANAGER_TRANSFER END */}
-
 
       {!isCompManagerView && (
         <div className="card">

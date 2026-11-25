@@ -70,6 +70,27 @@ const ownerParts = (value) => {
   const separator = text.split(/\s+-\s+/);
   return separator.length > 1 ? [text, ...separator] : [text];
 };
+// The Appraisal Sheet's own Comp Manager (comp_manager / comp_manager_display)
+// is what the sheet grid, its Comp. Manager filter and every other screen show.
+// delegation_comp_manager is only the Delegation table's last saved value and
+// can lag behind the sheet (grid edits, transfers, rows saved before the sheet
+// existed). Preferring it collapsed the Comp Manager list to the managers still
+// present in Delegation (3 of 5), so Tech-ED could not allot budget to the rest
+// and those Comp Managers saw no budget/employees. Sheet value wins; the
+// delegation value is only a fallback for rows with no sheet manager.
+export const compManagerOfRow = (employee) => {
+  if (!employee) return "";
+  const sheetManager = [
+    employee.comp_manager_display,
+    employee.comp_manager,
+    employee.comp_manager_id,
+    employee.compManager,
+    employee.comp_manager_name,
+  ].find((value) => value !== null && value !== undefined && String(value).trim());
+  if (sheetManager) return sheetManager;
+  return employee.delegation_comp_manager || "";
+};
+
 const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
 // identities: a list of normalized values, or one owner value such as
 // "EMP0051 - Ashok Kumar" (compared by its parts, never as a substring).
@@ -1181,14 +1202,7 @@ export function useDistributionBudget() {
         (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner)
       )
         return;
-      const rawManager =
-        employee.delegation_comp_manager ||
-        employee.comp_manager ||
-        employee.comp_manager_id ||
-        employee.compManager ||
-        employee.comp_manager_name ||
-        employee.comp_manager_display ||
-        "";
+      const rawManager = compManagerOfRow(employee);
       const manager = resolveManager(rawManager);
       if (!manager) return;
       // A real Comp Manager login receives only its own employees from
