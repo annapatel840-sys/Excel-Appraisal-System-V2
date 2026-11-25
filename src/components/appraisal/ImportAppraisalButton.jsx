@@ -41,15 +41,22 @@ const normalizeEmpId = (value) =>
     .replace(/[^A-Z0-9]/g, "");
 
 // Returns the value to store, or undefined when the cell is not valid.
+// `raw` is the real cell value: a number stays a number (never the rounded text Excel shows).
 const cellToValue = (column, raw) => {
   if (raw === null || raw === undefined) return "";
-  const text = String(raw).trim();
-  if (text === "") return "";
 
   if (NUMERIC_TYPES.has(column.type)) {
+    if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+    const text = String(raw).trim();
+    if (text === "") return "";
     const number = Number(text.replace(/[₹,\s%]/g, ""));
-    return Number.isFinite(number) ? number : undefined;
+    if (!Number.isFinite(number)) return undefined;
+    // Typed text such as "5.29%" means 0.0529 (the sheet keeps percentages as fractions).
+    return column.type === "percent" && text.includes("%") ? number / 100 : number;
   }
+
+  const text = String(raw).trim();
+  if (text === "") return "";
 
   if (column.type === "enum") {
     const match = (column.options || []).find(
@@ -65,10 +72,10 @@ const readFile = async (file) => {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
   // Headers of the first row only are not enough (empty cells are kept by defval,
   // but a column that is blank in every row would be lost): read the header row itself.
-  const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false })[0] || [];
+  const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true })[0] || [];
   const headers = headerRow.map((h) => String(h ?? "").trim()).filter((h) => h !== "");
   return { rows, headers: headers.length ? headers : Object.keys(rows[0] || {}) };
 };
@@ -297,7 +304,7 @@ export function useAppraisalImport({ onDone } = {}) {
     const found = [];
     const unmatchedList = [];
     const skippedTitles = [];
-    let invalid = 0;
+    const invalidList = [];
     let blankHike = 0;
 
     sheetRows.forEach((sheetRow) => {
@@ -330,7 +337,7 @@ export function useAppraisalImport({ onDone } = {}) {
 
         const nextValue = cellToValue(column, mapped[key]);
         if (nextValue === undefined) {
-          invalid += 1;
+          invalidList.push(`${row.empId} ${column.label}="${String(mapped[key]).slice(0, 24)}"`);
           return;
         }
 
@@ -368,7 +375,10 @@ export function useAppraisalImport({ onDone } = {}) {
       noteList.push(
         `${unmatchedList.length} row(s) had no matching Emp ID (e.g. ${unmatchedList.slice(0, 5).join(", ")})`,
       );
-    if (invalid) noteList.push(`${invalid} cell(s) skipped (invalid value)`);
+    if (invalidList.length)
+      noteList.push(
+        `${invalidList.length} cell(s) skipped (invalid value, e.g. ${invalidList.slice(0, 4).join("; ")})`,
+      );
     if (blankHike) noteList.push(`${blankHike} blank Hike cell(s) skipped (enter 0 for no hike)`);
     if (skippedTitles.length)
       noteList.push(
