@@ -967,7 +967,7 @@ async function readTechEdOwners(app, sourceRows) {
     // Delegation approvals write the current lookup to appraiser_tech_ed.
     // Prefer it over legacy text/lookup aliases that may still hold the old
     // Tech-Ed after reassignment.
-    const rawAssignment = String(
+    const rawAssignment = referenceText(
       readField(row, [
         "appraiser_tech_ed",
         "appraiser_tech_ed_row_id",
@@ -976,8 +976,8 @@ async function readTechEdOwners(app, sourceRows) {
         "appraiser_teched",
         "tech_ed_id",
         "tech_ed",
-      ]) || "",
-    ).trim();
+      ]),
+    );
     if (!rawAssignment) return;
 
     const assignmentParts = rawAssignment.split(/\s+-\s+/);
@@ -1131,10 +1131,10 @@ async function readEmployeeRoster(app) {
       // Match employeesapi: the current FK is authoritative. Older text
       // assignment columns may still contain the previous Tech-Ed after a
       // reassignment, so they must only be used as fallbacks.
-      const assignment =
+      const assignment = referenceText(
         // Delegation approvals persist the current Tech-Ed lookup in
-        // Appraisal_Sheet.appraiser_tech_ed. Legacy aliases can retain the
-        // previous assignment, so they must not take precedence.
+        // Appraisal_Sheet.appraiser_tech_ed. Catalyst can return that lookup
+        // as an object rather than a scalar ROWID; normalize it before lookup.
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_row_id",
@@ -1145,16 +1145,17 @@ async function readEmployeeRoster(app) {
           "tech_ed_id",
           "tech_ed",
         ]) ||
-        readField(master, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_row_id",
-          "appraiser_tech_ed1",
-          "appraiser_tech_ed_id",
-          "appraiser_teched",
-          "tech_ed_id",
-          "tech_ed",
-        ]);
-      const managerRaw = String(
+          readField(master, [
+            "appraiser_tech_ed",
+            "appraiser_tech_ed_row_id",
+            "appraiser_tech_ed1",
+            "appraiser_tech_ed_id",
+            "appraiser_teched",
+            "tech_ed_id",
+            "tech_ed",
+          ]),
+      );
+      const managerRaw = referenceText(
         readField(row, [
           "comp_manager",
           "comp_manager_id",
@@ -1166,9 +1167,8 @@ async function readEmployeeRoster(app) {
             "comp_manager_id",
             "comp_manager_name",
             "director",
-          ]) ||
-          "",
-      ).trim();
+          ]),
+      );
       const managerKey = managerRaw
         .split(/\s+-\s+/)[0]
         .trim()
