@@ -964,12 +964,15 @@ async function readTechEdOwners(app, sourceRows) {
     // legacy display-text columns. The legacy text can remain populated after
     // reassignment and otherwise makes Team Size count the employee under the
     // previous Tech-Ed.
+    // Delegation approvals write the current lookup to appraiser_tech_ed.
+    // Prefer it over legacy text/lookup aliases that may still hold the old
+    // Tech-Ed after reassignment.
     const rawAssignment = String(
       readField(row, [
-        "appraiser_tech_ed1",
-        "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed_id",
         "appraiser_tech_ed",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed1",
+        "appraiser_tech_ed_id",
         "appraiser_teched",
         "tech_ed_id",
         "tech_ed",
@@ -1129,21 +1132,24 @@ async function readEmployeeRoster(app) {
       // assignment columns may still contain the previous Tech-Ed after a
       // reassignment, so they must only be used as fallbacks.
       const assignment =
+        // Delegation approvals persist the current Tech-Ed lookup in
+        // Appraisal_Sheet.appraiser_tech_ed. Legacy aliases can retain the
+        // previous assignment, so they must not take precedence.
         readField(row, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_row_id",
           "appraiser_tech_ed1",
           "appraiser_tech_ed_appraisal_sheet",
-          "appraiser_tech_ed_row_id",
           "appraiser_tech_ed_id",
-          "appraiser_tech_ed",
           "appraiser_teched",
           "tech_ed_id",
           "tech_ed",
         ]) ||
         readField(master, [
-          "appraiser_tech_ed1",
-          "appraiser_tech_ed_row_id",
-          "appraiser_tech_ed_id",
           "appraiser_tech_ed",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed1",
+          "appraiser_tech_ed_id",
           "appraiser_teched",
           "tech_ed_id",
           "tech_ed",
@@ -1296,8 +1302,11 @@ async function readEmployeeRoster(app) {
           ]) || 0,
         ),
         appraiser_tech_ed_row_id: String(
-          readField(row, ["appraiser_tech_ed1", "appraiser_tech_ed_row_id"]) ||
-            "",
+          readField(row, [
+            "appraiser_tech_ed",
+            "appraiser_tech_ed_row_id",
+            "appraiser_tech_ed1",
+          ]) || "",
         ).trim(),
         status: employeeStatus,
         eligible_status: eligibleStatus,
