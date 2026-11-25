@@ -316,11 +316,9 @@ export function useAppraisalImport({ onDone } = {}) {
       setHeaders(fileHeaders);
       setMapping(autoMapping);
 
-      // The file has an Emp ID column: no manual mapping needed. Every matching column is
-      // mapped and compared with the sheet, so only the cells that were changed show up.
-      const hasEmpColumn = Object.values(autoMapping).some((m) => m.key === EMP_KEY);
-      if (hasEmpColumn) buildChanges(fileRows, fileHeaders, autoMapping);
-      else setStep("map");
+      // Always show the column mapping first. Matching columns are already mapped, and
+      // "Review changes" lists only the cells that differ from the sheet.
+      setStep("map");
     } catch (error) {
       console.error("Appraisal import failed:", error);
       setMessage(error?.message || "That file could not be read. Use the exported sheet format.");
