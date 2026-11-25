@@ -93,7 +93,7 @@ const CMP = 'Compensation', HRO = 'HR Operations';
 const fslug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 const SCREEN_FIELD_SPEC = {
   // Employee Master fields all arrive through the upload: 'u' = Upload only (Read / Hidden, never Edit).
-  employeeMaster: [['Employee ID', 'u'], ['Employee Name', 'u'], ['Designation', 'u'], ['Department', 'u'], ['Reporting Manager', 'u'], ['Director', 'u'], ['Appraiser Tech-ED', 'u'], ['Employee Type', 'u'], ['Email ID', 'u'], ['Date of Joining', 'u'], ['Location', 'u'], ['Cost Center', 'u'], ['Organization Experience', 'u'], ['Total Experience', 'u'], ['Current Salary', 'u'], ['Last Appraisal Month/Year', 'u'], ['Employee Status', 'u'], ['Exit Date', 'u'], ['Remark', 'u']],
+  employeeMaster: [['Employee ID', 'u'], ['Employee Name', 'u'], ['Designation', 'u'], ['Department', 'u'], ['Reporting Manager', 'u'], ['Director', 'u'], ['Appraiser Tech-ED', 'u'], ['Employee Type', 'u'], ['Email ID', 'u'], ['Date of Joining', 'u'], ['Location', 'u'], ['Cost Center', 'u'], ['Organization Experience', 'u'], ['Total Experience', 'u'], ['Current Salary', 'u'], ['Last Appraisal Month/Year', 'u'], ['Employee Status', ''], ['Exit Date', 'u'], ['Remark', 'u']],
   cycleMaster: ['Cycle Name', 'Cycle Type', 'Year', 'Process', 'Start Date', 'Close Date', 'Effective Date', ['Status', 'm'], 'Letters to Send', ['Mismatch', 'm'], 'Remarks'],
   locationMaster: ['Location Name', 'Location Code', 'Address', 'Currency Code', 'Status'],
   budgetMaster: [['Tech-ED', 'm'], 'Budget %', 'Reason for Change', ['Allocated', 'm'], ['Updated', 'm'], ['Team Size', 'm'], 'Allotted to Comp Managers', ['Buffer', 'm']],
