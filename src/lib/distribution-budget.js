@@ -1090,7 +1090,7 @@ export function useDistributionBudget() {
       currentUserMatchesManager(value, user, employeeRows) ||
       ownerMatches(value, signedInManagerAliases);
     const resolveTechAssignment = (raw) => {
-      const text = String(raw || "").trim();
+      const text = String(ownerReference(raw) || "").trim();
       const linked = techEdOwners.find((item) =>
         [
           item?.employee_id,
@@ -1160,15 +1160,19 @@ export function useDistributionBudget() {
       // This page's team and Comp Manager list must be driven only by current
       // Appraisal_Sheet rows, not Employee_Master-only employees.
       if (employee.in_appraisal_sheet !== true) return;
-      const rawTechAssignment =
-        employee.appraiser_tech_ed_row_id ||
-        employee.appraiser_tech_ed_appraisal_sheet ||
+      // Use the current, formatted Appraisal Sheet assignment first.
+      // The *_row_id compatibility field can be a stale/legacy value (and
+      // older API responses stringified lookup objects as "[object Object]").
+      const rawTechAssignment = ownerReference(
         employee.appraiser_tech_ed ||
-        employee.appraiser_tech_ed_id ||
-        employee.appraiser_tech_ed1 ||
-        employee.tech_ed ||
-        employee.tech_ed_id ||
-        "";
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed_row_id ||
+          employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed1 ||
+          employee.tech_ed ||
+          employee.tech_ed_id ||
+          "",
+      );
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       // A Comp Manager login is already scoped server-side to its own team,
       // which may span several Tech-Eds, so do not filter by one Tech-Ed.
