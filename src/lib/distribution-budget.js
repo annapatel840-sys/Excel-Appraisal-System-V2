@@ -1014,10 +1014,18 @@ export function useDistributionBudget() {
           (item) =>
             String(item.id) === String(row.budget_distribution_id),
         );
-        const rowCycle = String(
-          row.appraisal_cycle_id || parent?.appraisal_cycle_id || "",
-        ).trim();
-        return !activeCycleId || !rowCycle || rowCycle === String(activeCycleId);
+        // The parent Tech-Ed allocation is the authoritative cycle link.
+        // Legacy Comp Manager rows may still carry a cycle name or an older
+        // cycle reference; that must not hide a child linked to the active
+        // parent allocation.
+        const parentCycle = String(parent?.appraisal_cycle_id || "").trim();
+        const childCycle = String(row.appraisal_cycle_id || "").trim();
+        const effectiveCycle = parentCycle || childCycle;
+        return (
+          !activeCycleId ||
+          !effectiveCycle ||
+          effectiveCycle === String(activeCycleId)
+        );
       });
     }
 

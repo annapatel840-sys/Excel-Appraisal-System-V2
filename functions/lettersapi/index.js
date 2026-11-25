@@ -30,13 +30,15 @@
                                      The sender is the verified address in LETTERS_FROM_EMAIL
                                      (default test_team_member5@wissen.com). Catalyst refuses any
                                      sender that is not verified there.
-   GET  /?view=config             -> the stored Letter Rules + Letter Fields
-                                     { exists, rev, rules, fields, audit }
-   POST /  { action:"saveConfig", baseRev, rules, fields, audit }
-                                  -> stores them for everybody (409 if somebody saved
-                                     first). They stay until edited or deleted.
-                                     Bucket: <LETTERS_BUCKET_PREFIX>-config
-                                     (or the env variable LETTERS_CONFIG_BUCKET)
+   GET  /?view=config&location=India
+                                  -> the Letter Rules of that location + the Letter Fields
+                                     { exists, rev, fieldsRev, rules, fields, audit }
+   POST /  { action:"saveRules", location, baseRev, rules, audit }
+                                  -> rules of ONE location, stored in THAT location's bucket
+                                     (config/letters-rules.json). 409 if somebody saved first.
+   POST /  { action:"saveFields", baseRev, fields, audit }
+                                  -> fields (the same for every location), stored in
+                                     <LETTERS_BUCKET_PREFIX>-config (or LETTERS_CONFIG_BUCKET)
 
    Where things live
      One Stratus bucket PER LOCATION, named from Location_Master:
@@ -604,7 +606,8 @@ async function findLocation(app, name) {
   return map.get(key) || null;
 }
 const configBucket = () => process.env.LETTERS_CONFIG_BUCKET || `${BUCKET_PREFIX()}-config`;
-const lettersConfig = require("./lettersConfig")({ configBucket, putObject, getObjectBuffer, fail, text });
+const locationList = async (app) => [...(await locationMapCached(app)).values()];
+const lettersConfig = require("./lettersConfig")({ configBucket, putObject, getObjectBuffer, fail, text, findLocation, locationList, readIndex });
 const lettersState = require("./lettersState")({ locationMap: locationMapCached, putObject, getObjectBuffer, deleteObject, fail, text });
 const sheetBusy = new Set();
 const lettersSheet = require("./lettersSheet")({ fail, text, guarded });
@@ -707,7 +710,7 @@ async function handle(req, res) {
         return sendJson(res, 200, { success: true, data: await loadTemplates(adminApp, q.get("location")) });
       }
       if (view === "config") {
-        return sendJson(res, 200, { success: true, data: await lettersConfig.loadConfig(adminApp) });
+        return sendJson(res, 200, { success: true, data: await lettersConfig.loadConfig(adminApp, q.get("location")) });
       }
       throw fail(400, "Unknown view.");
     }
@@ -716,8 +719,11 @@ async function handle(req, res) {
     if (payload.action === "saveTemplate") {
       return sendJson(res, 200, { success: true, data: await saveTemplate(adminApp, actor, payload) });
     }
-    if (payload.action === "saveConfig") {
-      return sendJson(res, 200, { success: true, data: await lettersConfig.saveConfig(adminApp, actor, payload) });
+    if (payload.action === "saveRules") {
+      return sendJson(res, 200, { success: true, data: await lettersConfig.saveRules(adminApp, actor, payload) });
+    }
+    if (payload.action === "saveFields") {
+      return sendJson(res, 200, { success: true, data: await lettersConfig.saveFields(adminApp, actor, payload) });
     }
     if (payload.action === "saveState") {
       return sendJson(res, 200, { success: true, data: await lettersState.saveState(adminApp, actor, payload) });
@@ -743,7 +749,7 @@ async function handle(req, res) {
    limit ends the request without one (that is the endless "pending" in the
    Network tab). The browser can then retry or show the message. */
 const REQUEST_LIMIT_MS = 24000;
-const BUILD = "letters-mail-2026-11-19";
+const BUILD = "letters-rules-per-location-2026-11-25";
 const BOOTED_AT = Date.now();
 let served = 0;
 module.exports = async function lettersApi(req, res) {

@@ -252,8 +252,11 @@ export function resolveTemplate(S, tplId, row) {
 export function pick(S, row) {
   const cy = cyOf(S, row.cycle);
   const best = {};
+  const where = row && row.v ? row.v.emLocation : "";
   S.rules.forEach((r) => {
     if (!r.active) return;
+    // Rules are kept per location: a rule of one location never gives a letter to another location's people.
+    if (r.location && !same(r.location, where)) return;
     if (r.cycle !== "Any" && (!cy || r.cycle !== cy.type)) return;
     if (r.org !== "Any" && r.org !== row.org) return;
     if (!condOK(S, r, row)) return;
@@ -724,7 +727,7 @@ export function templateMessages(S, d, selfId, body) {
 }
 
 // { ruleId: [messages] } for a draft list of rules
-export function ruleMessages(S, d) {
+export function ruleMessages(S, d, location) {
   const out = {};
   const add = (id, m) => (out[id] = out[id] || []).push(m);
   d.forEach((r) => {
@@ -732,7 +735,11 @@ export function ruleMessages(S, d) {
     if (!String(r.family || "").trim()) add(r.id, "needs a family");
     if (!String(r.type || "").trim()) add(r.id, "needs a letter type");
     if (!r.tpl || !tplOf(S, r.tpl)) add(r.id, "needs a template");
-    else if (!templateGroup(S, r.tpl).some((t) => t.active !== false)) add(r.id, "uses a template that is Inactive");
+    else {
+      const t = tplOf(S, r.tpl);
+      if (location && t.location && !same(t.location, location)) add(r.id, "uses a template of " + t.location + ", not " + location);
+      else if (location ? t.active === false : !templateGroup(S, r.tpl).some((x) => x.active !== false)) add(r.id, "uses a template that is Inactive");
+    }
     if (!S.fields.some((f) => f.rules && r.cond && r.cond[f.id] && r.cond[f.id] !== "Any")) add(r.id, "needs at least one condition");
     d.forEach((o) => {
       if (o.id > r.id && o.family && o.family === r.family) {
@@ -800,9 +807,12 @@ function listChanges(oldList, draft, nameOf) {
   return ch;
 }
 
-export function planRulesSave(S, draft, reason) {
-  const ch = listChanges(S.rules, draft, (r) => r.name);
-  return { count: ch.length, entry: ch.length ? mkAudit(S, "Rules", "", "Rules saved", reason, ch.join("; ")) : null };
+// The rules of one location (all rules when no location is given, e.g. the offline demo).
+export const rulesOfLocation = (S, location) => (location ? S.rules.filter((r) => same(r.location, location)) : S.rules);
+
+export function planRulesSave(S, draft, reason, location) {
+  const ch = listChanges(rulesOfLocation(S, location), draft, (r) => r.name);
+  return { count: ch.length, entry: ch.length ? mkAudit(S, "Rules", location || "", "Rules saved", reason, (location ? location + ": " : "") + ch.join("; ")) : null };
 }
 
 export function planFieldsSave(S, draft, reason) {
@@ -810,9 +820,10 @@ export function planFieldsSave(S, draft, reason) {
   return { count: ch.length, entry: ch.length ? mkAudit(S, "Fields", "", "Fields saved", reason, ch.join("; ")) : null };
 }
 
-export function saveRules(S, draft, reason, plan) {
-  const p = plan || planRulesSave(S, draft, reason);
-  S.rules = draft;
+export function saveRules(S, draft, reason, plan, location) {
+  const p = plan || planRulesSave(S, draft, reason, location);
+  // Only this location's rules are replaced; every other location keeps its own.
+  S.rules = location ? S.rules.filter((r) => !same(r.location, location)).concat(draft.map((r) => ({ ...r, location }))) : draft;
   if (p.entry) S.audit.unshift(p.entry);
   refreshStale(S);
   return p.count;
@@ -830,9 +841,14 @@ export function saveFields(S, draft, reason, plan) {
    Their audit lines (scope Rules / Fields) come from the server too, so every
    computer shows the same history. */
 const CONFIG_SCOPES = ["Rules", "Fields"];
-export function applyServerConfig(S, cfg) {
-  S.rules = Array.isArray(cfg.rules) ? cfg.rules.map((r) => ({ ...r, cond: { ...(r.cond || {}) } })) : [];
-  S.fields = Array.isArray(cfg.fields) ? cfg.fields.map((f) => ({ ...f })) : [];
+export function applyServerConfig(S, cfg, location) {
+  // Rules come per location. Loading one location replaces only that location's rules;
+  // loading "All locations" (no location) replaces the whole list. Rules without a location
+  // (the built-in samples) are not kept: the server's rules are the only ones.
+  const mine = Array.isArray(cfg.rules) ? cfg.rules.map((r) => ({ ...r, cond: { ...(r.cond || {}) } })) : [];
+  S.rules = location ? S.rules.filter((r) => r.location && !same(r.location, location)).concat(mine) : mine;
+  // Fields are the same for every location; nothing stored yet = keep what this screen has.
+  if (cfg.fieldsExists !== false && Array.isArray(cfg.fields)) S.fields = cfg.fields.map((f) => ({ ...f }));
   const others = S.audit.filter((a) => CONFIG_SCOPES.indexOf(a.scope) < 0);
   S.audit = (Array.isArray(cfg.audit) ? cfg.audit : []).concat(others);
   refreshStale(S);

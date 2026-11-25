@@ -324,3 +324,46 @@ test("rules loaded from the server decide who gets a letter", () => {
   const got = pick(S, promoted);
   assert.deepEqual(got.map((r) => r.id), ["R7000"]);
 });
+/* ---- rules are kept per location ---- */
+test("a rule of one location gives letters only to the people of that location", () => {
+  const S = fresh();
+  const locs = [...new Set(S.sheet.map((r) => r.v.emLocation))];
+  assert.ok(locs.length >= 2, "the sample people sit in more than one location");
+  const [a, b] = locs;
+  S.rules.forEach((r) => { r.location = a; }); // every rule belongs to location a
+  const inA = S.sheet.filter((r) => r.v.emLocation === a && r.status === "Active");
+  const inB = S.sheet.filter((r) => r.v.emLocation === b && r.status === "Active");
+  assert.ok(inA.some((r) => pick(S, r).length > 0), "location a still gets letters");
+  assert.ok(inB.every((r) => pick(S, r).length === 0), "location b has no rules, so nobody there gets a letter");
+});
+
+test("loading one location's rules from the server leaves the other locations' rules alone", () => {
+  const S = fresh();
+  S.rules = [];
+  const mk = (id, location) => ({ id, name: id, family: "Revision", cycle: "Any", org: "Any", cond: {}, type: "T", tpl: "T1", prio: 1, active: true, location });
+  applyServerConfig(S, { rules: [mk("R-in", "India")], fieldsExists: false }, "India");
+  applyServerConfig(S, { rules: [mk("R-dx", "Dubai")], fieldsExists: false }, "Dubai");
+  assert.deepEqual(S.rules.map((r) => r.id).sort(), ["R-dx", "R-in"]);
+  // India's list is replaced by what the server now holds (here: nothing); Dubai keeps its own
+  applyServerConfig(S, { rules: [], fieldsExists: false }, "India");
+  assert.deepEqual(S.rules.map((r) => r.id), ["R-dx"]);
+  // "All locations" brings every location's rules and replaces the whole list
+  applyServerConfig(S, { rules: [mk("R-in", "India"), mk("R-dx", "Dubai")] }, "");
+  assert.equal(S.rules.length, 2);
+});
+
+test("saving rules replaces only that location's rules, and a rule cannot use another location's template", () => {
+  const S = fresh();
+  const mk = (id, location, tpl) => ({ id, name: id, family: "Revision", cycle: "Any", org: "Any", cond: {}, type: "T", tpl, prio: 1, active: true, location });
+  S.rules = [mk("R-in", "India", "T1"), mk("R-dx", "Dubai", "T1")];
+  const plan = planRulesSave(S, [], "removed", "India");
+  assert.equal(plan.count, 1); // only India's rule is compared, not Dubai's
+  saveRules(S, [], "removed", plan, "India");
+  assert.deepEqual(S.rules.map((r) => r.id), ["R-dx"]);
+  // the template of another location is refused
+  S.tpls = [{ id: "TI", name: "Hike Letter", location: "India", active: true, body: "", sg: {} }, { id: "TD", name: "Hike Letter", location: "Dubai", active: true, body: "", sg: {} }];
+  const bad = ruleMessages(S, [{ ...mk("R9", "Dubai", "TI"), name: "x", cond: { F1: "Yes" } }], "Dubai");
+  assert.ok((bad.R9 || []).some((m) => /template of India, not Dubai/.test(m)), JSON.stringify(bad));
+  const good = ruleMessages(S, [{ ...mk("R9", "Dubai", "TD"), name: "x", cond: { F1: "Yes" } }], "Dubai");
+  assert.ok(!(good.R9 || []).some((m) => /template/.test(m)), JSON.stringify(good));
+});

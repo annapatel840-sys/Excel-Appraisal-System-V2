@@ -141,10 +141,11 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   // Templates live on the server: load them when the screen opens.
   // The templates shown are the ones of the location chosen in the top bar.
   const [selectedLocation] = useSelectedLocation();
-  // The Letter Rules and Fields are stored on the server too, the same for every location.
+  // The Letter Rules are stored on the server per location (each location has its own rules and
+  // templates); the Fields are the same for every location. Reload when the location changes.
   useEffect(() => {
-    store.syncConfig();
-  }, []);
+    store.syncConfig({ location: selectedLocation });
+  }, [selectedLocation]);
 
   useEffect(() => {
     store.syncTemplates({ location: selectedLocation });
@@ -829,7 +830,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           {visibleTab === "audit" && canEdit && (
             <AuditTab S={S} onBack={() => changeTab("letters")} onExport={(rows) => exportGrid(AUDIT_DEFS, rows, "Letters_Audit_Trail", "Audit")} />
           )}
-          {visibleTab === "rules" && canEdit && <RulesTab S={S} actor={actor} ui={ui} toast={toast} config={config} />}
+          {visibleTab === "rules" && canEdit && <RulesTab S={S} actor={actor} ui={ui} toast={toast} config={config} location={selectedLocation} />}
           {visibleTab === "fields" && canEdit && <FieldsTab S={S} actor={actor} ui={ui} toast={toast} config={config} />}
           {visibleTab === "tpl" && canEdit && <TemplatesTab S={S} actor={actor} ui={ui} toast={toast} sync={sync} selectedId={tplSel} setSelectedId={setTplSel} />}
         </div>

@@ -191,10 +191,14 @@ export async function setTemplateActive(id, active, actor) {
 
 /* ---------------- rules + fields on the server ---------------- */
 
-// { status: "idle" | "loading" | "ok" | "error", message, exists, rev }
-//   exists = the server holds a saved copy; rev = its revision (used to spot a clash)
-let config = { status: "idle", message: "", exists: false, rev: 0 };
+// { status: "idle" | "loading" | "ok" | "error", message, location, exists, rev, fieldsExists, fieldsRev }
+//   Rules are kept per location: `location` is the one loaded, exists = the server holds saved rules for it,
+//   rev = their revision (used to spot a clash). Fields are shared: fieldsExists / fieldsRev.
+let config = { status: "idle", message: "", location: "", exists: false, rev: 0, fieldsExists: false, fieldsRev: 0 };
 let configSyncing = null;
+let configSyncingFor = "";
+let configFor = ""; // the location asked for last
+const locOf = (location) => (!location || /^all( locations)?$/i.test(String(location).trim()) ? "" : String(location).trim());
 
 function setConfig(next) {
   config = { ...config, ...next };
@@ -202,20 +206,28 @@ function setConfig(next) {
   listeners.forEach((l) => l());
 }
 
-// Load the rules and fields held on the server into the state. Call it when the
-// Letters screen opens; {force:true} is the Retry button.
-export function syncConfig({ force = false } = {}) {
+// Load the rules of one location (and the shared fields) held on the server into the state.
+// Call it when the Letters screen opens or the location changes; {force:true} is the Retry button
+// (it reloads the location asked for last). No location = every location's rules, to look at.
+export function syncConfig({ force = false, location } = {}) {
   if (!api.CONFIG_ON_SERVER) return Promise.resolve();
-  if (configSyncing && !force) return configSyncing;
-  setConfig({ status: "loading", message: "" });
+  const loc = location === undefined ? configFor : locOf(location);
+  if (configSyncing && !force && configSyncingFor === loc) return configSyncing;
+  configFor = loc;
+  configSyncingFor = loc;
+  setConfig({ status: "loading", message: "", location: loc });
   const p = api
-    .loadServerConfig()
+    .loadServerConfig(loc)
     .then((cfg) => {
-      // Nothing saved yet: keep what this screen shows (see "Save these rules to the server").
-      if (cfg.exists) run("HR", (st) => core.applyServerConfig(st, cfg));
-      setConfig({ status: "ok", message: "", exists: !!cfg.exists, rev: Number(cfg.rev) || 0 });
+      // The rules of THIS location replace this location's rules only; the others stay as they are.
+      run("HR", (st) => core.applyServerConfig(st, cfg, loc));
+      if (configFor === loc) {
+        setConfig({ status: "ok", message: "", location: loc, exists: !!cfg.exists, rev: Number(cfg.rev) || 0, fieldsExists: !!cfg.fieldsExists, fieldsRev: Number(cfg.fieldsRev) || 0 });
+      }
     })
-    .catch((error) => setConfig({ status: "error", message: error?.message || "The letter rules could not be loaded." }))
+    .catch((error) => {
+      if (configFor === loc) setConfig({ status: "error", message: error?.message || "The letter rules could not be loaded." });
+    })
     .finally(() => {
       if (configSyncing === p) configSyncing = null;
     });
@@ -223,13 +235,24 @@ export function syncConfig({ force = false } = {}) {
   return p;
 }
 
-// Ask the server to keep rules + fields. Throws (nothing changes here) when it refuses.
-async function pushConfig({ rules, fields, entry, baseRev }) {
+// Ask the server to keep the rules of ONE location. Throws (nothing changes here) when it refuses.
+async function pushRules({ location, rules, entry, baseRev }) {
   try {
-    const saved = await api.saveServerConfig({ rules, fields, baseRev: baseRev ?? config.rev, audit: entry ? [entry] : [] });
-    setConfig({ status: "ok", message: "", exists: true, rev: Number(saved.rev) || 0 });
+    const saved = await api.saveServerRules({ location, rules, baseRev: baseRev ?? config.rev, audit: entry ? [entry] : [] });
+    if (config.location === location) setConfig({ status: "ok", message: "", exists: true, rev: Number(saved.rev) || 0 });
   } catch (error) {
     // Somebody saved first: show their version, then tell the person.
+    if (error && error.status === 409) await syncConfig({ force: true, location });
+    throw error;
+  }
+}
+
+// Ask the server to keep the fields (the same for every location).
+async function pushFields({ fields, entry, baseRev }) {
+  try {
+    const saved = await api.saveServerFields({ fields, baseRev: baseRev ?? config.fieldsRev, audit: entry ? [entry] : [] });
+    setConfig({ status: "ok", message: "", fieldsExists: true, fieldsRev: Number(saved.rev) || 0 });
+  } catch (error) {
     if (error && error.status === 409) await syncConfig({ force: true });
     throw error;
   }
@@ -238,28 +261,30 @@ async function pushConfig({ rules, fields, entry, baseRev }) {
 /* Save the Letter Rules. `baseRev` = the revision the edit started from (config.rev when the
    person pressed Edit), so a change somebody else saved meanwhile is noticed, not overwritten.
    Server first: if it refuses, the screen keeps the old rules and the error reaches the tab. */
-export async function saveRules(draft, reason, actor, baseRev) {
+export async function saveRules(draft, reason, actor, baseRev, location) {
   S.actor = actor || "HR";
-  const plan = core.planRulesSave(S, draft, reason);
+  const loc = locOf(location);
+  if (api.CONFIG_ON_SERVER && !loc) throw new Error("Choose a location in the top bar first. Letter rules are kept for one location at a time.");
+  const plan = core.planRulesSave(S, draft, reason, loc);
   if (!plan.count) return 0;
-  if (api.CONFIG_ON_SERVER) await pushConfig({ rules: draft, fields: S.fields, entry: plan.entry, baseRev });
-  return run(actor, (st) => core.saveRules(st, draft, reason, plan));
+  if (api.CONFIG_ON_SERVER) await pushRules({ location: loc, rules: draft, entry: plan.entry, baseRev });
+  return run(actor, (st) => core.saveRules(st, draft, reason, plan, loc));
 }
 
 export async function saveFields(draft, reason, actor, baseRev) {
   S.actor = actor || "HR";
   const plan = core.planFieldsSave(S, draft, reason);
   if (!plan.count) return 0;
-  if (api.CONFIG_ON_SERVER) await pushConfig({ rules: S.rules, fields: draft, entry: plan.entry, baseRev });
+  if (api.CONFIG_ON_SERVER) await pushFields({ fields: draft, entry: plan.entry, baseRev });
   return run(actor, (st) => core.saveFields(st, draft, reason, plan));
 }
 
-// First time only: nothing is stored on the server yet, so this screen shows what this
-// browser holds. This stores it, and from then on the server copy is the one everybody sees.
-export async function saveCurrentConfigToServer(actor) {
+// First time only: no fields are stored on the server yet, so this screen shows what this
+// browser holds. This stores them, and from then on the server copy is the one everybody sees.
+export async function saveCurrentFieldsToServer(actor) {
   S.actor = actor || "HR";
-  const entry = core.mkAudit(S, "Rules", "", "Rules saved", "", `Stored ${S.rules.length} rule${S.rules.length === 1 ? "" : "s"} and ${S.fields.length} field${S.fields.length === 1 ? "" : "s"} on the server`);
-  await pushConfig({ rules: S.rules, fields: S.fields, entry, baseRev: config.rev });
+  const entry = core.mkAudit(S, "Fields", "", "Fields saved", "", `Stored ${S.fields.length} field${S.fields.length === 1 ? "" : "s"} on the server`);
+  await pushFields({ fields: S.fields, entry, baseRev: config.fieldsRev });
   run(actor, (st) => st.audit.unshift(entry));
 }
 
@@ -362,7 +387,7 @@ export async function generateLettersForCycle(cycle, actor, sheetRows) {
   }
   // The letters follow the Letter Rules stored on the server, never an old copy from this browser.
   if (api.CONFIG_ON_SERVER) {
-    await syncConfig({ force: true });
+    await syncConfig({ force: true, location: cycle.location });
     if (config.status === "error") throw new Error(`The letter rules could not be loaded: ${config.message}`);
   }
   // Make sure this cycle's saved copy is loaded first, so Generate adds to it.

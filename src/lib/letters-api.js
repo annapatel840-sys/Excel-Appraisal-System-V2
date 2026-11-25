@@ -153,15 +153,24 @@ export function clearServerLetters(cycleId, location) {
 // Set VITE_LETTERS_CONFIG_ON_SERVER=false to keep rules in this browser only (offline demo).
 export const CONFIG_ON_SERVER = import.meta.env.VITE_LETTERS_CONFIG_ON_SERVER !== "false";
 
-/* { exists, rev, rules, fields, audit }  exists:false = nothing has been saved yet. */
-export function loadServerConfig() {
-  return request({ params: { view: "config" } });
+/* Rules are kept PER LOCATION (in that location's own bucket); fields are the same for everybody.
+   { exists, rev, fieldsExists, fieldsRev, rules, fields, audit }
+   exists:false = no rules are saved for this location yet. Without a location: every location's rules (to look at). */
+export function loadServerConfig(location) {
+  const params = { view: "config" };
+  if (location) params.location = location;
+  return request({ params });
 }
 
-/* Store rules + fields. `baseRev` is the revision this screen last loaded; the server refuses
-   (409) when somebody saved a newer one. `audit` = the new audit lines of this save. */
-export function saveServerConfig({ rules, fields, baseRev, audit }) {
-  return request({ method: "POST", body: { action: "saveConfig", rules, fields, baseRev: baseRev || 0, audit: audit || [] } });
+/* Store the rules of ONE location. `baseRev` is the revision this screen last loaded; the server
+   refuses (409) when somebody saved a newer one. `audit` = the new audit lines of this save. */
+export function saveServerRules({ location, rules, baseRev, audit }) {
+  return request({ method: "POST", body: { action: "saveRules", location, rules, baseRev: baseRev || 0, audit: audit || [] } });
+}
+
+/* Store the fields (the same for every location). */
+export function saveServerFields({ fields, baseRev, audit }) {
+  return request({ method: "POST", body: { action: "saveFields", fields, baseRev: baseRev || 0, audit: audit || [] } });
 }
 
 /* E-mail ONE letter. The server sends it through Catalyst Mail from the verified sender
