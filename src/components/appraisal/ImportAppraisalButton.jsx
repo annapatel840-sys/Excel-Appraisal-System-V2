@@ -28,9 +28,6 @@ const MAX_PREVIEW_ROWS = 300;
 const EMP_KEY = "empId";
 const SKIP = "";
 
-// Never written by import: the identity columns, and the two columns that Delegation manages
-// (the grid shows them resolved as "EMP001 - Name", so a file value cannot be compared safely).
-const NEVER_IMPORT = new Set(["name", "empId", "compManager", "appraiserTechED"]);
 
 const normalizeHeader = (value) =>
   String(value === null || value === undefined ? "" : value)
@@ -165,13 +162,12 @@ export function useAppraisalImport({ onDone } = {}) {
   } = useAppraisal();
   const access = useAccess();
 
-  // Every column this login can update (access rules) that is not calculated and not in
-  // NEVER_IMPORT: a changed cell in any of them is imported, not only the "editable" inputs.
+  // Only the input columns of the Appraisal Sheet (editable, not calculated) that this login
+  // may edit can be imported. Nothing else can be mapped.
   const importColumns = useMemo(
     () =>
       COLUMNS.filter(
-        (column) =>
-          !column.computed && !NEVER_IMPORT.has(column.key) && access.canEditField(column.key),
+        (column) => column.editable && !column.computed && access.canEditField(column.key),
       ),
     [access],
   );
@@ -200,15 +196,12 @@ export function useAppraisalImport({ onDone } = {}) {
     return map;
   }, []);
 
-  const readOnlyReason = (header) => {
+  // A file column that is a sheet column but cannot be imported (read-only / calculated /
+  // no access): it is not shown in the mapping and its values are ignored.
+  const isLockedHeader = (header) => {
     const column = columnByHeader.get(normalizeHeader(header));
-    if (!column || column.key === EMP_KEY) return "";
-    if (importColumns.some((c) => c.key === column.key)) return "";
-    return column.computed
-      ? "Calculated"
-      : NEVER_IMPORT.has(column.key)
-        ? "Managed elsewhere"
-        : "No edit access";
+    if (!column || column.key === EMP_KEY) return false;
+    return !importColumns.some((c) => c.key === column.key);
   };
 
   const fileInputRef = useRef(null);
@@ -224,8 +217,8 @@ export function useAppraisalImport({ onDone } = {}) {
   const [changes, setChanges] = useState([]);
   const [notes, setNotes] = useState([]);
   const [unmatchedIds, setUnmatchedIds] = useState([]);
-  // Cells changed in the file but in columns that import cannot update (read-only / calculated).
-  const [blockedEdits, setBlockedEdits] = useState([]);
+  // Invalid cells (text in a number column, value not in the list...). Import is blocked until fixed.
+  const [errors, setErrors] = useState([]);
   // Rows whose Emp ID and Employee Name point to different employees.
   const [mismatchRows, setMismatchRows] = useState([]);
 
@@ -271,7 +264,7 @@ export function useAppraisalImport({ onDone } = {}) {
     setChanges([]);
     setNotes([]);
     setUnmatchedIds([]);
-    setBlockedEdits([]);
+    setErrors([]);
     setMismatchRows([]);
     setSheetRows([]);
     setHeaders([]);
@@ -312,6 +305,11 @@ export function useAppraisalImport({ onDone } = {}) {
       }
 
       const autoMapping = autoMap(fileHeaders);
+      if (!Object.values(autoMapping).some((m) => m.key === EMP_KEY)) {
+        setMessage(`${file.name} has no Emp ID column. Export the sheet, change the input cells and import that file.`);
+        setStep("error");
+        return;
+      }
       setSheetRows(fileRows);
       setHeaders(fileHeaders);
       setMapping(autoMapping);
@@ -328,7 +326,11 @@ export function useAppraisalImport({ onDone } = {}) {
 
   /* ---------- mapping ---------- */
   const setTarget = (header, key) =>
-    setMapping((previous) => ({ ...previous, [header]: { key, auto: false } }));
+    setMapping((previous) => {
+      // Emp ID is fixed: it cannot be unmapped, and no other column can take its place.
+      if (previous[header]?.key === EMP_KEY || key === EMP_KEY) return previous;
+      return { ...previous, [header]: { key, auto: false } };
+    });
 
   const mapState = useMemo(() => {
     const targets = Object.values(mapping)
@@ -372,7 +374,6 @@ export function useAppraisalImport({ onDone } = {}) {
     const mismatchList = [];
     const skippedTitles = [];
     const invalidList = [];
-    const blocked = [];
     let blankHike = 0;
     let matchedByName = 0;
 
@@ -413,30 +414,6 @@ export function useAppraisalImport({ onDone } = {}) {
           : undefined;
       const eligibility = fileEligibility !== undefined ? fileEligibility : row.eligibleForPromotion;
 
-      // Columns that cannot be imported (read-only): a changed cell is reported, never imported.
-      // Calculated columns are skipped: Excel recalculates them whenever an input changes.
-      fileHeaders.forEach((header) => {
-        if (fileMapping[header]?.key || !readOnlyReason(header)) return;
-        const column = columnByHeader.get(normalizeHeader(header));
-        if (!column || column.computed || column.key === "name") return;
-        const fileValue = cellToValue(column, sheetRow[header]);
-        if (fileValue === undefined || fileValue === "") return;
-        const sheetValue = row[column.key];
-        const differs = NUMERIC_TYPES.has(column.type)
-          ? Math.abs(Number(sheetValue || 0) - Number(fileValue)) > 0.0001
-          : !sameText(sheetValue, fileValue) && !sameText(row[`${column.key}Raw`], fileValue);
-        if (differs) {
-          blocked.push({
-            empId: row.empId,
-            name: row.name,
-            label: column.label,
-            reason: readOnlyReason(header),
-            before: sheetValue === null || sheetValue === undefined || sheetValue === "" ? "—" : String(sheetValue),
-            after: String(fileValue),
-          });
-        }
-      });
-
       Object.keys(mapped).forEach((key) => {
         const column = columnByKey.get(key);
         if (!column) return;
@@ -452,7 +429,15 @@ export function useAppraisalImport({ onDone } = {}) {
           return;
         }
         if (nextValue === undefined) {
-          invalidList.push(`${row.empId} ${column.label}="${String(mapped[key]).slice(0, 24)}"`);
+          invalidList.push({
+            empId: row.empId,
+            name: row.name,
+            label: column.label,
+            value: String(mapped[key]).slice(0, 40),
+            reason: NUMERIC_TYPES.has(column.type)
+              ? "must be a number (no text)"
+              : "is not an allowed value",
+          });
           return;
         }
 
@@ -508,10 +493,6 @@ export function useAppraisalImport({ onDone } = {}) {
           .map((m) => `${m.empId}: file "${m.fileName}" vs sheet "${m.sheetName}"`)
           .join("; ")})`,
       );
-    if (invalidList.length)
-      noteList.push(
-        `${invalidList.length} cell(s) skipped (invalid value, e.g. ${invalidList.slice(0, 4).join("; ")})`,
-      );
     if (blankHike) noteList.push(`${blankHike} blank Hike cell(s) skipped (enter 0 for no hike)`);
     if (skippedTitles.length)
       noteList.push(
@@ -519,17 +500,11 @@ export function useAppraisalImport({ onDone } = {}) {
           .slice(0, 5)
           .join(", ")})`,
       );
-    const unknownHeaders = fileHeaders.filter(
-      (h) => !fileMapping[h]?.key && !columnByHeader.get(normalizeHeader(h)) && !NAME_HEADERS.has(normalizeHeader(h)),
-    );
-    if (unknownHeaders.length)
-      noteList.push(`${unknownHeaders.length} unknown column(s) ignored (${unknownHeaders.slice(0, 4).join(", ")})`);
-
     setChanges(found);
     setNotes(noteList);
     setUnmatchedIds(unmatchedList);
     setMismatchRows(mismatchList);
-    setBlockedEdits(blocked);
+    setErrors(invalidList);
     setStep("review");
   };
 
@@ -596,7 +571,6 @@ export function useAppraisalImport({ onDone } = {}) {
   /* ---------- UI ---------- */
   const targetOptions = [
     { key: SKIP, label: "— Don't import —" },
-    { key: EMP_KEY, label: "Emp ID (matches the row)" },
     ...importColumns.map((column) => ({ key: column.key, label: column.label })),
   ];
 
@@ -658,21 +632,24 @@ export function useAppraisalImport({ onDone } = {}) {
   if (step === "map") {
     const autoCount = Object.values(mapping).filter((m) => m.key && m.auto).length;
     const manualCount = Object.values(mapping).filter((m) => m.key && !m.auto).length;
-    const skipCount = headers.length - autoCount - manualCount;
+    const shownHeaders = headers.filter(
+      (header) => !isLockedHeader(header) && !NAME_HEADERS.has(normalizeHeader(header)),
+    );
+    const skipCount = shownHeaders.length - autoCount - manualCount;
     modal = shell(
       "Import appraisal sheet — map columns",
       <>
         <div className="border-b border-[#e2e8f0] px-4 py-2.5 text-[12px] text-slate-700">
           <div className="font-semibold">{fileName}</div>
           <div className="mt-0.5 text-slate-500">
-            {sheetRows.length} row(s) · {headers.length} column(s) —{" "}
+            {sheetRows.length} row(s) · {shownHeaders.length} input column(s) —{" "}
             <span className="text-emerald-700">{autoCount} auto-mapped</span>
             {manualCount > 0 && <span className="text-[#173b63]">, {manualCount} mapped by you</span>}
             {skipCount > 0 && <span className="text-amber-700">, {skipCount} not mapped</span>}
           </div>
           <div className="mt-0.5 text-[11px] text-slate-500">
-            Columns that match a sheet column are mapped for you. Map the others by hand, or leave them as
-            "Don't import". Only columns that can be updated are listed.
+            Emp ID is always the matching key and cannot be changed. Only the input columns of the
+            Appraisal Sheet are listed; read-only and calculated columns are ignored.
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
@@ -686,7 +663,7 @@ export function useAppraisalImport({ onDone } = {}) {
               </tr>
             </thead>
             <tbody>
-              {headers.map((header) => {
+              {headers.filter((header) => !isLockedHeader(header) && !NAME_HEADERS.has(normalizeHeader(header))).map((header) => {
                 const target = mapping[header] || { key: SKIP, auto: false };
                 const dup = target.key && mapState.duplicates.has(target.key);
                 return (
@@ -694,6 +671,11 @@ export function useAppraisalImport({ onDone } = {}) {
                     <td className="px-3 py-1.5 font-medium text-slate-700">{header}</td>
                     <td className="px-3 py-1.5 text-slate-500">{sampleOf(header)}</td>
                     <td className="px-3 py-1.5">
+                      {target.key === EMP_KEY ? (
+                        <span className="inline-block h-7 w-full max-w-[230px] rounded border border-[#e2e8f0] bg-slate-50 px-2 py-1 text-[12px] font-medium text-slate-700">
+                          Emp ID (fixed)
+                        </span>
+                      ) : (
                       <select
                         value={target.key}
                         onChange={(event) => setTarget(header, event.target.value)}
@@ -708,16 +690,13 @@ export function useAppraisalImport({ onDone } = {}) {
                           </option>
                         ))}
                       </select>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-[11px]">
                       {!target.key ? (
-                        readOnlyReason(header) ? (
-                          <span className="text-slate-500" title="This sheet column cannot be updated by import">
-                            {readOnlyReason(header)} in sheet
-                          </span>
-                        ) : (
-                          <span className="text-amber-700">Not mapped</span>
-                        )
+                        <span className="text-amber-700">Not mapped</span>
+                      ) : target.key === EMP_KEY ? (
+                        <span className="text-slate-500">Key</span>
                       ) : target.auto ? (
                         <span className="text-emerald-700">Auto</span>
                       ) : (
@@ -792,34 +771,20 @@ export function useAppraisalImport({ onDone } = {}) {
             )}
           </div>
         )}
-        {blockedEdits.length > 0 && (
-          <div className="max-h-[220px] overflow-auto border-t border-[#e2e8f0] px-4 py-2.5">
-            <div className="mb-1 text-[11px] font-semibold text-amber-700">
-              Changed in the file but NOT imported (calculated, managed in Delegation, or no edit access):
+        {errors.length > 0 && (
+          <div className="max-h-[220px] overflow-auto border-t border-[#fecaca] bg-[#fef2f2] px-4 py-2.5">
+            <div className="mb-1 text-[11px] font-semibold text-red-700">
+              {errors.length} invalid value{errors.length === 1 ? "" : "s"} — fix them in the file and import again:
             </div>
-            <table className="w-full border-collapse text-[11px]">
-              <tbody>
-                {blockedEdits.slice(0, 50).map((edit, index) => (
-                  <tr key={`${edit.empId}-${edit.label}-${index}`} className="border-b border-[#eef2f7]">
-                    <td className="py-1 pr-2 text-slate-700">
-                      {edit.name}
-                      <span className="ml-1 text-slate-400">{edit.empId}</span>
-                    </td>
-                    <td className="py-1 pr-2 text-slate-600">
-                      {edit.label} <span className="text-slate-400">({edit.reason})</span>
-                    </td>
-                    <td className="py-1 tabular-nums">
-                      <span className="text-slate-400">{edit.before}</span>
-                      {" → "}
-                      <span className="font-semibold text-slate-600">{edit.after}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {blockedEdits.length > 50 && (
-              <div className="pt-1 text-[11px] text-slate-500">Showing the first 50 of {blockedEdits.length}.</div>
-            )}
+            <ul className="space-y-0.5 text-[11px] text-red-700">
+              {errors.slice(0, 50).map((error, index) => (
+                <li key={`${error.empId}-${error.label}-${index}`}>
+                  {error.name} <span className="text-red-400">{error.empId}</span> — {error.label} "{error.value}"{" "}
+                  {error.reason}
+                </li>
+              ))}
+            </ul>
+            {errors.length > 50 && <div className="pt-1 text-[11px]">Showing the first 50 of {errors.length}.</div>}
           </div>
         )}
         {!changes.length && unmatchedIds.length > 0 && (
@@ -837,7 +802,7 @@ export function useAppraisalImport({ onDone } = {}) {
           Cancel
         </button>
         {changes.length > 0 && (
-          <button type="button" onClick={confirmImport} className={btnPrimary}>
+          <button type="button" onClick={confirmImport} disabled={errors.length > 0} className={btnPrimary}>
             Apply {changes.length} change{changes.length === 1 ? "" : "s"}
           </button>
         )}
