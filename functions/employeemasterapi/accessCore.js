@@ -360,6 +360,10 @@ async function loadMatrix(zcql, C, roles) {
     const it = C.fieldBy[x.field_key]; if (!it || !m.fields[x.role_key]) return; m.rowids.field[x.role_key + '|' + x.field_key] = x.ROWID;
     if ((it.kind === 'input' || it.kind === 'master' || it.kind === 'upload') && LIMITS.indexOf(x.access_limit) > -1 && !(it.kind !== 'input' && x.access_limit === 'edit')) m.fields[x.role_key][x.field_key] = x.access_limit;
   });
+  // Employee Status is the one Employee Master field HR must be able to change
+  // directly. Old FieldAccess rows may still say "read" from its former upload
+  // only configuration; keep the UI and backend authorization consistent.
+  if (m.fields.hr) m.fields.hr.employeeMaster_employee_status = 'edit';
   return m;
 }
 // Paired field = same as partner; calculated = strictest of its inputs.
