@@ -988,7 +988,7 @@ export function BudgetProvider({ children }) {
         row.tech_ed_id ||
         row.tech_ed ||
         row.appraiser_tech_ed ||
-        row.appraiser_tech_ed1 ||
+        row.appraiser_tech_ed ||
         "";
       return (
         ownerMatches(raw, detectedOwnerAliases) ||
@@ -1058,7 +1058,7 @@ export function BudgetProvider({ children }) {
           employee.appraiser_tech_ed ||
           employee.appraiser_tech_ed_id ||
           employee.appraiser_tech_ed_row_id ||
-          employee.appraiser_tech_ed1 ||
+          employee.appraiser_tech_ed ||
           employee.tech_ed ||
           employee.tech_ed_id ||
           "";
@@ -1079,7 +1079,7 @@ export function BudgetProvider({ children }) {
           row.tech_ed_id ||
           row.tech_ed ||
           row.appraiser_tech_ed ||
-          row.appraiser_tech_ed1 ||
+          row.appraiser_tech_ed ||
           "";
         const rowOwner = normalizeOwner(raw);
         const linked = techEdOwners.find(
@@ -1204,7 +1204,7 @@ export function BudgetProvider({ children }) {
           row.tech_ed_id ||
           row.tech_ed ||
           row.appraiser_tech_ed ||
-          row.appraiser_tech_ed1 ||
+          row.appraiser_tech_ed ||
           "";
         return (
           ownerMatches(raw, ownerAliases) ||
