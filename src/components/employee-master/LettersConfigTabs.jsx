@@ -150,14 +150,27 @@ export function RulesTab({ S, actor, ui, toast, config, location }) {
   const familyChoices = uniq(["Revision", "Bonus", "Target PB", ...S.tpls.map((t) => t.family), ...rs.map((r) => r.family)]);
 
   // how many active employees each rule gives a letter to today
+  // The sheet holds one row per person per cycle, so the same person can appear several times:
+  // count and list each person once. With a location chosen, only that location's people are looked at.
+  const here = (r) => !loc || String(r.v && r.v.emLocation || "").trim().toLowerCase() === loc.toLowerCase();
   const cnt = {};
+  const counted = new Set();
+  const noLetter = new Map(); // person id -> name, for people no rule gives a letter to
+  const hasLetter = new Set();
   S.sheet.forEach((r) => {
-    if (r.status !== "Active") return;
-    pick(S, r).forEach((x) => {
+    if (r.status !== "Active" || !here(r)) return;
+    const picked = pick(S, r);
+    if (picked.length) hasLetter.add(r.id);
+    else if (!noLetter.has(r.id)) noLetter.set(r.id, r.name);
+    picked.forEach((x) => {
+      const k = x.id + "|" + r.id;
+      if (counted.has(k)) return;
+      counted.add(k);
       cnt[x.id] = (cnt[x.id] || 0) + 1;
     });
   });
-  const none = S.sheet.filter((r) => r.status === "Active" && !pick(S, r).length).map((r) => r.name);
+  // someone who gets a letter in one cycle's row is not "no letter today"
+  const none = [...noLetter].filter(([id]) => !hasLetter.has(id)).map(([, name]) => name);
 
   const setRule = (id, patch) => setDraft((d) => d.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const setCond = (id, fid, v) => setDraft((d) => d.map((r) => (r.id === id ? { ...r, cond: { ...(r.cond || {}), [fid]: v } } : r)));

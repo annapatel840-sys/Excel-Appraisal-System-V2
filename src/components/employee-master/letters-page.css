@@ -844,3 +844,16 @@
 .lt .lt-rp-ic { border: 0; background: none; font-size: 15px; color: #6B7280; }
 .lt .lt-rp-ic:hover:not(:disabled) { color: #102A43; border: 0; }
 .lt .lt-rp-ic:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Panel flap = Employee Master flap: it sits on the right edge of the screen's own area (like .emx-panel-tab),
+   not on the browser window's edge. */
+.lt-body { position: relative; }
+.lt-body > .lt-flap { position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 20; }
+
+/* Panel header and + / - / x buttons = the Appraisal Sheet's open panel: navy header, white title, outlined buttons. */
+.lt .lt-rp-head { background: #12304F; border-bottom: 1px solid #12304F; }
+.lt .lt-rp-head .lt-rp-who, .lt .lt-rp-head .lt-rp-who b { color: #fff; }
+.lt .lt-rp-ic { flex: 0 0 auto; border: 1px solid #D1D5DB; background: #fff; border-radius: 6px; height: 26px; min-width: 26px; padding: 0 6px; font-size: 13px; color: #374151; cursor: pointer; }
+.lt .lt-rp-head .lt-rp-ic { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.45); color: #fff; }
+.lt .lt-rp-head .lt-rp-ic:hover:not(:disabled) { background: rgba(255,255,255,.22); border-color: #fff; color: #fff; }
+.lt .lt-rp-head .lt-rp-ic:disabled { opacity: .4; cursor: not-allowed; border-color: rgba(255,255,255,.45); color: #fff; }
