@@ -5612,11 +5612,10 @@ async function routeRequest(req, res, identity, resource, a) {
       let eligibilityCleared = null;
       if (status === "Active") {
         eligibilitySync = await syncEligibilityRows(tables, updated, actor);
-      } else if (status === "Closed") {
-        // Closing ends this cycle's live Eligibility List. Delete only rows
-        // attached to this cycle; other location/year cycles remain untouched.
-        eligibilityCleared = await clearEligibilityRows(tables, id);
       }
+      // Closing must NOT clear the Eligibility_List. The rows stay readable
+      // while the cycle is Closed and are still there if it is reopened.
+      // They are cleared only by Archive (action "archive" below).
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(eligibilityCleared !== null ? { eligibilityCleared } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
       return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync, eligibilityCleared } });
     }

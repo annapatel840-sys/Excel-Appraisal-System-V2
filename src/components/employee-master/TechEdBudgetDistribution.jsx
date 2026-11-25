@@ -1330,6 +1330,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import {
   useViewAs,
   managerIdentityMatches,
@@ -1627,6 +1628,21 @@ export function TechEdBudgetDistribution() {
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
+  // The Appraisal Sheet is the source of truth for a Comp Manager's team. Its
+  // rows are already scoped to the signed-in login and selected location, so
+  // Team Size here must equal what the Appraisal Sheet lists (also after a
+  // Comp Manager transfer moves people away).
+  const { rows: appraisalSheetRows = [] } = useAppraisal();
+  const sheetEmployeeIds = useMemo(() => {
+    const ids = new Set();
+    appraisalSheetRows.forEach((row) => {
+      const id = String(row?.empId || row?.emp_id || row?.employee_id || "")
+        .trim()
+        .toLowerCase();
+      if (id) ids.add(id);
+    });
+    return ids;
+  }, [appraisalSheetRows]);
   const myName = user?.name || "Unknown user";
   // Allocation resolution is shared with the Appraisal Sheet Detailed Screen
   // and Bulk Edit (src/lib/distribution-budget.js), so every screen shows the
@@ -1970,6 +1986,22 @@ export function TechEdBudgetDistribution() {
       // while others store the Employee ID or display label.
       if (!isCompManagerLogin && !belongsToTechEd) return false;
       if (!isCompManagerView) return true;
+      // Real Comp Manager login: the team is exactly the people on this
+      // login's Appraisal Sheet. Do not re-match by manager name; after a
+      // transfer the name/ID spelling differs between sources and the count
+      // collapsed (58 -> 1 instead of 58 -> 46).
+      if (isCompManagerLogin && sheetEmployeeIds.size) {
+        const rowId = String(
+          employee.empId ||
+            employee.emp_id ||
+            employee.employeeId ||
+            employee.employee_id ||
+            "",
+        )
+          .trim()
+          .toLowerCase();
+        return sheetEmployeeIds.has(rowId);
+      }
       const manager = compManagerOfRow(employee);
       return (
         Boolean(selectedCompManager) &&
@@ -2011,6 +2043,7 @@ export function TechEdBudgetDistribution() {
     isCompManagerView,
     isCompManagerLogin,
     selectedCompManager,
+    sheetEmployeeIds,
   ]);
   // cmNodes is already built from the active-cycle Appraisal_Sheet roster
   // and the saved Comp Manager allocation rows. Do not apply a second

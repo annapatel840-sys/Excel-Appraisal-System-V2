@@ -1,15 +1,29 @@
 /* Eligibility_List clean-up: rows live only while a cycle is Active.
    Run: node test/eligibility-cleanup.test.js */
-const assert = require('assert');
-const path = require('path');
-const Module = require('module');
+const assert = require("assert");
+const path = require("path");
+const Module = require("module");
 
-const CYCLE_T = '74008000000034190';
-const MASTER_T = '74008000000035727';
-const ELIG_T = '74008000000057046';
-const PAYROLL_T = '74008000000035326';
-const FEEDBACK_T = '74008000000022041';
-const CYCLE_COLS = ['cycle_name', 'start_date', 'end_date', 'status', 'remarks', 'changed_by', 'changed_at', 'archived', 'cycle_type', 'process', 'effective_date', 'cancel_reason', 'location'];
+const CYCLE_T = "74008000000034190";
+const MASTER_T = "74008000000035727";
+const ELIG_T = "74008000000057046";
+const PAYROLL_T = "74008000000035326";
+const FEEDBACK_T = "74008000000022041";
+const CYCLE_COLS = [
+  "cycle_name",
+  "start_date",
+  "end_date",
+  "status",
+  "remarks",
+  "changed_by",
+  "changed_at",
+  "archived",
+  "cycle_type",
+  "process",
+  "effective_date",
+  "cancel_reason",
+  "location",
+];
 
 function makeStore() {
   let seq = 1000;
@@ -17,23 +31,47 @@ function makeStore() {
   const table = (id, cols) => {
     if (tables[id]) return tables[id];
     const rows = [];
-    const check = (row) => Object.keys(row).forEach((k) => {
-      if (k !== 'ROWID' && cols && !cols.includes(k)) throw new Error(`Invalid column ${k}`);
-    });
+    const check = (row) =>
+      Object.keys(row).forEach((k) => {
+        if (k !== "ROWID" && cols && !cols.includes(k))
+          throw new Error(`Invalid column ${k}`);
+      });
     // Eligibility_List.emp_id is intentionally non-unique. The same employee
     // may have one row per appraisal_cycle_id.
-    const add = (row) => { const r = { ...row, ROWID: String(++seq) }; rows.push(r); return { ...r }; };
+    const add = (row) => {
+      const r = { ...row, ROWID: String(++seq) };
+      rows.push(r);
+      return { ...r };
+    };
     tables[id] = {
       rows,
       getAllColumns: async () => (cols || []).map((c) => ({ column_name: c })),
-      getPagedRows: async () => ({ data: rows.map((r) => ({ ...r })), more_records: false }),
-      insertRow: async (row) => { check(row); return add(row); },
+      getPagedRows: async () => ({
+        data: rows.map((r) => ({ ...r })),
+        more_records: false,
+      }),
+      insertRow: async (row) => {
+        check(row);
+        return add(row);
+      },
       insertRows: async (batch) => batch.map(add),
-      updateRow: async (row) => { check(row); const r = rows.find((x) => x.ROWID === String(row.ROWID)); Object.assign(r, row); return { ...r }; },
-      deleteRow: async (id2) => { const i = rows.findIndex((x) => x.ROWID === String(id2)); rows.splice(i, 1); return true; },
+      updateRow: async (row) => {
+        check(row);
+        const r = rows.find((x) => x.ROWID === String(row.ROWID));
+        Object.assign(r, row);
+        return { ...r };
+      },
+      deleteRow: async (id2) => {
+        const i = rows.findIndex((x) => x.ROWID === String(id2));
+        rows.splice(i, 1);
+        return true;
+      },
       deleteRows: async (ids) => {
-        assert.ok(ids.length <= 100, 'deleteRows batch too large');
-        ids.forEach((x) => { const i = rows.findIndex((r) => r.ROWID === String(x)); if (i >= 0) rows.splice(i, 1); });
+        assert.ok(ids.length <= 100, "deleteRows batch too large");
+        ids.forEach((x) => {
+          const i = rows.findIndex((r) => r.ROWID === String(x));
+          if (i >= 0) rows.splice(i, 1);
+        });
         return true;
       },
     };
@@ -43,13 +81,33 @@ function makeStore() {
 }
 
 function load(store) {
-  const dir = path.resolve(__dirname, '..');
-  Object.keys(require.cache).forEach((k) => { if (k.startsWith(dir) && !k.includes('node_modules')) delete require.cache[k]; });
-  const catalystStub = { initialize: () => ({
-    datastore: () => ({ table: (id) => store.table(id, id === CYCLE_T ? CYCLE_COLS : null) }),
-    userManagement: () => ({ getCurrentUser: async () => ({ user_id: '1', first_name: 'HR', last_name: 'A', email_id: 'hr@x.com', role_details: { role_name: 'HR' } }) }),
-  }) };
-  class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+  const dir = path.resolve(__dirname, "..");
+  Object.keys(require.cache).forEach((k) => {
+    if (k.startsWith(dir) && !k.includes("node_modules"))
+      delete require.cache[k];
+  });
+  const catalystStub = {
+    initialize: () => ({
+      datastore: () => ({
+        table: (id) => store.table(id, id === CYCLE_T ? CYCLE_COLS : null),
+      }),
+      userManagement: () => ({
+        getCurrentUser: async () => ({
+          user_id: "1",
+          first_name: "HR",
+          last_name: "A",
+          email_id: "hr@x.com",
+          role_details: { role_name: "HR" },
+        }),
+      }),
+    }),
+  };
+  class HttpError extends Error {
+    constructor(status, msg) {
+      super(msg);
+      this.status = status;
+    }
+  }
   const accessStub = {
     HttpError,
     check: async () => ({ dryRun: true, enforced: false }),
@@ -61,46 +119,71 @@ function load(store) {
   };
   const orig = Module._load;
   Module._load = function (req, parent, ...rest) {
-    if (req === 'zcatalyst-sdk-node') return catalystStub;
-    if (req === './accessCore') return accessStub;
+    if (req === "zcatalyst-sdk-node") return catalystStub;
+    if (req === "./accessCore") return accessStub;
     return orig.call(this, req, parent, ...rest);
   };
-  try { return require('../index.js'); } finally { Module._load = orig; }
+  try {
+    return require("../index.js");
+  } finally {
+    Module._load = orig;
+  }
 }
 
 function call(api, method, resource, body) {
   return new Promise((resolve, reject) => {
-    const req = { method, url: '/?resource=' + encodeURIComponent(resource), body: body || (method === 'POST' ? {} : undefined), on() {} };
-    const res = { status: 0, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
+    const req = {
+      method,
+      url: "/?resource=" + encodeURIComponent(resource),
+      body: body || (method === "POST" ? {} : undefined),
+      on() {},
+    };
+    const res = {
+      status: 0,
+      writeHead(s) {
+        this.status = s;
+      },
+      end(text) {
+        resolve({ status: this.status, json: JSON.parse(text) });
+      },
+    };
     api(req, res).catch(reject);
   });
 }
 
 const iso = (d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
-let pass = 0, fail = 0;
+let pass = 0,
+  fail = 0;
 async function t(name, fn) {
-  try { await fn(); pass++; console.log('PASS', name); } catch (e) { fail++; console.log('FAIL', name, '\n   ', e.message); }
+  try {
+    await fn();
+    pass++;
+    console.log("PASS", name);
+  } catch (e) {
+    fail++;
+    console.log("FAIL", name, "\n   ", e.message);
+  }
 }
 
 async function setup() {
   const store = makeStore();
   const api = load(store);
-  const post = (r, b) => call(api, 'POST', r, b);
+  const post = (r, b) => call(api, "POST", r, b);
   const master = store.table(MASTER_T, null);
-  await master.insertRow({ emp_id: 'E1', emp_name: 'A', emp_status: 'Active' });
-  await master.insertRow({ emp_id: 'E2', emp_name: 'B', emp_status: 'Active' });
+  await master.insertRow({ emp_id: "E1", emp_name: "A", emp_status: "Active" });
+  await master.insertRow({ emp_id: "E2", emp_name: "B", emp_status: "Active" });
   // Default test employees have prior Annual payroll history. Payroll_Data
   // links to the source cycle ROWID, just like the live datastore.
   const historyCycle = await store.table(CYCLE_T, CYCLE_COLS).insertRow({
-    cycle_name: 'Annual 2025',
-    start_date: '2025-01-01',
-    end_date: '2025-12-31',
-    effective_date: '2025-01-01',
-    cycle_type: 'Annual',
-    process: 'Annual',
-    status: 'Closed',
+    cycle_name: "Annual 2025",
+    start_date: "2025-01-01",
+    end_date: "2025-12-31",
+    effective_date: "2025-01-01",
+    cycle_type: "Annual",
+    process: "Annual",
+    status: "Closed",
     archived: true,
-    location: 'All',
+    location: "All",
   });
   await store.table(PAYROLL_T, null).insertRows(
     master.rows.map((row) => ({
@@ -108,436 +191,848 @@ async function setup() {
       appraisal_cycle_name: historyCycle.ROWID,
     })),
   );
-  const locations = store.table('74008000000022481', null);
-  await locations.insertRow({ location_name: 'India', location_code: 'IN', status: 'Active' });
-  await locations.insertRow({ location_name: 'Dubai', location_code: 'AE', status: 'Active' });
-  const mk = async (name, location = 'All') => {
-    assert.strictEqual((await post('cycles/create', { name, type: 'Annual', process: 'Annual', location, effective: iso(9), start: iso(10), end: iso(40) })).status, 201);
-    return (await call(api, 'GET', 'cycles')).json.data.find((c) => c.name === name);
+  const locations = store.table("74008000000022481", null);
+  await locations.insertRow({
+    location_name: "India",
+    location_code: "IN",
+    status: "Active",
+  });
+  await locations.insertRow({
+    location_name: "Dubai",
+    location_code: "AE",
+    status: "Active",
+  });
+  const mk = async (name, location = "All") => {
+    assert.strictEqual(
+      (
+        await post("cycles/create", {
+          name,
+          type: "Annual",
+          process: "Annual",
+          location,
+          effective: iso(9),
+          start: iso(10),
+          end: iso(40),
+        })
+      ).status,
+      201,
+    );
+    return (await call(api, "GET", "cycles")).json.data.find(
+      (c) => c.name === name,
+    );
   };
   return { store, api, post, mk, elig: store.table(ELIG_T, null) };
 }
 
 (async () => {
-  const apply = (post, cycleId, criteria = {}) => post('eligibility', { action: 'apply-criteria', cycleId, ...criteria });
+  const apply = (post, cycleId, criteria = {}) =>
+    post("eligibility", { action: "apply-criteria", cycleId, ...criteria });
 
-  await t('criteria from a previous year never leak into another cycle at the same location', async () => {
-    const { store, post, mk, api, elig } = await setup();
-    const master = store.table(MASTER_T, null);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India' });
-    const first = await mk('India - Annual 2026', 'India');
-    assert.strictEqual((await post('cycles/status/' + first.id, { status: 'Active' })).status, 200);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, department: 'Sales' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, department: 'Engineering' });
-    const applied = await apply(post, first.id, { departments: ['Sales'] });
-    assert.strictEqual(applied.status, 200, JSON.stringify(applied.json));
-    assert.deepStrictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === first.id).map((row) => row.emp_id), ['E2']);
+  await t(
+    "criteria from a previous year never leak into another cycle at the same location",
+    async () => {
+      const { store, post, mk, api, elig } = await setup();
+      const master = store.table(MASTER_T, null);
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        location: "India",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        location: "India",
+      });
+      const first = await mk("India - Annual 2026", "India");
+      assert.strictEqual(
+        (await post("cycles/status/" + first.id, { status: "Active" })).status,
+        200,
+      );
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        department: "Sales",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        department: "Engineering",
+      });
+      const applied = await apply(post, first.id, { departments: ["Sales"] });
+      assert.strictEqual(applied.status, 200, JSON.stringify(applied.json));
+      assert.deepStrictEqual(
+        elig.rows
+          .filter((row) => row.appraisal_cycle_id === first.id)
+          .map((row) => row.emp_id),
+        ["E2"],
+      );
 
-    assert.strictEqual((await post('cycles/status/' + first.id, { status: 'Closed' })).status, 200);
-    const next = await mk('India - Annual 2027', 'India');
-    assert.strictEqual((await post('cycles/status/' + next.id, { status: 'Active' })).status, 200);
-    const response = await new Promise((resolve, reject) => {
-      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + next.id, on() {} };
-      const res = { status: 0, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
-      api(req, res).catch(reject);
-    });
-    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.data.meta.criteriaApplied, false);
-    assert.deepStrictEqual(response.json.data.records, []);
-    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === next.id).length, 0);
-  });
+      assert.strictEqual(
+        (await post("cycles/status/" + first.id, { status: "Closed" })).status,
+        200,
+      );
+      const next = await mk("India - Annual 2027", "India");
+      assert.strictEqual(
+        (await post("cycles/status/" + next.id, { status: "Active" })).status,
+        200,
+      );
+      const response = await new Promise((resolve, reject) => {
+        const req = {
+          method: "GET",
+          url: "/?resource=eligibility&cycleId=" + next.id,
+          on() {},
+        };
+        const res = {
+          status: 0,
+          writeHead(s) {
+            this.status = s;
+          },
+          end(text) {
+            resolve({ status: this.status, json: JSON.parse(text) });
+          },
+        };
+        api(req, res).catch(reject);
+      });
+      assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+      assert.strictEqual(response.json.data.meta.criteriaApplied, false);
+      assert.deepStrictEqual(response.json.data.records, []);
+      assert.strictEqual(
+        elig.rows.filter((row) => row.appraisal_cycle_id === next.id).length,
+        0,
+      );
+    },
+  );
 
-  await t('location cycles keep independent Eligibility rows for the same employee IDs', async () => {
-    const { store, post, mk, elig } = await setup();
-    const master = store.table(MASTER_T, null);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India' });
+  await t(
+    "location cycles keep independent Eligibility rows for the same employee IDs",
+    async () => {
+      const { store, post, mk, elig } = await setup();
+      const master = store.table(MASTER_T, null);
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        location: "India",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        location: "India",
+      });
 
-    const india = await mk('India - Annual 2028', 'India');
-    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Active' })).status, 200);
-    assert.strictEqual((await apply(post, india.id)).status, 200);
+      const india = await mk("India - Annual 2028", "India");
+      assert.strictEqual(
+        (await post("cycles/status/" + india.id, { status: "Active" })).status,
+        200,
+      );
+      assert.strictEqual((await apply(post, india.id)).status, 200);
 
-    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Closed' })).status, 200);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'Dubai' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'Dubai' });
+      assert.strictEqual(
+        (await post("cycles/status/" + india.id, { status: "Closed" })).status,
+        200,
+      );
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        location: "Dubai",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        location: "Dubai",
+      });
 
-    const dubai = await mk('Dubai - Annual 2028', 'Dubai');
-    assert.strictEqual((await post('cycles/status/' + dubai.id, { status: 'Active' })).status, 200);
-    assert.strictEqual((await apply(post, dubai.id)).status, 200);
+      const dubai = await mk("Dubai - Annual 2028", "Dubai");
+      assert.strictEqual(
+        (await post("cycles/status/" + dubai.id, { status: "Active" })).status,
+        200,
+      );
+      assert.strictEqual((await apply(post, dubai.id)).status, 200);
 
-    const indiaRows = elig.rows.filter((row) => row.appraisal_cycle_id === india.id);
-    const dubaiRows = elig.rows.filter((row) => row.appraisal_cycle_id === dubai.id);
-    assert.deepStrictEqual(indiaRows.map((row) => row.emp_id).sort(), ['E1', 'E2']);
-    assert.deepStrictEqual(dubaiRows.map((row) => row.emp_id).sort(), ['E1', 'E2']);
-    assert.ok(indiaRows.every((row) => row.appraisal_cycle_id === india.id));
-    assert.ok(dubaiRows.every((row) => row.appraisal_cycle_id === dubai.id));
-    assert.strictEqual(elig.rows.length, 4, 'the same emp_id must be stored once per cycle');
-  });
+      const indiaRows = elig.rows.filter(
+        (row) => row.appraisal_cycle_id === india.id,
+      );
+      const dubaiRows = elig.rows.filter(
+        (row) => row.appraisal_cycle_id === dubai.id,
+      );
+      assert.deepStrictEqual(indiaRows.map((row) => row.emp_id).sort(), [
+        "E1",
+        "E2",
+      ]);
+      assert.deepStrictEqual(dubaiRows.map((row) => row.emp_id).sort(), [
+        "E1",
+        "E2",
+      ]);
+      assert.ok(indiaRows.every((row) => row.appraisal_cycle_id === india.id));
+      assert.ok(dubaiRows.every((row) => row.appraisal_cycle_id === dubai.id));
+      assert.strictEqual(
+        elig.rows.length,
+        4,
+        "the same emp_id must be stored once per cycle",
+      );
+    },
+  );
 
-  await t('a location cycle does not inherit criteria from the All Locations cycle', async () => {
-    const { store, post, mk, api, elig } = await setup();
-    const master = store.table(MASTER_T, null);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India', department: 'Sales' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'India', department: 'Engineering' });
+  await t(
+    "a location cycle does not inherit criteria from the All Locations cycle",
+    async () => {
+      const { store, post, mk, api, elig } = await setup();
+      const master = store.table(MASTER_T, null);
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        location: "India",
+        department: "Sales",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        location: "India",
+        department: "Engineering",
+      });
 
-    const global = await mk('Annual 2029', 'All');
-    assert.strictEqual((await post('cycles/status/' + global.id, { status: 'Active' })).status, 200);
-    assert.strictEqual((await apply(post, global.id, { departments: ['Sales'] })).status, 200);
-    assert.strictEqual((await post('cycles/status/' + global.id, { status: 'Closed' })).status, 200);
+      const global = await mk("Annual 2029", "All");
+      assert.strictEqual(
+        (await post("cycles/status/" + global.id, { status: "Active" })).status,
+        200,
+      );
+      assert.strictEqual(
+        (await apply(post, global.id, { departments: ["Sales"] })).status,
+        200,
+      );
+      assert.strictEqual(
+        (await post("cycles/status/" + global.id, { status: "Closed" })).status,
+        200,
+      );
 
-    const india = await mk('India - Annual 2029', 'India');
-    assert.strictEqual((await post('cycles/status/' + india.id, { status: 'Active' })).status, 200);
-    const response = await new Promise((resolve, reject) => {
-      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(india.id), on() {} };
-      const res = { status: 0, writeHead(status) { this.status = status; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
-      api(req, res).catch(reject);
-    });
-    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.strictEqual(response.json.data.meta.criteriaApplied, false);
-    assert.strictEqual(response.json.data.meta.criteria, null);
-    assert.deepStrictEqual(response.json.data.records, []);
-    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === india.id).length, 0);
-  });
+      const india = await mk("India - Annual 2029", "India");
+      assert.strictEqual(
+        (await post("cycles/status/" + india.id, { status: "Active" })).status,
+        200,
+      );
+      const response = await new Promise((resolve, reject) => {
+        const req = {
+          method: "GET",
+          url: "/?resource=eligibility&cycleId=" + encodeURIComponent(india.id),
+          on() {},
+        };
+        const res = {
+          status: 0,
+          writeHead(status) {
+            this.status = status;
+          },
+          end(text) {
+            resolve({ status: this.status, json: JSON.parse(text) });
+          },
+        };
+        api(req, res).catch(reject);
+      });
+      assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+      assert.strictEqual(response.json.data.meta.criteriaApplied, false);
+      assert.strictEqual(response.json.data.meta.criteria, null);
+      assert.deepStrictEqual(response.json.data.records, []);
+      assert.strictEqual(
+        elig.rows.filter((row) => row.appraisal_cycle_id === india.id).length,
+        0,
+      );
+    },
+  );
 
-  await t('old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees', async () => {
-    const { store, post, mk, elig } = await setup();
-    // Historical employees are not part of the new cycle's Employee_Master
-    // roster. The same emp_id may be reused in another appraisal cycle.
-    await elig.insertRows([{ appraisal_cycle_id: 'OLD', employee_master_id: '9001', emp_id: 'HIST1' }, { appraisal_cycle_id: 'OLD', employee_master_id: '9002', emp_id: 'HIST2' }]);
-    const c = await mk('Annual NEW');
-    // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
-    // until HR explicitly applies criteria for this cycle.
-    await store.table('74008000000039094', null).insertRow({
-      emp_id: 'E1',
-      cycle_id: c.id,
-      eligible_status: 'Eligible',
-    });
-    const r = await post('cycles/status/' + c.id, { status: 'Active' });
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  await t(
+    "old-cycle rows do not block a new cycle and Apply Criteria seeds only passing employees",
+    async () => {
+      const { store, post, mk, elig } = await setup();
+      // Historical employees are not part of the new cycle's Employee_Master
+      // roster. The same emp_id may be reused in another appraisal cycle.
+      await elig.insertRows([
+        {
+          appraisal_cycle_id: "OLD",
+          employee_master_id: "9001",
+          emp_id: "HIST1",
+        },
+        {
+          appraisal_cycle_id: "OLD",
+          employee_master_id: "9002",
+          emp_id: "HIST2",
+        },
+      ]);
+      const c = await mk("Annual NEW");
+      // A pre-existing Appraisal Sheet row must not repopulate Eligibility_List
+      // until HR explicitly applies criteria for this cycle.
+      await store.table("74008000000039094", null).insertRow({
+        emp_id: "E1",
+        cycle_id: c.id,
+        eligible_status: "Eligible",
+      });
+      const r = await post("cycles/status/" + c.id, { status: "Active" });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      assert.strictEqual(
+        elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
+        0,
+        "activation must not seed the new cycle before criteria",
+      );
+      assert.strictEqual(
+        elig.rows.length,
+        2,
+        "rows belonging to the old cycle must remain untouched",
+      );
+      const ap = await apply(post, c.id);
+      assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
+      const newCycleRows = elig.rows.filter(
+        (row) => row.appraisal_cycle_id === c.id,
+      );
+      assert.strictEqual(newCycleRows.length, 2);
+      assert.ok(newCycleRows.every((row) => row.appraisal_cycle_id === c.id));
+      assert.strictEqual(
+        elig.rows.length,
+        4,
+        "Apply Criteria must not delete the old cycle rows",
+      );
+    },
+  );
+
+  await t(
+    "first Eligibility List load stays empty until Apply Criteria",
+    async () => {
+      const { post, mk, api, elig } = await setup();
+      const a = await mk("Annual A");
+      const r = await post("cycles/status/" + a.id, { status: "Active" });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      const listed = await call(api, "GET", "eligibility");
+      assert.strictEqual(listed.status, 200, JSON.stringify(listed.json));
+      assert.strictEqual(elig.rows.length, 0);
+    },
+  );
+
+  await t(
+    "closing a cycle keeps its eligibility rows; archive clears them",
+    async () => {
+      const { post, mk, elig } = await setup();
+      const a = await mk("Annual A");
+      assert.strictEqual(
+        (await post("cycles/status/" + a.id, { status: "Active" })).status,
+        200,
+      );
+      assert.strictEqual((await apply(post, a.id)).status, 200);
+      assert.strictEqual(elig.rows.length, 2);
+      const closed = await post("cycles/status/" + a.id, { status: "Closed" });
+      assert.strictEqual(closed.status, 200, JSON.stringify(closed.json));
+      assert.strictEqual(
+        elig.rows.length,
+        2,
+        "Close must not delete eligibility rows",
+      );
+    },
+  );
+
+  await t("reopening a closed cycle keeps its eligibility list", async () => {
+    const { post, mk, elig } = await setup();
+    const a = await mk("Annual A");
+    await post("cycles/status/" + a.id, { status: "Active" });
+    await apply(post, a.id);
+    await post("cycles/status/" + a.id, { status: "Closed" });
     assert.strictEqual(
-      elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
-      0,
-      'activation must not seed the new cycle before criteria',
+      (await post("cycles/status/" + a.id, { status: "Active" })).status,
+      200,
     );
-    assert.strictEqual(elig.rows.length, 2, 'rows belonging to the old cycle must remain untouched');
-    const ap = await apply(post, c.id);
-    assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
-    const newCycleRows = elig.rows.filter((row) => row.appraisal_cycle_id === c.id);
-    assert.strictEqual(newCycleRows.length, 2);
-    assert.ok(newCycleRows.every((row) => row.appraisal_cycle_id === c.id));
-    assert.strictEqual(elig.rows.length, 4, 'Apply Criteria must not delete the old cycle rows');
+    assert.strictEqual(
+      elig.rows.length,
+      2,
+      "Reopen must restore the same eligibility rows",
+    );
   });
 
-  await t('first Eligibility List load stays empty until Apply Criteria', async () => {
-    const { post, mk, api, elig } = await setup();
-    const a = await mk('Annual A');
-    const r = await post('cycles/status/' + a.id, { status: 'Active' });
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    const listed = await call(api, 'GET', 'eligibility');
-    assert.strictEqual(listed.status, 200, JSON.stringify(listed.json));
-    assert.strictEqual(elig.rows.length, 0);
-  });
+  await t(
+    "cancelling an Active cycle empties its eligibility rows",
+    async () => {
+      const { post, mk, elig } = await setup();
+      const a = await mk("Annual A");
+      await post("cycles/status/" + a.id, { status: "Active" });
+      await apply(post, a.id);
+      assert.strictEqual(elig.rows.length, 2);
+      assert.strictEqual(
+        (await post("cycles/cancel/" + a.id, { reason: "test" })).status,
+        200,
+      );
+      assert.strictEqual(elig.rows.length, 0);
+    },
+  );
 
-  await t('closing a cycle empties its eligibility rows; next cycle activates cleanly', async () => {
-    const { post, mk, elig } = await setup();
-    const a = await mk('Annual A');
-    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    assert.strictEqual((await apply(post, a.id)).status, 200);
-    assert.strictEqual(elig.rows.length, 2);
-    const closed = await post('cycles/status/' + a.id, { status: 'Closed' });
-    assert.strictEqual(closed.status, 200, JSON.stringify(closed.json));
-    assert.strictEqual(closed.json.data.eligibilityCleared, 2);
-    assert.strictEqual(elig.rows.length, 0);
-    const b = await mk('Annual B');
-    assert.strictEqual((await post('cycles/status/' + b.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 0, 'new cycle must not seed rows before criteria');
-    assert.strictEqual((await apply(post, b.id)).status, 200);
-    assert.strictEqual(elig.rows.length, 2);
-  });
+  await t(
+    "location cycle removes legacy Eligibility rows for employees in another location",
+    async () => {
+      const { store, api, post, mk, elig } = await setup();
+      const master = store.table(MASTER_T, null);
+      await master.updateRow({
+        ROWID: master.rows[0].ROWID,
+        location: "India",
+      });
+      await master.updateRow({
+        ROWID: master.rows[1].ROWID,
+        location: "Dubai",
+      });
+      const cycle = await mk("India - Annual 2027", "India");
+      const indiaMaster = master.rows.find((row) => row.emp_id === "E1");
+      const dubaiMaster = master.rows.find((row) => row.emp_id === "E2");
+      await elig.insertRow({
+        appraisal_cycle_id: cycle.id,
+        employee_master_id: indiaMaster.ROWID,
+        emp_id: "E1",
+        eligibility_status: "Eligible",
+        eligibility_source: "Criteria",
+      });
+      await elig.insertRow({
+        appraisal_cycle_id: cycle.id,
+        employee_master_id: dubaiMaster.ROWID,
+        emp_id: "E2",
+        eligibility_status: "Eligible",
+        eligibility_source: "Criteria",
+      });
+      const req = {
+        method: "GET",
+        url: "/?resource=eligibility&cycleId=" + encodeURIComponent(cycle.id),
+        on() {},
+      };
+      const res = {
+        status: 0,
+        writeHead(s) {
+          this.status = s;
+        },
+        end(body) {
+          this.json = JSON.parse(body);
+        },
+      };
+      await api(req, res);
+      assert.strictEqual(res.status, 200, JSON.stringify(res.json));
+      assert.deepStrictEqual(
+        res.json.data.records.map((row) => row.emp_id),
+        ["E1"],
+      );
+      assert.deepStrictEqual(
+        elig.rows.map((row) => row.emp_id),
+        ["E1"],
+      );
+    },
+  );
 
-  await t('reopening a closed cycle keeps the list empty until Apply Criteria', async () => {
-    const { post, mk, elig } = await setup();
-    const a = await mk('Annual A');
-    await post('cycles/status/' + a.id, { status: 'Active' });
-    await apply(post, a.id);
-    await post('cycles/status/' + a.id, { status: 'Closed' });
-    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 0);
-  });
+  await t(
+    "opening Eligibility List is blocked when active cycle payroll is missing",
+    async () => {
+      const { post, mk, api, store } = await setup();
+      const c = await mk("Annual Open Missing Payroll");
+      store.table(PAYROLL_T, null).rows.splice(0);
+      const response = await new Promise((resolve, reject) => {
+        const req = {
+          method: "GET",
+          url: "/?resource=eligibility&cycleId=" + encodeURIComponent(c.id),
+          on() {},
+        };
+        const res = {
+          status: 0,
+          writeHead(status) {
+            this.status = status;
+          },
+          end(body) {
+            resolve({ status: this.status, json: JSON.parse(body) });
+          },
+        };
+        api(req, res).catch(reject);
+      });
+      assert.strictEqual(response.status, 409, JSON.stringify(response.json));
+      assert.match(
+        response.json.message || "",
+        /Payroll data is not uploaded or updated/i,
+      );
+    },
+  );
 
-  await t('cancelling an Active cycle empties its eligibility rows', async () => {
-    const { post, mk, elig } = await setup();
-    const a = await mk('Annual A');
-    await post('cycles/status/' + a.id, { status: 'Active' });
-    await apply(post, a.id);
-    assert.strictEqual(elig.rows.length, 2);
-    assert.strictEqual((await post('cycles/cancel/' + a.id, { reason: 'test' })).status, 200);
-    assert.strictEqual(elig.rows.length, 0);
-  });
-
-  await t('location cycle removes legacy Eligibility rows for employees in another location', async () => {
-    const { store, api, post, mk, elig } = await setup();
-    const master = store.table(MASTER_T, null);
-    await master.updateRow({ ROWID: master.rows[0].ROWID, location: 'India' });
-    await master.updateRow({ ROWID: master.rows[1].ROWID, location: 'Dubai' });
-    const cycle = await mk('India - Annual 2027', 'India');
-    const indiaMaster = master.rows.find((row) => row.emp_id === 'E1');
-    const dubaiMaster = master.rows.find((row) => row.emp_id === 'E2');
-    await elig.insertRow({
-      appraisal_cycle_id: cycle.id,
-      employee_master_id: indiaMaster.ROWID,
-      emp_id: 'E1',
-      eligibility_status: 'Eligible',
-      eligibility_source: 'Criteria',
-    });
-    await elig.insertRow({
-      appraisal_cycle_id: cycle.id,
-      employee_master_id: dubaiMaster.ROWID,
-      emp_id: 'E2',
-      eligibility_status: 'Eligible',
-      eligibility_source: 'Criteria',
-    });
-    const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(cycle.id), on() {} };
-    const res = { status: 0, writeHead(s) { this.status = s; }, end(body) { this.json = JSON.parse(body); } };
-    await api(req, res);
-    assert.strictEqual(res.status, 200, JSON.stringify(res.json));
-    assert.deepStrictEqual(res.json.data.records.map((row) => row.emp_id), ['E1']);
-    assert.deepStrictEqual(elig.rows.map((row) => row.emp_id), ['E1']);
-  });
-
-  await t('opening Eligibility List is blocked when active cycle payroll is missing', async () => {
-    const { post, mk, api, store } = await setup();
-    const c = await mk('Annual Open Missing Payroll');
-    store.table(PAYROLL_T, null).rows.splice(0);
-    const response = await new Promise((resolve, reject) => {
-      const req = { method: 'GET', url: '/?resource=eligibility&cycleId=' + encodeURIComponent(c.id), on() {} };
-      const res = { status: 0, writeHead(status) { this.status = status; }, end(body) { resolve({ status: this.status, json: JSON.parse(body) }); } };
-      api(req, res).catch(reject);
-    });
-    assert.strictEqual(response.status, 409, JSON.stringify(response.json));
-    assert.match(response.json.message || '', /Payroll data is not uploaded or updated/i);
-  });
-
-  await t('GET eligibility does not seed employees before criteria are applied', async () => {
-    const { post, mk, api, elig } = await setup();
-    const a = await mk('Annual A');
-    await post('cycles/status/' + a.id, { status: 'Active' });
-    const r = await call(api, 'GET', 'eligibility');
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.data.records.length, 0);
-    assert.strictEqual(elig.rows.length, 0);
-    await apply(post, a.id);
-    const r2 = await call(api, 'GET', 'eligibility');
-    assert.strictEqual(r2.json.data.records.length, 2);
-  });
+  await t(
+    "GET eligibility does not seed employees before criteria are applied",
+    async () => {
+      const { post, mk, api, elig } = await setup();
+      const a = await mk("Annual A");
+      await post("cycles/status/" + a.id, { status: "Active" });
+      const r = await call(api, "GET", "eligibility");
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      assert.strictEqual(r.json.data.records.length, 0);
+      assert.strictEqual(elig.rows.length, 0);
+      await apply(post, a.id);
+      const r2 = await call(api, "GET", "eligibility");
+      assert.strictEqual(r2.json.data.records.length, 2);
+    },
+  );
 
   // ---- Apply Criteria + Add An Employee --------------------------------
   const richSetup = async () => {
     const ctx = await setup();
     const master = ctx.store.table(MASTER_T, null);
-    await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active', department: 'Sales', designation: 'Manager', joining_date: '2020-01-10' });
-    await master.insertRow({ emp_id: 'E4', emp_name: 'D', emp_status: 'Active', department: 'Engineering', designation: 'Analyst', joining_date: '2025-08-01' });
-    await master.insertRow({ emp_id: 'E5', emp_name: 'E', emp_status: 'Inactive', department: 'Engineering', designation: 'Analyst', joining_date: '2020-01-10' });
+    await master.insertRow({
+      emp_id: "E3",
+      emp_name: "C",
+      emp_status: "Active",
+      department: "Sales",
+      designation: "Manager",
+      joining_date: "2020-01-10",
+    });
+    await master.insertRow({
+      emp_id: "E4",
+      emp_name: "D",
+      emp_status: "Active",
+      department: "Engineering",
+      designation: "Analyst",
+      joining_date: "2025-08-01",
+    });
+    await master.insertRow({
+      emp_id: "E5",
+      emp_name: "E",
+      emp_status: "Inactive",
+      department: "Engineering",
+      designation: "Analyst",
+      joining_date: "2020-01-10",
+    });
     await ctx.store.table(PAYROLL_T, null).insertRows(
-      master.rows.filter((row) => ['E3', 'E4'].includes(row.emp_id)).map((row) => ({
-        emp_id: row.ROWID,
-        appraisal_cycle_name: 'HISTORICAL-ANNUAL',
-      })),
+      master.rows
+        .filter((row) => ["E3", "E4"].includes(row.emp_id))
+        .map((row) => ({
+          emp_id: row.ROWID,
+          appraisal_cycle_name: "HISTORICAL-ANNUAL",
+        })),
     );
-    const c = await ctx.mk('Annual R');
-    await ctx.post('cycles/status/' + c.id, { status: 'Active' });
+    const c = await ctx.mk("Annual R");
+    await ctx.post("cycles/status/" + c.id, { status: "Active" });
     return { ...ctx, c };
   };
   const ids = (elig) => elig.rows.map((r) => r.emp_id).sort();
 
-  await t('Appraisal Sheet generation is blocked when cycle payroll has not been uploaded', async () => {
-    const { post, c, store } = await richSetup();
-    store.table(PAYROLL_T, null).rows.splice(0);
-    await apply(post, c.id);
-    const result = await post('generate-sheet', { cycleId: c.id });
-    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || result.json.error || '', /Payroll history is missing/i);
-    assert.match(result.json.message || result.json.error || '', /E1 - A|E1|E2 - B|E2/i);
-  });
+  await t(
+    "Appraisal Sheet generation is blocked when cycle payroll has not been uploaded",
+    async () => {
+      const { post, c, store } = await richSetup();
+      store.table(PAYROLL_T, null).rows.splice(0);
+      await apply(post, c.id);
+      const result = await post("generate-sheet", { cycleId: c.id });
+      assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+      assert.match(
+        result.json.message || result.json.error || "",
+        /Payroll history is missing/i,
+      );
+      assert.match(
+        result.json.message || result.json.error || "",
+        /E1 - A|E1|E2 - B|E2/i,
+      );
+    },
+  );
 
-  await t('Appraisal Sheet generation names every eligible employee missing payroll history', async () => {
-    const { post, c, store } = await richSetup();
-    store.table(PAYROLL_T, null).rows.splice(0);
-    await apply(post, c.id);
-    const master = store.table(MASTER_T, null).rows.find((row) => row.emp_id === 'E1');
-    await store.table(PAYROLL_T, null).insertRow({
-      emp_id: master.ROWID,
-      appraisal_cycle_name: c.id,
-    });
-    const result = await post('generate-sheet', { cycleId: c.id });
-    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    const message = result.json.message || result.json.error || '';
-    assert.match(message, /E2 - B/i);
-    assert.match(message, /E3 - C/i);
-    assert.match(message, /E4 - D/i);
-    assert.doesNotMatch(message, /E1 - A/i);
-  });
+  await t(
+    "Appraisal Sheet generation names every eligible employee missing payroll history",
+    async () => {
+      const { post, c, store } = await richSetup();
+      store.table(PAYROLL_T, null).rows.splice(0);
+      await apply(post, c.id);
+      const master = store
+        .table(MASTER_T, null)
+        .rows.find((row) => row.emp_id === "E1");
+      await store.table(PAYROLL_T, null).insertRow({
+        emp_id: master.ROWID,
+        appraisal_cycle_name: c.id,
+      });
+      const result = await post("generate-sheet", { cycleId: c.id });
+      assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+      const message = result.json.message || result.json.error || "";
+      assert.match(message, /E2 - B/i);
+      assert.match(message, /E3 - C/i);
+      assert.match(message, /E4 - D/i);
+      assert.doesNotMatch(message, /E1 - A/i);
+    },
+  );
 
-  await t('Appraisal Sheet generation requires cycle Feedback and Rating values', async () => {
-    const { post, c, store } = await richSetup();
-    await apply(post, c.id);
-    const master = store.table(MASTER_T, null).rows.find((row) => row.emp_id === 'E1');
-    await store.table(PAYROLL_T, null).insertRow({
-      emp_id: master.ROWID,
-      appraisal_cycle_name: c.id,
-    });
-    await store.table(FEEDBACK_T, null).insertRow({
-      emp_ID: master.ROWID,
-      appraisal_cycle_name: c.id,
-      manager_feedback: 'Good performance',
-      // Deliberately no rating: generation must not proceed.
-    });
-    const result = await post('generate-sheet', { cycleId: c.id });
-    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || result.json.error || '', /rating values/i);
-  });
+  await t(
+    "Appraisal Sheet generation requires cycle Feedback and Rating values",
+    async () => {
+      const { post, c, store } = await richSetup();
+      await apply(post, c.id);
+      const master = store
+        .table(MASTER_T, null)
+        .rows.find((row) => row.emp_id === "E1");
+      await store.table(PAYROLL_T, null).insertRow({
+        emp_id: master.ROWID,
+        appraisal_cycle_name: c.id,
+      });
+      await store.table(FEEDBACK_T, null).insertRow({
+        emp_ID: master.ROWID,
+        appraisal_cycle_name: c.id,
+        manager_feedback: "Good performance",
+        // Deliberately no rating: generation must not proceed.
+      });
+      const result = await post("generate-sheet", { cycleId: c.id });
+      assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+      assert.match(
+        result.json.message || result.json.error || "",
+        /rating values/i,
+      );
+    },
+  );
 
+  await t(
+    "cycle activation is blocked before changing status when payroll is missing",
+    async () => {
+      const { post, mk, store, elig } = await setup();
+      const c = await mk("Annual Missing Payroll");
+      store.table(PAYROLL_T, null).rows.splice(0);
+      const audit = store.table("74008000000034940", null);
+      const beforeAudit = audit.rows.length;
+      const result = await post("cycles/status/" + c.id, { status: "Active" });
+      assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+      assert.match(
+        result.json.message || "",
+        /Payroll data is not uploaded or updated/i,
+      );
+      assert.strictEqual(
+        (await call(store.api, "GET", "cycles")).json.data.find(
+          (item) => item.id === c.id,
+        ).status,
+        "Upcoming",
+      );
+      assert.strictEqual(
+        elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
+        0,
+      );
+      assert.strictEqual(audit.rows.length, beforeAudit);
+    },
+  );
 
-  await t('cycle activation is blocked before changing status when payroll is missing', async () => {
-    const { post, mk, store, elig } = await setup();
-    const c = await mk('Annual Missing Payroll');
-    store.table(PAYROLL_T, null).rows.splice(0);
-    const audit = store.table('74008000000034940', null);
-    const beforeAudit = audit.rows.length;
-    const result = await post('cycles/status/' + c.id, { status: 'Active' });
-    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || '', /Payroll data is not uploaded or updated/i);
-    assert.strictEqual((await call(store.api, 'GET', 'cycles')).json.data.find((item) => item.id === c.id).status, 'Upcoming');
-    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length, 0);
-    assert.strictEqual(audit.rows.length, beforeAudit);
-  });
+  await t(
+    "Apply Criteria is blocked before writing Eligibility rows or audit when payroll is missing",
+    async () => {
+      const { post, c, elig, store } = await richSetup();
+      store.table(PAYROLL_T, null).rows.splice(0);
+      const audit = store.table("74008000000034940", null);
+      const beforeAudit = audit.rows.length;
+      const result = await apply(post, c.id);
+      assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+      assert.match(
+        result.json.message || result.json.error || "",
+        /Payroll data is not updated/i,
+      );
+      assert.match(
+        result.json.message || result.json.error || "",
+        /E1 - A|E1/i,
+      );
+      assert.strictEqual(
+        elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length,
+        0,
+      );
+      assert.strictEqual(
+        audit.rows.length,
+        beforeAudit,
+        "blocked generation must not create an audit entry",
+      );
+    },
+  );
 
-  await t('Apply Criteria is blocked before writing Eligibility rows or audit when payroll is missing', async () => {
-    const { post, c, elig, store } = await richSetup();
-    store.table(PAYROLL_T, null).rows.splice(0);
-    const audit = store.table('74008000000034940', null);
-    const beforeAudit = audit.rows.length;
-    const result = await apply(post, c.id);
-    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
-    assert.match(result.json.message || result.json.error || '', /Payroll data is not updated/i);
-    assert.match(result.json.message || result.json.error || '', /E1 - A|E1/i);
-    assert.strictEqual(elig.rows.filter((row) => row.appraisal_cycle_id === c.id).length, 0);
-    assert.strictEqual(audit.rows.length, beforeAudit, 'blocked generation must not create an audit entry');
-  });
+  await t(
+    "apply criteria updates each active employee to Eligible or Not Eligible",
+    async () => {
+      const { post, c, elig, store } = await richSetup();
+      store
+        .table(MASTER_T, null)
+        .rows.find((m) => m.emp_id === "E1").joining_date = "15-03-2023";
+      const r = await apply(post, c.id, {
+        departments: ["Sales"],
+        designations: [],
+        excludedEmployees: ["E2"],
+        cutoffDate: "2025-01-01",
+      });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      // Rows stay visible: passing employees are Eligible and excluded employees are Not Eligible.
+      assert.deepStrictEqual(ids(elig), ["E1"]);
+      assert.strictEqual(elig.rows[0].eligibility_status, "Eligible");
+      assert.strictEqual(r.json.data.added, 1);
+    },
+  );
 
-  await t('apply criteria updates each active employee to Eligible or Not Eligible', async () => {
-    const { post, c, elig, store } = await richSetup();
-    store.table(MASTER_T, null).rows.find((m) => m.emp_id === 'E1').joining_date = '15-03-2023';
-    const r = await apply(post, c.id, { departments: ['Sales'], designations: [], excludedEmployees: ['E2'], cutoffDate: '2025-01-01' });
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    // Rows stay visible: passing employees are Eligible and excluded employees are Not Eligible.
-    assert.deepStrictEqual(ids(elig), ['E1']);
-    assert.strictEqual(elig.rows[0].eligibility_status, 'Eligible');
-    assert.strictEqual(r.json.data.added, 1);
-  });
+  await t(
+    "cutoff with a missing joining date marks the employee Not Eligible",
+    async () => {
+      const { post, c, elig } = await richSetup();
+      await apply(post, c.id, { cutoffDate: "2025-12-31" });
+      assert.deepStrictEqual(ids(elig), ["E3", "E4"]); // only active employees who pass criteria are listed
+    },
+  );
 
-  await t('cutoff with a missing joining date marks the employee Not Eligible', async () => {
-    const { post, c, elig } = await richSetup();
-    await apply(post, c.id, { cutoffDate: '2025-12-31' });
-    assert.deepStrictEqual(ids(elig), ['E3', 'E4']); // only active employees who pass criteria are listed
-  });
+  await t(
+    "Add An Employee: a left-out employee is added by hand and survives re-applying criteria",
+    async () => {
+      const { post, c, elig } = await richSetup();
+      await apply(post, c.id, { departments: ["Sales"] });
+      assert.ok(
+        !ids(elig).includes("E3"),
+        "employees excluded by criteria must not be in the generated eligibility roster",
+      );
+      const add = await post("eligibility", {
+        cycleId: c.id,
+        empId: "E3",
+        eligible_status: "Eligible",
+        reason: "ML",
+        source: "Manual",
+      });
+      assert.strictEqual(add.status, 200, JSON.stringify(add.json));
+      assert.ok(ids(elig).includes("E3"));
+      assert.strictEqual(
+        elig.rows.find((r) => r.emp_id === "E3").eligibility_source,
+        "Manual",
+      );
+      await apply(post, c.id, { departments: ["Sales"] });
+      assert.ok(ids(elig).includes("E3"), "manual row must be kept");
+    },
+  );
 
-  await t('Add An Employee: a left-out employee is added by hand and survives re-applying criteria', async () => {
-    const { post, c, elig } = await richSetup();
-    await apply(post, c.id, { departments: ['Sales'] });
-    assert.ok(!ids(elig).includes('E3'), 'employees excluded by criteria must not be in the generated eligibility roster');
-    const add = await post('eligibility', { cycleId: c.id, empId: 'E3', eligible_status: 'Eligible', reason: 'ML', source: 'Manual' });
-    assert.strictEqual(add.status, 200, JSON.stringify(add.json));
-    assert.ok(ids(elig).includes('E3'));
-    assert.strictEqual(elig.rows.find((r) => r.emp_id === 'E3').eligibility_source, 'Manual');
-    await apply(post, c.id, { departments: ['Sales'] });
-    assert.ok(ids(elig).includes('E3'), 'manual row must be kept');
-  });
+  await t(
+    "re-applying stricter criteria removes Criteria rows that no longer pass but keeps manual ones",
+    async () => {
+      const { post, c, elig } = await richSetup();
+      await apply(post, c.id, {});
+      assert.deepStrictEqual(ids(elig), ["E1", "E2", "E3", "E4"]);
+      await post("eligibility", {
+        cycleId: c.id,
+        empId: "E4",
+        eligible_status: "Not Eligible",
+        reason: "x",
+      });
+      const r = await apply(post, c.id, {
+        departments: ["Sales", "Engineering"],
+      });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      assert.deepStrictEqual(ids(elig), ["E1", "E2", "E4"]);
+      assert.strictEqual(r.json.data.removed, 1);
+      assert.strictEqual(
+        elig.rows.find((row) => row.emp_id === "E4").eligibility_status,
+        "Not Eligible",
+      );
+    },
+  );
 
-  await t('re-applying stricter criteria removes Criteria rows that no longer pass but keeps manual ones', async () => {
-    const { post, c, elig } = await richSetup();
-    await apply(post, c.id, {});
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']);
-    await post('eligibility', { cycleId: c.id, empId: 'E4', eligible_status: 'Not Eligible', reason: 'x' });
-    const r = await apply(post, c.id, { departments: ['Sales', 'Engineering'] });
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E4']);
-    assert.strictEqual(r.json.data.removed, 1);
-    assert.strictEqual(elig.rows.find((row) => row.emp_id === 'E4').eligibility_status, 'Not Eligible');
-  });
-
-  await t('inactive employees cannot be added by hand', async () => {
+  await t("inactive employees cannot be added by hand", async () => {
     const { post, c } = await richSetup();
-    const r = await post('eligibility', { cycleId: c.id, empId: 'E5', eligible_status: 'Eligible', source: 'Manual' });
+    const r = await post("eligibility", {
+      cycleId: c.id,
+      empId: "E5",
+      eligible_status: "Eligible",
+      source: "Manual",
+    });
     assert.strictEqual(r.status, 409);
   });
 
-  await t('employee made inactive after cycle setup remains visible as Inactive and Not Eligible', async () => {
-    const { post, c, api, elig, store } = await richSetup();
-    await apply(post, c.id);
-    const master = store.table(MASTER_T, null);
-    const employee = master.rows.find((row) => row.emp_id === 'E1');
-    employee.emp_status = 'Inactive';
+  await t(
+    "employee made inactive after cycle setup remains visible as Inactive and Not Eligible",
+    async () => {
+      const { post, c, api, elig, store } = await richSetup();
+      await apply(post, c.id);
+      const master = store.table(MASTER_T, null);
+      const employee = master.rows.find((row) => row.emp_id === "E1");
+      employee.emp_status = "Inactive";
 
-    const response = await call(api, 'GET', 'eligibility');
-    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    const row = response.json.data.records.find((item) => item.emp_id === 'E1');
-    assert.ok(row, 'inactive employee should remain in the cycle Eligibility List');
-    assert.strictEqual(row.status, 'Inactive');
-    assert.strictEqual(row.eligibility_status, 'Not Eligible');
-    assert.strictEqual(elig.rows.find((item) => item.emp_id === 'E1').eligibility_reason, 'Employee inactive');
-  });
+      const response = await call(api, "GET", "eligibility");
+      assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+      const row = response.json.data.records.find(
+        (item) => item.emp_id === "E1",
+      );
+      assert.ok(
+        row,
+        "inactive employee should remain in the cycle Eligibility List",
+      );
+      assert.strictEqual(row.status, "Inactive");
+      assert.strictEqual(row.eligibility_status, "Not Eligible");
+      assert.strictEqual(
+        elig.rows.find((item) => item.emp_id === "E1").eligibility_reason,
+        "Employee inactive",
+      );
+    },
+  );
 
-  await t('an unchanged Eligibility List load reads each table once', async () => {
-    const { post, mk, api, elig, store } = await setup();
-    const a = await mk('Annual R');
-    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    const master = store.table(MASTER_T, null);
-    const reads = { elig: 0, master: 0 };
-    const eligRead = elig.getPagedRows;
-    const masterRead = master.getPagedRows;
-    elig.getPagedRows = async (...args) => { reads.elig += 1; return eligRead(...args); };
-    master.getPagedRows = async (...args) => { reads.master += 1; return masterRead(...args); };
+  await t(
+    "an unchanged Eligibility List load reads each table once",
+    async () => {
+      const { post, mk, api, elig, store } = await setup();
+      const a = await mk("Annual R");
+      assert.strictEqual(
+        (await post("cycles/status/" + a.id, { status: "Active" })).status,
+        200,
+      );
+      const master = store.table(MASTER_T, null);
+      const reads = { elig: 0, master: 0 };
+      const eligRead = elig.getPagedRows;
+      const masterRead = master.getPagedRows;
+      elig.getPagedRows = async (...args) => {
+        reads.elig += 1;
+        return eligRead(...args);
+      };
+      master.getPagedRows = async (...args) => {
+        reads.master += 1;
+        return masterRead(...args);
+      };
 
-    const response = await call(api, 'GET', 'eligibility');
-    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
-    assert.deepStrictEqual(response.json.data.records.map((row) => row.emp_id).sort(), []);
-    assert.strictEqual(reads.elig, 1);
-    assert.strictEqual(reads.master, 1);
+      const response = await call(api, "GET", "eligibility");
+      assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+      assert.deepStrictEqual(
+        response.json.data.records.map((row) => row.emp_id).sort(),
+        [],
+      );
+      assert.strictEqual(reads.elig, 1);
+      assert.strictEqual(reads.master, 1);
 
-    // A change found by the sync still returns the updated list.
-    await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active' });
-    const after = await call(api, 'GET', 'eligibility');
-    assert.deepStrictEqual(after.json.data.records.map((row) => row.emp_id).sort(), []);
-  });
+      // A change found by the sync still returns the updated list.
+      await master.insertRow({
+        emp_id: "E3",
+        emp_name: "C",
+        emp_status: "Active",
+      });
+      const after = await call(api, "GET", "eligibility");
+      assert.deepStrictEqual(
+        after.json.data.records.map((row) => row.emp_id).sort(),
+        [],
+      );
+    },
+  );
 
-  await t('eligibility count reports criteria status without writing', async () => {
-    const { post, mk, api, elig } = await setup();
-    const a = await mk('Annual N');
-    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    const count = () => new Promise((resolve, reject) => {
-      const req = { method: 'GET', url: '/?resource=eligibility&count=1&cycleId=' + a.id, on() {} };
-      const res = { status: 0, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
-      api(req, res).catch(reject);
-    });
+  await t(
+    "eligibility count reports criteria status without writing",
+    async () => {
+      const { post, mk, api, elig } = await setup();
+      const a = await mk("Annual N");
+      assert.strictEqual(
+        (await post("cycles/status/" + a.id, { status: "Active" })).status,
+        200,
+      );
+      const count = () =>
+        new Promise((resolve, reject) => {
+          const req = {
+            method: "GET",
+            url: "/?resource=eligibility&count=1&cycleId=" + a.id,
+            on() {},
+          };
+          const res = {
+            status: 0,
+            writeHead(s) {
+              this.status = s;
+            },
+            end(text) {
+              resolve({ status: this.status, json: JSON.parse(text) });
+            },
+          };
+          api(req, res).catch(reject);
+        });
 
-    const before = JSON.stringify(elig.rows);
-    const pending = await count();
-    assert.strictEqual(pending.status, 200, JSON.stringify(pending.json));
-    assert.strictEqual(pending.json.data.criteriaApplied, false);
-    assert.strictEqual(pending.json.data.total, elig.rows.length);
-    assert.strictEqual(JSON.stringify(elig.rows), before, 'a count must not change Eligibility rows');
+      const before = JSON.stringify(elig.rows);
+      const pending = await count();
+      assert.strictEqual(pending.status, 200, JSON.stringify(pending.json));
+      assert.strictEqual(pending.json.data.criteriaApplied, false);
+      assert.strictEqual(pending.json.data.total, elig.rows.length);
+      assert.strictEqual(
+        JSON.stringify(elig.rows),
+        before,
+        "a count must not change Eligibility rows",
+      );
 
-    assert.strictEqual((await apply(post, a.id)).status, 200);
-    const applied = await count();
-    assert.strictEqual(applied.json.data.criteriaApplied, true);
-    assert.strictEqual(applied.json.data.total, elig.rows.length);
-  });
+      assert.strictEqual((await apply(post, a.id)).status, 200);
+      const applied = await count();
+      assert.strictEqual(applied.json.data.criteriaApplied, true);
+      assert.strictEqual(applied.json.data.total, elig.rows.length);
+    },
+  );
 
-  await t('apply criteria needs the Active cycle', async () => {
+  await t("apply criteria needs the Active cycle", async () => {
     const { post, mk } = await setup();
-    const c = await mk('Annual U');
+    const c = await mk("Annual U");
     const r = await apply(post, c.id, {});
     assert.strictEqual(r.status, 409);
   });
