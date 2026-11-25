@@ -3738,10 +3738,11 @@ async function getEmployees(req, res) {
         byRowId.get(raw.toLowerCase()) ||
         byName.get(raw.toLowerCase());
       if (!row) return null;
-      const status = String(row.emp_status || row.status || "Active")
+      const status = String(row.emp_status ?? row.status ?? "")
         .trim()
         .toLowerCase();
-      if (["inactive", "disabled", "terminated"].includes(status)) return null;
+      // Only explicitly Active Employee_Master records can be selected.
+      if (status !== "active") return null;
       const empId = String(row.emp_id || row.employee_id || "").trim();
       const name = String(row.emp_name || row.name || "").trim();
       if (!empId || !name) return null;
@@ -3763,8 +3764,8 @@ async function getEmployees(req, res) {
     // currently selected location's appraisal roster.
     const employees = masterRows
       .map((row) => {
-        const status = String(row.emp_status || row.status || "Active").trim().toLowerCase();
-        if (["inactive", "disabled", "terminated"].includes(status)) return null;
+        const status = String(row.emp_status ?? row.status ?? "").trim().toLowerCase();
+        if (status !== "active") return null;
         const empId = String(row.emp_id || row.employee_id || "").trim();
         const name = String(row.emp_name || row.name || "").trim();
         return empId && name ? { empId, name, label: empId + " - " + name } : null;
