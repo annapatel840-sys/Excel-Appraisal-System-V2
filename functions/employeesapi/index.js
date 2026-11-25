@@ -68,6 +68,13 @@ function findSaveConflicts(storedRow, expected, columns) {
   const asText = function (value) {
     return value === null || value === undefined ? "" : String(value).trim();
   };
+  // Roster reads display an unset promotion flag as "No". Match that display
+  // default to the stored empty value for conflict checks only.
+  const asComparableText = function (column, value) {
+    const text = asText(value);
+    if (column === "eligible_for_promotion" && text === "") return "No";
+    return text;
+  };
   return columns
     .filter(function (column) {
       const kind = CONFLICT_COLUMNS[column];
@@ -84,7 +91,10 @@ function findSaveConflicts(storedRow, expected, columns) {
           return asText(storedRow[column]) !== asText(expected[column]);
         return Math.abs(stored - shown) > 0.005;
       }
-      return asText(storedRow[column]) !== asText(expected[column]);
+      return (
+        asComparableText(column, storedRow[column]) !==
+        asComparableText(column, expected[column])
+      );
     })
     .map(function (column) {
       return {
