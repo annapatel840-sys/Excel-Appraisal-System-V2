@@ -131,6 +131,10 @@ export function ImportMappingModal({
                     <td className="px-3 py-2">
                       {isKey ? (
                         <span className="text-muted-foreground">Key</span>
+                      ) : key && targets.find((t) => t.key === key)?.note ? (
+                        <span className="text-amber-700">
+                          Mapped - {targets.find((t) => t.key === key).note}
+                        </span>
                       ) : key ? (
                         <span className="text-emerald-700">Mapped</span>
                       ) : (

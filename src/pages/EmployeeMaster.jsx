@@ -3213,6 +3213,7 @@ import {
   updateEligibilityRecords,
   applyEligibilityCriteriaToCycle,
   createEmployeeMasterEmployees,
+  parseDateValue,
 } from "@/lib/employee-master-data";
 
 import {
@@ -3290,6 +3291,132 @@ const ROSTER_FIELD_TO_CATALYST = {
   superManagerMail: "super_man_email_id",
   status: "status",
 };
+
+/* ============================================================
+   ROSTER IMPORT COLUMNS
+
+   Every column of the Employee Master table except "Action" (Employee is split
+   into Emp ID / Employee Name / Designation, like the export). `api` is the
+   Employee_Master column the import writes; null means the table shows that
+   column from another source and the import cannot save it.
+   `aliases` are the other header spellings that map to the column automatically
+   (the exported file, the template and older upload files).
+============================================================ */
+
+const ROSTER_IMPORT_COLUMNS = [
+  { key: "empId", label: "Emp ID", api: "emp_id", aliases: ["Employee ID", "EmpID"] },
+  { key: "name", label: "Employee Name", api: "emp_name", aliases: ["Name"], mapped: "name" },
+  { key: "designation", label: "Designation", api: "designation", mapped: "designation" },
+  { key: "sourceOfHire", label: "Source of Hire", api: null, aliases: ["source_of_hire"] },
+  { key: "type", label: "Emp Type", api: "emp_type", aliases: ["Employee Type", "Employment Type"] },
+  { key: "dept", label: "Department", api: "department", aliases: ["Organization", "Orgtn"], mapped: "organization" },
+  { key: "reportingManager", label: "Reporting Manager", api: "repo_manager", mapped: "reportingManager" },
+  { key: "te", label: "Tech-ED/BU Head Name", api: null, aliases: ["Tech-ED Name", "Tech ED BU Head Name"] },
+  { key: "director", label: "Director", api: "director", aliases: ["Director Name"] },
+  {
+    key: "appraiser",
+    label: "Appraiser Tech-ED",
+    api: "appraiser_tech_ed",
+    aliases: ["Appraiser / Super Manager", "Appraiser", "Appraiser Super manager nam Name"],
+    mapped: "appraiser",
+  },
+  {
+    key: "totalExp",
+    label: "Total Experience",
+    api: "total_experience",
+    numeric: true,
+    aliases: ["Total Experience (as on 1 Jan)", "Total Experience as on 1st Jan"],
+    mapped: "totalExp",
+  },
+  {
+    key: "orgExp",
+    label: "Wissen Experience",
+    api: "wissen_experience",
+    numeric: true,
+    aliases: ["Organization Experience", "Org Exp", "Org. Exp (as on 1 Jan)", "wissen_experience"],
+    mapped: "orgExp",
+  },
+  { key: "email", label: "Email ID", api: "email_id", aliases: ["Email", "Manager Email ID"], mapped: "managerMail" },
+  { key: "doj", label: "Date of Joining", api: "date_of_join", date: true, aliases: ["DOJ"], mapped: "doj" },
+  {
+    key: "status",
+    label: "Employee Status",
+    api: "emp_status",
+    aliases: ["Status", "Active/Inactive"],
+    mapped: "status",
+  },
+  { key: "location", label: "Location", api: "location", aliases: ["Work Location"], mapped: "location" },
+  {
+    key: "lastAppraisal",
+    label: "Last Appraisal Month and Year",
+    api: "last_appraisal_month_year",
+    aliases: ["Last Appraisal", "Last Appraisal Month/Year"],
+    mapped: "lastAppraisal",
+  },
+  { key: "recordOwner", label: "Record Owner ID", api: null, aliases: ["Record Owner"] },
+  { key: "band", label: "Band", api: null },
+  { key: "skillType", label: "Skill Type", api: null },
+  { key: "exitDate", label: "Exit Date", api: null },
+];
+
+const ROSTER_IMPORT_BY_KEY = new Map(ROSTER_IMPORT_COLUMNS.map((c) => [c.key, c]));
+
+function rosterImportColumnForHeader(header) {
+  const wanted = normalizeImportHeader(header);
+  if (!wanted) return null;
+  return (
+    ROSTER_IMPORT_COLUMNS.find((column) =>
+      [column.label, column.key, ...(column.aliases || [])].some(
+        (candidate) => normalizeImportHeader(candidate) === wanted,
+      ),
+    ) || null
+  );
+}
+
+// "2021-03-12", "12-Mar-2021", "12/03/2021" ... -> "2021-03-12", or "" when it is not a date.
+function rosterIsoDate(value) {
+  let date = parseDateValue(value);
+
+  // The exported file shows dates as "12 Mar 2021" / "12-Mar-2021".
+  if (!date) {
+    const match = String(value ?? "")
+      .trim()
+      .match(/^(\d{1,2})[\s-]+([A-Za-z]{3,9})\.?[\s,-]+(\d{4})$/);
+    const month = match
+      ? ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(
+          match[2].slice(0, 3).toLowerCase(),
+        )
+      : -1;
+    if (match && month >= 0) {
+      const built = new Date(Number(match[3]), month, Number(match[1]));
+      if (built.getMonth() === month && built.getDate() === Number(match[1])) date = built;
+    }
+  }
+
+  if (!date) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
+const fmtDojLabel = (iso) => {
+  const date = parseDateValue(iso);
+  return date
+    ? date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : iso;
+};
+
+// The value the Employee Master holds now for one import column.
+function currentRosterValue(employee, column) {
+  const raw = employee?.rawEmployee || {};
+  const fromRaw = column.api ? raw[column.api] : undefined;
+  const value =
+    fromRaw !== undefined && fromRaw !== null && String(fromRaw).trim() !== ""
+      ? fromRaw
+      : column.mapped
+        ? employee?.[column.mapped]
+        : "";
+  return String(value ?? "").trim();
+}
 
 /* ============================================================
    HELPERS
@@ -4762,89 +4889,54 @@ export function EmployeeMaster() {
      ============================================================ */
 
   /*
-   * existingEmployees must be the COMPLETE employee list (not the current
-   * roster page), otherwise existing employees are treated as new.
-   * Returns { changes, warnings }. Each change carries a readable
-   * field-level diff list for the preview.
+   * records: one object per file row, keyed by ROSTER_IMPORT_COLUMNS key (after mapping).
+   * existingEmployees must be the COMPLETE employee list (not the current roster page),
+   * otherwise existing employees are treated as new.
+   * A new Emp ID is added, an existing one is updated with the cells that differ.
+   * Returns { changes, warnings }; `fields` is keyed by Employee_Master column.
    */
-  const buildRosterImportChanges = (rows, existingEmployees) => {
+  const buildRosterImportChanges = (records, existingEmployees, mappedKeys = []) => {
     const changes = [];
     const warnings = [];
 
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (!Array.isArray(records) || records.length === 0) {
       return { changes, warnings };
     }
 
     const existingById = new Map(
-      existingEmployees.map((employee) => [
-        normalizeEmpId(employee.empId),
-        employee,
-      ]),
+      existingEmployees.map((employee) => [normalizeEmpId(employee.empId), employee]),
     );
 
     const employeesByName = new Map();
 
     existingEmployees.forEach((employee) => {
-      const key = String(employee.name || "")
-        .trim()
-        .toLowerCase();
-
-      if (!key) {
-        return;
-      }
-
+      const key = String(employee.name || "").trim().toLowerCase();
+      if (!key) return;
       employeesByName.set(key, [...(employeesByName.get(key) || []), employee]);
     });
 
     /* De-duplicate by normalized emp_id; the last row in the file wins. */
-    const mappedById = new Map();
+    const byId = new Map();
     const duplicateIds = new Set();
     let missingIdCount = 0;
 
-    rows.forEach((row) => {
-      if (!row || typeof row !== "object") {
-        return;
-      }
+    records.forEach((record) => {
+      const empId = String(record.empId ?? "").trim();
 
-      const mapped = {};
-
-      Object.entries(row).forEach(([header, value]) => {
-        const field = findFieldForHeader(header);
-
-        if (field) {
-          mapped[field.key] = String(value ?? "").trim();
-        }
-      });
-
-      const importedEmpId = getImportedEmpId(row);
-
-      if (importedEmpId) {
-        mapped.empId = importedEmpId;
-      }
-
-      if (!mapped.empId) {
-        if (Object.values(mapped).some((value) => value !== "")) {
+      if (!empId) {
+        if (Object.values(record).some((value) => String(value ?? "").trim() !== "")) {
           missingIdCount += 1;
         }
-
         return;
       }
 
-      const key = normalizeEmpId(mapped.empId);
-
-      if (mappedById.has(key)) {
-        duplicateIds.add(mapped.empId);
-      }
-
-      mappedById.set(key, mapped);
+      const key = normalizeEmpId(empId);
+      if (byId.has(key)) duplicateIds.add(empId);
+      byId.set(key, { ...record, empId });
     });
 
     if (duplicateIds.size > 0) {
-      warnings.push(
-        `Duplicate Emp IDs in file (last row used): ${[...duplicateIds].join(
-          ", ",
-        )}`,
-      );
+      warnings.push(`Duplicate Emp IDs in file (last row used): ${[...duplicateIds].join(", ")}`);
     }
 
     if (missingIdCount > 0) {
@@ -4852,88 +4944,93 @@ export function EmployeeMaster() {
     }
 
     const unresolvedAppraisers = [];
+    const invalidCells = [];
+    const nameless = [];
 
-    mappedById.forEach((mapped, key) => {
+    byId.forEach((record, key) => {
       const existing = existingById.get(key);
-
-      /* Bare appraiser names are resolved to "EMPxxxx - Name". */
-      if (mapped.appraiser && !isCanonicalPersonValue(mapped.appraiser)) {
-        const matches =
-          employeesByName.get(mapped.appraiser.toLowerCase()) || [];
-
-        if (matches.length === 1) {
-          mapped.appraiser = `${matches[0].empId} - ${matches[0].name}`;
-        } else {
-          unresolvedAppraisers.push(
-            `${mapped.empId} ("${mapped.appraiser}"${
-              matches.length > 1 ? `, ${matches.length} matches` : ", no match"
-            })`,
-          );
-
-          delete mapped.appraiser;
-        }
-      }
-
       const fields = {};
       const diffs = [];
 
-      FIELD_DEFS.forEach((field) => {
-        if (field.key === "empId") {
-          return;
+      /* Bare appraiser names are resolved to "EMPxxxx - Name". */
+      const appraiser = String(record.appraiser ?? "").trim();
+      if (appraiser && !isCanonicalPersonValue(appraiser)) {
+        const matches = employeesByName.get(appraiser.toLowerCase()) || [];
+
+        if (matches.length === 1) {
+          record.appraiser = `${matches[0].empId} - ${matches[0].name}`;
+        } else {
+          unresolvedAppraisers.push(
+            `${record.empId} ("${appraiser}"${
+              matches.length > 1 ? `, ${matches.length} matches` : ", no match"
+            })`,
+          );
+          delete record.appraiser;
         }
+      }
 
-        /* Only fields the backend can store are imported / previewed. */
-        if (!ROSTER_FIELD_TO_CATALYST[field.key]) {
-          return;
-        }
+      ROSTER_IMPORT_COLUMNS.forEach((column) => {
+        if (column.key === "empId" || !column.api) return;
 
-        if (mapped[field.key] === undefined) {
-          return;
-        }
+        let value = String(record[column.key] ?? "").trim();
+        if (value === "") return; // blank cells never overwrite
 
-        let importedValue = String(mapped[field.key] || "").trim();
-
-        if (importedValue === "") {
-          return;
-        }
-
-        if (field.key === "status") {
-          const lower = importedValue.toLowerCase();
-
+        if (column.numeric) {
+          const number = Number(value.replace(/[,\s]/g, ""));
+          if (!Number.isFinite(number)) {
+            invalidCells.push(`${record.empId} ${column.label}="${value.slice(0, 20)}"`);
+            return;
+          }
+          value = String(number);
+        } else if (column.date) {
+          const iso = rosterIsoDate(value);
+          if (!iso) {
+            invalidCells.push(`${record.empId} ${column.label}="${value.slice(0, 20)}"`);
+            return;
+          }
+          value = iso;
+        } else if (column.key === "status") {
+          const lower = value.toLowerCase();
           if (lower === "active" || lower === "inactive") {
-            importedValue = lower === "active" ? "Active" : "Inactive";
+            value = lower === "active" ? "Active" : "Inactive";
           }
         }
 
-        const existingValue = String(existing?.[field.key] ?? "").trim();
+        const before = existing ? currentRosterValue(existing, column) : "";
+        let same;
 
-        if (!existing || existingValue !== importedValue) {
-          fields[field.key] = importedValue;
-
-          diffs.push({
-            field: field.label,
-            from: existing ? existingValue : "",
-            to: importedValue,
-          });
+        if (column.numeric) {
+          same = before !== "" && Number(before) === Number(value);
+        } else if (column.date) {
+          same = before !== "" && rosterIsoDate(before) === value;
+        } else {
+          same = before === value;
         }
+
+        if (existing && same) return;
+
+        fields[column.api] = value;
+        diffs.push({
+          field: column.label,
+          from: existing ? before : "",
+          to: column.date ? fmtDojLabel(value) : value,
+        });
       });
 
       if (!existing) {
-        changes.push({
-          empId: mapped.empId,
-          name: mapped.name || "",
-          fields,
-          diffs,
-          isNew: true,
-        });
-
+        const name = String(record.name ?? "").trim();
+        if (!name) {
+          nameless.push(record.empId);
+          return;
+        }
+        changes.push({ empId: record.empId, name, fields, diffs, isNew: true });
         return;
       }
 
       if (Object.keys(fields).length > 0) {
         changes.push({
           empId: existing.empId,
-          name: mapped.name || existing.name || "",
+          name: String(record.name ?? "").trim() || existing.name || "",
           fields,
           diffs,
           isNew: false,
@@ -4942,11 +5039,32 @@ export function EmployeeMaster() {
       }
     });
 
+    if (nameless.length > 0) {
+      warnings.push(`New employee(s) skipped because Employee Name is empty: ${nameless.join(", ")}`);
+    }
+
+    if (invalidCells.length > 0) {
+      warnings.push(
+        `${invalidCells.length} cell(s) skipped (invalid number or date): ${invalidCells.slice(0, 6).join("; ")}${
+          invalidCells.length > 6 ? "; ..." : ""
+        }`,
+      );
+    }
+
+    const unsaved = mappedKeys
+      .map((key) => ROSTER_IMPORT_BY_KEY.get(key))
+      .filter((column) => column && column.key !== "empId" && !column.api)
+      .map((column) => column.label);
+
+    if (unsaved.length > 0) {
+      warnings.push(
+        `Not saved by Employee Master import (no Employee Master field): ${unsaved.join(", ")}.`,
+      );
+    }
+
     if (unresolvedAppraisers.length > 0) {
       warnings.push(
-        `Appraiser / Tech-ED not updated (name must match exactly one employee, or use "EMPxxxx - Name"): ${unresolvedAppraisers.join(
-          "; ",
-        )}`,
+        `Appraiser / Tech-ED not updated (name must match exactly one employee, or use "EMPxxxx - Name"): ${unresolvedAppraisers.join("; ")}`,
       );
     }
 
@@ -5050,24 +5168,23 @@ export function EmployeeMaster() {
      FILE HANDLERS
      ============================================================ */
 
-  // Fields a roster file can update (the ones the backend stores), without the key.
-  const rosterMapTargets = FIELD_DEFS.filter(
-    (field) => field.key !== "empId" && ROSTER_FIELD_TO_CATALYST[field.key],
-  ).map((field) => ({ key: field.key, label: field.label }));
+  // Every roster column except the key (Emp ID). Columns the backend cannot store are
+  // listed too, flagged as "not saved".
+  const rosterMapTargets = ROSTER_IMPORT_COLUMNS.filter((column) => column.key !== "empId").map(
+    (column) => ({
+      key: column.key,
+      label: column.label,
+      note: column.api ? "" : "not saved",
+    }),
+  );
 
   const autoMapRosterHeaders = (headers) => {
     const used = new Set();
     const mapping = {};
 
     headers.forEach((header) => {
-      const field = findFieldForHeader(header);
-      let key = "";
-
-      if (field && field.key === "empId") {
-        key = "empId";
-      } else if (field && ROSTER_FIELD_TO_CATALYST[field.key]) {
-        key = field.key;
-      }
+      const column = rosterImportColumnForHeader(header);
+      const key = column ? column.key : "";
 
       // One column per field: a repeated header is left for the user to map.
       if (key && !used.has(key)) {
@@ -5135,17 +5252,11 @@ export function EmployeeMaster() {
     try {
       setImportPreparing(true);
 
-      // Rename each mapped column to its field label so the existing comparison reads it.
-      const labelOf = (key) =>
-        key === "empId"
-          ? "Emp ID"
-          : FIELD_DEFS.find((field) => field.key === key)?.label || key;
-
-      const mappedRows = rosterMap.rows.map((row) => {
+      const records = rosterMap.rows.map((row) => {
         const next = {};
 
         Object.entries(rosterMap.mapping).forEach(([header, key]) => {
-          if (key) next[labelOf(key)] = row[header];
+          if (key) next[key] = row[header];
         });
 
         return next;
@@ -5155,8 +5266,9 @@ export function EmployeeMaster() {
       const fullEmployees = await fetchAllEmployeeMasterEmployees();
 
       const { changes, warnings } = buildRosterImportChanges(
-        mappedRows,
+        records,
         fullEmployees,
+        Object.values(rosterMap.mapping).filter(Boolean),
       );
 
       setPendingImportType("roster");
@@ -5869,13 +5981,8 @@ export function EmployeeMaster() {
           emp_id: change.empId,
         };
 
-        Object.entries(change.fields || {}).forEach(([key, value]) => {
-          const catalystField = ROSTER_FIELD_TO_CATALYST[key];
-
-          if (catalystField) {
-            payload[catalystField] = value;
-          }
-        });
+        // `fields` is already keyed by Employee_Master column.
+        Object.assign(payload, change.fields || {});
 
         // Status is sent only when the file has a Status value. New rows
         // default to Active on the backend; existing rows keep their status.
@@ -5892,7 +5999,7 @@ export function EmployeeMaster() {
           return;
         }
 
-        const importedStatus = change.fields?.status;
+        const importedStatus = change.fields?.emp_status;
 
         if (!importedStatus) {
           return;
