@@ -698,7 +698,7 @@ async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
 }
 
 /* Tech-ED ownership by Employee_Master ROWID.
-   Appraisal_Sheet.appraiser_tech_ed1 (lookup) stores the Tech-ED's
+   Appraisal_Sheet.appraiser_tech_ed (lookup) stores the Tech-ED's
    Employee_Master ROWID. Older rows hold "EMPxxxx - Name" text, which is
    resolved to the same ROWID through the employee ID. */
 function techEdOwnerRowId(row, master, employeeMasterMap) {
@@ -1034,7 +1034,7 @@ function buildEmployeeMasterMap(masterRows) {
     const rowId = String(row.ROWID || row.rowid || row.id || "").trim();
 
     // Index by both the stable employee ID and Catalyst Row ID. The new
-    // Appraisal_Sheet.appraiser_tech_ed1 lookup stores Employee_Master.ROWID.
+    // Appraisal_Sheet.appraiser_tech_ed lookup stores Employee_Master.ROWID.
     if (empId) map.set(empId, row);
     if (rowId) map.set(rowId, row);
   });
@@ -3307,7 +3307,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           "",
         employeeMasterMap,
       ),
-      // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
+      // appraiser_tech_ed is a lookup to Employee_Master.ROWID. Resolve it
       // to the actual Tech-Ed employee identity so the grid displays ID - Name
       // and the backend's Tech-Ed access filter can match the signed-in user.
       // Separate Appraisal_Sheet assignment for budget headcounts. Do not
