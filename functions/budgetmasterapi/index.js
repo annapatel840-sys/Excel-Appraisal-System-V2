@@ -1482,6 +1482,9 @@ function filterOwn(
       "comp_manager_display",
       "compManager",
       "compManagerId",
+      // Employee_Master / legacy Appraisal_Sheet uses Director as the
+      // Comp Manager assignment when comp_manager is not populated.
+      "director",
     ];
     appraisalSheetRows.forEach((sheetRow) => {
       const rawEmployee = referenceText(
