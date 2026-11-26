@@ -173,7 +173,17 @@ export const cyOf = (S, id) => S.cycles.filter((c) => c.id === id)[0];
 export const tplOf = (S, id) => S.tpls.filter((t) => t.id === id)[0];
 export const rowOf = (S, id) => S.sheet.filter((r) => r.id === id)[0];
 export const lOf = (S, id) => S.letters.filter((l) => l.id === id)[0];
-export const empOf = (S, l) => rowOf(S, l.emp);
+// A letter can outlive its source Appraisal Sheet row (for example, after
+// a cycle is regenerated or an employee is removed). Keep the Letters grid
+// and right-side panel resilient instead of dereferencing an undefined row.
+export const empOf = (S, l) =>
+  rowOf(S, l?.emp) || {
+    id: l?.emp || "",
+    name: "Employee record unavailable",
+    tech: "",
+    email: "",
+    v: {},
+  };
 
 export function hasVal(row, col) {
   const c = catOf(col);
