@@ -65,10 +65,9 @@ function getValue(employee, key) {
       "last_appraisal",
       "lastAppraisal",
     ],
-    recordOwner: ["record_owner_id", "record_owner", "owner_id"],
-    band: ["band", "employee_band"],
-    skillType: ["skill_type", "skill", "skillType"],
-    exitDate: ["exit_date", "exitDate", "resignation_date"],
+    band: ["Band", "band", "employee_band"],
+    skillType: ["Skill_Type", "skill_type", "skill", "skillType"],
+    exitDate: ["Exit_Date", "exit_date", "exitDate", "resignation_date"],
   };
   let value = employee?.[key];
   if (value === undefined || value === null || value === "") {
@@ -136,7 +135,6 @@ const PLAIN = [
   ["status", "Employee Status", 120],
   ["location", "Location", 90],
   ["lastAppraisal", "Last Appraisal Month and Year", 140],
-  ["recordOwner", "Record Owner ID", 120],
   ["band", "Band", 90],
   ["skillType", "Skill Type", 110],
   ["exitDate", "Exit Date", 110],

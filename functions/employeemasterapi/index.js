@@ -157,6 +157,9 @@ const ALLOWED_FIELDS = [
   "location",
   "last_appraisal_month_year",
   "source_of_hire",
+  "Band",
+  "Skill_Type",
+  "Exit_Date",
   "emp_id",
 ];
 
@@ -180,6 +183,7 @@ const FIELD_ACCESS_LABEL = {
   location: "Location",
   last_appraisal_month_year: "Last Appraisal Month/Year",
   exit_date: "Exit Date",
+  Exit_Date: "Exit Date",
 };
 
 const NUMERIC_FIELDS = new Set([
@@ -293,6 +297,17 @@ function normalizeEmployeeMasterData(data) {
       normalized.date_of_join = normalizedDate;
     } else {
       delete normalized.date_of_join;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "Exit_Date")) {
+    const normalizedExit = normalizeEmployeeMasterDate(normalized.Exit_Date);
+
+    if (normalizedExit) {
+      // Date column: the Catalyst Node SDK needs a JavaScript Date value.
+      normalized.Exit_Date = normalizedExit;
+    } else {
+      delete normalized.Exit_Date;
     }
   }
 

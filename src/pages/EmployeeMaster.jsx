@@ -3354,11 +3354,19 @@ const ROSTER_IMPORT_COLUMNS = [
     aliases: ["Last Appraisal", "Last Appraisal Month/Year"],
     mapped: "lastAppraisal",
   },
-  { key: "recordOwner", label: "Record Owner ID", api: null, aliases: ["Record Owner"] },
-  { key: "band", label: "Band", api: null },
-  { key: "skillType", label: "Skill Type", api: null },
-  { key: "exitDate", label: "Exit Date", api: null },
+  { key: "band", label: "Band", api: "Band" },
+  { key: "skillType", label: "Skill Type", api: "Skill_Type", aliases: ["Skill_Type"] },
+  { key: "exitDate", label: "Exit Date", api: "Exit_Date", date: true, aliases: ["Exit_Date"] },
 ];
+
+// File columns the import never uses; they are left out of the mapping screen
+// unless they were mapped to something.
+const ROSTER_IMPORT_HIDDEN_HEADERS = new Set([
+  "compmanager",
+  "supermanager",
+  "manageremailid",
+  "supermanageremailid",
+]);
 
 const ROSTER_LAST_IMPORT_KEY = "em-last-roster-import";
 
@@ -7005,7 +7013,11 @@ export function EmployeeMaster() {
           title="Employee Import - map columns"
           fileName={rosterMap?.fileName || ""}
           rowCount={rosterMap?.rows?.length || 0}
-          headers={rosterMap?.headers || []}
+          headers={(rosterMap?.headers || []).filter(
+            (header) =>
+              !ROSTER_IMPORT_HIDDEN_HEADERS.has(normalizeImportHeader(header)) ||
+              !!rosterMap?.mapping?.[header],
+          )}
           mapping={rosterMap?.mapping || {}}
           targets={rosterMapTargets}
           keyField="empId"
