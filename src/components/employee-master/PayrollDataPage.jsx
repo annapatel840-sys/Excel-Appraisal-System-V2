@@ -821,7 +821,7 @@ export function PayrollDataPage() {
               <button type="button" className="pd-btn" onClick={() => setImportOpen(false)}>Close</button>
             </div>
             <div style={{ padding: 12, overflow: "auto", minHeight: 0, flex: 1 }}>
-              <UploadPage key="payroll-master-import" initialScreen="pay" />
+              <UploadPage key="payroll-master-import" initialScreen="pay" initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""} />
             </div>
           </div>
         </div>
