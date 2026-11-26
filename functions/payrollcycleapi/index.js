@@ -3651,6 +3651,37 @@ async function generateAppraisalSheet(
       keys.forEach((key) => eligibleMasterByAnyKey.set(key, master));
     }
   });
+
+  // Exceptional generation reuses the already-resolved same-year/location
+  // Annual Appraisal_Sheet row. Annual has already selected the correct source
+  // (prior Annual for existing employees, New Joiner for current-year joiners)
+  // and stored payroll + feedback/rating values on that sheet.
+  const annualSheetByMasterId = new Map();
+  const annualSheetByEmpId = new Map();
+  if (exceptionalCycle && sourceCycle) {
+    const masterByEmpId = new Map();
+    const masterByRowId = new Map();
+    employeeMasterRows.forEach((master) => {
+      const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
+      const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+      if (masterId) masterByRowId.set(masterId, master);
+      if (empId) masterByEmpId.set(empId, master);
+    });
+    sheetRows.forEach((sheet) => {
+      if (!sheetBelongsToCycle(sheet, sourceCycle)) return;
+      const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
+      if (!master || !inCycleLocation(cycle, master, locationRows)) return;
+      const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase();
+      const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+      if (masterId) annualSheetByMasterId.set(masterId, sheet);
+      if (empId) annualSheetByEmpId.set(empId, sheet);
+    });
+  }
+  const annualSheetForEmployee = (employee) => {
+    const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+    const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+    return annualSheetByMasterId.get(masterId) || annualSheetByEmpId.get(empId) || null;
+  };
   const isCancelledPayrollCycle = (item) =>
     ["cancelled", "canceled"].includes(
       String(item?.status || "")
@@ -3720,7 +3751,8 @@ undefined
       .toLowerCase();
     if (
       (masterId && payrollEmployeesWithHistory.has(masterId)) ||
-      (empId && payrollEmployeesWithHistory.has(empId))
+      (empId && payrollEmployeesWithHistory.has(empId)) ||
+      (exceptionalCycle && annualSheetForEmployee(employee))
     )
       return false;
     const master =
@@ -3870,7 +3902,7 @@ undefined
     if (!state.feedback) missingFeedbackEmployees.push(label);
     if (!state.rating) missingRatingEmployees.push(label);
   });
-  if (missingFeedbackEmployees.length || missingRatingEmployees.length) {
+  if (!exceptionalCycle && (missingFeedbackEmployees.length || missingRatingEmployees.length)) {
     const details = [];
     if (missingFeedbackEmployees.length) {
       details.push(
@@ -4320,7 +4352,9 @@ undefined
       payload.location = generatedLocation;
     // Feedback_And_Rating is the source of the three client columns. Refresh
     // them from the current cycle's uploaded data whenever the sheet is generated.
+    const exceptionalAnnualSheet = exceptionalCycle ? annualSheetForEmployee(employee) : null;
     const feedback =
+      exceptionalAnnualSheet ||
       feedbackByMasterId.get(masterId) ||
       feedbackByEmpId.get(empId.toLowerCase());
     if (feedback) {
@@ -4591,6 +4625,48 @@ undefined
         if (!existing || existingIsEmptyOrZero) {
           payload[destination || sheetField] = value;
         }
+      });
+    }
+
+    // Exceptional carries forward the Annual Appraisal_Sheet's resolved source
+    // values. This includes payroll-derived compensation fields and feedback /
+    // rating values, without reading or requiring duplicate Exceptional uploads.
+    if (exceptionalAnnualSheet) {
+      const annualCarryForwardFields = [
+        "current_annual_base_pay",
+        "joining_bonus",
+        "performance_bonus",
+        "retention_bonus",
+        "hike_pct",
+        "hike_amount",
+        "total_CTC_with_rewards",
+        "total_ctc_with_rewards",
+        "total_rewards_hike_amount",
+        "total_bonus",
+        "new_base_pay",
+        "target_pb_allocated_for_may",
+        "target_pb_criteria",
+        "previous_year_CTC_with_rewards",
+        "previous_appraisal_total_ctc_with_rewards",
+        "manager_rating",
+        "rr_percent",
+        "rr",
+        "revenue_released",
+        "gross_margin",
+        "CostCenter_Client",
+        "cost_center_client",
+        "client_manager_feedback",
+        "client_rating",
+        "yoe_ratio",
+      ];
+      annualCarryForwardFields.forEach((field) => {
+        const destination = appraisalSheetColumnByLower
+          ? appraisalSheetColumnByLower.get(field.toLowerCase())
+          : field;
+        if (appraisalSheetColumns && !destination) return;
+        const value = fieldValue(exceptionalAnnualSheet, field);
+        if (value === undefined || value === null || String(value).trim() === "") return;
+        payload[destination || field] = value;
       });
     }
 
