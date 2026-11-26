@@ -3843,7 +3843,16 @@ async function generateAppraisalSheet(
   const payrollEmployeesWithNewJoinerHistory = new Set();
   payrollRowsWithCycle.forEach(({ row, cycle: rowCycle }) => {
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return;
-undefined
+    const rawEmployee = referenceText(
+      fieldValue(
+        row,
+        "emp_id",
+        "employee_master_id",
+        "employee_id",
+        "emp_code",
+      ),
+    ).toLowerCase();
+    if (!rawEmployee) return;
     const master = eligibleMasterByAnyKey.get(rawEmployee);
     if (!master) return;
     const employeeHasLocation = Boolean(employeeLocationKey(master));
