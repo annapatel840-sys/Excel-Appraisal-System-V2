@@ -9273,7 +9273,7 @@ module.exports = async function payrollCycleApi(req, res) {
         ? { dryRun: true, enforced: false, scope: { all: false } }
         : await checkAccess(req);
 
-    const identity = await requireIdentity(req, { includeEmployeeProfile: resource !== "session" });
+    const identity = await requireIdentity(req);
     if (!identity)
       return sendJson(res, 401, {
         success: false,
