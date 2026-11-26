@@ -661,6 +661,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 //   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
+  const [eligibilityCycleType, setEligibilityCycleType] = useState("");
 //   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
 //   const [delegationGenerated, setDelegationGenerated] = useState(false);
 //   const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
@@ -3200,6 +3201,7 @@ import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { cycleLocationOf, isAllLocations, useSelectedLocation } from "@/lib/location-store";
+import { useSelectedCycleType } from "@/lib/cycle-type-store";
 import { DesignationMasterPage } from "@/components/employee-master/DesignationMasterPage";
 import {
   FIELD_DEFS,
@@ -4131,6 +4133,7 @@ export function EmployeeMaster() {
   const [statusFilter, setStatusFilter] = useState("All");
   // One location shared by every screen (see location-store.js).
   const [locationFilter, setLocationFilter] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
 
   const [rosterFilters, setRosterFilters] = useState({});
 
@@ -4237,7 +4240,7 @@ export function EmployeeMaster() {
   )
     .trim()
     .toLowerCase();
-  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope, locationFilter);
+  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope, `${locationFilter}::${selectedCycleType}`);
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] =
     useState("");
 
@@ -4261,6 +4264,7 @@ export function EmployeeMaster() {
     setEligibilityEmployees([]);
     setEligibilityMasterEmployees([]);
     setEligibilityCycleId("");
+    setEligibilityCycleType("");
     setEligibilityCriteriaApplied(false);
   }, [eligibilityCacheKey]);
 
@@ -4693,7 +4697,7 @@ export function EmployeeMaster() {
       return;
     }
 
-    const eligibilityRequestKey = `${String(locationFilter || "All Locations").trim().toLowerCase()}::${eligibilityReloadKey}`;
+    const eligibilityRequestKey = `${String(locationFilter || "All Locations").trim().toLowerCase()}::${String(selectedCycleType || "").toLowerCase()}::${eligibilityReloadKey}`;
     if (eligibilityLoadedKeyRef.current === eligibilityRequestKey) {
       return;
     }
@@ -4716,6 +4720,7 @@ export function EmployeeMaster() {
           limit: 100000,
           search: "",
           location: locationFilter,
+          cycleType: selectedCycleType,
           fresh: true,
         });
         if (cancelled) return;
@@ -4727,8 +4732,11 @@ export function EmployeeMaster() {
           String(firstPage?.cycle?.cycleName || "").trim(),
         );
         setEligibilityCycleId(loadedCycleId);
+        const loadedCycleType = String(firstPage?.cycle?.type || selectedCycleType || "").trim();
+        setEligibilityCycleType(loadedCycleType);
+        const isExceptionalCycle = loadedCycleType.toLowerCase() === "exceptional";
         setEligibilityCriteriaApplied(
-          Boolean(firstPage?.cycle?.criteriaApplied),
+          isExceptionalCycle || Boolean(firstPage?.cycle?.criteriaApplied),
         );
         applyCriteriaMeta(firstPage?.cycle);
         const freshEligibilityEmployees = Array.isArray(firstPage?.data)
@@ -4787,7 +4795,7 @@ export function EmployeeMaster() {
         eligibilityLoadedKeyRef.current = null;
       }
     };
-  }, [activeTab, eligibilityReloadKey, locationFilter]);
+  }, [activeTab, eligibilityReloadKey, locationFilter, selectedCycleType]);
 
   // Keep the saved criteria + their history (from the server) in state.
   const applyCriteriaMeta = (cycleMeta) => {
@@ -6750,6 +6758,7 @@ export function EmployeeMaster() {
                       : undefined
                   }
                   criteriaApplied={eligibilityCriteriaApplied}
+                  exceptionalCycle={eligibilityCycleType.toLowerCase() === "exceptional"}
                   auditEntries={eligibilityCriteriaAuditEntries}
                   onGenerateDelegation={
                     !eligibilityCycleId || eligibilityShowingSnapshot
