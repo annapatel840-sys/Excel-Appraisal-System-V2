@@ -121,8 +121,6 @@ const FB_FIELDS = [
   { key: "newTitle", label: "New Title", column: "new_title" },
   { key: "remarks", label: "Remarks", column: "remarks" },
   { key: "appraisalCycleName", label: "Appraisal Cycle", column: "appraisal_cycle_name" },
-  { key: "department", label: "Department", column: "Department" },
-  { key: "band", label: "Band", column: "Band" },
   { key: "effectiveDate", label: "Effective Date", column: "Effective_Date", uploadHeaders: ["Effective From"] },
   { key: "costCenterClient", label: "Cost Center/Client", column: "CostCenter_Client", uploadHeaders: ["Cost Center", "Client", "Cost Centre/Client"] },
   { key: "clientManagerName", label: "Client Manager", column: "Client_Manager", uploadHeaders: ["Client Manager Name"] },
