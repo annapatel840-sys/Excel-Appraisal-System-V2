@@ -74,9 +74,8 @@ export function CatalystAuthGate({
         return;
       }
 
-      let result;
       try {
-        result = await auth.isUserAuthenticated();
+        const result = await auth.isUserAuthenticated();
         if (!mounted) return;
         if (!isSignedInResult(result)) {
           setState("signed-out");
@@ -130,14 +129,7 @@ export function CatalystAuthGate({
       setState("authenticated");
     };
 
-    checkSession().catch((error) => {
-      console.error("Catalyst session check failed:", error);
-      if (!mounted) return;
-      setMessage(
-        error?.message || "Unable to start the app. Reload and try again.",
-      );
-      setState("error");
-    });
+    checkSession();
 
     return () => {
       mounted = false;
