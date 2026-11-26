@@ -4,6 +4,7 @@
 // import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
 // import { PanelTab, SidePanel } from "./SidePanel";
 // import { AddEmployeeModal } from "./AddEmployeeModal";
+import { ExceptionalAddEmployeeModal } from "./ExceptionalAddEmployeeModal";
 // import { usePanel } from "./panelStore";
 // import { fmtDoj } from "@/lib/employee-master-utils";
 // import { LocationMasterControl } from "./LocationMasterControl";
@@ -206,6 +207,7 @@
 //   const [page, setPage] = useState(1);
 //   const [selectedIds, setSelectedIds] = useState(new Set());
 //   const [addOpen, setAddOpen] = useState(false);
+  const [exceptionalAddOpen, setExceptionalAddOpen] = useState(false);
 
 //   const canEdit = Boolean(onChangeEligibility);
 
@@ -885,6 +887,7 @@ export function EligibilityList({
   onGenerateDelegation,
   delegationGenerated = false,
   criteriaSlot, // ({ goList, currentCounts }) => element  (the Eligibility Criteria tab)
+  exceptionalCycle = false,
 }) {
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
@@ -909,7 +912,8 @@ export function EligibilityList({
   // Existing saved rows are authoritative even if older cycles are missing
   // the criteria-applied flag. Never hide a populated list behind the Criteria tab.
   const hasSavedRows = rawEmployees.length > 0;
-  const [tab, setTab] = useState(criteriaApplied || hasSavedRows ? "list" : "crit");
+  const visibleTabs = exceptionalCycle ? TABS.filter(([key]) => key !== "crit") : TABS;
+  const [tab, setTab] = useState(exceptionalCycle || criteriaApplied || hasSavedRows ? "list" : "crit");
   const tabTouched = useRef(false);
   const pickTab = (next) => {
     tabTouched.current = true;
@@ -918,8 +922,8 @@ export function EligibilityList({
   };
   // Open on the list once it exists, on the criteria while nothing is generated.
   useEffect(() => {
-    if (!tabTouched.current) setTab(criteriaApplied || hasSavedRows ? "list" : "crit");
-  }, [criteriaApplied, hasSavedRows]);
+    if (!tabTouched.current) setTab(exceptionalCycle || criteriaApplied || hasSavedRows ? "list" : "crit");
+  }, [criteriaApplied, hasSavedRows, exceptionalCycle]);
 
   const canEdit = Boolean(onChangeEligibility) && fieldAccess.canEdit("Eligibility");
 
@@ -1267,7 +1271,7 @@ export function EligibilityList({
 
       {/* ================= TABS ================= */}
       <div className="elx-tabs" role="tablist">
-        {TABS.map(([key, label]) => (
+        {visibleTabs.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -1285,8 +1289,8 @@ export function EligibilityList({
             <button
               type="button"
               className="elx-addemp"
-              disabled={!criteriaApplied}
-              onClick={() => setAddOpen(true)}
+              disabled={!exceptionalCycle && !criteriaApplied}
+              onClick={() => exceptionalCycle ? setExceptionalAddOpen(true) : setAddOpen(true)}
             >
               <Plus size={14} /> Add an Employee
             </button>
@@ -1297,7 +1301,7 @@ export function EligibilityList({
       {/* ================= BODY + PANEL ================= */}
       <div className="emx-work">
         <div className="emx-main">
-          {tab === "crit" ? (
+          {tab === "crit" && !exceptionalCycle ? (
             <div className="elx-crit-scroll">
               {criteriaSlot?.({
                 goList: () => pickTab("list"),
@@ -1311,7 +1315,7 @@ export function EligibilityList({
                   : null,
               })}
             </div>
-          ) : !criteriaApplied ? (
+          ) : !exceptionalCycle && !criteriaApplied ? (
             <div className="elx-empty">
               <b>No Eligibility List</b>
               The list has not been generated yet. Set the criteria on the Eligibility Criteria tab
@@ -1410,7 +1414,16 @@ export function EligibilityList({
         <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
       </div>
 
-      {addOpen && (
+      {exceptionalAddOpen && (
+        <ExceptionalAddEmployeeModal
+          masterEmployees={masterEmployees}
+          listedIds={listedIds}
+          onAdd={handleAdd}
+          onClose={() => setExceptionalAddOpen(false)}
+        />
+      )}
+
+      {addOpen && !exceptionalCycle && (
         <AddEmployeeModal
           masterEmployees={masterEmployees}
           listedIds={listedIds}

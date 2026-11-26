@@ -661,6 +661,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 //   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
+  const [eligibilityCycleType, setEligibilityCycleType] = useState("");
 //   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
 //   const [delegationGenerated, setDelegationGenerated] = useState(false);
 //   const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
@@ -2500,7 +2501,8 @@ import { useBudget } from "@/lib/budget-store";
 //       cycleId: eligibilityCycleId,
 //     });
 //     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
-//     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+//     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
 //     setEligibilityEmployees(employees);
 //     setEligibilityCriteriaApplied(criteriaApplied);
 //     setEligibilityShowingSnapshot(false);
@@ -2529,7 +2531,8 @@ import { useBudget } from "@/lib/budget-store";
 //     ]);
 //     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
 //     const masterEmployees = Array.isArray(masters) ? masters : [];
-//     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+//     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
 //     setEligibilityEmployees(employees);
 //     setEligibilityCriteriaApplied(criteriaApplied);
 //     setEligibilityMasterEmployees(masterEmployees);
@@ -2967,7 +2970,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //         {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
 //           <div className="em-tab-content">
-//             <PayrollDataPage />
+//             <PayrollDataPage disableUpload={selectedCycleType.toLowerCase() === "exceptional"} />
 //           </div>
 //         )}
 
@@ -3200,6 +3203,7 @@ import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { cycleLocationOf, isAllLocations, useSelectedLocation } from "@/lib/location-store";
+import { useSelectedCycleType } from "@/lib/cycle-type-store";
 import { DesignationMasterPage } from "@/components/employee-master/DesignationMasterPage";
 import {
   FIELD_DEFS,
@@ -4002,6 +4006,7 @@ export function EmployeeMaster() {
     // Tech-Ed may open the existing Delegation screen without exposing the
     // other HR Operations tabs. DelegationScreen still applies action-level
     // permissions and routes Tech-Ed changes through HR approval.
+    if (tab === "payroll-upload" && selectedCycleType.toLowerCase() === "exceptional") return false;
     if (tab === "delegation" && isTechEd)
       return access.ok ? access.canScreen("delegation") : true;
     // Without access rules these HR Operations screens are HR only. With
@@ -4131,6 +4136,7 @@ export function EmployeeMaster() {
   const [statusFilter, setStatusFilter] = useState("All");
   // One location shared by every screen (see location-store.js).
   const [locationFilter, setLocationFilter] = useSelectedLocation();
+  const [selectedCycleType, setSelectedCycleType] = useSelectedCycleType();
 
   const [rosterFilters, setRosterFilters] = useState({});
 
@@ -4237,7 +4243,7 @@ export function EmployeeMaster() {
   )
     .trim()
     .toLowerCase();
-  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope, locationFilter);
+  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope, `${locationFilter}::${selectedCycleType}`);
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] =
     useState("");
 
@@ -4261,6 +4267,7 @@ export function EmployeeMaster() {
     setEligibilityEmployees([]);
     setEligibilityMasterEmployees([]);
     setEligibilityCycleId("");
+    setEligibilityCycleType("");
     setEligibilityCriteriaApplied(false);
   }, [eligibilityCacheKey]);
 
@@ -4693,7 +4700,7 @@ export function EmployeeMaster() {
       return;
     }
 
-    const eligibilityRequestKey = `${String(locationFilter || "All Locations").trim().toLowerCase()}::${eligibilityReloadKey}`;
+    const eligibilityRequestKey = `${String(locationFilter || "All Locations").trim().toLowerCase()}::${String(selectedCycleType || "").toLowerCase()}::${eligibilityReloadKey}`;
     if (eligibilityLoadedKeyRef.current === eligibilityRequestKey) {
       return;
     }
@@ -4716,6 +4723,7 @@ export function EmployeeMaster() {
           limit: 100000,
           search: "",
           location: locationFilter,
+          cycleType: selectedCycleType,
           fresh: true,
         });
         if (cancelled) return;
@@ -4727,8 +4735,11 @@ export function EmployeeMaster() {
           String(firstPage?.cycle?.cycleName || "").trim(),
         );
         setEligibilityCycleId(loadedCycleId);
+        const loadedCycleType = String(firstPage?.cycle?.type || selectedCycleType || "").trim();
+        setEligibilityCycleType(loadedCycleType);
+        const isExceptionalCycle = loadedCycleType.toLowerCase() === "exceptional";
         setEligibilityCriteriaApplied(
-          Boolean(firstPage?.cycle?.criteriaApplied),
+          isExceptionalCycle || Boolean(firstPage?.cycle?.criteriaApplied),
         );
         applyCriteriaMeta(firstPage?.cycle);
         const freshEligibilityEmployees = Array.isArray(firstPage?.data)
@@ -4787,7 +4798,7 @@ export function EmployeeMaster() {
         eligibilityLoadedKeyRef.current = null;
       }
     };
-  }, [activeTab, eligibilityReloadKey, locationFilter]);
+  }, [activeTab, eligibilityReloadKey, locationFilter, selectedCycleType]);
 
   // Keep the saved criteria + their history (from the server) in state.
   const applyCriteriaMeta = (cycleMeta) => {
@@ -6349,7 +6360,8 @@ export function EmployeeMaster() {
       fresh: true,
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
-    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
@@ -6381,7 +6393,8 @@ export function EmployeeMaster() {
     ]);
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const masterEmployees = Array.isArray(masters) ? masters : [];
-    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
@@ -6409,7 +6422,7 @@ export function EmployeeMaster() {
       showBanner("Delegation generation unavailable", "The active appraisal cycle ID is missing. Refresh the Eligibility List and try again.", true);
       return;
     }
-    if (!eligibilityCriteriaApplied) {
+    if (!eligibilityCriteriaApplied && eligibilityCycleType.toLowerCase() !== "exceptional") {
       showBanner("Apply Eligibility Criteria first", "The current cycle has an Eligibility List, but the server has not confirmed that Apply Criteria was completed for this cycle. Refresh the list, then apply or verify the criteria before generating Delegation.", true);
       return;
     }
@@ -6641,7 +6654,7 @@ export function EmployeeMaster() {
               setLocationFilter={setLocationFilter}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
-                canEditEmployees && !importPreparing
+                canEditEmployees && !importPreparing && selectedCycleType.toLowerCase() !== "exceptional"
                   ? () => fileInputRef.current?.click()
                   : undefined
               }
@@ -6750,6 +6763,7 @@ export function EmployeeMaster() {
                       : undefined
                   }
                   criteriaApplied={eligibilityCriteriaApplied}
+                  exceptionalCycle={eligibilityCycleType.toLowerCase() === "exceptional"}
                   auditEntries={eligibilityCriteriaAuditEntries}
                   onGenerateDelegation={
                     !eligibilityCycleId || eligibilityShowingSnapshot
@@ -6807,6 +6821,9 @@ export function EmployeeMaster() {
                   defaultProcess={defaultProcess}
                   cycleStats={null}
                   onGenerateSheet={async (cycle, options) => {
+                    if (String(cycle?.process || "").toLowerCase() === "exceptional") {
+                      setSelectedCycleType("Exceptional");
+                    }
                     const result = await generateAppraisalSheet(cycle.id, options);
                     await refreshEmployees();
                     return result;
@@ -6818,8 +6835,18 @@ export function EmployeeMaster() {
                   }
                   onNavigate={(tab, requestedUploadScreen, cycle) => {
                     if (tab === "appraisal-sheet") {
+                      if (String(cycle?.process || "").toLowerCase() === "exceptional") {
+                        setSelectedCycleType("Exceptional");
+                      }
                       window.location.assign("/sheet");
                       return;
+                    }
+                    if (
+                      cycle &&
+                      String(cycle.process || "").toLowerCase() === "exceptional" &&
+                      (tab === "eligibility" || tab === "delegation")
+                    ) {
+                      setSelectedCycleType("Exceptional");
                     }
                     if (tab === "payroll-upload") {
                       setUploadScreen(requestedUploadScreen || "");
@@ -6861,7 +6888,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
           <div className="em-tab-content">
-            <PayrollDataPage />
+            <PayrollDataPage disableUpload={selectedCycleType.toLowerCase() === "exceptional"} />
           </div>
         )}
 

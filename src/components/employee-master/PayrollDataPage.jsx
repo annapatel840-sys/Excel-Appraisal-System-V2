@@ -163,7 +163,7 @@ function defaultPayrollColumnWidth(column) {
 // Search, filters, sorting, the Records count and CSV export still use all rows.
 const PAYROLL_PAGE_SIZE = 50;
 
-export function PayrollDataPage() {
+export function PayrollDataPage({ disableUpload = false } = {}) {
   const canAudit = useAccess().canAction("viewAudit");
   // Fields tab (Access screen) limits for this screen: a column set to Hidden is not shown.
   const fieldAccess = useScreenFields("payrollMaster");
@@ -539,17 +539,19 @@ export function PayrollDataPage() {
               className="pd-menu-dropdown show"
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                className="pd-menu-item"
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setImportOpen(true);
-                }}
-              >
-                <span className="pd-menu-icon">↑</span>
-                Import
-              </button>
+              {!disableUpload && (
+                <button
+                  className="pd-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setImportOpen(true);
+                  }}
+                >
+                  <span className="pd-menu-icon">↑</span>
+                  Import
+                </button>
+              )}
               <button
                 className="pd-menu-item"
                 type="button"
@@ -784,7 +786,7 @@ export function PayrollDataPage() {
         specific values, same as Excel.
       </div>
 
-      {importOpen && (
+      {importOpen && !disableUpload && (
         <UploadPage
           key="payroll-master-import"
           initialScreen="pay"
