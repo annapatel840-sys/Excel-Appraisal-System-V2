@@ -2340,7 +2340,15 @@ async function enrichPreviousAppraisalValues(
         return aliases.includes(rawCycle.toLowerCase());
       });
     if (!cycle) return;
-    if (!isArchivedCycle(cycle)) return;
+    const exceptionalCurrent = /\\bexceptional\\b/i.test(historyCycleName(currentCycle));
+    const sameYearAnnualSource =
+      exceptionalCurrent &&
+      /\\bannual\\b/i.test(historyCycleName(cycle)) &&
+      (historyCycleName(cycle).match(/(?:19|20)\\d{2}/) || [])[0] ===
+        (historyCycleName(currentCycle).match(/(?:19|20)\\d{2}/) || [])[0];
+    // An Exceptional cycle keeps the same-year Annual Appraisal Sheet rows
+    // visible in employee history even while that Annual cycle is still Active.
+    if (!isArchivedCycle(cycle) && !sameYearAnnualSource) return;
     const historyRank = historyCycleRank(cycle);
     if (
       currentRank > 0 &&
