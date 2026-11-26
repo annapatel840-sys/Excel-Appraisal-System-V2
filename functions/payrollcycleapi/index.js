@@ -3186,7 +3186,28 @@ async function validateGenerationDesignations(
     getAllRows(tables.designationGroupMembers),
     getAllRows(tables.designationConfig),
   ]);
-  const cycleId = String(cycle.id);
+  // Exceptional cycles reuse the same-year Annual designation rules.
+  // Designation Master auto-sync can create blank rows for a new Exceptional
+  // cycle; those rows are not a second set of HR-configured promotion rules.
+  let designationCycleId = String(cycle.id);
+  if (cycleTypeOf(cycle.name) === "Exceptional") {
+    const cycleRows = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const annualSource = cycleRows
+      .filter(
+        (candidate) =>
+          cycleTypeOf(candidate.name) === "Annual" &&
+          cycleYear(candidate) === cycleYear(cycle) &&
+          cycleLocationKey(candidate) === cycleLocationKey(cycle) &&
+          !candidate.archived &&
+          !candidate.hidden,
+      )
+      .sort(
+        (a, b) =>
+          Number(b.status === "Active") - Number(a.status === "Active"),
+      )[0];
+    if (annualSource?.id) designationCycleId = String(annualSource.id);
+  }
+  const cycleId = designationCycleId;
   const inCycle = designationRows.filter(
     (row) => String(row.cycle_id || "") === cycleId,
   );
