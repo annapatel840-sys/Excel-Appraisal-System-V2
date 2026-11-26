@@ -33,7 +33,7 @@ export function CycleTypeSwitcher({ isVertical }) {
             isVertical ? "w-full" : "min-w-[104px]",
           )}
         >
-          {CYCLE_TYPES.map((type) => (
+          {CYCLE_TYPES.filter((type) => type !== "New Joiner").map((type) => (
             <option key={type} value={type}>
               {type}
             </option>
