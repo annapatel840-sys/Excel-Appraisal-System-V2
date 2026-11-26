@@ -4128,7 +4128,21 @@ async function generateAppraisalSheet(
     );
   }
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
-undefined
+    const rawEmployee = referenceText(
+      fieldValue(
+        row,
+        "emp_id",
+        "employee_master_id",
+        "employee_id",
+        "emp_code",
+      ),
+    ).toLowerCase();
+    if (!rawEmployee) return;
+    const master = eligibleMasterByAnyKey.get(rawEmployee);
+    if (!master) return;
+    const masterId = referenceText(
+      master.ROWID ?? master.rowid ?? master.id,
+    );
     if (
       masterId &&
       (cycleKeys.has(rawCycle.toLowerCase()) ||
