@@ -1105,42 +1105,13 @@ export function FeedbackRatingMasterPage({
       )}
 
       {importOpen && (
-        <div
-          role="presentation"
-          onClick={() => setImportOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 120,
-            background: "rgba(15,25,40,.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Import Feedback and Rating"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              background: "#fff",
-              width: "min(1500px, 98vw)",
-              height: "min(920px, 94vh)",
-              borderRadius: 12,
-              overflow: "auto",
-              padding: 14,
-              boxShadow: "0 20px 50px rgba(0,0,0,.3)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <strong style={{ color: "#102A43", fontSize: 15 }}>Import Feedback &amp; Rating</strong>
-              <button className="btn" type="button" onClick={() => setImportOpen(false)}>Close</button>
-            </div>
-            <UploadPage key="feedback-master-import" initialScreen="fb" initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""} />
-          </section>
-        </div>
+        <UploadPage
+          key="feedback-master-import"
+          initialScreen="fb"
+          initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""}
+          modalOnly
+          onClose={() => setImportOpen(false)}
+        />
       )}
 
       <div className={"toast" + (toast ? " on" : "")}>{toast}</div>
