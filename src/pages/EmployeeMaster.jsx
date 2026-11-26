@@ -3312,7 +3312,7 @@ const ROSTER_IMPORT_COLUMNS = [
   { key: "type", label: "Emp Type", api: "emp_type", aliases: ["Employee Type", "Employment Type"] },
   { key: "dept", label: "Department", api: "department", aliases: ["Organization", "Orgtn"], mapped: "organization" },
   { key: "reportingManager", label: "Reporting Manager", api: "repo_manager", mapped: "reportingManager" },
-  { key: "te", label: "Tech-ED/BU Head Name", api: null, aliases: ["Tech-ED Name", "Tech ED BU Head Name"] },
+  { key: "te", label: "Tech-ED/BU Head Name", api: "appraiser_tech_ed", aliases: ["Tech-ED Name", "Tech ED BU Head Name"] },
   { key: "director", label: "Director", api: "director", aliases: ["Director Name"] },
   {
     key: "appraiser",
@@ -4978,6 +4978,12 @@ export function EmployeeMaster() {
       const before = {};
       const diffs = [];
 
+      /* Tech-ED/BU Head Name is stored in the same Employee Master field as
+         Appraiser Tech-ED. It is used only when the Appraiser column is blank. */
+      if (String(record.appraiser ?? "").trim() === "" && String(record.te ?? "").trim() !== "") {
+        record.appraiser = record.te;
+      }
+
       /* Bare appraiser names are resolved to "EMPxxxx - Name". */
       const appraiser = String(record.appraiser ?? "").trim();
       if (appraiser && !isCanonicalPersonValue(appraiser)) {
@@ -5000,7 +5006,7 @@ export function EmployeeMaster() {
       }
 
       ROSTER_IMPORT_COLUMNS.forEach((column) => {
-        if (column.key === "empId") return;
+        if (column.key === "empId" || column.key === "te") return;
 
         if (!column.api) return;
 
@@ -6110,7 +6116,7 @@ export function EmployeeMaster() {
         current.map((employee) => [normalizeEmpId(employee.empId), employee]),
       );
       const columnByApi = new Map(
-        ROSTER_IMPORT_COLUMNS.filter((column) => column.api).map((column) => [column.api, column]),
+        ROSTER_IMPORT_COLUMNS.filter((column) => column.api && column.key !== "te").map((column) => [column.api, column]),
       );
 
       let restoredEmployees = 0;
