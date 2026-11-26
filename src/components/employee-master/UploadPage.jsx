@@ -405,7 +405,7 @@ const downloadErrorLog = (errors, name) =>
    checked but cannot be saved.
    ============================================================ */
 
-export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId = "" }) {
+export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId = "", modalOnly = false, onClose }) {
   const user = useCatalystUser();
   const role = String(user?.role || "")
     .trim()
@@ -437,6 +437,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
   const [local, setLocal] = useState([]);
   const [toast, setToast] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [modalStep, setModalStep] = useState("file");
 
   useEffect(() => {
     const refreshCycles = () => setLoadToken((value) => value + 1);
@@ -566,6 +567,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
     setOutcome(null);
     setBatchId("");
     setError("");
+    setModalStep("file");
     setPage(1);
     setQ("");
   };
@@ -607,6 +609,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
       if (!dataRows.length)
         throw new Error("The file has a header row but no data rows.");
       setFile({ name: f.name, headers, rows: dataRows });
+      setModalStep("mapping");
       setMap(autoMap(screen, fields, headers));
       setRes(null);
       setOutcome(null);
@@ -1586,6 +1589,64 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
       </>
     );
   };
+
+  if (modalOnly) {
+    return (
+      <div className="up-modal-shell" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose?.(); }}>
+        <style>{CSS + `
+          .up-modal-shell{position:fixed;inset:0;z-index:30000;background:rgba(15,25,40,.55);display:flex;align-items:center;justify-content:center;padding:18px}
+          .up-modal{width:min(1050px,96vw);max-height:92vh;background:#fff;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden}
+          .up-modal-head{background:#173b63;color:#fff;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;font-size:15px;font-weight:800}
+          .up-modal-body{padding:18px;overflow:auto;min-height:0}
+          .up-modal-foot{padding:12px 18px;border-top:1px solid #e5e7eb;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px}
+          .up-modal .up-mapbox{margin-top:0}.up-modal .up-mapbox .mgrid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}
+        `}</style>
+        <section className="up-modal" role="dialog" aria-modal="true" aria-label={`Import ${def?.label || "Data"}`}>
+          <header className="up-modal-head"><span>Import {def?.label || "Data"}</span><button type="button" className="up-btn" onClick={onClose} disabled={!!busy}>× Close</button></header>
+          <div className="up-modal-body">
+            {loading && <div className="up-note">Loading cycles and upload history…</div>}
+            {loadError && <div className="up-callout warn"><div className="b">{loadError}</div></div>}
+            {error && <div className="up-callout warn"><div className="b">{error}</div></div>}
+            {modalStep === "file" && <>
+              <div style={{marginBottom:14}}><label className="up-lbl" htmlFor="up-modal-cycle">Appraisal Cycle</label>
+                <select id="up-modal-cycle" className="up-in sel" value={cycleId} disabled={loading || !!loadError} onChange={(e)=>chooseCycle(e.target.value)}>
+                  <option value="">— Select Appraisal Cycle —</option>
+                  {openCycles.map((c)=><option key={c.id} value={c.id}>{c.name} — {c.status}</option>)}
+                  {screen === "pay" && histCycles.length>0 && <optgroup label="Closed — historical payroll">{histCycles.map((c)=><option key={c.id} value={c.id}>{c.name} — {c.archived ? "Archived" : c.status}</option>)}</optgroup>}
+                </select>
+              </div>
+              <div className="up-drop" onDragOver={(e)=>e.preventDefault()} onDrop={(e)=>{e.preventDefault();readFile(e.dataTransfer.files?.[0]);}}>
+                <b>Select the {def?.label || "import"} file</b><span>.xlsx, .xls or .csv</span>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e)=>{readFile(e.target.files?.[0]);e.target.value="";}} />
+                <div style={{marginTop:12}}><button type="button" className="up-btn pri" onClick={()=>fileInputRef.current?.click()}>Browse files</button></div>
+              </div>
+            </>}
+            {modalStep === "mapping" && file && <>
+              <div className="up-callout"><div className="b">{file.name}<small>{totalRows} rows detected. Columns are auto-mapped where names match. Correct any mapping below.</small></div></div>
+              <div style={{marginTop:14}}>{renderMapping()}</div>
+            </>}
+            {modalStep === "review" && file && <>
+              <div className={errors.length ? "up-callout warn" : "up-callout ok"}><div className="b">{res?.headerError ? "Mapping needs attention." : errors.length ? `${readyRows} valid row(s), ${badRows} row(s) with validation errors.` : `${totalRows} rows passed validation and are ready to import.`}<small>Nothing is saved until you confirm the import.</small></div></div>
+              <div className="up-kpis" style={{marginTop:12}}>
+                <div className="kpi"><div className="v">{totalRows}</div><div className="k">Rows in file</div></div>
+                <div className="kpi"><div className="v">{readyRows}</div><div className="k">Ready to import</div></div>
+                <div className="kpi"><div className={`v${errors.length ? " bad" : ""}`}>{badRows}</div><div className="k">Rows with errors</div></div>
+                <div className="kpi"><div className="v">{unmapped}</div><div className="k">Skipped fields</div></div>
+              </div>
+              {errors.length>0 && <div className="up-gridw" style={{marginTop:12,maxHeight:260}}><table className="up-g"><thead><tr><th>Row</th><th>Employee ID</th><th>Field</th><th>Issue</th></tr></thead><tbody>{errors.slice(0,100).map((e,i)=><tr key={i}><td>{e.row}</td><td>{e.id || "—"}</td><td>{e.col}</td><td>{e.msg}</td></tr>)}</tbody></table></div>}
+              {outcome && <div className={`up-callout ${outcome.failed===0 ? "ok" : "warn"}`}><div className="b">{outcome.succeeded} of {outcome.total} rows imported; {outcome.failed} failed.<small>Batch {outcome.batchId}</small></div></div>}
+            </>}
+          </div>
+          <footer className="up-modal-foot">
+            {modalStep === "file" && <button type="button" className="up-btn" onClick={onClose}>Cancel</button>}
+            {modalStep === "mapping" && <><button type="button" className="up-btn" onClick={()=>{resetFile();setModalStep("file");}}>Cancel</button><button type="button" className="up-btn main" disabled={!!busy || missingRequired.length>0} onClick={async()=>{await runCheck();setModalStep("review");}}>Review changes</button></>}
+            {modalStep === "review" && !outcome && <><button type="button" className="up-btn" onClick={()=>setModalStep("mapping")}>Back</button><button type="button" className="up-btn" onClick={()=>{resetFile();setModalStep("file");}}>Cancel</button><button type="button" className="up-btn main" disabled={!canUpload} onClick={runUpload}>{busy==="upload" ? "Importing…" : "Confirm Import"}</button></>}
+            {modalStep === "review" && outcome && <button type="button" className="up-btn main" onClick={onClose}>Close</button>}
+          </footer>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="up">
