@@ -889,6 +889,7 @@ export async function createEmployeeMasterEmployees(records) {
       cost_center: record.cost_center ?? record.costCenter,
       current_salary: record.current_salary ?? record.currentSalary,
       location: record.location,
+      source_of_hire: record.source_of_hire ?? record.sourceOfHire,
       last_appraisal_month_year:
         record.last_appraisal_month_year ?? record.lastAppraisal,
     }));

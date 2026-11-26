@@ -52,7 +52,7 @@ export function ImportPreviewModal({
           {changes.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               {warnings.length > 0
-                ? "Nothing in this file can be saved. See the notes above."
+                ? "No changes found. See the notes above."
                 : "No changes found."}
             </div>
           ) : (

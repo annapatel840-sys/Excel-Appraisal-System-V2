@@ -3308,7 +3308,7 @@ const ROSTER_IMPORT_COLUMNS = [
   { key: "empId", label: "Emp ID", api: "emp_id", aliases: ["Employee ID", "EmpID"] },
   { key: "name", label: "Employee Name", api: "emp_name", aliases: ["Name"], mapped: "name" },
   { key: "designation", label: "Designation", api: "designation", mapped: "designation" },
-  { key: "sourceOfHire", label: "Source of Hire", api: null, aliases: ["source_of_hire"] },
+  { key: "sourceOfHire", label: "Source of Hire", api: "source_of_hire", aliases: ["source_of_hire"] },
   { key: "type", label: "Emp Type", api: "emp_type", aliases: ["Employee Type", "Employment Type"] },
   { key: "dept", label: "Department", api: "department", aliases: ["Organization", "Orgtn"], mapped: "organization" },
   { key: "reportingManager", label: "Reporting Manager", api: "repo_manager", mapped: "reportingManager" },
@@ -4969,7 +4969,6 @@ export function EmployeeMaster() {
     }
 
     const unresolvedAppraisers = [];
-    const unsavedChanged = [];
     const invalidCells = [];
     const nameless = [];
 
@@ -5003,18 +5002,7 @@ export function EmployeeMaster() {
       ROSTER_IMPORT_COLUMNS.forEach((column) => {
         if (column.key === "empId") return;
 
-        // Columns with no Employee Master field cannot be saved. When the file
-        // holds a different value, say so instead of a bare "No changes found".
-        if (!column.api) {
-          const fileValue = String(record[column.key] ?? "").trim();
-          const tableValue = String(
-            existing?.[column.key] ?? existing?.rawEmployee?.[column.key] ?? "",
-          ).trim();
-          if (existing && fileValue !== "" && fileValue !== tableValue) {
-            unsavedChanged.push(`${record.empId} ${column.label}`);
-          }
-          return;
-        }
+        if (!column.api) return;
 
         let value = String(record[column.key] ?? "").trim();
         if (value === "") return; // blank cells never overwrite
@@ -5105,14 +5093,6 @@ export function EmployeeMaster() {
     if (unsaved.length > 0) {
       warnings.push(
         `Not saved by Employee Master import (no Employee Master field): ${unsaved.join(", ")}.`,
-      );
-    }
-
-    if (unsavedChanged.length > 0) {
-      warnings.push(
-        `Changed in the file but not saved (Employee Master has no field for it): ${unsavedChanged.slice(0, 6).join("; ")}${
-          unsavedChanged.length > 6 ? `; ...and ${unsavedChanged.length - 6} more` : ""
-        }`,
       );
     }
 
@@ -6171,8 +6151,8 @@ export function EmployeeMaster() {
 
           const old = String(item.before?.[api] ?? "");
 
-          // A blank number or date cannot be written back (the Data Store refuses it).
-          if (old === "" && (column.numeric || column.date)) {
+          // A blank old value cannot be written back (the API ignores blanks).
+          if (old === "") {
             kept += 1;
             return;
           }

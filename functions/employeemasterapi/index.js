@@ -156,6 +156,7 @@ const ALLOWED_FIELDS = [
   "current_salary",
   "location",
   "last_appraisal_month_year",
+  "source_of_hire",
   "emp_id",
 ];
 
