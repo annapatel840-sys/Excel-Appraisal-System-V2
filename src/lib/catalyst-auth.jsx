@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import wissenMark from "@/assets/wissen-mark.png";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
+import { payrollCycleRequest } from "./payroll-cycle-api";
 import {
   applyHomeLocationOnSignIn,
   forgetHomeLocationApplied,
@@ -74,8 +75,9 @@ export function CatalystAuthGate({
         return;
       }
 
+      let result;
       try {
-        const result = await auth.isUserAuthenticated();
+        result = await auth.isUserAuthenticated();
         if (!mounted) return;
         if (!isSignedInResult(result)) {
           setState("signed-out");
@@ -96,26 +98,10 @@ export function CatalystAuthGate({
         return;
       }
 
-      // isUserAuthenticated() has already returned the authenticated Catalyst
-      // user profile. Do not make a second serverless function request merely
-      // to retrieve the same identity: payrollcycleapi/session was hanging in
-      // Catalyst before the application could render.
-      const profile = result.content || {};
-      const session = {
-        id: String(profile.user_id || ""),
-        user_id: String(profile.user_id || ""),
-        name:
-          profile.display_name ||
-          [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
-          profile.email_id ||
-          "User",
-        email: profile.email_id || profile.email || "",
-        email_id: profile.email_id || profile.email || "",
-        role: profile.role_details?.role_name || profile.role_name || "",
-        role_details: profile.role_details || {},
-        empId: profile.empId || profile.emp_id || "",
-        location: profile.location || "",
-      };
+      // Use the application's resolved identity, including Employee Master
+      // mapping (employee ID and home location), rather than treating the raw
+      // Catalyst authentication profile as the complete app session.
+      const session = await payrollCycleRequest("session");
       if (!mounted) return;
       // Keep the user's saved location. The Employee Master home location is
       // loaded by the normal location/profile data flow after sign-in.
