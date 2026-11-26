@@ -785,36 +785,13 @@ export function PayrollDataPage() {
       </div>
 
       {importOpen && (
-        <div
-          className="pd-modal-overlay show"
-          style={{ zIndex: 120, padding: 18 }}
-          onClick={() => setImportOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Import Payroll Data"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              background: "#fff",
-              width: "min(1500px, 98vw)",
-              height: "min(920px, 94vh)",
-              display: "flex",
-              flexDirection: "column",
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: "0 20px 50px rgba(0,0,0,.3)",
-            }}
-          >
-            <div className="pd-modal-head">
-              <h2>Import Payroll Data</h2>
-              <button type="button" className="pd-btn" onClick={() => setImportOpen(false)}>Close</button>
-            </div>
-            <div style={{ padding: 12, overflow: "auto", minHeight: 0, flex: 1 }}>
-              <UploadPage key="payroll-master-import" initialScreen="pay" initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""} />
-            </div>
-          </div>
-        </div>
+        <UploadPage
+          key="payroll-master-import"
+          initialScreen="pay"
+          initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""}
+          modalOnly
+          onClose={() => setImportOpen(false)}
+        />
       )}
 
       {auditOpen && (
