@@ -3805,23 +3805,25 @@ async function generateAppraisalSheet(
     if (!item || isCancelledPayrollCycle(item)) return false;
     if (String(item.id) === String(cycle.id)) return true;
     if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
-    // Exceptional must read only its same-year Annual source (plus any
-    // already-created rows on the Exceptional cycle itself), never unrelated
-    // older Annual or New Joiner history.
-    if (exceptionalCycle) return false;
+    // Exceptional may use same-year New Joiner payroll and feedback for
+    // employees who have no row in the same-year Annual Appraisal Sheet.
+    // The New Joiner cycle can still be Active; its status does not invalidate
+    // uploaded employee payroll/feedback history.
+    if (exceptionalCycle) {
+      return isNewJoinerCycle(item) && cycleYear(item) === currentYear;
+    }
     // Payroll_Data is historical source data. Do not hide valid employee
     // payroll because its source cycle is still Upcoming, Active, or Closed.
     if (isNewJoinerCycle(item))
       return (
         cycleYear(item) === currentYear &&
         (Boolean(item.archived) ||
-          String(item.status || "")
-            .trim()
-            .toLowerCase() === "archived")
+          String(item.status || "").trim().toLowerCase() === "archived")
       );
     return isAnnualCycle(item) && isBeforeCurrentCycle(item);
   };
   const payrollEmployeesWithHistory = new Set();
+  const payrollEmployeesWithNewJoinerHistory = new Set();
   payrollRowsWithCycle.forEach(({ row, cycle: rowCycle }) => {
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return;
 undefined
@@ -3848,6 +3850,10 @@ undefined
       .toLowerCase();
     if (masterId) payrollEmployeesWithHistory.add(masterId);
     if (empId) payrollEmployeesWithHistory.add(empId);
+    if (isNewJoinerCycle(rowCycle) && cycleYear(rowCycle) === currentYear) {
+      if (masterId) payrollEmployeesWithNewJoinerHistory.add(masterId);
+      if (empId) payrollEmployeesWithNewJoinerHistory.add(empId);
+    }
   });
 
   // Exceptional cycles use the same-year Annual Appraisal_Sheet as their
@@ -3856,6 +3862,20 @@ undefined
   // validation when that row is incomplete.
   const missingExceptionalAnnualSourceEmployees = exceptionalCycle
     ? eligibleRows.filter((employee) => {
+        const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+        const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+        const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId);
+        const canonicalMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id).toLowerCase();
+        const canonicalEmpId = String(fieldValue(master || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+        const hasSameYearNewJoinerPayroll = [
+          masterId,
+          empId,
+          canonicalMasterId,
+          canonicalEmpId,
+        ].some((key) => key && payrollEmployeesWithNewJoinerHistory.has(key));
+        // Annual Appraisal Sheet is preferred, but current-year New Joiner
+        // payroll is a valid per-employee fallback when the Annual row is absent.
+        if (hasSameYearNewJoinerPayroll) return false;
         const annualRow = annualSheetForEmployee(employee);
         if (!annualRow) return true;
         // Some existing Annual rows retain a zero/blank legacy
@@ -4157,10 +4177,9 @@ undefined
       isAnnualCycle(candidateCycle) && isBeforeCurrentCycle(candidateCycle);
     const usableNewJoiner =
       sameYearNewJoiner &&
-      (Boolean(candidateCycle.archived) ||
-        String(candidateCycle.status || "")
-          .trim()
-          .toLowerCase() === "archived");
+      (exceptionalCycle ||
+        Boolean(candidateCycle.archived) ||
+        String(candidateCycle.status || "").trim().toLowerCase() === "archived");
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
       (!usableNewJoiner &&
