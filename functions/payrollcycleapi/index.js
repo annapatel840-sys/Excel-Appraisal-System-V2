@@ -4214,7 +4214,7 @@ async function generateAppraisalSheet(
     ).toLowerCase();
     const sourceMasterId = directMaster
       ? referenceText(directMaster.ROWID ?? directMaster.rowid ?? directMaster.id)
-      : /^\\d+$/.test(rawEmployee)
+      : /^\d+$/.test(rawEmployee)
         ? rawEmployee
         : "";
     const empId =
