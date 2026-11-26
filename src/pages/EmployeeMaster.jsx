@@ -6478,7 +6478,11 @@ export function EmployeeMaster() {
      ADD AN EMPLOYEE (manual inclusion in the Eligibility List)
      ============================================================ */
 
-  const addEmployeeToEligibility = async ({ empId, eligibleReason }) => {
+  const addEmployeeToEligibility = async ({
+    empId,
+    employees,
+    eligibleReason,
+  }) => {
     if (!canEditEmployees) {
       throw new Error(
         "You do not have permission to change the Eligibility List.",
@@ -6490,24 +6494,37 @@ export function EmployeeMaster() {
       );
     }
 
-    const master = eligibilityMasterEmployees.find(
-      (employee) => normalizeEmpId(employee.empId) === normalizeEmpId(empId),
-    );
+    const selectedEmployees = Array.isArray(employees) && employees.length
+      ? employees
+      : empId ? [{ empId }] : [];
+    if (!selectedEmployees.length) {
+      throw new Error("Select at least one employee to add.");
+    }
 
-    await updateEmployeeEligibility(
-      empId,
-      "Yes",
-      eligibleReason || "",
-      eligibilityCycleId,
-      "Manual",
-    );
+    for (const selectedEmployee of selectedEmployees) {
+      const selectedEmpId = String(selectedEmployee.empId || "").trim();
+      if (!selectedEmpId) continue;
 
-    addEligibilityAudit({
-      empId,
-      employeeName: master?.name || "",
-      oldValue: "Not in list",
-      newValue: "Eligible",
-    });
+      const master = eligibilityMasterEmployees.find(
+        (employee) =>
+          normalizeEmpId(employee.empId) === normalizeEmpId(selectedEmpId),
+      );
+
+      await updateEmployeeEligibility(
+        selectedEmpId,
+        "Yes",
+        eligibleReason || "Exceptional cycle",
+        eligibilityCycleId,
+        "Manual",
+      );
+
+      addEligibilityAudit({
+        empId: selectedEmpId,
+        employeeName: selectedEmployee.name || master?.name || "",
+        oldValue: "Not in list",
+        newValue: "Eligible",
+      });
+    }
 
     try {
       await reloadEligibilityRows();
@@ -6516,8 +6533,8 @@ export function EmployeeMaster() {
     }
 
     showBanner(
-      "Employee added",
-      `${empId} was added to the Eligibility List as Eligible.`,
+      selectedEmployees.length === 1 ? "Employee added" : "Employees added",
+      `${selectedEmployees.length} employee(s) added to the Eligibility List as Eligible.`,
     );
   };
 
