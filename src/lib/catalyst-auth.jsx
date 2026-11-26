@@ -101,18 +101,26 @@ export function CatalystAuthGate({
       // Use the application's resolved identity, including Employee Master
       // mapping (employee ID and home location), rather than treating the raw
       // Catalyst authentication profile as the complete app session.
-      const session = await payrollCycleRequest("session");
-      if (!mounted) return;
-      // Keep the user's saved location. The Employee Master home location is
-      // loaded by the normal location/profile data flow after sign-in.
-      applyHomeLocationOnSignIn(session.email || session.id, session.location);
       try {
-        onSessionReady?.();
-      } catch (_) {
-        /* a prefetch problem must never block sign-in */
+        const session = await payrollCycleRequest("session");
+        if (!mounted) return;
+        // Use the server-resolved Employee Master location and employee ID.
+        applyHomeLocationOnSignIn(session.email || session.id, session.location);
+        try {
+          onSessionReady?.();
+        } catch (_) {
+          /* a prefetch problem must never block sign-in */
+        }
+        setUser(session);
+        setState("authenticated");
+      } catch (error) {
+        if (!mounted) return;
+        setMessage(
+          error?.message ||
+            "Unable to load your application profile. Check your connection and retry.",
+        );
+        setState("error");
       }
-      setUser(session);
-      setState("authenticated");
     };
 
     checkSession();
