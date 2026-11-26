@@ -191,8 +191,9 @@ const isHidden = (c) => c.status === "Cancelled" || c.status === "Deleted";
 // data-setup workflow and lifecycle as Annual cycles.
 const isNewJoinerWorkflow = (c) =>
   c?.type === "New Joiner" && c?.process === "None";
+const isExceptionalWorkflow = (c) => c?.process === "Exceptional";
 const hasSetupWorkflow = (c) =>
-  c?.process === "Annual" || isNewJoinerWorkflow(c);
+  c?.process === "Annual" || isNewJoinerWorkflow(c) || isExceptionalWorkflow(c);
 // Active Annual cycle that Tech-ED has finished (the cycle itself stays Active).
 const isTechEdClosed = (c) =>
   !!c && c.status === "Active" && !c.archived && c.process === "Annual" && !!c.techEdClosed;
@@ -1383,6 +1384,15 @@ export function AppraisalCycleMasterPage({
       state,
       acts,
     });
+
+    if (isExceptionalWorkflow(c)) {
+      return [
+        row("Active", "el", "Eligibility List", elSetup?.generated ? `${elSetup.total || 0} employees selected` : "Select employees directly from Employee Master", act ? "ok" : "lk", act ? [{ l: "Open ›", id: "go-el" }] : []),
+        row("Active", "dl", "Delegation", dlSetup === undefined ? "Checking Delegation…" : dlSetup > 0 ? "Generated · open to review assignments" : "Not generated", !act ? "lk" : dlSetup === undefined ? "pd" : dlSetup > 0 ? "ok" : "wn", act ? [{ l: dlSetup > 0 ? "Open ›" : "Open Eligibility ›", id: dlSetup > 0 ? "go-dl" : "go-el" }] : []),
+        row("Active", "gn", "Generate Appraisal Sheet", gen ? `${generatedRowCount ?? ""} rows generated` : "Uses Annual payroll and feedback for the same year", gen ? "ok" : act ? "wn" : "lk", act && !gen ? [{ l: "Generate", id: "gen" }] : []),
+        row("Active", "ap", "Appraisal", gen ? "Exceptional Appraisal Sheet · Detail screen" : "Available after Generate", gen ? "pd" : "lk", gen ? [{ l: "Open ›", id: "go-ap" }] : []),
+      ];
+    }
 
     const emSub = w
       ? w.emUpdated
