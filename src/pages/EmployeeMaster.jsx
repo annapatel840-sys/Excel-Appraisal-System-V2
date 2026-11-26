@@ -4038,6 +4038,7 @@ export function EmployeeMaster() {
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
+  const [eligibilityCycleType, setEligibilityCycleType] = useState("");
   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] =
     useState(false);
   const [delegationGenerated, setDelegationGenerated] = useState(false);
