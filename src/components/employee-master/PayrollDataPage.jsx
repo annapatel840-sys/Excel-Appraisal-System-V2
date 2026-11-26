@@ -553,6 +553,16 @@ export function PayrollDataPage() {
               <button
                 className="pd-menu-item"
                 type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setImportOpen(true);
+                }}
+              >
+                <span className="pd-menu-icon">↑</span>Import
+              </button>
+              <button
+                className="pd-menu-item"
+                type="button"
                 onClick={handleExport}
               >
                 <span className="pd-menu-icon">↧</span>Export to CSV
@@ -783,6 +793,39 @@ export function PayrollDataPage() {
         Every column header has a filter — sort, filter by condition, or pick
         specific values, same as Excel.
       </div>
+
+      {importOpen && (
+        <div
+          className="pd-modal-overlay show"
+          style={{ zIndex: 120, padding: 18 }}
+          onClick={() => setImportOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Import Payroll Data"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              background: "#fff",
+              width: "min(1500px, 98vw)",
+              height: "min(920px, 94vh)",
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: 12,
+              overflow: "hidden",
+              boxShadow: "0 20px 50px rgba(0,0,0,.3)",
+            }}
+          >
+            <div className="pd-modal-head">
+              <h2>Import Payroll Data</h2>
+              <button type="button" className="pd-btn" onClick={() => setImportOpen(false)}>Close</button>
+            </div>
+            <div style={{ padding: 12, overflow: "auto", minHeight: 0, flex: 1 }}>
+              <UploadPage key="payroll-master-import" initialScreen="pay" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {auditOpen && (
         <div
