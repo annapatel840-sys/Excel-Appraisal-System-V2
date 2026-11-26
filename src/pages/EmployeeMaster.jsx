@@ -6393,7 +6393,8 @@ export function EmployeeMaster() {
     ]);
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const masterEmployees = Array.isArray(masters) ? masters : [];
-    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
@@ -6874,7 +6875,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
           <div className="em-tab-content">
-            <PayrollDataPage />
+            <PayrollDataPage disableUpload={selectedCycleType.toLowerCase() === "exceptional"} />
           </div>
         )}
 
