@@ -4944,14 +4944,35 @@ async function validateUpload(tables, body) {
       ])
       .filter(([empId, rowIdValue]) => empId && rowIdValue),
   );
+  const referenceValue = (value) => {
+    if (value && typeof value === "object") {
+      return String(
+        value.ROWID ??
+          value.rowid ??
+          value.id ??
+          value.ID ??
+          value.value ??
+          value.emp_id ??
+          value.employee_id ??
+          value.cycle_name ??
+          value.appraisal_cycle_name ??
+          "",
+      ).trim();
+    }
+    return String(value ?? "").trim();
+  };
   const employeeKey = (value) => {
-    const raw = String(value ?? "")
-      .trim()
-      .toLowerCase();
+    const raw = referenceValue(value).toLowerCase();
     return masterRowIdByEmpId.get(raw) || raw;
   };
+  const cycleKey = (value) => {
+    const raw = referenceValue(value);
+    const matched =
+      cycleById.get(raw) || cycleByName.get(raw.toLowerCase());
+    return matched?.id || raw;
+  };
   payrollRows.forEach((row) => {
-    const key = `${employeeKey(row.emp_id)}|${String(row.appraisal_cycle_name || "")}`;
+    const key = `${employeeKey(row.emp_id)}|${cycleKey(row.appraisal_cycle_name)}`;
     existingByKey.set(key, row);
   });
 
@@ -7747,9 +7768,41 @@ async function routeRequest(req, res, identity, resource, a) {
         row,
       ]),
     );
+    const cycleIdByName = new Map(
+      result.rows.map((item) => [
+        String(item.cycleName || "").trim().toLowerCase(),
+        String(item.cycleId || "").trim(),
+      ]),
+    );
+    const referenceValue = (value) => {
+      if (value && typeof value === "object") {
+        return String(
+          value.ROWID ??
+            value.rowid ??
+            value.id ??
+            value.ID ??
+            value.value ??
+            value.emp_id ??
+            value.employee_id ??
+            value.cycle_name ??
+            value.appraisal_cycle_name ??
+            "",
+        ).trim();
+      }
+      return String(value ?? "").trim();
+    };
+    const canonicalEmployeeRef = (value) => {
+      const raw = referenceValue(value);
+      const master = masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
+      return master ? String(master.ROWID ?? master.rowid ?? "").trim() : raw;
+    };
+    const canonicalCycleRef = (value) => {
+      const raw = referenceValue(value);
+      return cycleIdByName.get(raw.toLowerCase()) || raw;
+    };
     const existingByKey = new Map(
       result.payrollRows.map((row) => [
-        `${String(row.emp_id || "").trim()}|${String(row.appraisal_cycle_name || "").trim()}`,
+        `${canonicalEmployeeRef(row.emp_id)}|${canonicalCycleRef(row.appraisal_cycle_name)}`,
         row,
       ]),
     );
