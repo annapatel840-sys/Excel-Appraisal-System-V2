@@ -49,6 +49,7 @@ export function SettingsPage() {
       XLSX.writeFile(makeWorkbook(data.payrollRows, "Payroll Demo"), data.payrollFileName);
       XLSX.writeFile(makeWorkbook(data.feedbackRows, "Feedback Demo"), data.feedbackFileName);
       window.localStorage.setItem("temporary-import-demo-token", data.token);
+      window.localStorage.setItem("temporary-import-demo-cycle-id", data.cycleId);
       setDemoToken(data.token);
       setDemoMessage(
         "Downloaded both demo files for " + data.cycleName +
@@ -78,6 +79,7 @@ export function SettingsPage() {
         body: { action: "cleanup", token: demoToken },
       });
       window.localStorage.removeItem("temporary-import-demo-token");
+      window.localStorage.removeItem("temporary-import-demo-cycle-id");
       setDemoToken("");
       setDemoMessage(
         "Cleanup complete. Deleted " + (data?.deletedPayroll || 0) +
