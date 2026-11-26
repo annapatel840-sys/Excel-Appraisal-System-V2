@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { startVersionWatch } from "./lib/app-version";
+import { NewVersionBanner, startVersionWatch } from "./lib/app-version";
 import "./styles.css";
 
 // Right-click is turned off on every screen.
@@ -13,6 +13,9 @@ startVersionWatch();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <>
+      <NewVersionBanner />
+      <App />
+    </>
   </React.StrictMode>,
 );
