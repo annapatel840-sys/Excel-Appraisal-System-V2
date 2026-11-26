@@ -5,7 +5,7 @@ import { Search, X } from "lucide-react";
 /** Dedicated employee picker for Exceptional cycles; Annual's add flow is unchanged. */
 export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, onAdd, onClose }) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [allMasterEmployees, setAllMasterEmployees] = useState([]);
@@ -35,18 +35,37 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   }, [allMasterEmployees, query]);
 
+  const toggleEmployee = (empId) => {
+    setSelectedIds((current) =>
+      current.includes(empId)
+        ? current.filter((id) => id !== empId)
+        : [...current, empId],
+    );
+    setError("");
+  };
+
   const submit = async () => {
-    if (!selectedId) {
-      setError("Select an employee to add.");
+    if (!selectedIds.length) {
+      setError("Select at least one employee to add.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      await onAdd({ empId: selectedId, eligible: "Yes", eligibleReason: "Exceptional cycle" });
+      const selectedEmployees = allMasterEmployees.filter((employee) =>
+        selectedIds.includes(employee.empId),
+      );
+      await onAdd({
+        employees: selectedEmployees.map((employee) => ({
+          empId: employee.empId,
+          name: employee.name || "",
+        })),
+        eligible: "Yes",
+        eligibleReason: "Exceptional cycle",
+      });
       onClose();
     } catch (err) {
-      setError(err?.message || "Unable to add this employee.");
+      setError(err?.message || "Unable to add selected employees.");
     } finally {
       setBusy(false);
     }
@@ -72,10 +91,10 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
               const alreadyAdded = listedIds.has(employee.empId);
               const disabled = !active || alreadyAdded;
               return (
-                <button key={employee.empId} type="button" disabled={disabled} onClick={() => { setSelectedId(employee.empId); setError(""); }}
-                  style={{ display: "flex", width: "100%", textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #edf1f5", background: selectedId === employee.empId ? "#eef5ff" : "#fff", color: disabled ? "#8492a6" : "#172b4d", cursor: disabled ? "not-allowed" : "pointer" }}>
+                <button key={employee.empId} type="button" disabled={disabled} onClick={() => toggleEmployee(employee.empId)}
+                  style={{ display: "flex", width: "100%", textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #edf1f5", background: selectedIds.includes(employee.empId) ? "#eef5ff" : "#fff", color: disabled ? "#8492a6" : "#172b4d", cursor: disabled ? "not-allowed" : "pointer" }}>
                   <span style={{ flex: 1 }}><b>{employee.empId} - {employee.name}</b><small style={{ display: "block", color: "#62748a" }}>{employee.designation || "—"} · {employee.location || "—"}</small></span>
-                  <span>{alreadyAdded ? "Already added" : !active ? "Inactive" : selectedId === employee.empId ? "Selected" : "Select"}</span>
+                  <span>{alreadyAdded ? "Already added" : !active ? "Inactive" : selectedIds.includes(employee.empId) ? "Selected" : "Select"}</span>
                 </button>
               );
             }) : <div className="em-empty">{allMasterEmployees.length ? "No active employees match this search." : "No active employees found in Employee Master."}</div>}
@@ -84,7 +103,7 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
         </div>
         <div className="em-modal-footer">
           <button type="button" className="em-btn em-btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || employeesLoading || !selectedId}>{busy ? "Adding..." : "Add Selected Employee"}</button>
+          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || employeesLoading || !selectedId}>{busy ? "Adding..." : `Add Selected Employees (${selectedIds.length})`}</button>
         </div>
       </div>
     </div>
