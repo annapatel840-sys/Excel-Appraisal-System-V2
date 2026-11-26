@@ -5147,6 +5147,9 @@ function normalizeImportValue(key, value) {
     if (key === "fyYear" && !Number.isInteger(number)) {
       throw new ApiError("FY Year must be a whole number.");
     }
+    if (key === "interviewCount" && !Number.isInteger(number)) {
+      throw new ApiError("Interview Count must be a whole number.");
+    }
     return number;
   }
   return String(value).trim();
