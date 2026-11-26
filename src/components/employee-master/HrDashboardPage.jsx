@@ -21,6 +21,7 @@ import {
   isAllLocations,
   useSelectedLocation,
 } from "@/lib/location-store";
+import { matchesCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
 import {
   isActionNeededStatus,
   isInactiveStatus,
@@ -147,9 +148,12 @@ function cycleMatchesLocation(cycle, selected) {
   const cl = !raw || raw === "all" || raw === "all locations" ? "all" : raw;
   return isAllLocations(selected) ? cl === "all" : cl === norm(selected);
 }
-function pickCycle(cycles, selected) {
+function pickCycle(cycles, selected, selectedType) {
   const mine = (Array.isArray(cycles) ? cycles : []).filter(
-    (c) => !truthy(c?.hidden) && cycleMatchesLocation(c, selected),
+    (c) =>
+      !truthy(c?.hidden) &&
+      cycleMatchesLocation(c, selected) &&
+      matchesCycleType(c, selectedType),
   );
   return (
     mine.find((c) => cycleStatusOf(c) === "active" && !truthy(c.archived)) ||
@@ -397,6 +401,7 @@ function Grid({ cols, rows, numCols = [], foot }) {
 /* ---------------- page ---------------- */
 export function HrDashboardPage({ onNavigate, canOpen }) {
   const [location] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
   const budget = useBudget();
   // The Appraisal Sheet rows, so team size and "Used" here use the same people and sums as the Overview Dashboard.
   let sheetRows = [];
@@ -471,7 +476,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         run(
           "cycle",
           () => payrollCycleRequest("cycles", { fresh: true, query: { payrollReadiness: 1, location } }),
-          (list) => setCycle(pickCycle(list, location) || { none: true }),
+          (list) => setCycle(pickCycle(list, location, selectedCycleType) || { none: true }),
         ),
         run(
           "elig",
@@ -481,6 +486,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
               limit: 100000,
               search: "",
               location,
+              cycleType: selectedCycleType,
               fresh: true,
             }),
           (r) =>
@@ -492,7 +498,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         ),
         run(
           "del",
-          () => fetchDelegationRoster({ fresh: true, location }),
+          () => fetchDelegationRoster({ fresh: true, location, cycleType: selectedCycleType }),
           (rows) => setRoster(Array.isArray(rows) ? rows : []),
         ),
         run(
@@ -518,7 +524,7 @@ export function HrDashboardPage({ onNavigate, canOpen }) {
         if (live()) setCheckedAt(new Date());
       });
     },
-    [location],
+    [location, selectedCycleType],
   );
 
   // Reload whenever the selected location changes, and when a cycle changes.
