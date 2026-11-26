@@ -4136,7 +4136,7 @@ export function EmployeeMaster() {
   const [statusFilter, setStatusFilter] = useState("All");
   // One location shared by every screen (see location-store.js).
   const [locationFilter, setLocationFilter] = useSelectedLocation();
-  const [selectedCycleType] = useSelectedCycleType();
+  const [selectedCycleType, setSelectedCycleType] = useSelectedCycleType();
 
   const [rosterFilters, setRosterFilters] = useState({});
 
@@ -6821,6 +6821,9 @@ export function EmployeeMaster() {
                   defaultProcess={defaultProcess}
                   cycleStats={null}
                   onGenerateSheet={async (cycle, options) => {
+                    if (String(cycle?.process || "").toLowerCase() === "exceptional") {
+                      setSelectedCycleType("Exceptional");
+                    }
                     const result = await generateAppraisalSheet(cycle.id, options);
                     await refreshEmployees();
                     return result;
@@ -6832,8 +6835,18 @@ export function EmployeeMaster() {
                   }
                   onNavigate={(tab, requestedUploadScreen, cycle) => {
                     if (tab === "appraisal-sheet") {
+                      if (String(cycle?.process || "").toLowerCase() === "exceptional") {
+                        setSelectedCycleType("Exceptional");
+                      }
                       window.location.assign("/sheet");
                       return;
+                    }
+                    if (
+                      cycle &&
+                      String(cycle.process || "").toLowerCase() === "exceptional" &&
+                      (tab === "eligibility" || tab === "delegation")
+                    ) {
+                      setSelectedCycleType("Exceptional");
                     }
                     if (tab === "payroll-upload") {
                       setUploadScreen(requestedUploadScreen || "");
