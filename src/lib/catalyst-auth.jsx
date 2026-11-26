@@ -2,8 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 import wissenMark from "@/assets/wissen-mark.png";
 
-import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
-import { payrollCycleRequest } from "./payroll-cycle-api";
+import { CATALYST_SESSION_EXPIRED_EVENT, catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import {
   applyHomeLocationOnSignIn,
   forgetHomeLocationApplied,
@@ -98,39 +97,40 @@ export function CatalystAuthGate({
         return;
       }
 
-      // Use the application's resolved identity, including Employee Master
-      // mapping (employee ID and home location), rather than treating the raw
-      // Catalyst authentication profile as the complete app session.
+      // Resolve the app role and employee mapping through Access API.
+      // This avoids payrollcycleapi/session, which was timing out during login.
+      // Access API already owns the role/delegation rules used by AccessProvider.
       try {
-        const sessionResult = await payrollCycleRequest("session");
+        const response = await catalystFetch(catalystFunctionUrl("accessapi") + "me");
+        if (!response.ok) {
+          throw new Error(`Access service returned HTTP ${response.status}.`);
+        }
+        const access = await response.json();
         if (!mounted) return;
+        if (access?.ok === false) {
+          throw new Error(access.error || "You do not have access to the Compensation tool.");
+        }
+
         const profile = result?.content || {};
-        // The session endpoint is deliberately lightweight (no Employee_Master
-        // query). Prefer its server-resolved identity, and use Catalyst profile
-        // fields only as fallbacks when Catalyst actually supplies them.
+        const accessUser = access?.user || {};
+        const email = accessUser.email || profile.email_id || profile.email || "";
         const session = {
-          ...sessionResult,
-          user_id: sessionResult?.user_id || profile.user_id || "",
+          id: String(profile.user_id || accessUser.empId || email || ""),
+          user_id: String(profile.user_id || ""),
           name:
-            sessionResult?.name ||
+            accessUser.name ||
             profile.display_name ||
             [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
-            profile.email_id ||
+            email ||
             "User",
-          email: sessionResult?.email || profile.email_id || profile.email || "",
-          role:
-            sessionResult?.role ||
-            profile.role_details?.role_name ||
-            profile.role_name ||
-            "",
-          empId:
-            sessionResult?.empId ||
-            profile.empId ||
-            profile.emp_id ||
-            "",
-          location: sessionResult?.location || profile.location || "",
+          email,
+          email_id: email,
+          role: access.roleLabel || access.role || profile.role_details?.role_name || profile.role_name || "",
           role_details: profile.role_details || {},
+          empId: accessUser.empId || profile.empId || profile.emp_id || "",
+          location: profile.location || "",
         };
+
         applyHomeLocationOnSignIn(session.email || session.id, session.location);
         try {
           onSessionReady?.();
