@@ -3769,7 +3769,7 @@ undefined
           "base_pay",
           "current_base_pay",
         );
-        const amount = Number(String(basePay ?? "").replace(/[,₹\\s]/g, "").trim());
+        const amount = Number(String(basePay ?? "").replace(/[,₹\s]/g, "").trim());
         return !Number.isFinite(amount) || amount <= 0;
       })
     : [];
