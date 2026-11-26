@@ -781,7 +781,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
           if (sv(r.fyYear) !== "" && !Number.isInteger(toNum(r.fyYear)))
             E(r, labelOf("fyYear"), "FY Year must be a whole number");
           ["lastAppraisalDate", "effectiveDate"].forEach((k) => {
-            if (sv(r[k]) !== "" && !/^\\d{4}-\\d{2}-\\d{2}$/.test(sv(r[k])))
+            if (sv(r[k]) !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(sv(r[k])))
               E(r, labelOf(k), "Use a valid date (YYYY-MM-DD)");
           });
         }
