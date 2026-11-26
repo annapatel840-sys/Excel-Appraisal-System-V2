@@ -6,8 +6,9 @@
    Dashboard, Appraisal Sheet, Bulk Edit and Budget Distribution show: the
    cycle of that location AND that type. It only filters what is shown.
 
-   The choice is kept per browser tab (sessionStorage) and every mounted
-   component is notified when it changes. Default: Annual.
+   Every mounted component is notified when it changes. The choice is not
+   remembered: every fresh load / sign-in starts at the default, Annual (like
+   the home location), and picking another location also resets it to Annual.
    ============================================================ */
 import { useSyncExternalStore } from "react";
 import { cycleNameWithoutLocation } from "./cycle-name";
@@ -15,7 +16,6 @@ import { cycleNameWithoutLocation } from "./cycle-name";
 // Same list (and spelling) as Appraisal Cycle Master.
 export const CYCLE_TYPES = ["Annual", "Mid-Year", "Exceptional", "New Joiner"];
 export const DEFAULT_CYCLE_TYPE = "Annual";
-const STORAGE_KEY = "appraisal.selectedCycleType.v1";
 const EVENT_NAME = "appraisal:cycle-type-changed";
 
 const norm = (value) => String(value ?? "").trim().toLowerCase();
@@ -24,16 +24,7 @@ const norm = (value) => String(value ?? "").trim().toLowerCase();
 export const canonicalCycleType = (value) =>
   CYCLE_TYPES.find((type) => norm(type) === norm(value)) || "";
 
-const readStored = () => {
-  try {
-    if (typeof window === "undefined") return DEFAULT_CYCLE_TYPE;
-    return canonicalCycleType(window.sessionStorage.getItem(STORAGE_KEY)) || DEFAULT_CYCLE_TYPE;
-  } catch (_) {
-    return DEFAULT_CYCLE_TYPE;
-  }
-};
-
-let selected = readStored();
+let selected = DEFAULT_CYCLE_TYPE;
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 
@@ -45,11 +36,6 @@ export function setSelectedCycleType(value) {
   const next = canonicalCycleType(value) || DEFAULT_CYCLE_TYPE;
   if (next === selected) return;
   selected = next;
-  try {
-    window.sessionStorage.setItem(STORAGE_KEY, next);
-  } catch (_) {
-    /* storage is optional */
-  }
   emit();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: next }));

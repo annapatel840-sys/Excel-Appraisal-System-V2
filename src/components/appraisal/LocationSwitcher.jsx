@@ -1,6 +1,6 @@
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { useSelectedLocation } from "@/lib/location-store";
-import { CYCLE_TYPES, useSelectedCycleType } from "@/lib/cycle-type-store";
+import { CYCLE_TYPES, DEFAULT_CYCLE_TYPE, useSelectedCycleType } from "@/lib/cycle-type-store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,7 +30,14 @@ export function LocationSwitcher({ isVertical }) {
         <span>Location</span>
         <LocationMasterControl
           value={selectedLocation}
-          onChange={setSelectedLocation}
+          onChange={(next) => {
+            // A different location starts at the default Annual, like the home location on sign-in.
+            const same =
+              String(next || "").trim().toLowerCase() ===
+              String(selectedLocation || "").trim().toLowerCase();
+            if (!same) setSelectedCycleType(DEFAULT_CYCLE_TYPE);
+            setSelectedLocation(next);
+          }}
           ariaLabel="Location and Cycle Type shown on every screen"
           showAllLocations={false}
           triggerClassName="app-header-location-trigger"

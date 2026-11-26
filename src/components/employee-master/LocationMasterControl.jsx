@@ -1129,7 +1129,8 @@ export function LocationMasterControl({
               aria-expanded={menu}
               disabled={loading}
               onClick={() => {
-                if (!menu && cycleTypeMenu) setCycleOpen(!allLocationsSelected);
+                // Cycle Type list stays hidden until a location is clicked in the menu.
+                if (!menu && cycleTypeMenu) setCycleOpen(false);
                 setMenu((v) => !v);
               }}
             >
