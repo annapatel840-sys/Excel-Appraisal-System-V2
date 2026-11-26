@@ -476,21 +476,29 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   const renderStatsTab = () => {
     const sc = S.letters;
-    const techs = [];
+    // One row per Tech ED. The Employee Master keeps the name either as "EMP003 - Name" or as
+    // just "Name", so rows are grouped by the name (ignoring the ID prefix and letter case);
+    // the label keeps the fuller form. Letters with no Tech ED fall into "No Tech ED".
+    const techName = (t) => String(t || "").replace(/^[A-Za-z]+\d+\s*-\s*/, "").trim();
+    const groups = new Map();
     sc.forEach((x) => {
-      const t = empOf(S, x).tech;
-      if (!techs.includes(t)) techs.push(t);
+      const t = String(empOf(S, x).tech || "").trim();
+      const key = techName(t).toLowerCase() || "__none__";
+      const g = groups.get(key) || { label: "", items: [] };
+      if (t.length > g.label.length) g.label = t;
+      g.items.push(x);
+      groups.set(key, g);
     });
     const tot = [0, 0, 0, 0, 0];
-    const rowsHtml = techs.map((t) => {
-      const a = sc.filter((x) => empOf(S, x).tech === t);
+    const rowsHtml = Array.from(groups.entries()).map(([key, g]) => {
+      const a = g.items;
       const v = [a.length, a.filter((x) => x.sentOn).length, a.filter((x) => x.status === "Delivered").length, a.filter((x) => x.status === "Failed").length, a.filter((x) => x.resends > 0).length];
       v.forEach((n, i) => {
         tot[i] += n;
       });
       return (
-        <tr key={t}>
-          <td>{t}</td>
+        <tr key={key}>
+          <td>{g.label || "No Tech ED"}</td>
           {v.map((n, i) => (
             <td className="n" key={i}>{n}</td>
           ))}

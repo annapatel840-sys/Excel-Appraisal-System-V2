@@ -857,3 +857,26 @@
 .lt .lt-rp-head .lt-rp-ic { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.45); color: #fff; }
 .lt .lt-rp-head .lt-rp-ic:hover:not(:disabled) { background: rgba(255,255,255,.22); border-color: #fff; color: #fff; }
 .lt .lt-rp-head .lt-rp-ic:disabled { opacity: .4; cursor: not-allowed; border-color: rgba(255,255,255,.45); color: #fff; }
+/* ---------------------------------------------------------------------------
+   Letters side panel + Templates list: layout fixes
+   --------------------------------------------------------------------------- */
+
+/* Panel > Stats: the Per Tech ED table fits the panel width (nothing cut off on the right).
+   The panel body scrolls up and down only; names wrap inside their own column. */
+.lt .lt-rp-body { overflow-x: hidden; overflow-y: auto; padding: 6px 12px 14px 14px; }
+.lt .lt-rp .lt-rp-card { padding: 10px; }
+.lt .lt-rp .mt { table-layout: fixed; width: 100%; }
+.lt .lt-rp .mt th,
+.lt .lt-rp .mt td { padding: 4px 2px; font-size: 11.5px; line-height: 1.3; vertical-align: top; }
+.lt .lt-rp .mt th { font-size: 9.5px; font-weight: 700; letter-spacing: 0; white-space: nowrap; vertical-align: bottom; }
+.lt .lt-rp .mt th:first-child,
+.lt .lt-rp .mt td:first-child { width: 29%; text-align: left; padding-left: 4px; overflow-wrap: anywhere; }
+.lt .lt-rp .mt th.n,
+.lt .lt-rp .mt td.n { width: 13.5%; text-align: right; font-variant-numeric: tabular-nums; }
+.lt .lt-rp .mt th:nth-child(4) { width: 17%; }   /* "Delivered" is the longest heading */
+
+/* Templates tab: the list fills the space under the notice and scrolls inside its own box
+   (up/down and sideways). Before, its height was a guess based on the window height, so the
+   bottom rows, the scroll bar and the footer were pushed out of view and clipped. */
+.lt .lt-cfg.tpl { flex: 1 1 0; min-height: 0; padding-right: 40px; }   /* 40px keeps the "Panel" tab off the Actions column */
+.lt .lt-cfg.tpl .emx-wrap { flex: 1 1 0; min-height: 0; max-height: none; }
