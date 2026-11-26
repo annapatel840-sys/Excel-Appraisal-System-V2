@@ -3836,10 +3836,17 @@ undefined
       const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId.toLowerCase()) || {};
       const id = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || empId);
       const name = String(fieldValue(master, "emp_name", "name") || employee.name || "").trim();
-      return name ? `${id} - ${name}` : id;
+      const annualRow = annualSheetForEmployee(employee);
+      if (!annualRow) {
+        return `${id} - ${name || "Unknown"} [NO_MATCHING_ANNUAL_SHEET_ROW]`;
+      }
+      const basePayFields = Object.keys(annualRow)
+        .filter((key) => /base.?pay|salary|ctc/i.test(key))
+        .map((key) => `${key}=${String(annualRow[key] ?? "").slice(0, 80)}`);
+      return `${id} - ${name || "Unknown"} [ANNUAL_ROW_FOUND; ${basePayFields.length ? basePayFields.join(" | ") : "NO_BASE_PAY_COLUMNS_FOUND"}]`;
     });
     throw new ApiError(
-      `Annual source data is missing or has no valid Current Annual Base Pay for ${labels.length} eligible employee(s) in ${cycle.name}. Missing employees: ${labels.join(", ")}. Complete the same-year Annual Appraisal Sheet first, then generate the Exceptional Appraisal Sheet.`,
+      `Exceptional could not resolve Current Annual Base Pay from ${sourceCycle?.name || "the same-year Annual source"} for ${labels.length} eligible employee(s) in ${cycle.name}. Employee diagnostics: ${labels.join("; ")}. NO_MATCHING_ANNUAL_SHEET_ROW means the Annual row/employee reference is not matching. ANNUAL_ROW_FOUND means inspect the listed source field values; the valid base-pay amount is missing or stored under a different field.`,
       409,
     );
   }
