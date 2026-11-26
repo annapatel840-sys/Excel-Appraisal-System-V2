@@ -1150,7 +1150,7 @@ function SidePanel({ M, sel, onPick, onClear, onNewOv, onToggleRemove, onTab, qc
     card = (
       <div className="pcard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
-          <div><h3>{p.name}</h3><div className="meta">{p.empId}{p.email ? " · " + p.email : ""}</div></div>
+          <div style={{ flex: "1 1 0", minWidth: 0 }}><h3>{p.name}</h3><div className="meta">{p.empId}{p.email ? " · " + p.email : ""}</div></div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
             {er.role && <RoleBadge M={M} roleKey={er.role} />}
             <button type="button" className="xbtn" aria-label="Close person" title="Close" onClick={() => onClear && onClear()}>&times;</button>
