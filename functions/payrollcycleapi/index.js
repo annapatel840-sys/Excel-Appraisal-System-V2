@@ -6920,13 +6920,14 @@ async function handleBulkState(req, res, identity, tables) {
 async function handleDemoImportTest(res, tables, body, actor = "") {
   const action = String(body.action || "").trim().toLowerCase();
   if (action === "prepare") {
-    const [cycleRows, employeeRows, payrollRows, feedbackRows, sheetRows] =
+    const [cycleRows, employeeRows, payrollRows, feedbackRows, sheetRows, eligibilityRows] =
       await Promise.all([
         getAllRows(tables.cycles),
         getAllRows(tables.employeeMaster),
         getAllRows(tables.payroll),
         getAllRows(tables.feedback),
         getAllRows(tables.appraisalSheet),
+        getAllRows(tables.eligibility),
       ]);
 
     const cycle = cycleRows
@@ -7039,6 +7040,11 @@ async function handleDemoImportTest(res, tables, body, actor = "") {
       ["emp_id", "emp_master_row_id", "employee_id"],
       ["cycle_id", "appraisal_cycle_id", "appraisal_cycle_name"],
     );
+    const eligibilityPairs = pairSet(
+      eligibilityRows,
+      ["emp_id", "employee_id", "emp_master_row_id"],
+      ["appraisal_cycle_id", "cycle_id", "appraisal_cycle_name"],
+    );
 
     const activeEmployees = employeeRows
       .filter((row) => {
@@ -7060,7 +7066,11 @@ async function handleDemoImportTest(res, tables, body, actor = "") {
           .toLowerCase() +
         "|" +
         String(cycle.id);
-      return !payrollPairs.has(key) && !sheetPairs.has(key);
+      return (
+        !payrollPairs.has(key) &&
+        !sheetPairs.has(key) &&
+        !eligibilityPairs.has(key)
+      );
     });
     const feedbackEmployee = activeEmployees.find((row) => {
       const key =
@@ -7069,7 +7079,11 @@ async function handleDemoImportTest(res, tables, body, actor = "") {
           .toLowerCase() +
         "|" +
         String(cycle.id);
-      return !feedbackPairs.has(key) && !sheetPairs.has(key);
+      return (
+        !feedbackPairs.has(key) &&
+        !sheetPairs.has(key) &&
+        !eligibilityPairs.has(key)
+      );
     });
 
     if (!payrollEmployee || !feedbackEmployee) {
