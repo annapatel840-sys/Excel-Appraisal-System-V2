@@ -1,7 +1,7 @@
 import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { useAccess } from "@/lib/access-store";
+import { useAccess, useScreenFields } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
@@ -119,6 +119,8 @@ const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
   const canAudit = useAccess().canAction("viewAudit");
+  // Fields tab (Access screen) limits for this screen: a column set to Hidden is not shown.
+  const fieldAccess = useScreenFields("payrollMaster");
   const signedInUser = useCatalystUser();
   const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
   const payrollSnapshotKey = masterSnapshotKey(snapshotScope, "payroll");
@@ -265,7 +267,10 @@ export function PayrollDataPage() {
     );
   }, [stored, cycles, cycleOrder]);
 
-  const COLS = useMemo(() => buildColumnsFromSchema(schema), [schema]);
+  const COLS = useMemo(
+    () => buildColumnsFromSchema(schema).filter((column) => !fieldAccess.hidden(column.label)),
+    [schema, fieldAccess],
+  );
 
   const colByKey = (key) => COLS.find((c) => c.key === key);
 

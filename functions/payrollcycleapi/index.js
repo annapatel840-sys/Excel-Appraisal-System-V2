@@ -4768,6 +4768,39 @@ async function generateAppraisalSheet(
   };
 }
 
+// Payroll Master fields (Access > Fields) -> the keys that carry each value in a payroll record.
+// A field set to Hidden for the caller is removed from the record before it is sent.
+const PAYROLL_FIELD_KEYS = {
+  payrollMaster_effective_date: ["effectiveDate", "effective_date"],
+  payrollMaster_fy_year: ["fyYear", "fy_year"],
+  payrollMaster_current_annual_base_pay: ["basePay", "current_annual_base_pay"],
+  payrollMaster_joining_bonus: ["joiningBonus", "joining_bonus"],
+  payrollMaster_performance_bonus: ["performanceBonus", "performance_bonus"],
+  payrollMaster_retention_bonus: ["retentionBonus", "retention_bonus"],
+  payrollMaster_hike: ["hikePct", "hike_pct"],
+  payrollMaster_hike_amount: ["hikeAmt", "hike_amount"],
+  payrollMaster_total_ctc_with_rewards: ["totalCtcRewards", "total_CTC_with_rewards"],
+  payrollMaster_total_reward_hike_amount: ["totalRewardHikeAmt", "total_rewards_hike_amount"],
+  payrollMaster_total_reward_hike: ["totalRewardHikePct", "total_reward_hike_pct"],
+  payrollMaster_target_performance_bonus_for_next_year: ["targetPbNextYear", "target_performance_bonus_for_next_year"],
+  payrollMaster_target_pb_criteria: ["targetPbCriteria", "target_pb_criteria"],
+  payrollMaster_total_bonus: ["totalBonus", "total_bonus"],
+  payrollMaster_new_base_pay: ["newBasePay", "new_base_pay"],
+  payrollMaster_rb_to_be_paid: ["rbPaid", "rb_to_be_paid"],
+  payrollMaster_month_rb: ["rbMonth", "month_rb"],
+  payrollMaster_pb_to_be_paid: ["pbPaid", "pb_to_be_paid"],
+  payrollMaster_month_pb: ["pbMonth", "month_pb"],
+  payrollMaster_tb_to_be_paid: ["tbPaid", "tb_to_be_paid"],
+  payrollMaster_month_tb: ["tbMonth", "month_tb"],
+};
+function stripHiddenPayrollFields(a, record) {
+  const out = { ...record };
+  Object.entries(PAYROLL_FIELD_KEYS).forEach(([fieldKey, keys]) => {
+    if (a && a.fields && a.fields[fieldKey] === "hidden") keys.forEach((k) => delete out[k]);
+  });
+  return out;
+}
+
 function mapPayroll(
   row,
   cycleByName,
@@ -7635,9 +7668,10 @@ async function routeRequest(req, res, identity, resource, a) {
       200,
       {
         success: true,
-        data: visibleRows.map((row) =>
-          mapPayroll(row, cycleByName, cycleById, employeeById, locationRows),
-        ),
+        data: visibleRows.map((row) => {
+          const mapped = mapPayroll(row, cycleByName, cycleById, employeeById, locationRows);
+          return enforced ? stripHiddenPayrollFields(a, mapped) : mapped;
+        }),
       },
       req,
     );
