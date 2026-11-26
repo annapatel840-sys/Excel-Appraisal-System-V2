@@ -17,9 +17,10 @@ const LEVEL_RANK = { none: 0, view: 1, edit: 2 };
 //  - "Close For Tech-ED": Tech-ED AND Comp Manager logins get read access only (every Edit screen
 //    becomes View, no edit actions) until the cycle is reopened for correction. HR can still edit.
 //  - "Close Cycle" (status Closed): EVERY role, HR included, is read-only. Only the screens in
-//    CYCLE_CLOSED_KEEP_SCREENS stay usable, so HR can still Reopen / Archive the cycle.
+//    CYCLE_CLOSED_KEEP_SCREENS stay usable, so HR can still Reopen / Archive the cycle and
+//    still Send the letters (letters are made when the cycle closes and are sent after it).
 const TECHED_LOCK_KEEP_SCREENS = new Set(["settings"]); // personal preferences, not cycle data
-const CYCLE_CLOSED_KEEP_SCREENS = new Set(["settings", "cycleMaster", "access"]); // preferences + cycle controls
+const CYCLE_CLOSED_KEEP_SCREENS = new Set(["settings", "cycleMaster", "access", "letters"]); // preferences + cycle controls + letters
 const TECHED_LOCK_BLOCKED_ACTIONS = new Set([
   "bulkEdit",
   "allotNextLevel",
@@ -213,7 +214,9 @@ export function AccessProvider({ children }) {
       if (!ok) return "edit";
       const limit = fields[key];
       if (limit === "read" || limit === "hidden") return limit;
-      return anyLocked ? "read" : "edit";
+      // Letters stay editable after the cycle closes (Send, Remarks); only the Tech-ED lock applies.
+      const lockedHere = techEdLocked || (cycleLocked && !String(key).startsWith("letters_"));
+      return lockedHere ? "read" : "edit";
     };
 
     return {
