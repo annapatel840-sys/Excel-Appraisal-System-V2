@@ -3680,9 +3680,7 @@ async function generateAppraisalSheet(
   const payrollEmployeesWithHistory = new Set();
   payrollRowsWithCycle.forEach(({ row, cycle: rowCycle }) => {
     if (!rowCycle || !isUsableHistoryCycle(rowCycle)) return;
-    const rawEmployee = referenceText(
-      row.emp_id || row.employee_master_id || row.employee_id || row.emp_code,
-    ).toLowerCase();
+undefined
     const master = eligibleMasterByAnyKey.get(rawEmployee);
     if (!master) return;
     const employeeHasLocation = Boolean(employeeLocationKey(master));
@@ -3890,7 +3888,7 @@ async function generateAppraisalSheet(
     );
   }
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
-    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
+undefined
     if (
       masterId &&
       (cycleKeys.has(rawCycle.toLowerCase()) ||
@@ -3939,7 +3937,7 @@ async function generateAppraisalSheet(
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
     if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
-    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
+undefined
     const directMaster =
       employeeMasterByBusinessId.get(masterId.toLowerCase()) ||
       employeeMasterByRowId.get(masterId.toLowerCase());
@@ -4029,9 +4027,7 @@ async function generateAppraisalSheet(
         ),
       );
     }
-    const sourceMasterId = referenceText(
-      selected.row.emp_id ?? selected.row.employee_master_id,
-    );
+undefined
     if (sourceMasterId) {
       payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
       // If this employee has no row in the active/shared cycle, use the
