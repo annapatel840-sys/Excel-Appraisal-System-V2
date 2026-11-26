@@ -17,7 +17,7 @@ export function SettingsPage() {
   const [demoMessage, setDemoMessage] = useState("");
   useEffect(() => {
     try {
-      setDemoToken(window.sessionStorage.getItem("temporary-import-demo-token") || "");
+      setDemoToken(window.localStorage.getItem("temporary-import-demo-token") || "");
     } catch {
       setDemoToken("");
     }
@@ -48,7 +48,7 @@ export function SettingsPage() {
       };
       XLSX.writeFile(makeWorkbook(data.payrollRows, "Payroll Demo"), data.payrollFileName);
       XLSX.writeFile(makeWorkbook(data.feedbackRows, "Feedback Demo"), data.feedbackFileName);
-      window.sessionStorage.setItem("temporary-import-demo-token", data.token);
+      window.localStorage.setItem("temporary-import-demo-token", data.token);
       setDemoToken(data.token);
       setDemoMessage(
         "Downloaded both demo files for " + data.cycleName +
@@ -77,7 +77,7 @@ export function SettingsPage() {
         method: "POST",
         body: { action: "cleanup", token: demoToken },
       });
-      window.sessionStorage.removeItem("temporary-import-demo-token");
+      window.localStorage.removeItem("temporary-import-demo-token");
       setDemoToken("");
       setDemoMessage(
         "Cleanup complete. Deleted " + (data?.deletedPayroll || 0) +
@@ -118,9 +118,9 @@ export function SettingsPage() {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" disabled={!!demoBusy} onClick={generateImportDemoFiles} className="gap-2">
+            <Button type="button" disabled={!!demoBusy || !!demoToken} onClick={generateImportDemoFiles} className="gap-2">
               <FileSpreadsheet className="size-3.5" />
-              {demoBusy === "prepare" ? "Preparing..." : "Generate Demo Files"}
+              {demoBusy === "prepare" ? "Preparing..." : demoToken ? "Demo Files Generated" : "Generate Demo Files"}
             </Button>
             <Button type="button" variant="destructive" disabled={!!demoBusy || !demoToken} onClick={deleteImportDemoData} className="gap-2">
               <Trash2 className="size-3.5" />
