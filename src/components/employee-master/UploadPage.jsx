@@ -106,29 +106,30 @@ const FB_FIELDS = [
   { key: "empId", label: "Employee ID", column: "emp_ID", required: true },
   { key: "empName", label: "Employee Name", column: "emp_name" },
   { key: "designation", label: "Designation", column: "designation" },
-  { key: "department", label: "Department", column: "department" },
-  { key: "band", label: "Band", column: "band" },
-  { key: "lastAppraisal", label: "Last Appraisal Date", column: "last_appraisal_date" },
+  { key: "department", label: "Department", column: "Department" },
+  { key: "band", label: "Band", column: "Band" },
+  { key: "lastAppraisalDate", label: "Last Appraisal Date", column: "last_appraisal_date" },
+  { key: "rrPercent", label: "RR%", column: "revenue_released", uploadHeaders: ["RR %", "RR Percent", "Revenue Released"] },
   { key: "grossMargin", label: "Gross Margin", column: "gross_margin" },
   { key: "managerFeedback", label: "Manager Feedback", column: "manager_feedback" },
   { key: "managerRating", label: "Manager Rating", column: "manager_rating" },
-  { key: "rrPercent", label: "RR%", column: "rr_percent", uploadHeaders: ["RR %", "RR Percent"] },
-  { key: "yoeRatio", label: "YoE Ratio", column: "yoe_ratio", uploadHeaders: ["YOE Ratio", "YoE", "YOE"] },
-  { key: "costCenterClient", label: "Cost Center/Client", column: "cost_center_client", uploadHeaders: ["Cost Center", "Client", "Cost Centre/Client"] },
-  { key: "clientManagerName", label: "Client Manager", column: "client_manager_name", uploadHeaders: ["Client Manager Name"] },
   { key: "clientManager", label: "Client Manager Feedback", column: "client_manager_feedback" },
   { key: "clientFeedback", label: "Client Feedback", column: "client_feedback" },
   { key: "clientRating", label: "Client Rating", column: "client_rating" },
   { key: "interviewCount", label: "Interview Count", column: "interview_count" },
   { key: "atRisk", label: "At Risk", column: "at_risk" },
-  { key: "compManagerName", label: "Comp Manager", column: "comp_manager", uploadHeaders: ["Compensation Manager"] },
-  { key: "techEd", label: "Tech-ED", column: "tech_ed", uploadHeaders: ["Tech-ED", "Tech Ed"] },
-  { key: "promo", label: "Eligible for Promotion", column: "eligible_for_promotion" },
   { key: "newTitle", label: "New Title", column: "new_title" },
   { key: "remarks", label: "Remarks", column: "remarks" },
-  { key: "fyYear", label: "FY Year", column: "fy_year" },
   { key: "appraisalCycleName", label: "Appraisal Cycle", column: "appraisal_cycle_name" },
-  { key: "effectiveDate", label: "Effective Date", column: "effective_date", uploadHeaders: ["Effective From"] },
+  { key: "department", label: "Department", column: "Department" },
+  { key: "band", label: "Band", column: "Band" },
+  { key: "effectiveDate", label: "Effective Date", column: "Effective_Date", uploadHeaders: ["Effective From"] },
+  { key: "costCenterClient", label: "Cost Center/Client", column: "CostCenter_Client", uploadHeaders: ["Cost Center", "Client", "Cost Centre/Client"] },
+  { key: "clientManagerName", label: "Client Manager", column: "Client_Manager", uploadHeaders: ["Client Manager Name"] },
+  { key: "compManagerName", label: "Comp Manager", column: "Comp_Manager", uploadHeaders: ["Compensation Manager"] },
+  { key: "techEd", label: "Tech-ED", column: "Tech_ED", uploadHeaders: ["Tech-ED", "Tech Ed"] },
+  { key: "promo", label: "Eligible for Promotion", column: "eligible_for_promotion" },
+  { key: "fyYear", label: "FY Year", column: "fy_year" },
 ];
 
 const SHEET_FIELDS = [
@@ -305,7 +306,7 @@ function normalizeDateCell(value) {
 }
 
 function normalizeCell(field, value) {
-  if (field === "doj") return normalizeDateCell(value);
+  if (["doj", "lastAppraisalDate", "effectiveDate"].includes(field)) return normalizeDateCell(value);
   if (field === "lastAppraisal") {
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
       return `${MONTH_NAMES[value.getMonth()]}-${String(value.getFullYear()).slice(-2)}`;
@@ -775,9 +776,15 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
             else if (toNum(r[k]) < 0 || toNum(r[k]) > 5)
               E(r, labelOf(k), "Rating must be between 0 and 5");
           });
-          ["rrPercent", "yoeRatio", "interviewCount", "grossMargin"].forEach((k) => {
+          ["rrPercent", "yoeRatio", "interviewCount", "grossMargin", "fyYear"].forEach((k) => {
             if (sv(r[k]) !== "" && !isNum(r[k]))
               E(r, labelOf(k), "Must be a number");
+          });
+          if (sv(r.fyYear) !== "" && !Number.isInteger(toNum(r.fyYear)))
+            E(r, labelOf("fyYear"), "FY Year must be a whole number");
+          ["lastAppraisalDate", "effectiveDate"].forEach((k) => {
+            if (sv(r[k]) !== "" && !/^\\d{4}-\\d{2}-\\d{2}$/.test(sv(r[k])))
+              E(r, labelOf(k), "Use a valid date (YYYY-MM-DD)");
           });
         }
       });
