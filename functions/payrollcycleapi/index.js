@@ -3705,20 +3705,38 @@ async function generateAppraisalSheet(
     sheetRows.forEach((sheet) => {
       if (!sheetBelongsToCycle(sheet, sourceCycle)) return;
       const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
-      // The Annual cycle is already location-scoped. Prefer a verified
-      // Employee_Master match for location checks, but retain direct business
-      // Employee ID / ROWID keys when legacy lookup shapes cannot be resolved.
-      if (master && !inCycleLocation(cycle, master, locationRows)) return;
-      const masterId = master
-        ? referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase()
-        : sheetFieldValues(sheet, "emp_master_row_id", "employee_master_row_id", "employee_master_id", "emp_master_id")
-            .map((value) => value.toLowerCase())
-            .find(Boolean) || "";
-      const empId = master
-        ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
-        : sheetFieldValues(sheet, "emp_id", "employee_id", "emp_code")
-            .map((value) => value.toLowerCase())
-            .find(Boolean) || "";
+      // The Annual source cycle has already been selected for this location,
+      // and Exceptional's eligible roster is location-scoped independently.
+      // Do not re-apply Employee_Master location matching here: legacy location
+      // lookups can have different representations and incorrectly discard all
+      // otherwise valid Annual Appraisal_Sheet rows.
+      const masterIdValues = sheetFieldValues(
+        sheet,
+        "emp_master_row_id",
+        "employee_master_row_id",
+        "employee_master_id",
+        "emp_master_id",
+      );
+      const employeeIdValues = sheetFieldValues(
+        sheet,
+        "emp_id",
+        "employee_id",
+        "emp_code",
+      );
+      const masterId = (
+        master
+          ? [referenceText(master.ROWID ?? master.rowid ?? master.id), ...masterIdValues]
+          : masterIdValues
+      )
+        .map((value) => String(value || "").trim().toLowerCase())
+        .find(Boolean) || "";
+      const empId = (
+        master
+          ? [fieldValue(master, "emp_id", "employee_id", "emp_code"), ...employeeIdValues]
+          : employeeIdValues
+      )
+        .map((value) => String(value || "").trim().toLowerCase())
+        .find(Boolean) || "";
       if (masterId) annualSheetByMasterId.set(masterId, sheet);
       if (empId) annualSheetByEmpId.set(empId, sheet);
     });
@@ -3794,8 +3812,9 @@ undefined
         const basePay = fieldValue(
           annualRow,
           "current_annual_base_pay",
-          "base_pay",
           "current_base_pay",
+          "base_pay",
+          "new_base_pay",
         );
         const amount = Number(String(basePay ?? "").replace(/[,₹\s]/g, "").trim());
         return !Number.isFinite(amount) || amount <= 0;
@@ -4721,6 +4740,10 @@ undefined
         "total_ctc_with_rewards",
         "total_rewards_hike_amount",
         "total_bonus",
+        "new_base_pay",
+        "current_annual_base_pay",
+        "current_base_pay",
+        "base_pay",
         "new_base_pay",
         "target_pb_allocated_for_may",
         "target_performance_bonus_for_next_year",
