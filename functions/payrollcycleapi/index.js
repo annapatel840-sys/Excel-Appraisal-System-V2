@@ -4191,10 +4191,32 @@ async function generateAppraisalSheet(
   payrollRowsWithCycle.forEach(({ row, cycle: candidateCycle }) => {
     if (!candidateCycle) return;
     const sourceYear = cycleYear(candidateCycle);
-undefined
+    // Payroll_Data may store either Employee_Master.ROWID or the business
+    // employee ID in its employee reference. Resolve both before grouping
+    // candidates so the same employee's Annual/New Joiner history is matched.
+    const rawEmployee = referenceText(
+      fieldValue(
+        row,
+        "emp_id",
+        "employee_master_id",
+        "employee_master_row_id",
+        "employee_id",
+        "emp_code",
+        "employee_code",
+      ),
+    ).toLowerCase();
+    if (!rawEmployee) return;
     const directMaster =
-      employeeMasterByBusinessId.get(masterId.toLowerCase()) ||
-      employeeMasterByRowId.get(masterId.toLowerCase());
+      employeeMasterByBusinessId.get(rawEmployee) ||
+      employeeMasterByRowId.get(rawEmployee);
+    const masterId = referenceText(
+      directMaster?.ROWID ?? directMaster?.rowid ?? directMaster?.id ?? rawEmployee,
+    ).toLowerCase();
+    const sourceMasterId = directMaster
+      ? referenceText(directMaster.ROWID ?? directMaster.rowid ?? directMaster.id)
+      : /^\\d+$/.test(rawEmployee)
+        ? rawEmployee
+        : "";
     const empId =
       masterIdToEmpId.get(masterId) ||
       String(
@@ -4205,7 +4227,8 @@ undefined
         .toLowerCase() ||
       String(fieldValue(row, "employee_code", "emp_code") || "")
         .trim()
-        .toLowerCase();
+        .toLowerCase() ||
+      (directMaster ? "" : rawEmployee);
     if (!empId) return;
     const matchingSharedSource =
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
@@ -4280,7 +4303,6 @@ undefined
         ),
       );
     }
-undefined
     if (sourceMasterId) {
       payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
       // If this employee has no row in the active/shared cycle, use the
