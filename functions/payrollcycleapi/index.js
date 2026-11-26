@@ -162,46 +162,60 @@ function lookupReferenceValues(value) {
     "display_value",
     "displayValue",
     "name",
+    "emp_id",
+    "employee_id",
+    "emp_code",
+    "emp_master_row_id",
+    "employee_master_row_id",
+    "cycle_id",
+    "appraisal_cycle_id",
+    "cycle_name",
+    "appraisal_cycle_name",
+    "appraisal_year",
   ];
-  return [
-    ...new Set(
-      keys
-        .map((key) => value[key])
-        .filter(
-          (item) =>
-            item !== null && item !== undefined && typeof item !== "object",
-        )
-        .map((item) => String(item).trim())
-        .filter(Boolean),
-    ),
-  ];
+  const values = Object.entries(value)
+    .filter(([key]) => keys.some((candidate) => candidate.toLowerCase() === key.toLowerCase()))
+    .map(([, item]) => item)
+    .filter((item) => item !== null && item !== undefined && typeof item !== "object")
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  return [...new Set(values)];
+}
+function sheetFieldValues(sheet, ...names) {
+  const keys = Object.keys(sheet || {});
+  return names.flatMap((name) => {
+    const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
+    return actual === undefined ? [] : lookupReferenceValues(sheet[actual]);
+  });
 }
 function sheetBelongsToCycle(sheet, cycle) {
-  const values = [
-    ...lookupReferenceValues(sheet.cycle_id),
-    ...lookupReferenceValues(sheet.appraisal_cycle_id),
-    ...lookupReferenceValues(sheet.appraisal_cycle_name),
-  ].map((value) => value.toLowerCase());
+  const values = sheetFieldValues(
+    sheet,
+    "cycle_id",
+    "appraisal_cycle_id",
+    "appraisal_cycle",
+    "appraisal_cycle_name",
+    "cycle_name",
+    "appraisal_year",
+  ).map((value) => value.toLowerCase());
   const expected = [cycle?.id, cycle?.sourceRowId, cycle?.name]
-    .map((value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase(),
-    )
+    .map((value) => String(value || "").trim().toLowerCase())
     .filter(Boolean);
   return values.some((value) => expected.includes(value));
 }
 function sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId) {
-  // Appraisal_Sheet stores the Employee_Master lookup in emp_master_row_id.
-  // Include that canonical field first; older rows may use the legacy aliases
-  // or the business Employee ID in emp_id.
-  const values = [
-    ...lookupReferenceValues(sheet.emp_master_row_id),
-    ...lookupReferenceValues(sheet.employee_master_row_id),
-    ...lookupReferenceValues(sheet.employee_master_id),
-    ...lookupReferenceValues(sheet.emp_id),
-    ...lookupReferenceValues(sheet.employee_id),
-  ];
+  // Appraisal_Sheet references can be plain IDs or Catalyst lookup objects.
+  // Resolve both the Employee_Master ROWID and the business Employee ID.
+  const values = sheetFieldValues(
+    sheet,
+    "emp_master_row_id",
+    "employee_master_row_id",
+    "employee_master_id",
+    "emp_master_id",
+    "emp_id",
+    "employee_id",
+    "emp_code",
+  );
   for (const value of values) {
     const master =
       masterByRowId.get(value) || masterByEmpId.get(value.toLowerCase());
@@ -3691,9 +3705,20 @@ async function generateAppraisalSheet(
     sheetRows.forEach((sheet) => {
       if (!sheetBelongsToCycle(sheet, sourceCycle)) return;
       const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
-      if (!master || !inCycleLocation(cycle, master, locationRows)) return;
-      const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase();
-      const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+      // The Annual cycle is already location-scoped. Prefer a verified
+      // Employee_Master match for location checks, but retain direct business
+      // Employee ID / ROWID keys when legacy lookup shapes cannot be resolved.
+      if (master && !inCycleLocation(cycle, master, locationRows)) return;
+      const masterId = master
+        ? referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase()
+        : sheetFieldValues(sheet, "emp_master_row_id", "employee_master_row_id", "employee_master_id", "emp_master_id")
+            .map((value) => value.toLowerCase())
+            .find(Boolean) || "";
+      const empId = master
+        ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
+        : sheetFieldValues(sheet, "emp_id", "employee_id", "emp_code")
+            .map((value) => value.toLowerCase())
+            .find(Boolean) || "";
       if (masterId) annualSheetByMasterId.set(masterId, sheet);
       if (empId) annualSheetByEmpId.set(empId, sheet);
     });
