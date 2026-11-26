@@ -3,10 +3,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess, useScreenFields } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
+import {
+  masterSnapshotKey,
+  readMasterSnapshot,
+  writeMasterSnapshot,
+} from "@/lib/roster-snapshot";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { useRowSelection } from "@/lib/table-export";
-import { FilterStatus, filterTableCss, useTableFilters } from "./FilterableTable";
+import {
+  FilterStatus,
+  filterTableCss,
+  useTableFilters,
+} from "./FilterableTable";
+import { UploadPage } from "./UploadPage";
 
 const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
@@ -20,10 +29,26 @@ const STATIC_COL_META = {
   retentionBonus: { label: "Retention Bonus", type: "number", money: true },
   hikePct: { label: "Hike%", type: "number", pct: true },
   hikeAmt: { label: "Hike Amount", type: "number", money: true },
-  totalCtcRewards: { label: "Total CTC with Rewards", type: "number", money: true },
-  totalRewardHikeAmt: { label: "Total Reward Hike Amount", type: "number", money: true },
-  totalRewardHikePct: { label: "Total Reward Hike%", type: "number", pct: true },
-  targetPbNextYear: { label: "Target Performance Bonus for Next Year", type: "number", money: true },
+  totalCtcRewards: {
+    label: "Total CTC with Rewards",
+    type: "number",
+    money: true,
+  },
+  totalRewardHikeAmt: {
+    label: "Total Reward Hike Amount",
+    type: "number",
+    money: true,
+  },
+  totalRewardHikePct: {
+    label: "Total Reward Hike%",
+    type: "number",
+    pct: true,
+  },
+  targetPbNextYear: {
+    label: "Target Performance Bonus for Next Year",
+    type: "number",
+    money: true,
+  },
   targetPbCriteria: { label: "Target PB Criteria" },
   totalBonus: { label: "Total Bonus", type: "number", money: true },
   newBasePay: { label: "New Base Pay", type: "number", money: true },
@@ -36,26 +61,47 @@ const STATIC_COL_META = {
 };
 
 function schemaLabel(name) {
-  return String(name || "").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+  return String(name || "")
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function buildColumnsFromSchema(schema) {
-  const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file"]);
-  const schemaMap = new Map((schema?.columns || []).map((column) => [column.name, column]));
-  return Object.keys(STATIC_COL_META).map((key) => {
-    const column = schemaMap.get(key);
-    if (column && hidden.has(column.name)) return null;
-    const meta = STATIC_COL_META[key];
-    const type = column && /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
-    return {
-      key,
-      label: meta.label,
-      type: meta.type || type,
-      frozen: meta.frozen,
-      money: meta.money,
-      pct: meta.pct,
-    };
-  }).filter(Boolean);
+  const hidden = new Set([
+    "ROWID",
+    "CREATORID",
+    "CREATEDTIME",
+    "MODIFIEDTIME",
+    "appraisal_cycle_id",
+    "source_batch",
+    "source_file",
+  ]);
+  const schemaMap = new Map(
+    (schema?.columns || []).map((column) => [column.name, column]),
+  );
+  return Object.keys(STATIC_COL_META)
+    .map((key) => {
+      const column = schemaMap.get(key);
+      if (column && hidden.has(column.name)) return null;
+      const meta = STATIC_COL_META[key];
+      const type =
+        column &&
+        /int|decimal|double|float|number|numeric|bigint/.test(column.type || "")
+          ? "number"
+          : "text";
+      return {
+        key,
+        label: meta.label,
+        type: meta.type || type,
+        frozen: meta.frozen,
+        money: meta.money,
+        pct: meta.pct,
+      };
+    })
+    .filter(Boolean);
 }
 
 // Precomputed record -> previous-cycle record for the same employee, ordered
@@ -122,7 +168,14 @@ export function PayrollDataPage() {
   // Fields tab (Access screen) limits for this screen: a column set to Hidden is not shown.
   const fieldAccess = useScreenFields("payrollMaster");
   const signedInUser = useCatalystUser();
-  const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
+  const snapshotScope = String(
+    signedInUser?.email ||
+      signedInUser?.id ||
+      signedInUser?.user_id ||
+      "anonymous",
+  )
+    .trim()
+    .toLowerCase();
   const payrollSnapshotKey = masterSnapshotKey(snapshotScope, "payroll");
   const [stored, setStored] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -135,6 +188,7 @@ export function PayrollDataPage() {
   const [cycleFilter, setCycleFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
   const [page, setPage] = useState(1);
@@ -158,10 +212,28 @@ export function PayrollDataPage() {
   };
 
   useEffect(() => {
+    const refreshPayroll = () => {
+      setReloadToken((token) => token + 1);
+    };
+
+    window.addEventListener("appraisal:payroll-data-updated", refreshPayroll);
+
+    return () => {
+      window.removeEventListener(
+        "appraisal:payroll-data-updated",
+        refreshPayroll,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     const handlePointerMove = (event) => {
       if (!columnResizeRef.current) return;
       const { key, startX, startWidth } = columnResizeRef.current;
-      const nextWidth = Math.min(520, Math.max(70, startWidth + event.clientX - startX));
+      const nextWidth = Math.min(
+        520,
+        Math.max(70, startWidth + event.clientX - startX),
+      );
       setColumnWidths((previous) => ({ ...previous, [key]: nextWidth }));
     };
 
@@ -202,13 +274,21 @@ export function PayrollDataPage() {
       .then(([payroll, cycleRows, schemaData]) => {
         if (!active) return;
         freshApplied = true;
-        const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
+        const payrollSchema = Array.isArray(schemaData)
+          ? schemaData.find(
+              (item) => String(item.name).toLowerCase() === "payroll",
+            )
+          : null;
         const nextSchema = payrollSchema || null;
         setStored(payroll);
         setCycles(cycleRows);
         setSchema(nextSchema);
         setLoadError("");
-        writeMasterSnapshot(payrollSnapshotKey, { payroll, cycles: cycleRows, schema: nextSchema });
+        writeMasterSnapshot(payrollSnapshotKey, {
+          payroll,
+          cycles: cycleRows,
+          schema: nextSchema,
+        });
       })
       .catch((error) => {
         if (active && !stored.length) setLoadError(error.message);
@@ -216,7 +296,9 @@ export function PayrollDataPage() {
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [reloadToken, payrollSnapshotKey]);
 
   useEffect(() => {
@@ -229,7 +311,8 @@ export function PayrollDataPage() {
         if (active) setAudit(auditRows);
       })
       .catch((error) => {
-        if (active) setAuditError(error.message || "Could not load the audit trail.");
+        if (active)
+          setAuditError(error.message || "Could not load the audit trail.");
       })
       .finally(() => {
         if (active) setAuditLoading(false);
@@ -240,15 +323,19 @@ export function PayrollDataPage() {
   }, [auditOpen, reloadToken]);
 
   const cycleOrder = useMemo(
-    () => Object.fromEntries(
-      [...cycles]
-        .sort((a, b) => String(a.start).localeCompare(String(b.start)))
-        .map((cycle, index) => [String(cycle.id), index + 1]),
-    ),
+    () =>
+      Object.fromEntries(
+        [...cycles]
+          .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+          .map((cycle, index) => [String(cycle.id), index + 1]),
+      ),
     [cycles],
   );
 
-  const priorMap = useMemo(() => buildPriorMap(stored, cycleOrder), [stored, cycleOrder]);
+  const priorMap = useMemo(
+    () => buildPriorMap(stored, cycleOrder),
+    [stored, cycleOrder],
+  );
 
   // Appraisal cycles that actually have payroll rows, newest first.
   const cycleOptions = useMemo(() => {
@@ -263,12 +350,17 @@ export function PayrollDataPage() {
       seen.set(id, names[id] || r.cycle || r.appraisal_cycle_name || id);
     });
     return Array.from(seen, ([value, label]) => ({ value, label })).sort(
-      (a, b) => (cycleOrder[b.value] || 0) - (cycleOrder[a.value] || 0) || a.label.localeCompare(b.label),
+      (a, b) =>
+        (cycleOrder[b.value] || 0) - (cycleOrder[a.value] || 0) ||
+        a.label.localeCompare(b.label),
     );
   }, [stored, cycles, cycleOrder]);
 
   const COLS = useMemo(
-    () => buildColumnsFromSchema(schema).filter((column) => !fieldAccess.hidden(column.label)),
+    () =>
+      buildColumnsFromSchema(schema).filter(
+        (column) => !fieldAccess.hidden(column.label),
+      ),
     [schema, fieldAccess],
   );
 
@@ -282,9 +374,15 @@ export function PayrollDataPage() {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
-        String(r.empName || "").toLowerCase().includes(term) ||
-        String(r.empId || "").toLowerCase().includes(term);
-      const matchesCycle = cycleFilter === "all" || String(r.cycleId ?? r.cycle ?? "") === cycleFilter;
+        String(r.empName || "")
+          .toLowerCase()
+          .includes(term) ||
+        String(r.empId || "")
+          .toLowerCase()
+          .includes(term);
+      const matchesCycle =
+        cycleFilter === "all" ||
+        String(r.cycleId ?? r.cycle ?? "") === cycleFilter;
       return matchesTerm && matchesCycle;
     });
     return [...list].sort((a, b) => {
@@ -324,8 +422,12 @@ export function PayrollDataPage() {
   }, [currentPage]);
 
   // Row checkboxes (used for Export). Key = the row's position in the loaded data.
-  const rowIds = useMemo(() => new Map(stored.map((r, i) => [r, String(i)])), [stored]);
-  const rowKeyOf = (r) => rowIds.get(r) ?? `${r.empId}|${r.cycleId ?? r.cycle ?? ""}`;
+  const rowIds = useMemo(
+    () => new Map(stored.map((r, i) => [r, String(i)])),
+    [stored],
+  );
+  const rowKeyOf = (r) =>
+    rowIds.get(r) ?? `${r.empId}|${r.cycleId ?? r.cycle ?? ""}`;
   const rowSel = useRowSelection(rows, rowKeyOf);
 
   const handleExport = () => {
@@ -343,7 +445,10 @@ export function PayrollDataPage() {
       const vals = COLS.map((col) => {
         const val = rawValueFor(r, col, priorMap);
         if (col.money) return val == null ? "" : Math.round(val);
-        if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "" : Number(val).toFixed(2) + "%";
+        if (col.pct)
+          return val == null || val === "" || Number.isNaN(Number(val))
+            ? ""
+            : Number(val).toFixed(2) + "%";
         return val ?? "";
       });
       lines.push(vals.map(csvCell).join(","));
@@ -367,23 +472,28 @@ export function PayrollDataPage() {
         setMenuOpen(false);
       }}
     >
-      <style>{PAYROLL_DATA_CSS + filterTableCss(".pd-root", ".pd-grid-wrap table")}</style>
+      <style>
+        {PAYROLL_DATA_CSS + filterTableCss(".pd-root", ".pd-grid-wrap table")}
+      </style>
       {loadError && (
         <div role="alert" className="pd-footer-note">
           {loadError}{" "}
-          <button type="button" onClick={() => setReloadToken((token) => token + 1)}>
+          <button
+            type="button"
+            onClick={() => setReloadToken((token) => token + 1)}
+          >
             Retry
           </button>
         </div>
       )}
-      {loading && <div className="pd-footer-note">Loading payroll records…</div>}
+      {loading && (
+        <div className="pd-footer-note">Loading payroll records…</div>
+      )}
 
       <div className="pd-topbar">
         <div>
           <h1>Payroll Master</h1>
-          <p className="pd-sub">
-            Entry and calculated pay values only.
-          </p>
+          <p className="pd-sub">Entry and calculated pay values only.</p>
         </div>
         <div className="pd-stat">
           <div className="pd-label">Records</div>
@@ -429,6 +539,17 @@ export function PayrollDataPage() {
               className="pd-menu-dropdown show"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                className="pd-menu-item"
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setImportOpen(true);
+                }}
+              >
+                <span className="pd-menu-icon">↑</span>
+                Import
+              </button>
               <button
                 className="pd-menu-item"
                 type="button"
@@ -489,8 +610,15 @@ export function PayrollDataPage() {
                       )}
                     </span>
                     {(() => {
-                      const fc = filterColumns.find((x) => x.key === c.key) || { key: c.key, label: c.label, kind: "text", get: () => "" };
-                      const sortIndex = tf.sorts.findIndex((x) => x.key === c.key);
+                      const fc = filterColumns.find((x) => x.key === c.key) || {
+                        key: c.key,
+                        label: c.label,
+                        kind: "text",
+                        get: () => "",
+                      };
+                      const sortIndex = tf.sorts.findIndex(
+                        (x) => x.key === c.key,
+                      );
                       return (
                         <ColumnFilter
                           boxed
@@ -501,9 +629,13 @@ export function PayrollDataPage() {
                           kind={fc.kind}
                           filter={tf.filters[c.key]}
                           options={tf.optionsFor(fc)}
-                          allValues={fc.kind === "number" ? tf.valuesFor(fc) : []}
+                          allValues={
+                            fc.kind === "number" ? tf.valuesFor(fc) : []
+                          }
                           onChange={(filter) => tf.setFilter(c.key, filter)}
-                          sortDirection={sortIndex >= 0 ? tf.sorts[sortIndex].dir : null}
+                          sortDirection={
+                            sortIndex >= 0 ? tf.sorts[sortIndex].dir : null
+                          }
                           sortLevel={sortIndex + 1}
                           onSortAsc={() => tf.addSort(c.key, "asc")}
                           onSortDesc={() => tf.addSort(c.key, "desc")}
@@ -533,74 +665,86 @@ export function PayrollDataPage() {
                       : "No payroll records are available yet."}
                 </td>
               </tr>
-            ) : pageRows.map((r, i) => (
-              <tr key={`${r.empId}-${r.cycle}-${pageStart + i}`} className={rowSel.selected.has(rowKeyOf(r)) ? "pd-row-sel" : ""}>
-                {COLS.map((col, colIndex) => {
-                  const val = rawValueFor(r, col, priorMap);
-                  if (col.isYoy) {
-                    const cls = val == null ? "new" : val >= 0 ? "pos" : "neg";
-                    const label =
-                      val == null
-                        ? "new"
-                        : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
-                    return (
-                      <td
-                        key={col.key}
-                        className={`pd-calc-cell pd-yoy-col ${cls}`}
-                      >
-                        {label}
-                      </td>
-                    );
+            ) : (
+              pageRows.map((r, i) => (
+                <tr
+                  key={`${r.empId}-${r.cycle}-${pageStart + i}`}
+                  className={
+                    rowSel.selected.has(rowKeyOf(r)) ? "pd-row-sel" : ""
                   }
-                  let display;
-                  if (col.money) display = fmtMoney(val);
-                  else if (col.pct) display = val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
-                  else display = val == null || val === "" ? "—" : val;
+                >
+                  {COLS.map((col, colIndex) => {
+                    const val = rawValueFor(r, col, priorMap);
+                    if (col.isYoy) {
+                      const cls =
+                        val == null ? "new" : val >= 0 ? "pos" : "neg";
+                      const label =
+                        val == null
+                          ? "new"
+                          : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
+                      return (
+                        <td
+                          key={col.key}
+                          className={`pd-calc-cell pd-yoy-col ${cls}`}
+                        >
+                          {label}
+                        </td>
+                      );
+                    }
+                    let display;
+                    if (col.money) display = fmtMoney(val);
+                    else if (col.pct)
+                      display =
+                        val == null || val === "" || Number.isNaN(Number(val))
+                          ? "—"
+                          : Number(val).toFixed(2) + "%";
+                    else display = val == null || val === "" ? "—" : val;
 
-                  const cls =
-                    (col.frozen
-                      ? "frozen pd-name-cell"
-                      : col.money || col.pct
-                        ? "pd-master-cell"
-                        : "") + (col.cat === "calc" ? " pd-calc-cell" : "");
+                    const cls =
+                      (col.frozen
+                        ? "frozen pd-name-cell"
+                        : col.money || col.pct
+                          ? "pd-master-cell"
+                          : "") + (col.cat === "calc" ? " pd-calc-cell" : "");
 
-                  const rowBox = colIndex === 0 && (
-                    <input
-                      type="checkbox"
-                      className="pd-chk"
-                      checked={rowSel.selected.has(rowKeyOf(r))}
-                      onChange={() => rowSel.toggle(rowKeyOf(r))}
-                      aria-label="Select row"
-                    />
-                  );
+                    const rowBox = colIndex === 0 && (
+                      <input
+                        type="checkbox"
+                        className="pd-chk"
+                        checked={rowSel.selected.has(rowKeyOf(r))}
+                        onChange={() => rowSel.toggle(rowKeyOf(r))}
+                        aria-label="Select row"
+                      />
+                    );
 
-                  if (col.key === "promo") {
+                    if (col.key === "promo") {
+                      return (
+                        <td key={col.key} className={cls}>
+                          {rowBox}
+                          <span
+                            className={`pd-status-badge ${val === "Yes" ? "yes" : "no"}`}
+                          >
+                            {display}
+                          </span>
+                        </td>
+                      );
+                    }
                     return (
                       <td key={col.key} className={cls}>
-                        {rowBox}
-                        <span
-                          className={`pd-status-badge ${val === "Yes" ? "yes" : "no"}`}
-                        >
-                          {display}
-                        </span>
+                        {colIndex === 0 ? (
+                          <span className="pd-chk-cell">
+                            {rowBox}
+                            <span>{display}</span>
+                          </span>
+                        ) : (
+                          display
+                        )}
                       </td>
                     );
-                  }
-                  return (
-                    <td key={col.key} className={cls}>
-                      {colIndex === 0 ? (
-                        <span className="pd-chk-cell">
-                          {rowBox}
-                          <span>{display}</span>
-                        </span>
-                      ) : (
-                        display
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                  })}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -608,7 +752,9 @@ export function PayrollDataPage() {
       {rows.length > PAYROLL_PAGE_SIZE && (
         <div className="pd-pager">
           <span>
-            Rows {pageStart + 1}–{Math.min(pageStart + PAYROLL_PAGE_SIZE, rows.length)} of {rows.length}
+            Rows {pageStart + 1}–
+            {Math.min(pageStart + PAYROLL_PAGE_SIZE, rows.length)} of{" "}
+            {rows.length}
           </span>
           <button
             type="button"
@@ -670,23 +816,39 @@ export function PayrollDataPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {!auditLoading && !auditError && audit.map((a) => (
-                    <tr key={a.id}>
-                      <td>{a.time}</td>
-                      <td>{a.user}</td>
-                      <td>
-                        {a.empName || "—"}{" "}
-                        <span style={{ color: "#8592a6" }}>({a.empId})</span>
-                      </td>
-                      <td>{a.cycle}</td>
-                      <td>{a.field}</td>
-                      <td className="pd-old-val">{a.oldVal || "—"}</td>
-                      <td className="pd-new-val">{a.newVal || a.details || "—"}</td>
+                  {!auditLoading &&
+                    !auditError &&
+                    audit.map((a) => (
+                      <tr key={a.id}>
+                        <td>{a.time}</td>
+                        <td>{a.user}</td>
+                        <td>
+                          {a.empName || "—"}{" "}
+                          <span style={{ color: "#8592a6" }}>({a.empId})</span>
+                        </td>
+                        <td>{a.cycle}</td>
+                        <td>{a.field}</td>
+                        <td className="pd-old-val">{a.oldVal || "—"}</td>
+                        <td className="pd-new-val">
+                          {a.newVal || a.details || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  {auditLoading && (
+                    <tr>
+                      <td colSpan={7}>Loading audit trail…</td>
                     </tr>
-                  ))}
-                  {auditLoading && <tr><td colSpan={7}>Loading audit trail…</td></tr>}
-                  {!auditLoading && auditError && <tr><td colSpan={7}>{auditError}</td></tr>}
-                  {!auditLoading && !auditError && !audit.length && <tr><td colSpan={7}>No audit history yet.</td></tr>}
+                  )}
+                  {!auditLoading && auditError && (
+                    <tr>
+                      <td colSpan={7}>{auditError}</td>
+                    </tr>
+                  )}
+                  {!auditLoading && !auditError && !audit.length && (
+                    <tr>
+                      <td colSpan={7}>No audit history yet.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
