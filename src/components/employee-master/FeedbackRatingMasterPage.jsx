@@ -6,6 +6,7 @@ import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { isEmptyFilter, matchesValue, NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { useRowSelection } from "@/lib/table-export";
 import { useScreenFields } from "@/lib/access-store";
+import { UploadPage } from "./UploadPage";
 
 /*
  * Feedback & Rating Master — HR Operations › Master.
@@ -334,6 +335,7 @@ export function FeedbackRatingMasterPage({
   const [dens, setDens] = useState(saved.dens || "comfortable");
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(() => {
     try {
@@ -739,6 +741,16 @@ export function FeedbackRatingMasterPage({
             </button>
             {menuOpen && (
               <div className="pop open">
+                <button
+                  className="item"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setImportOpen(true);
+                  }}
+                >
+                  Import
+                </button>
                 <button className="item" type="button" onClick={exportXls}>
                   Export to Excel
                 </button>
@@ -1083,6 +1095,45 @@ export function FeedbackRatingMasterPage({
         <button className="flap" type="button" aria-label="Open panel" onClick={(e) => { e.stopPropagation(); setPanelW(PANEL_MIN); setPanelOpen(true); }}>
           Panel ›
         </button>
+      )}
+
+      {importOpen && (
+        <div
+          role="presentation"
+          onClick={() => setImportOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 120,
+            background: "rgba(15,25,40,.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Import Feedback and Rating"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              background: "#fff",
+              width: "min(1500px, 98vw)",
+              height: "min(920px, 94vh)",
+              borderRadius: 12,
+              overflow: "auto",
+              padding: 14,
+              boxShadow: "0 20px 50px rgba(0,0,0,.3)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <strong style={{ color: "#102A43", fontSize: 15 }}>Import Feedback &amp; Rating</strong>
+              <button className="btn" type="button" onClick={() => setImportOpen(false)}>Close</button>
+            </div>
+            <UploadPage key="feedback-master-import" initialScreen="fb" />
+          </section>
+        </div>
       )}
 
       <div className={"toast" + (toast ? " on" : "")}>{toast}</div>
