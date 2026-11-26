@@ -3,6 +3,7 @@ import BulkOperations from "@/components/appraisal/BulkEditPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 import { isAllLocations, matchesCycleLocation, cycleLocationOf, useSelectedLocation } from "@/lib/location-store";
+import { matchesCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
 import "@/styles/bulk-edit-screen.css";
 
 const isActiveCycle = (cycle) =>
@@ -15,12 +16,14 @@ const isActiveCycle = (cycle) =>
 let cyclesCache = null;
 
 /* The cycle follows the location chosen in the header: that location's own Active cycle first, then an
-   "All locations" cycle (it covers every location). Never another location's cycle. */
-const pickCycle = (list, location) => {
-  const own = list.filter((cycle) => matchesCycleLocation(cycle, location));
+   "All locations" cycle (it covers every location). Never another location's cycle.
+   Only cycles of the Cycle type chosen in the header (Annual, Exceptional ...) are considered. */
+const pickCycle = (list, location, cycleType) => {
+  const ofType = list.filter((cycle) => matchesCycleType(cycle, cycleType));
+  const own = ofType.filter((cycle) => matchesCycleLocation(cycle, location));
   const all = isAllLocations(location)
     ? []
-    : list.filter((cycle) => isAllLocations(cycleLocationOf(cycle)));
+    : ofType.filter((cycle) => isAllLocations(cycleLocationOf(cycle)));
   for (const group of [own, all]) {
     const hit = group.find(isActiveCycle) || group.find((cycle) => !cycle?.archived);
     if (hit) return hit;
@@ -35,6 +38,7 @@ export default function BulkEditScreen() {
     !access.canAction("bulkEdit") || !access.canScreen("bulkEditScreen", "edit");
   const [cycles, setCycles] = useState(() => cyclesCache || []);
   const [selectedLocation] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
   const [loading, setLoading] = useState(() => !cyclesCache);
   const [error, setError] = useState("");
 
@@ -63,8 +67,8 @@ export default function BulkEditScreen() {
 
   // Picked automatically from the header location (active one first); no manual selector.
   const selectedCycle = useMemo(
-    () => pickCycle(cycles, selectedLocation),
-    [cycles, selectedLocation],
+    () => pickCycle(cycles, selectedLocation, selectedCycleType),
+    [cycles, selectedLocation, selectedCycleType],
   );
 
   return (
@@ -72,7 +76,7 @@ export default function BulkEditScreen() {
       {error && <div className="bulk-edit-screen-error" role="alert">{error}</div>}
       {loading && <div className="bulk-edit-screen-state">Loading appraisal cycles…</div>}
       {!loading && !error && !selectedCycle && (
-        <div className="bulk-edit-screen-state">No appraisal cycle for this location. Create one before using Bulk Edit.</div>
+        <div className="bulk-edit-screen-state">No {selectedCycleType} appraisal cycle for this location. Create one before using Bulk Edit.</div>
       )}
       {!loading && !error && selectedCycle && (
         <div className="bulk-edit-screen-work">

@@ -1,5 +1,6 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
 import { getSelectedLocation } from "./location-store";
+import { getSelectedCycleType } from "./cycle-type-store";
 
 /* ============================================================
    DELEGATION ROSTER: SHARED REQUEST, EARLY START, SAVED COPY
@@ -61,9 +62,10 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidateDelegationRoster));
 }
 
-async function fetchRosterPage(pageNo, fallbackMessage, location) {
+async function fetchRosterPage(pageNo, fallbackMessage, location, cycleType) {
   const response = await catalystFetch(
-    EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1&location=" + encodeURIComponent(location || "All"),
+    EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1&location=" + encodeURIComponent(location || "All") +
+      (cycleType ? "&cycleType=" + encodeURIComponent(cycleType) : ""),
     { method: "GET", cache: "no-store" },
   );
   const payload = await response.json();
@@ -75,13 +77,13 @@ async function fetchRosterPage(pageNo, fallbackMessage, location) {
 
 // Page 1, then any remaining pages together (a roster over 5,000 rows).
 // Resolves to every raw row, in the order employeesapi returned them.
-async function loadRosterRows(location) {
-  const first = await fetchRosterPage(1, "Unable to load appraisal employees.", location);
+async function loadRosterRows(location, cycleType) {
+  const first = await fetchRosterPage(1, "Unable to load appraisal employees.", location, cycleType);
   const all = Array.isArray(first.data) ? [...first.data] : [];
   const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
   const rest = await Promise.all(
     Array.from({ length: totalPages - 1 }, (_, index) =>
-      fetchRosterPage(index + 2, "Unable to load the remaining delegation employees.", location),
+      fetchRosterPage(index + 2, "Unable to load the remaining delegation employees.", location, cycleType),
     ),
   );
   rest.forEach((payload) => {
@@ -93,8 +95,9 @@ async function loadRosterRows(location) {
 /* Raw Delegation roster rows. `fresh: true` skips a shared copy (used for the
    screen's explicit reloads). The rows are read-only for callers: the screen
    maps them into its own objects. */
-export function fetchDelegationRoster({ fresh = false, prefetch = false, location = getSelectedLocation() } = {}) {
-  const locationKey = String(location || "All").trim().toLowerCase();
+// cycleType: the Cycle type chosen in the header; "" (other callers) keeps the old cycle choice.
+export function fetchDelegationRoster({ fresh = false, prefetch = false, location = getSelectedLocation(), cycleType = "" } = {}) {
+  const locationKey = String(location || "All").trim().toLowerCase() + "::" + String(cycleType || "").trim().toLowerCase();
   if (!fresh && inFlight && inFlight.locationKey === locationKey && Date.now() - inFlight.startedAt <= inFlight.windowMs) {
     return inFlight.promise;
   }
@@ -104,7 +107,7 @@ export function fetchDelegationRoster({ fresh = false, prefetch = false, locatio
     windowMs: prefetch ? PREFETCH_SHARE_WINDOW_MS : SHARE_WINDOW_MS,
     locationKey,
   };
-  entry.promise = loadRosterRows(location).catch((error) => {
+  entry.promise = loadRosterRows(location, cycleType).catch((error) => {
     // A failed load is never shared; the next caller tries again.
     if (inFlight === entry) inFlight = null;
     throw error;
@@ -115,7 +118,7 @@ export function fetchDelegationRoster({ fresh = false, prefetch = false, locatio
 
 // Starts the roster request early; the screen's own load then joins it.
 export function prefetchDelegationRoster() {
-  fetchDelegationRoster({ prefetch: true }).catch(() => {
+  fetchDelegationRoster({ prefetch: true, cycleType: getSelectedCycleType() }).catch(() => {
     /* the screen's own load reports the error */
   });
 }
@@ -180,8 +183,9 @@ function run(mode, action) {
 }
 
 // One saved copy per signed-in user (a Tech-ED's roster differs from HR's).
-export const delegationSnapshotKey = (scope, location = getSelectedLocation()) =>
-  KEY_PREFIX + String(scope || "").trim().toLowerCase() + "::" + String(location || "All").trim().toLowerCase();
+export const delegationSnapshotKey = (scope, location = getSelectedLocation(), cycleType = "") =>
+  KEY_PREFIX + String(scope || "").trim().toLowerCase() + "::" + String(location || "All").trim().toLowerCase() +
+  (cycleType ? "::" + String(cycleType).trim().toLowerCase() : "");
 
 // { rows, cycleId, cycleName, savedAt } or null. Every call fails quietly.
 export function readDelegationSnapshot(key) {

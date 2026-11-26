@@ -2,9 +2,11 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { matchesCycleLocation, useSelectedLocation } from "@/lib/location-store";
+import { matchesCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
 
 // The header cycle label follows the system location. Keep the latest Closed
 // cycle visible until Archive; another location's cycle is never a fallback.
+// The cycle also has to be of the Cycle type chosen in the header.
 
 const STALE_MS = 60_000;
 const listeners = new Set();
@@ -24,17 +26,17 @@ const isActiveCycle = (cycle) =>
   !isTruthyFlag(cycle?.archived) &&
   !isTruthyFlag(cycle?.hidden);
 
-const locationKey = (value) => {
+const locationKey = (value, cycleType = "") => {
   const location = String(value || "All").trim();
-  return location.toLowerCase();
+  return location.toLowerCase() + "::" + String(cycleType || "").toLowerCase();
 };
 
 function matchesSelectedLocation(cycle, selectedLocation) {
   return matchesCycleLocation(cycle, selectedLocation);
 }
 
-function load(selectedLocation) {
-  const key = locationKey(selectedLocation);
+function load(selectedLocation, cycleType) {
+  const key = locationKey(selectedLocation, cycleType);
   if (inflight.has(key)) return inflight.get(key);
   const promise = payrollCycleRequest("cycles")
     .then((data) => {
@@ -44,7 +46,8 @@ function load(selectedLocation) {
         return ["active", "closed"].includes(status) &&
           !isTruthyFlag(cycle?.archived) &&
           !isTruthyFlag(cycle?.hidden) &&
-          matchesSelectedLocation(cycle, selectedLocation);
+          matchesSelectedLocation(cycle, selectedLocation) &&
+          matchesCycleType(cycle, cycleType);
       });
       const picked =
         matchingCycles.find(isActiveCycle) ||
@@ -95,25 +98,26 @@ const subscribe = (listener) => {
 
 export function useCurrentCycleName() {
   const [selectedLocation] = useSelectedLocation();
-  const key = locationKey(selectedLocation);
+  const [selectedCycleType] = useSelectedCycleType();
+  const key = locationKey(selectedLocation, selectedCycleType);
   const name = useSyncExternalStore(
     subscribe,
     () => cycleNames.get(key) || "",
     () => "",
   );
   useEffect(() => {
-    if (Date.now() - (fetchedAt.get(key) || 0) > STALE_MS) load(selectedLocation);
+    if (Date.now() - (fetchedAt.get(key) || 0) > STALE_MS) load(selectedLocation, selectedCycleType);
     if (typeof window === "undefined") return undefined;
     const refresh = () => {
       fetchedAt.delete(key);
       cycleNames.set(key, "");
       cycleInfos.delete(key);
       listeners.forEach((listener) => listener());
-      load(selectedLocation);
+      load(selectedLocation, selectedCycleType);
     };
     window.addEventListener("appraisal:cycle-updated", refresh);
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
-  }, [key, selectedLocation]);
+  }, [key, selectedLocation, selectedCycleType]);
   return name;
 }
 
@@ -121,7 +125,8 @@ export function useCurrentCycleName() {
 export function useCurrentCycleInfo() {
   const name = useCurrentCycleName();
   const [selectedLocation] = useSelectedLocation();
-  const key = locationKey(selectedLocation);
+  const [selectedCycleType] = useSelectedCycleType();
+  const key = locationKey(selectedLocation, selectedCycleType);
   const info = useSyncExternalStore(
     subscribe,
     () => cycleInfos.get(key) || null,

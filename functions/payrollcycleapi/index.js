@@ -8482,6 +8482,14 @@ async function routeRequest(req, res, identity, resource, a) {
         if (cycle.status !== "Active" || cycle.id === id || cycle.archived) {
           return false;
         }
+        // Cycles of different types (Annual, Exceptional ...) in one location
+        // may be Active together; only the same type clashes.
+        if (
+          (cycle.type || cycleTypeOf(cycle.name)) !==
+          (target.type || cycleTypeOf(target.name))
+        ) {
+          return false;
+        }
         const otherLocation = cycleLocationKey(cycle);
         // The existing org-wide cycle is the source/configuration cycle for
         // its location children. Permit that parent and its matching location
@@ -8847,7 +8855,7 @@ async function routeRequest(req, res, identity, resource, a) {
       if (status === "Active" && otherActive) {
         return sendJson(res, 409, {
           success: false,
-          message: `Close or archive "${otherActive.name}" first. Only one cycle can be Active at a time.`,
+          message: `Close or archive "${otherActive.name}" first. Only one cycle of the same type can be Active at a time.`,
         });
       }
       const verb =

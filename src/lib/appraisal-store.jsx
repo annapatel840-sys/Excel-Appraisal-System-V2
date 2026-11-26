@@ -2387,6 +2387,7 @@ import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
 import { filterByLocation, useSelectedLocation } from "./location-store";
+import { useSelectedCycleType } from "./cycle-type-store";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -3504,6 +3505,7 @@ export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const access = useAccess();
   const [selectedLocation] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
   // Set during render (not in an effect) so the Appraisal Sheet, which mounts
   // before this provider's effects run, already reads the right place.
   configureLastEditSync({
@@ -3635,7 +3637,7 @@ export function AppraisalProvider({ children }) {
       // The employeesapi roster already includes current-cycle feedback
       // fields. Avoid a second full Feedback_And_Rating API request.
       const viewAs = getViewAsSelected();
-      const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation });
+      const roster = await fetchAppraisalRoster({ viewAs, location: selectedLocation, cycleType: selectedCycleType });
 
       if (requestId !== loadSeqRef.current) {
         return;
@@ -3643,7 +3645,7 @@ export function AppraisalProvider({ children }) {
 
       freshAppliedRef.current = true;
       loadedSnapshotKeyRef.current = snapshotKey(
-        `${rosterCacheScope}::${String(selectedLocation || "All").trim().toLowerCase()}`,
+        `${rosterCacheScope}::${String(selectedLocation || "All").trim().toLowerCase()}::${selectedCycleType.toLowerCase()}`,
         viewAs,
       );
       showingSavedRef.current = false;
@@ -3659,7 +3661,7 @@ export function AppraisalProvider({ children }) {
         updateRows(() => []);
         setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
         setAudit([]);
-        setError("No active or closed appraisal cycle is available for this location.");
+        setError(`No active or closed ${selectedCycleType} appraisal cycle is available for this location.`);
         return;
       }
       setAudit((previous) => currentCycleAudit(previous));
@@ -3706,7 +3708,7 @@ export function AppraisalProvider({ children }) {
       }
     }
   // }, [isHRUser, updateRows]);
-  }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation]);
+  }, [isHRUser, updateRows, viewAsId, rosterCacheScope, selectedLocation, selectedCycleType]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD
@@ -3725,7 +3727,7 @@ export function AppraisalProvider({ children }) {
   // Show the saved copy while the first roster loads. Same key as the roster
   // request: the signed-in user and the View-as choice it was loaded under.
   const sheetSnapshotKey = snapshotKey(
-    `${rosterCacheScope}::${String(selectedLocation || "All").trim().toLowerCase()}`,
+    `${rosterCacheScope}::${String(selectedLocation || "All").trim().toLowerCase()}::${selectedCycleType.toLowerCase()}`,
     getViewAsSelected(),
   );
   useEffect(() => {

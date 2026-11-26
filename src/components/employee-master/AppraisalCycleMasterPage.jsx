@@ -709,6 +709,8 @@ export function AppraisalCycleMasterPage({
       x.id !== c.id &&
       x.status === "Active" &&
       !x.archived &&
+      // Cycles of different types (Annual, Exceptional ...) may be Active together.
+      (x.type || "Annual") === (c.type || "Annual") &&
       sameLocationScope(x.location, c.location) &&
       !(
         isAllCycleLocation(x.location) !== isAllCycleLocation(c.location) &&
@@ -759,7 +761,7 @@ export function AppraisalCycleMasterPage({
         "No other cycle active",
         !other,
         other
-          ? `Not met: close or archive ${other.name} first. Only one cycle per location scope can be Active at a time.`
+          ? `Not met: close or archive ${other.name} first. Only one cycle of the same type per location scope can be Active at a time.`
           : "Met",
       ),
     );

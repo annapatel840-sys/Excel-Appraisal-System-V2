@@ -23,6 +23,7 @@ import {
   locationOfRow,
   useSelectedLocation,
 } from "@/lib/location-store";
+import { useSelectedCycleType } from "@/lib/cycle-type-store";
 import {
   auditOwnerKey,
   auditUserKey,
@@ -140,8 +141,8 @@ function ownerMatches(owner, identities) {
 // authorized for the Employee Master screen, so the roster is the Appraisal
 // view (the signed-in user's normal appraisal scope). The request is shared
 // with the Appraisal Sheet store when both load at the same time.
-async function fetchAllEligibleEmployees(cacheScope, location) {
-  const roster = await fetchAppraisalRoster({ cacheScope, location });
+async function fetchAllEligibleEmployees(cacheScope, location, cycleType) {
+  const roster = await fetchAppraisalRoster({ cacheScope, location, cycleType });
   return roster.employees;
 }
 
@@ -173,12 +174,15 @@ export function BudgetProvider({ children }) {
     .trim()
     .toLowerCase();
   const [selectedLocation] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
   const budgetSnapshotScope =
     budgetCacheScope +
     "::" +
     String(selectedLocation || "All")
       .trim()
-      .toLowerCase();
+      .toLowerCase() +
+    "::" +
+    selectedCycleType.toLowerCase();
   const initialBudget = useMemo(
     () => (budgetCacheScope ? readBudgetSnapshot(budgetSnapshotScope) : null),
     [budgetSnapshotScope],
@@ -427,6 +431,8 @@ export function BudgetProvider({ children }) {
         const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
         budgetUrl.searchParams.set("_ts", String(Date.now()));
         budgetUrl.searchParams.set("location", requestLocation);
+        // Budget of the cycle of this type (Annual, Exceptional ...) in that location.
+        budgetUrl.searchParams.set("cycleType", selectedCycleType);
         // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
         budgetUrl.searchParams.set("gz", "1");
         // Start both independent requests immediately, but do not make the
@@ -442,6 +448,7 @@ export function BudgetProvider({ children }) {
         const employeeResultPromise = fetchAllEligibleEmployees(
           requestUser,
           requestLocation,
+          selectedCycleType,
         ).then(
           (employees) => ({ employees }),
           (employeeError) => ({ employees: [], employeeError }),
@@ -721,6 +728,7 @@ export function BudgetProvider({ children }) {
       budgetSnapshotScope,
       initialBudget,
       selectedLocation,
+      selectedCycleType,
     ],
   );
 

@@ -2475,6 +2475,7 @@ import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { fetchDelegationAssigneeOptions } from "@/lib/employee-master-data";
 import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
+import { matchesCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
 import {
   generateAppraisalSheet,
   payrollCycleRequest,
@@ -2733,6 +2734,7 @@ export default function DelegationScreen({
   // Delegation shows only the selected location's employees; saves and
   // snapshots keep working on the complete roster (allRows).
   const [selectedLocation] = useSelectedLocation();
+  const [selectedCycleType] = useSelectedCycleType();
   const rows = useMemo(
     () => filterByLocation(allRows, selectedLocation),
     [allRows, selectedLocation],
@@ -2975,6 +2977,7 @@ export default function DelegationScreen({
     const savedKey = delegationSnapshotKey(
       catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "",
       selectedLocation,
+      selectedCycleType,
     );
     let freshApplied = false;
     try {
@@ -2994,6 +2997,7 @@ export default function DelegationScreen({
       const firstPromise = fetchDelegationRoster({
         fresh: !initial,
         location: selectedLocation,
+        cycleType: selectedCycleType,
       });
       firstPromise.catch(() => {}); // reported where it is awaited below
       const cycles = await payrollCycleRequest("cycles");
@@ -3024,6 +3028,7 @@ export default function DelegationScreen({
             status === "active" &&
             !archived &&
             !hidden &&
+            matchesCycleType(cycle, selectedCycleType) &&
             (allLocationsSelected ||
               cycleLocation === String(selectedLocation).trim().toLowerCase())
           );
@@ -3050,6 +3055,7 @@ export default function DelegationScreen({
               status === "closed" &&
               !archived &&
               !hidden &&
+              matchesCycleType(cycle, selectedCycleType) &&
               (allLocationsSelected ||
                 cycleLocation === String(selectedLocation).trim().toLowerCase())
             );
@@ -3170,7 +3176,7 @@ export default function DelegationScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () =>
       window.removeEventListener("appraisal:cycle-updated", refreshRoster);
-  }, [initialRows, selectedLocation]);
+  }, [initialRows, selectedLocation, selectedCycleType]);
   const say = (msg, err) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);

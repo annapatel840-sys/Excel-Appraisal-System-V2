@@ -1827,6 +1827,7 @@ async function calculateBudgetBases(
   techEdOwners = [],
   sourceRows,
   selectedLocation = "",
+  selectedCycleType = "",
 ) {
   // Reuse the single serialized source-table read set for both calculations
   // and owner/employee roster construction. Do not start parallel Data Store
@@ -1981,8 +1982,23 @@ async function calculateBudgetBases(
     });
     addLocationAliases(matchedLocation);
   }
+  // Cycle type chosen in the header (Annual, Mid-Year, Exceptional, New Joiner).
+  // When the request names none, every type is considered as before.
+  const requestedCycleType = String(selectedCycleType || "").trim().toLowerCase();
+  const cycleTypeOfBudgetCycle = (cycle) => {
+    const explicit = String(firstValue(cycle, ["cycle_type", "type", "cycleType"]) || "")
+      .trim()
+      .toLowerCase();
+    if (explicit) return explicit;
+    const name = cycleNameOf(cycle)
+      .replace(/^.+?\s+-\s+(?=(annual|mid-year|exceptional|new joiner)\b)/i, "")
+      .toLowerCase();
+    const match = name.match(/^(annual|mid-year|exceptional|new joiner)\b/);
+    return match ? match[1] : "annual";
+  };
   const matchesBudgetLocation = (cycle) => {
     if (!hasBudgetMaster(cycle)) return false;
+    if (requestedCycleType && cycleTypeOfBudgetCycle(cycle) !== requestedCycleType) return false;
     const cycleLocation = String(
       firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
     ).trim().toLowerCase();
@@ -4252,12 +4268,16 @@ module.exports = async function (req, res) {
         const requestedBudgetLocation = String(
           requestParams.location || requestUrl.searchParams.get("location") || "",
         ).trim();
+        const requestedBudgetCycleType = String(
+          requestParams.cycleType || requestUrl.searchParams.get("cycleType") || "",
+        ).trim();
         calculatedBundle = await calculateBudgetBases(
           app,
           rawBundle,
           techEdOwners,
           sourceRows,
           requestedBudgetLocation,
+          requestedBudgetCycleType,
         );
         logBudgetStage("budget calculations and persistence complete", {
           techEdRows: calculatedBundle.techEd.length,

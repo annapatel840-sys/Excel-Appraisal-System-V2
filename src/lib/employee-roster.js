@@ -1,5 +1,6 @@
 import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
 import { getSelectedLocation } from "./location-store";
+import { getSelectedCycleType } from "./cycle-type-store";
 
 /* ============================================================
    SHARED APPRAISAL ROSTER
@@ -59,7 +60,7 @@ if (typeof window !== "undefined") {
   ].forEach((eventName) => window.addEventListener(eventName, invalidateEmployeeRoster));
 }
 
-async function fetchRosterPage(page, viewAs, location) {
+async function fetchRosterPage(page, viewAs, location, cycleType) {
   const url = new URL(catalystFunctionUrl("employeesapi"));
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(ROSTER_LIMIT));
@@ -68,6 +69,8 @@ async function fetchRosterPage(page, viewAs, location) {
   url.searchParams.set("eligible", "all");
   if (viewAs) url.searchParams.set("viewAs", viewAs);
   url.searchParams.set("location", String(location || "All"));
+  // The cycle of this type (Annual, Exceptional ...) in that location.
+  if (cycleType) url.searchParams.set("cycleType", String(cycleType));
   // Ask employeesapi to gzip the (several MB) response.
   url.searchParams.set("gz", "1");
   url.searchParams.set("_ts", String(Date.now()));
@@ -96,12 +99,12 @@ async function fetchRosterPage(page, viewAs, location) {
   };
 }
 
-async function loadRoster(viewAs, location) {
-  const first = await fetchRosterPage(1, viewAs, location);
+async function loadRoster(viewAs, location, cycleType) {
+  const first = await fetchRosterPage(1, viewAs, location, cycleType);
   const totalPages = Math.max(1, Number(first.pagination.totalPages || 1));
   const rest = totalPages > 1
     ? await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs, location)),
+        Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs, location, cycleType)),
       )
     : [];
   return {
@@ -118,13 +121,18 @@ async function loadRoster(viewAs, location) {
 // Each caller gets its own copy of the shared result.
 const copyOf = (roster) => JSON.parse(JSON.stringify(roster));
 
-export function fetchAppraisalRoster({ viewAs = "", location = getSelectedLocation() } = {}) {
+export function fetchAppraisalRoster({
+  viewAs = "",
+  location = getSelectedLocation(),
+  cycleType = getSelectedCycleType(),
+} = {}) {
   const selected = String(location || "All");
-  const key = String(viewAs || "") + "::" + selected.toLowerCase();
+  const selectedType = String(cycleType || "");
+  const key = String(viewAs || "") + "::" + selected.toLowerCase() + "::" + selectedType.toLowerCase();
   const shared = inFlight.get(key);
   if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise.then(copyOf);
   const entry = { startedAt: Date.now(), promise: null, settled: false };
-  entry.promise = loadRoster(String(viewAs || ""), selected).then(
+  entry.promise = loadRoster(String(viewAs || ""), selected, selectedType).then(
     (roster) => {
       entry.settled = true;
       return roster;
@@ -141,8 +149,12 @@ export function fetchAppraisalRoster({ viewAs = "", location = getSelectedLocati
 }
 
 // Starts the roster request early; the screens that need it share it.
-export function prefetchAppraisalRoster({ viewAs = "", location = getSelectedLocation() } = {}) {
-  fetchAppraisalRoster({ viewAs, location }).catch(() => {
+export function prefetchAppraisalRoster({
+  viewAs = "",
+  location = getSelectedLocation(),
+  cycleType = getSelectedCycleType(),
+} = {}) {
+  fetchAppraisalRoster({ viewAs, location, cycleType }).catch(() => {
     /* the screen's own load reports the error */
   });
 }

@@ -4066,16 +4066,34 @@ async function getEmployees(req, res) {
       params.cycleId || params.cycle_id || params.appraisal_cycle_id || "",
     ).trim();
     const selectedCycles = cycleRows.filter(isAvailableCycle);
+    // Cycle type chosen in the header (Annual, Mid-Year, Exceptional, New
+    // Joiner). Only when the request names one are the cycles narrowed to it;
+    // other screens send none and keep the old choice.
+    const requestedCycleType = String(params.cycleType || params.cycle_type || "")
+      .trim()
+      .toLowerCase();
+    const cycleTypeOfCycleRow = (cycle) => {
+      const explicit = String(cycle?.cycle_type ?? cycle?.type ?? "").trim().toLowerCase();
+      if (explicit) return explicit;
+      const name = historyCycleName(cycle)
+        .replace(/^.+?\s+-\s+(?=(annual|mid-year|exceptional|new joiner)\b)/i, "")
+        .toLowerCase();
+      const match = name.match(/^(annual|mid-year|exceptional|new joiner)\b/);
+      return match ? match[1] : "annual";
+    };
+    const typedCycles = requestedCycleType
+      ? selectedCycles.filter((cycle) => cycleTypeOfCycleRow(cycle) === requestedCycleType)
+      : selectedCycles;
     const activeCycle =
       (requestedCycleId &&
         selectedCycles.find((cycle) =>
           String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requestedCycleId
         )) ||
-      selectedCycles.find((cycle) =>
+      typedCycles.find((cycle) =>
         String(cycle.status ?? cycle.cycle_status ?? cycle.appraisal_status ?? "").trim().toLowerCase() === "active" &&
         cycleLocationMatches(cycle)
       ) ||
-      latestClosedCycle(selectedCycles.filter(cycleLocationMatches));
+      latestClosedCycle(typedCycles.filter(cycleLocationMatches));
     if (activeCycle) {
       responseActiveCycle = {
         id: String(
@@ -4091,6 +4109,7 @@ async function getEmployees(req, res) {
         ),
         archived: activeCycle.archived ?? false,
         hidden: activeCycle.hidden ?? false,
+        type: cycleTypeOfCycleRow(activeCycle),
       };
       const activeCycleId = String(
         activeCycle.ROWID ??
