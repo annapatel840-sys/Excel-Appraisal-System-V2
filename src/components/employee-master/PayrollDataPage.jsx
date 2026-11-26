@@ -788,7 +788,7 @@ export function PayrollDataPage() {
         <UploadPage
           key="payroll-master-import"
           initialScreen="pay"
-          initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""}
+          
           modalOnly
           onClose={() => setImportOpen(false)}
         />
