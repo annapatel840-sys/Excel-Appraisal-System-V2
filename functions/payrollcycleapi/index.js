@@ -1383,36 +1383,57 @@ async function requireIdentity(req) {
   let employeeEmpId = "";
   if (email) {
     try {
-      // Read as admin: Employee_Master grants SELECT to App Administrator only, so a
-      // user-scope read failed for every Tech-ED / Comp Manager / HR login and the
-      // home location came back blank. Only the signed-in user's own row is used.
-      const datastore = catalyst
-        .initialize(req, { scope: "admin" })
-        .datastore();
-      const [masterRows, locationRows] = await Promise.all([
-        getAllRows(datastore.table(TABLES.employeeMaster)),
-        getAllRows(datastore.table(TABLES.locations)),
-      ]);
-      const matches = masterRows.filter(
-        (row) =>
-          String(row.email_id || row.email || "")
-            .trim()
-            .toLowerCase() === email,
-      );
-      const selected =
-        matches.find(
-          (row) =>
-            String(row.emp_status || row.status || "Active")
-              .trim()
-              .toLowerCase() === "active",
-        ) || matches[0];
-      employeeEmpId = String(
-        selected?.emp_id || selected?.employee_id || selected?.emp_code || "",
-      ).trim();
-      employeeLocation = employeeLocationName(selected, locationRows);
+      // Session is requested on every app load. Never page through the entire
+      // Employee_Master (2,000+ rows) and Locations tables just to resolve one
+      // signed-in user; that full scan can exceed the Catalyst function timeout.
+      // Use a selective ZCQL lookup for this email and keep the session usable
+      // even if the optional profile lookup is temporarily unavailable.
+      const adminApp = catalyst.initialize(req, { scope: "admin" });
+      const zcql =
+        typeof adminApp.zcql === "function" ? adminApp.zcql() : null;
+      if (zcql && typeof zcql.executeZCQLQuery === "function") {
+        const escapedEmail = email.replace(/'/g, "''");
+        let matches = [];
+        for (const column of ["email_id", "email"]) {
+          try {
+            const result = await fastReadQuery(
+              zcql,
+              "SELECT * FROM Employee_Master WHERE " +
+                column +
+                " = '" +
+                escapedEmail +
+                "' LIMIT 10",
+              "session Employee_Master by email",
+            );
+            matches = (Array.isArray(result) ? result : []).map((item) =>
+              unwrapZcqlRow(item, "Employee_Master"),
+            );
+            if (matches.length) break;
+          } catch (queryError) {
+            // Older Employee_Master schemas may use only one of the aliases.
+            if (column === "email") throw queryError;
+          }
+        }
+        const selected =
+          matches.find(
+            (row) =>
+              String(row.emp_status || row.status || "Active")
+                .trim()
+                .toLowerCase() === "active",
+          ) || matches[0];
+        employeeEmpId = String(
+          selected?.emp_id ||
+            selected?.employee_id ||
+            selected?.emp_code ||
+            "",
+        ).trim();
+        // Keep the stored location value; resolving a lookup label must not
+        // require downloading the entire Locations table on session startup.
+        employeeLocation = employeeLocationName(selected, []);
+      }
     } catch (error) {
       console.warn(
-        "[payrollcycleapi] session Employee_Master location lookup failed:",
+        "[payrollcycleapi] session Employee_Master lookup failed:",
         error?.message || error,
       );
     }
