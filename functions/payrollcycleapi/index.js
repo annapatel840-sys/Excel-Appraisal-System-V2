@@ -5057,9 +5057,10 @@ const IMPORT_FIELD_MAP = {
     empId: "emp_ID",
     empName: "emp_name",
     designation: "designation",
-    lastAppraisal: "last_appraisal_date",
+    lastAppraisalDate: "last_appraisal_date",
+    lastAppraisal: "last_appraisal_date", // legacy upload key
+    rrPercent: "revenue_released",
     revenueReleased: "revenue_released",
-    rrPercent: "revenue_released", // the screen's RR% is stored in revenue_released
     grossMargin: "gross_margin",
     managerFeedback: "manager_feedback",
     managerRating: "manager_rating",
@@ -5104,6 +5105,7 @@ const IMPORT_NUMERIC_FIELDS = new Set([
   "grossMargin",
   "managerRating",
   "interviewCount",
+  "fyYear",
   "newRB",
   "newPB",
   "newPBInst",
@@ -5120,6 +5122,9 @@ function normalizeImportValue(key, value) {
     );
     if (!Number.isFinite(number) || number < 0) {
       throw new ApiError(key + " must be a non-negative number.");
+    }
+    if (key === "fyYear" && !Number.isInteger(number)) {
+      throw new ApiError("FY Year must be a whole number.");
     }
     return number;
   }
@@ -5569,13 +5574,30 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
       .toLowerCase();
     if (!masterByEmpId.has(key)) masterByEmpId.set(key, row);
   });
+  const masterByRowId = new Map(
+    employeeRows.map((row) => [storedReference(row.ROWID ?? row.rowid), row]),
+  );
+  const canonicalEmployeeRef = (value) => {
+    const raw = storedReference(value);
+    const master = masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
+    return master ? storedReference(master.ROWID ?? master.rowid) : raw;
+  };
+  const canonicalCycleRef = (value) => {
+    const raw = storedReference(value);
+    const match = normalizedCycles.find(
+      (item) =>
+        item.id === raw ||
+        String(item.name || "").trim().toLowerCase() === raw.toLowerCase(),
+    );
+    return match?.id || raw;
+  };
   const feedbackByKey = new Map();
   if (screen === "fb") {
     existingRows.forEach((row) => {
       const key =
-        storedReference(row.emp_ID ?? row.emp_id ?? "") +
+        canonicalEmployeeRef(row.emp_ID ?? row.emp_id ?? "") +
         "|" +
-        storedReference(row.appraisal_cycle_name);
+        canonicalCycleRef(row.appraisal_cycle_name);
       if (!feedbackByKey.has(key)) feedbackByKey.set(key, row);
     });
   }
@@ -5648,7 +5670,7 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
           // invalid last-appraisal value instead of rejecting the whole row.
           if (
             screen === "fb" &&
-            (key === "lastAppraisal" || key === "effectiveDate") &&
+            (["lastAppraisal", "lastAppraisalDate", "effectiveDate"].includes(key)) &&
             (typeof input[key] === "number" ||
               !/^\d{4}-\d{2}-\d{2}$/.test(String(input[key]).trim()))
           ) {
