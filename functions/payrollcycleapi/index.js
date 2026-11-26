@@ -526,6 +526,10 @@ function requirePayrollAccess(a, resource, method) {
   if (resource === "mynotes") return;
   // Bulk Edit History + Scenarios of a cycle: anyone who can open the Bulk Edit
   // screen may read them; saving needs the same rights as applying a bulk edit.
+  if (resource === "demo-import-test") {
+    access.requireScreen(a, "settings", "view");
+    return;
+  }
   if (resource === "bulkstate") {
     access.requireScreen(a, "bulkEditScreen", "view");
     if (method !== "GET") {
@@ -5903,7 +5907,14 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
   }
 
   let appraisalSheetSync = null;
-  if (screen === "fb" && succeeded > 0 && cycle) {
+  const isTemporaryDemoImport =
+    screen === "fb" &&
+    records.some((input) =>
+      String(input?.remarks || "").startsWith("TEMP_IMPORT_TEST:"),
+    ) &&
+    String(body.fileName || "").includes("TEMP_IMPORT_TEST_");
+
+  if (screen === "fb" && succeeded > 0 && cycle && !isTemporaryDemoImport) {
     try {
       // Uploading feedback after sheet generation must update the already
       // generated rows immediately; generation is not required to be repeated.
@@ -6900,6 +6911,345 @@ async function handleBulkState(req, res, identity, tables) {
   });
 }
 
+/* ===== TEMPORARY DEMO IMPORT TEST START =====
+   Isolated test-data preparation and cleanup for Payroll / Feedback imports.
+   Do not modify the normal upload routes when removing this temporary feature.
+   Demo rows are only created by the normal upload screens; this endpoint only
+   prepares files and later deletes rows carrying this exact random marker.
+*/
+async function handleDemoImportTest(res, tables, body, actor = "") {
+  const action = String(body.action || "").trim().toLowerCase();
+  if (action === "prepare") {
+    const [cycleRows, employeeRows, payrollRows, feedbackRows, sheetRows] =
+      await Promise.all([
+        getAllRows(tables.cycles),
+        getAllRows(tables.employeeMaster),
+        getAllRows(tables.payroll),
+        getAllRows(tables.feedback),
+        getAllRows(tables.appraisalSheet),
+      ]);
+
+    const cycle = cycleRows
+      .map(normalizeCycle)
+      .filter(
+        (item) =>
+          String(item.status || "").toLowerCase() === "active" &&
+          !item.archived &&
+          !item.hidden,
+      )
+      .sort((a, b) => {
+        const rank = (value) =>
+          ({ Annual: 0, "Mid-Year": 1, Exceptional: 2, "New Joiner": 3 })[
+            value
+          ] ?? 4;
+        return (
+          rank(a.type) - rank(b.type) ||
+          String(b.id).localeCompare(String(a.id), undefined, {
+            numeric: true,
+          })
+        );
+      })[0];
+
+    if (!cycle) {
+      throw new ApiError(
+        "No Active appraisal cycle is available for the demo import test.",
+        409,
+      );
+    }
+
+    const refText = (value) => {
+      if (value && typeof value === "object") {
+        return String(
+          value.ROWID ??
+            value.rowid ??
+            value.id ??
+            value.ID ??
+            value.value ??
+            value.emp_id ??
+            value.employee_id ??
+            value.cycle_name ??
+            value.appraisal_cycle_name ??
+            "",
+        ).trim();
+      }
+      return String(value ?? "").trim();
+    };
+    const masterByEmpId = new Map(
+      employeeRows.map((row) => [
+        String(row.emp_id || row.employee_id || row.emp_code || "")
+          .trim()
+          .toLowerCase(),
+        row,
+      ]),
+    );
+    const masterByRowId = new Map(
+      employeeRows.map((row) => [
+        refText(row.ROWID ?? row.rowid ?? row.id),
+        row,
+      ]),
+    );
+    const employeeKey = (value) => {
+      const raw = refText(value);
+      const master =
+        masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
+      return master
+        ? String(
+            master.emp_id || master.employee_id || master.emp_code || "",
+          )
+            .trim()
+            .toLowerCase()
+        : raw.toLowerCase();
+    };
+    const cycleKey = (value) => {
+      const raw = refText(value);
+      const match =
+        String(cycle.id) === raw ||
+        String(cycle.name).trim().toLowerCase() === raw.toLowerCase();
+      return match ? String(cycle.id) : raw.toLowerCase();
+    };
+    const pairSet = (rows, employeeFields, cycleFields) => {
+      const set = new Set();
+      rows.forEach((row) => {
+        const employeeValue = employeeFields
+          .map((key) => row[key])
+          .find((value) => value !== undefined && value !== null && value !== "");
+        const cycleValue = cycleFields
+          .map((key) => row[key])
+          .find((value) => value !== undefined && value !== null && value !== "");
+        if (!employeeValue || !cycleValue) return;
+        set.add(employeeKey(employeeValue) + "|" + cycleKey(cycleValue));
+      });
+      return set;
+    };
+    const cycleFields = [
+      "appraisal_cycle_name",
+      "appraisal_cycle_id",
+      "cycle_id",
+      "cycle_name",
+      "appraisal_year",
+    ];
+    const payrollPairs = pairSet(payrollRows, ["emp_id", "emp_ID"], cycleFields);
+    const feedbackPairs = pairSet(
+      feedbackRows,
+      ["emp_ID", "emp_id"],
+      cycleFields,
+    );
+    const sheetPairs = pairSet(
+      sheetRows,
+      ["emp_id", "emp_master_row_id", "employee_id"],
+      ["cycle_id", "appraisal_cycle_id", "appraisal_cycle_name"],
+    );
+
+    const activeEmployees = employeeRows
+      .filter((row) => {
+        const empId = String(
+          row.emp_id || row.employee_id || row.emp_code || "",
+        ).trim();
+        const status = String(row.emp_status || row.status || "Active")
+          .trim()
+          .toLowerCase();
+        return empId && status === "active";
+      })
+      .sort((a, b) =>
+        String(a.emp_id || "").localeCompare(String(b.emp_id || "")),
+      );
+    const payrollEmployee = activeEmployees.find((row) => {
+      const key =
+        String(row.emp_id || row.employee_id || row.emp_code || "")
+          .trim()
+          .toLowerCase() +
+        "|" +
+        String(cycle.id);
+      return !payrollPairs.has(key) && !sheetPairs.has(key);
+    });
+    const feedbackEmployee = activeEmployees.find((row) => {
+      const key =
+        String(row.emp_id || row.employee_id || row.emp_code || "")
+          .trim()
+          .toLowerCase() +
+        "|" +
+        String(cycle.id);
+      return !feedbackPairs.has(key) && !sheetPairs.has(key);
+    });
+
+    if (!payrollEmployee || !feedbackEmployee) {
+      throw new ApiError(
+        "Safe demo data could not be prepared. The Active cycle has no unused Employee ID + Cycle combination for " +
+          [
+            !payrollEmployee ? "Payroll" : "",
+            !feedbackEmployee ? "Feedback & Rating" : "",
+          ]
+            .filter(Boolean)
+            .join(" and ") +
+          ". No existing records were changed. Use a test employee that has no record in the selected cycle, then try again.",
+        409,
+      );
+    }
+
+    const crypto = require("crypto");
+    const token = crypto.randomBytes(12).toString("hex");
+    const marker = "TEMP_IMPORT_TEST:" + token;
+    const yearMatch = String(cycle.name || "").match(/20\d{2}/);
+    const fyYear = yearMatch ? Number(yearMatch[0]) : new Date().getFullYear();
+    const effectiveDate = /^\d{4}-\d{2}-\d{2}/.test(
+      String(cycle.effective || ""),
+    )
+      ? String(cycle.effective).slice(0, 10)
+      : fyYear + "-04-01";
+    const lastAppraisalDate = String(fyYear - 1) + "-04-01";
+    const employeeId = (row) =>
+      String(row.emp_id || row.employee_id || row.emp_code || "").trim();
+    const employeeName = (row) =>
+      String(row.emp_name || row.name || row.employee_name || "").trim();
+    const numberOr = (value, fallback) => {
+      const number = Number(String(value ?? "").replace(/,/g, "").trim());
+      return Number.isFinite(number) && number > 0 ? number : fallback;
+    };
+
+    const payrollBase = numberOr(
+      payrollEmployee.current_salary ||
+        payrollEmployee.current_annual_base_pay ||
+        payrollEmployee.base_pay,
+      600000,
+    );
+    const payrollRowsForFile = [
+      {
+        "Employee ID": employeeId(payrollEmployee),
+        "Employee Name": employeeName(payrollEmployee),
+        "Appraisal Cycle Name": cycle.name,
+        "FY Year": String(fyYear),
+        "Current Annual Base Pay": payrollBase,
+        "Joining Bonus": 0,
+        "Performance Bonus": 30000,
+        "Retention Bonus": 15000,
+        "Hike%": 5,
+        "Hike Amount": Math.round(payrollBase * 0.05),
+        "Total CTC with Rewards": payrollBase + 45000,
+        "Total Reward Hike Amount": Math.round(payrollBase * 0.05),
+        "Total Reward Hike%": 5,
+        "Target Performance Bonus for Next Year": 40000,
+        "Target PB Criteria": marker,
+        "Total Bonus": 45000,
+        "New Base Pay": Math.round(payrollBase * 1.05),
+        "RB to be paid": 5000,
+        "Month(RB)": "May",
+        "PB to be paid": 10000,
+        "Month(PB)": "May",
+        "TB to be paid": 2500,
+        "Month(TB)": "May",
+      },
+    ];
+    const feedbackRowsForFile = [
+      {
+        "Employee ID": employeeId(feedbackEmployee),
+        "Employee Name": employeeName(feedbackEmployee),
+        Designation: String(feedbackEmployee.designation || ""),
+        Department: String(feedbackEmployee.department || ""),
+        Band: String(feedbackEmployee.band || ""),
+        "Last Appraisal Date": lastAppraisalDate,
+        "RR%": 85.5,
+        "Gross Margin": 42.5,
+        "Manager Feedback": "Temporary import test - manager feedback sample",
+        "Manager Rating": 4.5,
+        "Client Manager Feedback":
+          "Temporary import test - client manager feedback sample",
+        "Client Feedback": "Temporary import test - client feedback sample",
+        "Client Rating": "4.5",
+        "Interview Count": 3,
+        "At Risk": "No",
+        "New Title": "",
+        Remarks: marker,
+        "Appraisal Cycle": cycle.name,
+        "Effective Date": effectiveDate,
+        "Cost Center/Client": String(feedbackEmployee.cost_center || ""),
+        "Client Manager": String(feedbackEmployee.client_manager || ""),
+        "Comp Manager": String(feedbackEmployee.comp_manager || ""),
+        "Tech-ED": String(
+          feedbackEmployee.appraiser_tech_ed ||
+            feedbackEmployee.tech_ed ||
+            "",
+        ),
+        "Eligible for Promotion": "No",
+        "FY Year": fyYear,
+      },
+    ];
+
+    return sendJson(res, 200, {
+      success: true,
+      data: {
+        token,
+        marker,
+        cycleId: cycle.id,
+        cycleName: cycle.name,
+        payrollFileName: "TEMP_IMPORT_TEST_Payroll_" + token + ".xlsx",
+        feedbackFileName: "TEMP_IMPORT_TEST_Feedback_" + token + ".xlsx",
+        payrollRows: payrollRowsForFile,
+        feedbackRows: feedbackRowsForFile,
+        message:
+          "Demo files prepared. Import them only through the matching Master page. Do not generate the Appraisal Sheet before cleanup.",
+      },
+    });
+  }
+
+  if (action === "cleanup") {
+    const token = String(body.token || "").trim().toLowerCase();
+    if (!/^[a-f0-9]{24}$/.test(token)) {
+      throw new ApiError("A valid demo test token is required.");
+    }
+    const marker = "TEMP_IMPORT_TEST:" + token;
+    const [payrollRows, feedbackRows, auditRows] = await Promise.all([
+      getAllRows(tables.payroll),
+      getAllRows(tables.feedback),
+      getAllRows(tables.audit),
+    ]);
+    const payrollMatches = payrollRows.filter(
+      (row) => String(row.target_pb_criteria || "").trim() === marker,
+    );
+    const feedbackMatches = feedbackRows.filter(
+      (row) => String(row.remarks || "").trim() === marker,
+    );
+    const auditMatches = auditRows.filter((row) => {
+      if (!["payroll_upload", "feedback_upload"].includes(String(row.source || "")))
+        return false;
+      const details = auditDetails(row);
+      return String(details.fileName || "").includes(token);
+    });
+
+    let deletedPayroll = 0;
+    let deletedFeedback = 0;
+    let deletedAudit = 0;
+    for (let index = 0; index < payrollMatches.length; index += 100) {
+      const batch = payrollMatches.slice(index, index + 100);
+      await tables.payroll.deleteRows(batch.map(rowId));
+      deletedPayroll += batch.length;
+    }
+    for (let index = 0; index < feedbackMatches.length; index += 100) {
+      const batch = feedbackMatches.slice(index, index + 100);
+      await tables.feedback.deleteRows(batch.map(rowId));
+      deletedFeedback += batch.length;
+    }
+    for (let index = 0; index < auditMatches.length; index += 100) {
+      const batch = auditMatches.slice(index, index + 100);
+      await tables.audit.deleteRows(batch.map(rowId));
+      deletedAudit += batch.length;
+    }
+    return sendJson(res, 200, {
+      success: true,
+      data: {
+        deletedPayroll,
+        deletedFeedback,
+        deletedAudit,
+        marker,
+        message:
+          "Only rows carrying this exact temporary marker and their matching upload audit entries were deleted.",
+      },
+    });
+  }
+
+  throw new ApiError("Unknown demo import test action.");
+}
+/* ===== TEMPORARY DEMO IMPORT TEST END ===== */
+
 async function routeRequest(req, res, identity, resource, a) {
   const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
@@ -6955,6 +7305,15 @@ async function routeRequest(req, res, identity, resource, a) {
   const tables = await requirePayrollTables(adminApp);
   const query = getQuery(req);
   const actor = identity.name || identity.email;
+
+  /* TEMPORARY DEMO IMPORT TEST ROUTE */
+  if (resource === "demo-import-test" && req.method === "POST") {
+    if (!a || a.role !== "hr") {
+      throw new ApiError("Only HR Admin can run the temporary import test.", 403);
+    }
+    const body = await readBody(req);
+    return handleDemoImportTest(res, tables, body, actor);
+  }
 
   if (resource === "mynotes") {
     return handleMyNotes(req, res, identity, tables);
