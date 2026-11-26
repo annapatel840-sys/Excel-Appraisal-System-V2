@@ -603,7 +603,7 @@
 // }
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Plus, Settings2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Plus, Settings2, X } from "lucide-react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { registerLocations } from "@/lib/location-store";
 import { useScreenFields } from "@/lib/access-store";
@@ -717,12 +717,17 @@ export function LocationMasterControl({
   // Opt-in (Access screen only): with showAllLocations={false}, do not pick the first location by
   // itself; show "Select location" until the user chooses one. Default false = unchanged behaviour.
   allowEmpty = false,
+  // Opt-in (top-bar Location only): { options, value, onChange }. The selected location then shows
+  // a right arrow instead of the tick and opens a Cycle Type list beside the menu. Default null =
+  // every other Location dropdown is unchanged.
+  cycleTypeMenu = null,
 }) {
   // Access -> Fields -> Location Master: Hidden fields are not shown, Read only ones are locked.
   const lf = useScreenFields("locationMaster");
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menu, setMenu] = useState(false);
+  const [cycleOpen, setCycleOpen] = useState(false);
   const dropdownRef = useRef(null);
   const [modal, setModal] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -1123,7 +1128,10 @@ export function LocationMasterControl({
               aria-label={ariaLabel}
               aria-expanded={menu}
               disabled={loading}
-              onClick={() => setMenu((v) => !v)}
+              onClick={() => {
+                if (!menu && cycleTypeMenu) setCycleOpen(!allLocationsSelected);
+                setMenu((v) => !v);
+              }}
             >
               <span>
                 {allLocationsSelected
@@ -1131,6 +1139,7 @@ export function LocationMasterControl({
                     ? "Select location"
                     : "All Locations"
                   : locations.find(isSelected)?.location_name || value || "Select location"}
+                {cycleTypeMenu && !allLocationsSelected && ` · ${cycleTypeMenu.value}`}
                 {showCurrencyCode &&
                   !allLocationsSelected &&
                   (() => {
@@ -1166,11 +1175,35 @@ export function LocationMasterControl({
                     aria-selected={isSelected(loc)}
                     onClick={() => {
                       onChange?.(loc[valueKey] || loc.location_name);
-                      setMenu(false);
+                      if (cycleTypeMenu) {
+                        setCycleOpen(true); // keep the menu open to pick the Cycle Type
+                      } else {
+                        setMenu(false);
+                      }
                     }}
                   >
                     <span>{loc.location_name}</span>
-                    {isSelected(loc) && <Check size={14} />}
+                    {isSelected(loc) && (cycleTypeMenu ? <ChevronRight size={14} /> : <Check size={14} />)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {menu && cycleOpen && cycleTypeMenu && !allLocationsSelected && (
+              <div className="em-location-menu em-location-submenu" role="listbox" aria-label="Cycle Type">
+                <div className="em-location-submenu-title">Cycle Type</div>
+                {cycleTypeMenu.options.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="option"
+                    aria-selected={cycleTypeMenu.value === type}
+                    onClick={() => {
+                      cycleTypeMenu.onChange(type);
+                      setMenu(false);
+                    }}
+                  >
+                    <span>{type}</span>
+                    {cycleTypeMenu.value === type && <Check size={14} />}
                   </button>
                 ))}
               </div>

@@ -447,7 +447,6 @@ import { useViewAs } from "@/lib/view-as-store";
 import { ProfileMenu } from "./ProfileMenu";
 import { ViewAsSwitcher } from "./ViewAsSwitcher";
 import { LocationSwitcher } from "./LocationSwitcher";
-import { CycleTypeSwitcher } from "./CycleTypeSwitcher";
 import { GlobalNotificationBell } from "@/components/appraisal/NotificationBell";
 
 const TECH_ED_PATHS = [
@@ -859,9 +858,6 @@ export function AppShell({ children, headerActions, notifications }) {
             </div>
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
               <LocationSwitcher isVertical={isVertical} />
-            </div>
-            <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
-              <CycleTypeSwitcher isVertical={isVertical} />
             </div>
             {notifications ?? <GlobalNotificationBell />}
             <ProfileMenu

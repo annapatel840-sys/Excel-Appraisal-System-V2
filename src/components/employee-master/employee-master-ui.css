@@ -257,8 +257,10 @@
 }
 /* Header Location switcher (beside "View as"): same size as the View as select. */
 .app-header-location .em-location-dropdown { position: relative; }
-.app-header-location .em-location-select.app-header-location-trigger { height: 28px; min-width: 120px; max-width: 170px; padding: 0 8px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
+.app-header-location .em-location-select.app-header-location-trigger { height: 28px; min-width: 120px; max-width: 230px; padding: 0 8px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
 .app-header-location .em-location-menu { z-index: 2000; }
+.em-location-menu.em-location-submenu { right: auto; left: calc(100% + 8px); min-width: 150px; }
+.em-location-submenu-title { padding: 4px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted-foreground, #64748b); }
 
 /* ---- Criteria panel: header with close, folded tab, no dead space ---- */
 .employee-master-page .em-eligibility-layout > .em-criteria-pane{border-radius:12px;padding:12px;gap:0}

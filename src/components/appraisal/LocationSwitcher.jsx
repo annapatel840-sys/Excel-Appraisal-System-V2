@@ -1,15 +1,18 @@
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { useSelectedLocation } from "@/lib/location-store";
+import { CYCLE_TYPES, useSelectedCycleType } from "@/lib/cycle-type-store";
 import { cn } from "@/lib/utils";
 
 /**
- * Top-bar location switcher: Location [dropdown], shown beside "View as".
+ * Top-bar location switcher: Location [dropdown], shown beside "View as". The Cycle Type is
+ * chosen inside this same dropdown (arrow next to the selected location).
  * The choice is the same system location the screens already follow
  * (location-store), so changing it here updates every screen.
  * It only filters what is shown; it does not change who may see what.
  */
 export function LocationSwitcher({ isVertical }) {
   const [selectedLocation, setSelectedLocation] = useSelectedLocation();
+  const [selectedCycleType, setSelectedCycleType] = useSelectedCycleType();
 
   return (
     <div
@@ -28,9 +31,14 @@ export function LocationSwitcher({ isVertical }) {
         <LocationMasterControl
           value={selectedLocation}
           onChange={setSelectedLocation}
-          ariaLabel="Location shown on every screen"
+          ariaLabel="Location and Cycle Type shown on every screen"
           showAllLocations={false}
           triggerClassName="app-header-location-trigger"
+          cycleTypeMenu={{
+            options: CYCLE_TYPES.filter((type) => type !== "New Joiner"),
+            value: selectedCycleType,
+            onChange: setSelectedCycleType,
+          }}
         />
       </div>
     </div>
