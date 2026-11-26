@@ -2501,7 +2501,8 @@ import { useBudget } from "@/lib/budget-store";
 //       cycleId: eligibilityCycleId,
 //     });
 //     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
-//     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+//     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
 //     setEligibilityEmployees(employees);
 //     setEligibilityCriteriaApplied(criteriaApplied);
 //     setEligibilityShowingSnapshot(false);
