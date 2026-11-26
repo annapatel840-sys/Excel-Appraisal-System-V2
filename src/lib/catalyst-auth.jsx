@@ -102,9 +102,35 @@ export function CatalystAuthGate({
       // mapping (employee ID and home location), rather than treating the raw
       // Catalyst authentication profile as the complete app session.
       try {
-        const session = await payrollCycleRequest("session");
+        const sessionResult = await payrollCycleRequest("session");
         if (!mounted) return;
-        // Use the server-resolved Employee Master location and employee ID.
+        const profile = result?.content || {};
+        // The session endpoint is deliberately lightweight (no Employee_Master
+        // query). Prefer its server-resolved identity, and use Catalyst profile
+        // fields only as fallbacks when Catalyst actually supplies them.
+        const session = {
+          ...sessionResult,
+          user_id: sessionResult?.user_id || profile.user_id || "",
+          name:
+            sessionResult?.name ||
+            profile.display_name ||
+            [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+            profile.email_id ||
+            "User",
+          email: sessionResult?.email || profile.email_id || profile.email || "",
+          role:
+            sessionResult?.role ||
+            profile.role_details?.role_name ||
+            profile.role_name ||
+            "",
+          empId:
+            sessionResult?.empId ||
+            profile.empId ||
+            profile.emp_id ||
+            "",
+          location: sessionResult?.location || profile.location || "",
+          role_details: profile.role_details || {},
+        };
         applyHomeLocationOnSignIn(session.email || session.id, session.location);
         try {
           onSessionReady?.();
