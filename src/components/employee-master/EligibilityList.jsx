@@ -905,6 +905,7 @@ export function EligibilityList({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
+  const [exceptionalAddOpen, setExceptionalAddOpen] = useState(false);
   const [delegationPrompt, setDelegationPrompt] = useState(null);
   // Tab-bar slot (right side): Add an Employee on the list, Apply / Edit / Cancel on the criteria.
   const [actionsHost, setActionsHost] = useState(null);
