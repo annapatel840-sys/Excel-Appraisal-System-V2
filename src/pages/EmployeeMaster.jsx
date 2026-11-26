@@ -6361,9 +6361,9 @@ export function EmployeeMaster() {
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
-    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
+    const reloadCriteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
-    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityCriteriaApplied(reloadCriteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
     setEligibilityShowingSnapshot(false);
     eligibilityFreshAppliedRef.current = true;
@@ -6374,7 +6374,7 @@ export function EmployeeMaster() {
       cycleName: String(
         reloaded?.cycle?.cycleName || currentAppraisalCycleName || "",
       ),
-      criteriaApplied,
+      criteriaApplied: reloadCriteriaApplied,
     });
   };
 
@@ -6394,9 +6394,9 @@ export function EmployeeMaster() {
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
     const masterEmployees = Array.isArray(masters) ? masters : [];
     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
-    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
+    const changeListCriteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
-    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityCriteriaApplied(changeListCriteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
     setEligibilityMasterEmployees(masterEmployees);
     setEligibilityShowingSnapshot(false);
@@ -6408,7 +6408,7 @@ export function EmployeeMaster() {
       cycleName: String(
         reloaded?.cycle?.cycleName || currentAppraisalCycleName || "",
       ),
-      criteriaApplied,
+      criteriaApplied: changeListCriteriaApplied,
     });
   };
 
