@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchAllEmployeeMasterEmployees } from "@/lib/employee-master-data";
 import { Search, X } from "lucide-react";
 
 /** Dedicated employee picker for Exceptional cycles; Annual's add flow is unchanged. */
@@ -7,14 +8,32 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [allMasterEmployees, setAllMasterEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEmployeesLoading(true);
+    fetchAllEmployeeMasterEmployees({ status: "active" })
+      .then((rows) => {
+        if (!cancelled) setAllMasterEmployees(Array.isArray(rows) ? rows : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.message || "Unable to load active employees from Employee Master.");
+      })
+      .finally(() => {
+        if (!cancelled) setEmployeesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const employees = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return masterEmployees
+    return allMasterEmployees
       .filter((employee) => String(employee.status || "").trim().toLowerCase() === "active")
       .filter((employee) => !term || `${employee.empId} ${employee.name} ${employee.designation || ""}`.toLowerCase().includes(term))
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-  }, [masterEmployees, query]);
+  }, [allMasterEmployees, query]);
 
   const submit = async () => {
     if (!selectedId) {
@@ -46,7 +65,9 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee ID or name"/>
           </div>
           <div style={{ maxHeight: 380, overflowY: "auto", border: "1px solid #d9e1ea", borderRadius: 8 }}>
-            {employees.length ? employees.map((employee) => {
+            {employeesLoading ? (
+              <div className="em-empty">Loading active employees from Employee Master...</div>
+            ) : employees.length ? employees.map((employee) => {
               const active = String(employee.status || "").trim().toLowerCase() === "active";
               const alreadyAdded = listedIds.has(employee.empId);
               const disabled = !active || alreadyAdded;
@@ -57,13 +78,13 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
                   <span>{alreadyAdded ? "Already added" : !active ? "Inactive" : selectedId === employee.empId ? "Selected" : "Select"}</span>
                 </button>
               );
-            }) : <div className="em-empty">No employees match this search.</div>}
+            }) : <div className="em-empty">{allMasterEmployees.length ? "No active employees match this search." : "No active employees found in Employee Master."}</div>}
           </div>
           {error && <div className="em-err" style={{ marginTop: 10 }}>{error}</div>}
         </div>
         <div className="em-modal-footer">
           <button type="button" className="em-btn em-btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || !selectedId}>{busy ? "Adding..." : "Add Selected Employee"}</button>
+          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || employeesLoading || !selectedId}>{busy ? "Adding..." : "Add Selected Employee"}</button>
         </div>
       </div>
     </div>
