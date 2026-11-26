@@ -1138,7 +1138,7 @@ export function FeedbackRatingMasterPage({
               <strong style={{ color: "#102A43", fontSize: 15 }}>Import Feedback &amp; Rating</strong>
               <button className="btn" type="button" onClick={() => setImportOpen(false)}>Close</button>
             </div>
-            <UploadPage key="feedback-master-import" initialScreen="fb" />
+            <UploadPage key="feedback-master-import" initialScreen="fb" initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""} />
           </section>
         </div>
       )}
