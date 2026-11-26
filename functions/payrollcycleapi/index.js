@@ -3742,11 +3742,43 @@ undefined
     if (empId) payrollEmployeesWithHistory.add(empId);
   });
 
+  // Exceptional cycles use the same-year Annual Appraisal_Sheet as their
+  // resolved source of truth. Require a matching Annual row with a usable
+  // current base-pay value; merely finding a row must not bypass compensation
+  // validation when that row is incomplete.
+  const missingExceptionalAnnualSourceEmployees = exceptionalCycle
+    ? eligibleRows.filter((employee) => {
+        const annualRow = annualSheetForEmployee(employee);
+        if (!annualRow) return true;
+        const basePay = fieldValue(
+          annualRow,
+          "current_annual_base_pay",
+          "base_pay",
+          "current_base_pay",
+        );
+        const amount = Number(String(basePay ?? "").replace(/[,₹\\s]/g, "").trim());
+        return !Number.isFinite(amount) || amount <= 0;
+      })
+    : [];
+  if (missingExceptionalAnnualSourceEmployees.length) {
+    const labels = missingExceptionalAnnualSourceEmployees.map((employee) => {
+      const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+      const empId = String(employee.empId || employee.emp_id || "").trim();
+      const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId.toLowerCase()) || {};
+      const id = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || empId);
+      const name = String(fieldValue(master, "emp_name", "name") || employee.name || "").trim();
+      return name ? `${id} - ${name}` : id;
+    });
+    throw new ApiError(
+      `Annual source data is missing or has no valid Current Annual Base Pay for ${labels.length} eligible employee(s) in ${cycle.name}. Missing employees: ${labels.join(", ")}. Complete the same-year Annual Appraisal Sheet first, then generate the Exceptional Appraisal Sheet.`,
+      409,
+    );
+  }
+
   // Validate each eligible employee, not the roster as a whole. A single
   // employee's payroll row must never make the entire cycle look complete.
-  // Employees who joined in the current cycle year are new joiners and do not
-  // need prior-cycle payroll history; their current compensation is sourced
-  // from Employee_Master / same-year New Joiner payroll when available.
+  // Employees who joined in the current cycle year do not need prior-cycle
+  // payroll history; Exceptional instead relies on the Annual sheet above.
   const missingPayrollEmployees = eligibleRows.filter((employee) => {
     const masterId = referenceText(
       employee.employeeMasterRowId || "",
@@ -4650,9 +4682,19 @@ undefined
         "total_bonus",
         "new_base_pay",
         "target_pb_allocated_for_may",
+        "target_performance_bonus_for_next_year",
+        "target_performance_bonus_next_year",
         "target_pb_criteria",
+        "total_reward_hike_pct",
+        "rb_to_be_paid",
+        "month_rb",
+        "pb_to_be_paid",
+        "month_pb",
+        "tb_to_be_paid",
+        "month_tb",
         "previous_year_CTC_with_rewards",
         "previous_appraisal_total_ctc_with_rewards",
+        "manager_feedback",
         "manager_rating",
         "rr_percent",
         "rr",
