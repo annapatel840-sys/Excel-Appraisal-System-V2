@@ -3532,7 +3532,21 @@ async function generateAppraisalSheet(
   const canonicalCycleName = cycleNameWithoutLocation(cycle.name)
     .trim()
     .toLowerCase();
-  const matchingSharedSourceCycles = cycleLocationKey(cycle)
+  const exceptionalCycle = cycleProcessOf(cycle) === "Exceptional";
+  // Exceptional cycles deliberately reuse the Annual source for the same
+  // year and location. They never require or create a separate Payroll or
+  // Feedback upload. Other cycle types retain the existing shared-source rule.
+  const matchingAnnualSourceCycles = exceptionalCycle
+    ? normalizedCycles.filter(
+        (item) =>
+          String(item.id) !== String(cycle.id) &&
+          isAnnualCycle(item) &&
+          cycleYear(item) === currentYear &&
+          cycleLocationKey(item) === cycleLocationKey(cycle) &&
+          isAvailableSourceCycle(item),
+      )
+    : [];
+  const matchingSharedSourceCycles = !exceptionalCycle && cycleLocationKey(cycle)
     ? normalizedCycles.filter(
         (item) =>
           String(item.id) !== String(cycle.id) &&
@@ -3544,11 +3558,11 @@ async function generateAppraisalSheet(
           cycleTypeOf(item.name) === cycleTypeOf(cycle.name),
       )
     : [];
-  // Payroll uploads are table history, not lifecycle-owned data. A matching
-  // unscoped Annual cycle can supply the same-year upload while Upcoming,
-  // Active, Closed, or Archived; only cancelled cycles are excluded.
+  // Payroll uploads are table history, not lifecycle-owned data. Exceptional
+  // selects the same-location same-year Annual cycle; normal cycles preserve
+  // their existing same-type shared-source behavior.
   const sourceCycle =
-    matchingSharedSourceCycles.slice().sort((a, b) => {
+    (exceptionalCycle ? matchingAnnualSourceCycles : matchingSharedSourceCycles).slice().sort((a, b) => {
       const statusRank = (item) =>
         isArchivedCycle(item)
           ? 3
@@ -3647,6 +3661,10 @@ async function generateAppraisalSheet(
     if (!item || isCancelledPayrollCycle(item)) return false;
     if (String(item.id) === String(cycle.id)) return true;
     if (sourceCycle && String(item.id) === String(sourceCycle.id)) return true;
+    // Exceptional must read only its same-year Annual source (plus any
+    // already-created rows on the Exceptional cycle itself), never unrelated
+    // older Annual or New Joiner history.
+    if (exceptionalCycle) return false;
     // Payroll_Data is historical source data. Do not hide valid employee
     // payroll because its source cycle is still Upcoming, Active, or Closed.
     if (isNewJoinerCycle(item))
@@ -7078,6 +7096,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
+    const queryCycleType = String(query.cycleType || query.cycle_type || "").trim().toLowerCase();
     const requestedLocation = String(query.location || "")
       .trim()
       .toLowerCase();
@@ -7143,6 +7162,9 @@ async function routeRequest(req, res, identity, resource, a) {
     const matchesRequestedLocation = cycleMatchesRequestedLocation;
     // A supplied cycle ID is authoritative. All Locations selects its own
     // Active global cycle; it is not a roll-up of the location-specific cycles.
+    const typedCycles = queryCycleType
+      ? cycles.filter((item) => cycleProcessOf(item).trim().toLowerCase() === queryCycleType)
+      : cycles;
     let targetCycles = [];
     if (queryCycleId) {
       const exact = cycles.find(
@@ -7150,11 +7172,11 @@ async function routeRequest(req, res, identity, resource, a) {
       );
       if (exact) targetCycles = [exact];
     } else {
-      const active = cycles.find(
+      const active = typedCycles.find(
         (item) =>
           isAvailableActiveCycle(item) && matchesRequestedLocation(item),
       );
-      const closed = latestClosed(cycles.filter(matchesRequestedLocation));
+      const closed = latestClosed(typedCycles.filter(matchesRequestedLocation));
       const exact = active || closed;
       if (exact) targetCycles = [exact];
     }
@@ -7163,7 +7185,7 @@ async function routeRequest(req, res, identity, resource, a) {
     // step from the Upcoming cycle. Surface the same payroll prerequisite
     // instead of returning an apparently empty/healthy list.
     if (!cycle) {
-      const upcoming = cycles.find(
+      const upcoming = typedCycles.find(
         (item) =>
           String(item.status || "")
             .trim()
@@ -7245,6 +7267,7 @@ async function routeRequest(req, res, identity, resource, a) {
     // display an empty list as if it were ready when payroll is missing.
     if (
       String(cycle.status || "").toLowerCase() === "active" &&
+      cycleProcessOf(cycle) !== "Exceptional" &&
       !cycle.archived &&
       !(await eligibilityCriteriaWasApplied(
         tables,
@@ -7274,6 +7297,7 @@ async function routeRequest(req, res, identity, resource, a) {
           meta: {
             cycleId: cycle ? cycle.id : "",
             cycleName: cycle ? cycle.name : "",
+            type: cycle ? cycleProcessOf(cycle) : "",
             total: records.length,
             criteriaApplied,
             criteria: criteriaMeta.criteria,
