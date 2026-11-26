@@ -9295,6 +9295,9 @@ module.exports = async function payrollCycleApi(req, res) {
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     if (resource === "session")
       return await routeRequest(req, res, identity, resource, a);
+    /* TEMPORARY DEMO IMPORT TEST DISPATCH */
+    if (resource === "demo-import-test" && req.method === "POST")
+      return await routeRequest(req, res, identity, resource, a);
     if (myNotesCall) return await routeRequest(req, res, identity, resource, a);
     if (
       resource === "bulkstate" &&
