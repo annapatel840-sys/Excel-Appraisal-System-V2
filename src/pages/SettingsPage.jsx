@@ -129,7 +129,7 @@ export function SettingsPage() {
           </div>
           {demoToken && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Demo cleanup token is stored for this browser session. Cleanup remains available until the matching demo rows are deleted.
+              Demo cleanup token is saved in this browser until the matching demo rows are deleted.
             </p>
           )}
           {demoMessage && (
