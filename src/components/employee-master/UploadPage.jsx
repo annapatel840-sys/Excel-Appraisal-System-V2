@@ -1592,7 +1592,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
 
   if (modalOnly) {
     return (
-      <div className="up-modal-shell" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose?.(); }}>
+      <div className="up up-modal-shell" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose?.(); }}>
         <style>{CSS + `
           .up-modal-shell{position:fixed;inset:0;z-index:30000;background:rgba(15,25,40,.55);display:flex;align-items:center;justify-content:center;padding:18px}
           .up-modal{width:min(1050px,96vw);max-height:92vh;background:#fff;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden}
@@ -1600,6 +1600,17 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
           .up-modal-body{padding:18px;overflow:auto;min-height:0}
           .up-modal-foot{padding:12px 18px;border-top:1px solid #e5e7eb;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px}
           .up-modal .up-mapbox{margin-top:0}.up-modal .up-mapbox .mgrid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}
+          .up-modal{color:#111827!important;background:#fff!important}
+          .up-modal-head{color:#fff!important;background:#173b63!important}
+          .up-modal-head button.up-btn{background:#fff!important;color:#173b63!important;border:1px solid #dbe4ef!important;opacity:1!important}
+          .up-modal-body,.up-modal-body *{visibility:visible}
+          .up-modal-body{color:#111827!important}
+          .up-modal-body .up-lbl,.up-modal-body .up-callout .b,.up-modal-body .mf,.up-modal-body .up-drop b{color:#102a43}
+          .up-modal-body select,.up-modal-body input{color:#111827!important;background:#fff!important}
+          .up-modal-foot button{min-height:38px;color:#102a43!important;background:#fff!important;border:1px solid #cbd5e1!important;opacity:1}
+          .up-modal-foot button.up-btn.main{color:#fff!important;background:#245fce!important;border-color:#245fce!important}
+          .up-modal-foot button:disabled{opacity:.5!important}
+          .up-modal-foot button:hover:not(:disabled){filter:brightness(.96)}
         `}</style>
         <section className="up-modal" role="dialog" aria-modal="true" aria-label={`Import ${def?.label || "Data"}`}>
           <header className="up-modal-head"><span>Import {def?.label || "Data"}</span><button type="button" className="up-btn" onClick={onClose} disabled={!!busy}>× Close</button></header>
