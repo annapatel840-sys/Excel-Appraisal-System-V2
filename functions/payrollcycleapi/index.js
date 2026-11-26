@@ -3568,14 +3568,27 @@ async function generateAppraisalSheet(
   // their existing same-type shared-source behavior.
   const sourceCycle =
     (exceptionalCycle ? matchingAnnualSourceCycles : matchingSharedSourceCycles).slice().sort((a, b) => {
-      const statusRank = (item) =>
-        isArchivedCycle(item)
+      const statusRank = (item) => {
+        const status = String(item.status || "").trim().toLowerCase();
+        // Exceptional must mirror the active Annual cycle for this year and
+        // location. Prefer it over an archived duplicate if both exist.
+        if (exceptionalCycle) {
+          return status === "active"
+            ? 3
+            : isArchivedCycle(item)
+              ? 2
+              : isClosedSharedSourceCycle(item)
+                ? 1
+                : 0;
+        }
+        return isArchivedCycle(item)
           ? 3
           : isClosedSharedSourceCycle(item)
             ? 2
-            : String(item.status || "").toLowerCase() === "active"
+            : status === "active"
               ? 1
               : 0;
+      };
       return statusRank(b) - statusRank(a);
     })[0] || null;
   // Matching location cycles share the legacy source data. Keep the
