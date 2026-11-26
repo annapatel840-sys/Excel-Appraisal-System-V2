@@ -3548,6 +3548,9 @@ async function generateAppraisalSheet(
           isAnnualCycle(item) &&
           cycleYear(item) === currentYear &&
           cycleLocationKey(item) === cycleLocationKey(cycle) &&
+          String(item.status || "").trim().toLowerCase() === "active" &&
+          !item.archived &&
+          !item.hidden &&
           isAvailableSourceCycle(item),
       )
     : [];
