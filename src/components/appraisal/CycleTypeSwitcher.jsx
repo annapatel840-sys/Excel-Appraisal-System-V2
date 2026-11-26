@@ -1,35 +1,14 @@
-import { useEffect, useRef } from "react";
-import { CYCLE_TYPES, DEFAULT_CYCLE_TYPE, setSelectedCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
-import { useViewAs } from "@/lib/view-as-store";
+import { CYCLE_TYPES, useSelectedCycleType } from "@/lib/cycle-type-store";
 import { cn } from "@/lib/utils";
 
 /**
- * Top-bar Cycle Type switcher, shown beside "Location" only in the Tech-ED and
- * Comp Manager views. With the Location it decides which appraisal cycle the
- * Dashboard, Appraisal Sheet, Detailed Screen, Bulk Edit, Budget Distribution
- * and Delegation show. It only filters what is shown; it does not change who
- * may see what.
+ * Top-bar Cycle Type switcher, shown beside "Location" in every view (HR,
+ * Tech-ED and Comp Manager). With the Location it decides which appraisal
+ * cycle the screens show. It only filters what is shown; it does not change
+ * who may see what.
  */
 export function CycleTypeSwitcher({ isVertical }) {
   const [selectedType, setSelectedType] = useSelectedCycleType();
-  const { effectiveId } = useViewAs();
-  // Only the Tech-ED and Comp Manager views have a Cycle Type; HR does not.
-  const showSelector = effectiveId === "teched" || effectiveId === "compmanager";
-
-  // Moving from the Tech-ED / Comp Manager view back to HR clears the choice,
-  // so it never carries into the HR screens.
-  const previousView = useRef("");
-  useEffect(() => {
-    if (
-      (previousView.current === "teched" || previousView.current === "compmanager") &&
-      effectiveId === "hr"
-    ) {
-      setSelectedCycleType(DEFAULT_CYCLE_TYPE);
-    }
-    if (effectiveId) previousView.current = effectiveId;
-  }, [effectiveId]);
-
-  if (!showSelector) return null;
 
   return (
     <div
