@@ -11,6 +11,7 @@ export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
   const [draft, setDraft] = useState(settings);
+  // TEMPORARY IMPORT DEMO TEST START
   const [demoToken, setDemoToken] = useState("");
   const [demoBusy, setDemoBusy] = useState("");
   const [demoMessage, setDemoMessage] = useState("");
@@ -21,11 +22,13 @@ export function SettingsPage() {
       setDemoToken("");
     }
   }, []);
+  // TEMPORARY IMPORT DEMO TEST END
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const save = () => saveSettings(draft);
   const reset = () => { resetSettings(); setDraft(DEFAULT_SETTINGS); };
 
+  // TEMPORARY IMPORT DEMO TEST START
   const generateImportDemoFiles = async () => {
     setDemoBusy("prepare");
     setDemoMessage("");
@@ -90,6 +93,7 @@ export function SettingsPage() {
       setDemoBusy("");
     }
   };
+  // TEMPORARY IMPORT DEMO TEST END
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl space-y-4">
@@ -102,6 +106,7 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+        {/* TEMPORARY IMPORT DEMO TEST START */}
         <section className="rounded-lg border border-amber-300 bg-card p-4">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="size-4 text-amber-700" />
@@ -136,6 +141,7 @@ export function SettingsPage() {
             Important: import both files, verify the two Master tables, then click Delete Demo Data here. Do not generate the Appraisal Sheet before cleanup. This temporary section and endpoint must be removed after testing.
           </p>
         </section>
+        {/* TEMPORARY IMPORT DEMO TEST END */}
         <section className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-semibold">Navigation</h3>
           <p className="mt-1 text-xs text-muted-foreground">Select where the main project navigation should appear.</p>
