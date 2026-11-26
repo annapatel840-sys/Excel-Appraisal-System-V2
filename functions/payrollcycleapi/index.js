@@ -3809,15 +3809,24 @@ undefined
     ? eligibleRows.filter((employee) => {
         const annualRow = annualSheetForEmployee(employee);
         if (!annualRow) return true;
-        const basePay = fieldValue(
-          annualRow,
+        // Some existing Annual rows retain a zero/blank legacy
+        // current_annual_base_pay field while the resolved value is present
+        // in new_base_pay (or another supported base-pay alias). Do not stop
+        // at the first non-null field; select the first positive amount.
+        const basePay = [
           "current_annual_base_pay",
           "current_base_pay",
           "base_pay",
           "new_base_pay",
-        );
-        const amount = Number(String(basePay ?? "").replace(/[,₹\s]/g, "").trim());
-        return !Number.isFinite(amount) || amount <= 0;
+        ]
+          .map((field) => fieldValue(annualRow, field))
+          .find((value) => {
+            const amount = Number(
+              String(value ?? "").replace(/[,₹\s]/g, "").trim(),
+            );
+            return Number.isFinite(amount) && amount > 0;
+          });
+        return basePay === undefined;
       })
     : [];
   if (missingExceptionalAnnualSourceEmployees.length) {
@@ -4729,6 +4738,31 @@ undefined
     // values. This includes payroll-derived compensation fields and feedback /
     // rating values, without reading or requiring duplicate Exceptional uploads.
     if (exceptionalAnnualSheet) {
+      // Keep Exceptional's Current Annual Base Pay aligned with the valid
+      // resolved Annual value even when an old alias on that row is zero.
+      const resolvedAnnualBasePay = [
+        "current_annual_base_pay",
+        "current_base_pay",
+        "base_pay",
+        "new_base_pay",
+      ]
+        .map((field) => fieldValue(exceptionalAnnualSheet, field))
+        .find((value) => {
+          const amount = Number(
+            String(value ?? "").replace(/[,₹\s]/g, "").trim(),
+          );
+          return Number.isFinite(amount) && amount > 0;
+        });
+      const currentBasePayDestination = appraisalSheetColumnByLower
+        ? appraisalSheetColumnByLower.get("current_annual_base_pay")
+        : "current_annual_base_pay";
+      if (
+        resolvedAnnualBasePay !== undefined &&
+        (!appraisalSheetColumns || currentBasePayDestination)
+      ) {
+        payload[currentBasePayDestination || "current_annual_base_pay"] =
+          resolvedAnnualBasePay;
+      }
       const annualCarryForwardFields = [
         "current_annual_base_pay",
         "joining_bonus",
