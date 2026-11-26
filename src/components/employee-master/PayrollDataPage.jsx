@@ -553,16 +553,6 @@ export function PayrollDataPage() {
               <button
                 className="pd-menu-item"
                 type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setImportOpen(true);
-                }}
-              >
-                <span className="pd-menu-icon">↑</span>Import
-              </button>
-              <button
-                className="pd-menu-item"
-                type="button"
                 onClick={handleExport}
               >
                 <span className="pd-menu-icon">↧</span>Export to CSV
