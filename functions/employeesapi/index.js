@@ -4422,6 +4422,9 @@ async function getEmployees(req, res) {
     employeesForEnrichment,
     employeeMasterMap,
     {
+      // Pass the exact cycle selected by the Appraisal roster. Multiple
+      // cycle types (Annual + Exceptional) may be Active at one location.
+      cycleId: responseActiveCycle?.id || "",
       // A read of the Delegation screen must not create/update saved
       // Delegation rows. Only explicit Generate Delegation and assignment
       // save/approval actions may write this cycle's roster.
