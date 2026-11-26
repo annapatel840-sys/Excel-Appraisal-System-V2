@@ -2185,25 +2185,15 @@ export function DetailScreenPage({
                       : Number(employee.targetPBAllocatedForMay) || 0;
                     const vsLast = (live, prev) => (last ? live - prev : null);
                     // Red floor alert (value is still accepted): this year's PB / RB
-                    // below the "to be Paid" amount OR below last year's PB / RB.
-                    // A blank / 0 value nobody has typed is not flagged against
-                    // last year (same as the Appraisal Sheet).
-                    const prevPB = Number(last?.performanceBonus) || 0;
-                    const prevRB = Number(last?.retentionBonus) || 0;
-                    const pbTouched = livePB > 0 || isEdited("allocatedPBAmount");
-                    const rbTouched = liveRB > 0 || isEdited("newRB");
-                    const pbUsesPrev = pbTouched && prevPB > payFloors.pbFloor;
-                    const rbUsesPrev = rbTouched && prevRB > payFloors.rbFloor;
-                    const pbLimit = pbUsesPrev ? prevPB : payFloors.pbFloor;
-                    const rbLimit = rbUsesPrev ? prevRB : payFloors.rbFloor;
+                    // below the "PB / RB to be Paid" amount. Same as the Appraisal
+                    // Sheet: the limit AND the figure in the message are the
+                    // "to be Paid" amount, never last year's PB / RB.
+                    const pbLimit = payFloors.pbFloor;
+                    const rbLimit = payFloors.rbFloor;
                     const pbLow = livePB < pbLimit;
                     const rbLow = liveRB < rbLimit;
-                    const pbLowMsg = pbUsesPrev
-                      ? `PB to be Paid (${fmt(prevPB)})`
-                      : `${fmt(payFloors.pbFloor)} is PB to be Paid`;
-                    const rbLowMsg = rbUsesPrev
-                      ? `RB to be Paid (${fmt(prevRB)})`
-                      : `${fmt(payFloors.rbFloor)} is RB to be Paid`;
+                    const pbLowMsg = `PB to be Paid (${fmt(pbLimit)})`;
+                    const rbLowMsg = `RB to be Paid (${fmt(rbLimit)})`;
                     // "to be Paid" / target notes: only the figures this login may see.
                     const pbNote = [
                       hid("pbToBePaid")
