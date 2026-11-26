@@ -11,6 +11,7 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
   const employees = useMemo(() => {
     const term = query.trim().toLowerCase();
     return masterEmployees
+      .filter((employee) => String(employee.status || "").trim().toLowerCase() === "active")
       .filter((employee) => !term || `${employee.empId} ${employee.name} ${employee.designation || ""}`.toLowerCase().includes(term))
       .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   }, [masterEmployees, query]);
