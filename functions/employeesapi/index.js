@@ -2353,7 +2353,8 @@ async function enrichPreviousAppraisalValues(
     if (
       currentRank > 0 &&
       historyRank >= currentRank &&
-      cycleIdOf(cycle) !== sharedSourceCycleId
+      cycleIdOf(cycle) !== sharedSourceCycleId &&
+      !sameYearAnnualSource
     )
       return;
     const entry = {
