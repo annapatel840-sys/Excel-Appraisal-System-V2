@@ -1108,7 +1108,7 @@ export function FeedbackRatingMasterPage({
         <UploadPage
           key="feedback-master-import"
           initialScreen="fb"
-          initialCycleId={typeof window !== "undefined" ? window.localStorage.getItem("temporary-import-demo-cycle-id") || "" : ""}
+          
           modalOnly
           onClose={() => setImportOpen(false)}
         />
