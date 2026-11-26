@@ -207,7 +207,7 @@ import { ExceptionalAddEmployeeModal } from "./ExceptionalAddEmployeeModal";
 //   const [page, setPage] = useState(1);
 //   const [selectedIds, setSelectedIds] = useState(new Set());
 //   const [addOpen, setAddOpen] = useState(false);
-  const [exceptionalAddOpen, setExceptionalAddOpen] = useState(false);
+//   const [exceptionalAddOpen, setExceptionalAddOpen] = useState(false);
 
 //   const canEdit = Boolean(onChangeEligibility);
 
