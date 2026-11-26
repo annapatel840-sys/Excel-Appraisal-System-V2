@@ -3,7 +3,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 import wissenMark from "@/assets/wissen-mark.png";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
-import { applyHomeLocationOnSignIn, forgetHomeLocationApplied } from "./location-store";
+import {
+  applyHomeLocationOnSignIn,
+  forgetHomeLocationApplied,
+} from "./location-store";
 
 const CatalystAuthContext = createContext(null);
 // Legacy key from an old sign-out workaround; it is only cleared now.
@@ -37,7 +40,12 @@ function isUnauthorizedError(error) {
 // onSessionReady: called once the session is loaded and the user's saved/home
 // location is applied (used for reads that depend on the selected location).
 // onSignOut: called just before signing out.
-export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignOut }) {
+export function CatalystAuthGate({
+  children,
+  onSignedIn,
+  onSessionReady,
+  onSignOut,
+}) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState("loading");
   const [message, setMessage] = useState("");
@@ -66,8 +74,9 @@ export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignO
         return;
       }
 
+      let result;
       try {
-        const result = await auth.isUserAuthenticated();
+        result = await auth.isUserAuthenticated();
         if (!mounted) return;
         if (!isSignedInResult(result)) {
           setState("signed-out");
@@ -103,10 +112,7 @@ export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignO
           "User",
         email: profile.email_id || profile.email || "",
         email_id: profile.email_id || profile.email || "",
-        role:
-          profile.role_details?.role_name ||
-          profile.role_name ||
-          "",
+        role: profile.role_details?.role_name || profile.role_name || "",
         role_details: profile.role_details || {},
         empId: profile.empId || profile.emp_id || "",
         location: profile.location || "",
@@ -124,7 +130,14 @@ export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignO
       setState("authenticated");
     };
 
-    checkSession();
+    checkSession().catch((error) => {
+      console.error("Catalyst session check failed:", error);
+      if (!mounted) return;
+      setMessage(
+        error?.message || "Unable to start the app. Reload and try again.",
+      );
+      setState("error");
+    });
 
     return () => {
       mounted = false;
@@ -205,7 +218,9 @@ export function CatalystAuthGate({ children, onSignedIn, onSessionReady, onSignO
       .then(() => onSignOut?.())
       .catch(() => {});
     const limit = new Promise((resolve) => window.setTimeout(resolve, 1000));
-    Promise.race([cleanup, limit]).then(() => auth.signOut(window.location.origin));
+    Promise.race([cleanup, limit]).then(() =>
+      auth.signOut(window.location.origin),
+    );
   };
 
   if (state === "authenticated") {
