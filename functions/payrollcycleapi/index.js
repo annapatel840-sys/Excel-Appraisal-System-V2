@@ -6938,7 +6938,7 @@ async function routeRequest(req, res, identity, resource, a) {
   if (
     !enforced &&
     !canAccessPayroll(identity.user) &&
-    !resource.startsWith("cycles") &&
+    !resource.startsWith("cycles")
   ) {
     return sendJson(res, 403, {
       success: false,
