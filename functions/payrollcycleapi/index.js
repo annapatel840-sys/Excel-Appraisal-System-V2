@@ -3730,13 +3730,13 @@ async function generateAppraisalSheet(
           return Number(cycleYear(b)) - Number(cycleYear(a));
         })
     : [];
-  const masterByEmpId = new Map();
+  const annualMasterByEmpId = new Map();
   const masterByRowId = new Map();
   employeeMasterRows.forEach((master) => {
     const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
     const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
     if (masterId) masterByRowId.set(masterId, master);
-    if (empId) masterByEmpId.set(empId, master);
+    if (empId) annualMasterByEmpId.set(empId, master);
   });
   const exceptionalSourceRowsByMasterId = new Map();
   const exceptionalSourceRowsByEmpId = new Map();
@@ -3745,7 +3745,7 @@ async function generateAppraisalSheet(
     sheetRows.forEach((sheet) => {
       const matchedCycle = exceptionalSourceCycles.find((item) => sheetBelongsToCycle(sheet, item));
       if (!matchedCycle || !candidateIds.has(String(matchedCycle.id))) return;
-      const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
+      const master = sheetEmployeeMaster(sheet, annualMasterByEmpId, masterByRowId);
       const masterIdValues = sheetFieldValues(
         sheet,
         "emp_master_row_id",
