@@ -4004,6 +4004,7 @@ export function EmployeeMaster() {
     // Tech-Ed may open the existing Delegation screen without exposing the
     // other HR Operations tabs. DelegationScreen still applies action-level
     // permissions and routes Tech-Ed changes through HR approval.
+    if (tab === "payroll-upload" && selectedCycleType.toLowerCase() === "exceptional") return false;
     if (tab === "delegation" && isTechEd)
       return access.ok ? access.canScreen("delegation") : true;
     // Without access rules these HR Operations screens are HR only. With
@@ -6357,7 +6358,8 @@ export function EmployeeMaster() {
       fresh: true,
     });
     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
-    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
     setEligibilityEmployees(employees);
     setEligibilityCriteriaApplied(criteriaApplied);
     applyCriteriaMeta(reloaded?.cycle);
@@ -6417,7 +6419,7 @@ export function EmployeeMaster() {
       showBanner("Delegation generation unavailable", "The active appraisal cycle ID is missing. Refresh the Eligibility List and try again.", true);
       return;
     }
-    if (!eligibilityCriteriaApplied) {
+    if (!eligibilityCriteriaApplied && eligibilityCycleType.toLowerCase() !== "exceptional") {
       showBanner("Apply Eligibility Criteria first", "The current cycle has an Eligibility List, but the server has not confirmed that Apply Criteria was completed for this cycle. Refresh the list, then apply or verify the criteria before generating Delegation.", true);
       return;
     }
@@ -6649,7 +6651,7 @@ export function EmployeeMaster() {
               setLocationFilter={setLocationFilter}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
-                canEditEmployees && !importPreparing
+                canEditEmployees && !importPreparing && selectedCycleType.toLowerCase() !== "exceptional"
                   ? () => fileInputRef.current?.click()
                   : undefined
               }
