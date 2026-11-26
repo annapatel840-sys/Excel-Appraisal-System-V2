@@ -526,10 +526,6 @@ function requirePayrollAccess(a, resource, method) {
   if (resource === "mynotes") return;
   // Bulk Edit History + Scenarios of a cycle: anyone who can open the Bulk Edit
   // screen may read them; saving needs the same rights as applying a bulk edit.
-  if (resource === "demo-import-test") {
-    access.requireScreen(a, "settings", "view");
-    return;
-  }
   if (resource === "bulkstate") {
     access.requireScreen(a, "bulkEditScreen", "view");
     if (method !== "GET") {
@@ -7295,7 +7291,6 @@ async function routeRequest(req, res, identity, resource, a) {
     !enforced &&
     !canAccessPayroll(identity.user) &&
     !resource.startsWith("cycles") &&
-    resource !== "demo-import-test"
   ) {
     return sendJson(res, 403, {
       success: false,
@@ -7320,15 +7315,6 @@ async function routeRequest(req, res, identity, resource, a) {
   const tables = await requirePayrollTables(adminApp);
   const query = getQuery(req);
   const actor = identity.name || identity.email;
-
-  /* TEMPORARY DEMO IMPORT TEST ROUTE */
-  if (resource === "demo-import-test" && req.method === "POST") {
-    if (!a || a.role !== "hr") {
-      throw new ApiError("Only HR Admin can run the temporary import test.", 403);
-    }
-    const body = await readBody(req);
-    return handleDemoImportTest(res, tables, body, actor);
-  }
 
   if (resource === "mynotes") {
     return handleMyNotes(req, res, identity, tables);
@@ -9317,9 +9303,6 @@ module.exports = async function payrollCycleApi(req, res) {
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     if (resource === "session")
-      return await routeRequest(req, res, identity, resource, a);
-    /* TEMPORARY DEMO IMPORT TEST DISPATCH */
-    if (resource === "demo-import-test" && req.method === "POST")
       return await routeRequest(req, res, identity, resource, a);
     if (myNotesCall) return await routeRequest(req, res, identity, resource, a);
     if (
