@@ -3703,6 +3703,13 @@ async function generateAppraisalSheet(
     }
   });
 
+  const isCancelledPayrollCycle = (item) =>
+    ["cancelled", "canceled"].includes(
+      String(item?.status || "")
+        .trim()
+        .toLowerCase(),
+    );
+
   // Exceptional first reuses the same-year Annual sheet row. If that
   // employee has no Annual row (for example, they were not part of Annual
   // eligibility), fall back to the exact upstream Appraisal_Sheet row that
@@ -3811,12 +3818,6 @@ async function generateAppraisalSheet(
       null
     );
   };
-  const isCancelledPayrollCycle = (item) =>
-    ["cancelled", "canceled"].includes(
-      String(item?.status || "")
-        .trim()
-        .toLowerCase(),
-    );
   const isUsableHistoryCycle = (item) => {
     if (!item || isCancelledPayrollCycle(item)) return false;
     if (String(item.id) === String(cycle.id)) return true;
