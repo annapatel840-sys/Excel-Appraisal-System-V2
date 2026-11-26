@@ -3975,6 +3975,7 @@ export function EmployeeMaster() {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+  const [selectedCycleType, setSelectedCycleType] = useSelectedCycleType();
   // Warm the shared cycle-wise budget snapshot while HR Operations is open.
   // Budget Master then joins the in-flight/completed request instead of starting
   // its first Catalyst reads only after the tab is clicked.
@@ -4136,7 +4137,6 @@ export function EmployeeMaster() {
   const [statusFilter, setStatusFilter] = useState("All");
   // One location shared by every screen (see location-store.js).
   const [locationFilter, setLocationFilter] = useSelectedLocation();
-  const [selectedCycleType, setSelectedCycleType] = useSelectedCycleType();
 
   const [rosterFilters, setRosterFilters] = useState({});
 
