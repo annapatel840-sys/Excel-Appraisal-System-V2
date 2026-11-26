@@ -2531,7 +2531,8 @@ import { useBudget } from "@/lib/budget-store";
 //     ]);
 //     const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
 //     const masterEmployees = Array.isArray(masters) ? masters : [];
-//     const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+//     const isExceptional = String(reloaded?.cycle?.type || eligibilityCycleType).trim().toLowerCase() === "exceptional";
+    const criteriaApplied = isExceptional || Boolean(reloaded?.cycle?.criteriaApplied);
 //     setEligibilityEmployees(employees);
 //     setEligibilityCriteriaApplied(criteriaApplied);
 //     setEligibilityMasterEmployees(masterEmployees);
@@ -2969,7 +2970,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //         {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
 //           <div className="em-tab-content">
-//             <PayrollDataPage />
+//             <PayrollDataPage disableUpload={selectedCycleType.toLowerCase() === "exceptional"} />
 //           </div>
 //         )}
 
