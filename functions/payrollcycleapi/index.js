@@ -5560,7 +5560,16 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
   const storedReference = (value) => {
     if (value && typeof value === "object") {
       return String(
-        value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? "",
+        value.ROWID ??
+          value.rowid ??
+          value.id ??
+          value.ID ??
+          value.value ??
+          value.emp_id ??
+          value.employee_id ??
+          value.cycle_name ??
+          value.appraisal_cycle_name ??
+          "",
       ).trim();
     }
     return String(value ?? "").trim();
