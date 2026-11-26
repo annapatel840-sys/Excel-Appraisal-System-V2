@@ -1109,7 +1109,12 @@ function QuickCheck({ M, qc, setQc, sel, shown, setShown }) {
         {n.q === "what" && <>{personSel}<span className="hint">have</span></>}
         <button type="button" className="btn p sm" onClick={() => setShown(true)}>Check</button>
       </div>
-      {shown && <div className="qans"><QuickCheckAnswer M={M} n={n} /></div>}
+      {shown && (
+        <div className="qans">
+          <button type="button" className="xbtn" aria-label="Close answer" title="Close" onClick={() => setShown(false)}>&times;</button>
+          <QuickCheckAnswer M={M} n={n} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1117,7 +1122,7 @@ function QuickCheck({ M, qc, setQc, sel, shown, setShown }) {
 /* =====================================================================
    Right side panel
    ===================================================================== */
-function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) {
+function SidePanel({ M, sel, onPick, onClear, onNewOv, onToggleRemove, onTab, qcProps }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
@@ -1127,7 +1132,7 @@ function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) 
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
   const ql = q.trim().toLowerCase();
-  const hits = ql ? M.people.filter((p) => (p.name + " " + p.email + " " + p.empId).toLowerCase().indexOf(ql) > -1).slice(0, 12) : [];
+  const hits = ql ? M.people.filter((p) => [p.name, p.email, p.empId].filter(Boolean).join(" ").toLowerCase().indexOf(ql) > -1).slice(0, 12) : [];
   const pick = (id) => { onPick(id); setQ(""); setOpen(false); };
 
   const p = sel && M.personByEmp(sel);
@@ -1146,7 +1151,10 @@ function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) 
       <div className="pcard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
           <div><h3>{p.name}</h3><div className="meta">{p.empId}{p.email ? " · " + p.email : ""}</div></div>
-          {er.role && <RoleBadge M={M} roleKey={er.role} />}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            {er.role && <RoleBadge M={M} roleKey={er.role} />}
+            <button type="button" className="xbtn" aria-label="Close person" title="Close" onClick={() => onClear && onClear()}>&times;</button>
+          </div>
         </div>
         <div className="kv">
           <b>Role from</b><span>{er.from}</span>
@@ -1342,6 +1350,7 @@ export default function AccessPage() {
   const onUndoAdd = (id) => setPending((prev) => { const next = { ...prev }; delete next["ovAdd|" + id]; return next; });
 
   const onPick = (empId) => { setSel(empId); setQc((x) => ({ ...x, p: empId })); setQcShown(false); };
+  const onClearSel = () => setSel(null); // closes the person card (the Quick Check keeps its own person)
   const onTab = (t) => { setTab(t); setMsg(null); };
 
   const saveOv = (o) => {
@@ -1465,7 +1474,7 @@ export default function AccessPage() {
         </div>
 
         <SidePanel
-          M={M} sel={sel} onPick={onPick} onTab={onTab} onToggleRemove={onToggleRemove}
+          M={M} sel={sel} onPick={onPick} onClear={onClearSel} onTab={onTab} onToggleRemove={onToggleRemove}
           onNewOv={(team, empId) => setModal({ type: "ov", teamOnly: team, empId: empId || sel })}
           qcProps={{ qc, setQc, shown: qcShown, setShown: setQcShown }}
         />
