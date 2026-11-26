@@ -1372,7 +1372,7 @@ async function writeAudit(
   });
 }
 
-async function requireIdentity(req) {
+async function requireIdentity(req, { includeEmployeeProfile = true } = {}) {
   const userApp = catalyst.initialize(req);
   const user = await userApp.userManagement().getCurrentUser();
   if (!user || !user.user_id) return null;
@@ -1381,13 +1381,11 @@ async function requireIdentity(req) {
     .toLowerCase();
   let employeeLocation = "";
   let employeeEmpId = "";
-  if (email) {
+  // The session endpoint only needs Catalyst's authenticated user
+  // identity. Avoid a second database round-trip on every app mount; the
+  // Employee_Master profile is resolved lazily by endpoints that need it.
+  if (email && includeEmployeeProfile) {
     try {
-      // Session is requested on every app load. Never page through the entire
-      // Employee_Master (2,000+ rows) and Locations tables just to resolve one
-      // signed-in user; that full scan can exceed the Catalyst function timeout.
-      // Use a selective ZCQL lookup for this email and keep the session usable
-      // even if the optional profile lookup is temporarily unavailable.
       const adminApp = catalyst.initialize(req, { scope: "admin" });
       const zcql =
         typeof adminApp.zcql === "function" ? adminApp.zcql() : null;
@@ -1403,14 +1401,13 @@ async function requireIdentity(req) {
                 " = '" +
                 escapedEmail +
                 "' LIMIT 10",
-              "session Employee_Master by email",
+              "Employee_Master by signed-in email",
             );
             matches = (Array.isArray(result) ? result : []).map((item) =>
               unwrapZcqlRow(item, "Employee_Master"),
             );
             if (matches.length) break;
           } catch (queryError) {
-            // Older Employee_Master schemas may use only one of the aliases.
             if (column === "email") throw queryError;
           }
         }
@@ -1427,13 +1424,11 @@ async function requireIdentity(req) {
             selected?.emp_code ||
             "",
         ).trim();
-        // Keep the stored location value; resolving a lookup label must not
-        // require downloading the entire Locations table on session startup.
         employeeLocation = employeeLocationName(selected, []);
       }
     } catch (error) {
       console.warn(
-        "[payrollcycleapi] session Employee_Master lookup failed:",
+        "[payrollcycleapi] Employee_Master profile lookup failed:",
         error?.message || error,
       );
     }
@@ -9278,7 +9273,7 @@ module.exports = async function payrollCycleApi(req, res) {
         ? { dryRun: true, enforced: false, scope: { all: false } }
         : await checkAccess(req);
 
-    const identity = await requireIdentity(req);
+    const identity = await requireIdentity(req, { includeEmployeeProfile: resource !== "session" });
     if (!identity)
       return sendJson(res, 401, {
         success: false,
