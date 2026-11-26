@@ -661,7 +661,7 @@ import { useBudget } from "@/lib/budget-store";
 
 //   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 //   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
-  const [eligibilityCycleType, setEligibilityCycleType] = useState("");
+//   const [eligibilityCycleType, setEligibilityCycleType] = useState("");
 //   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
 //   const [delegationGenerated, setDelegationGenerated] = useState(false);
 //   const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
