@@ -4423,14 +4423,24 @@ module.exports = async function (req, res) {
           [true, 1, "true", "1", "yes"].includes(typeof archived === "string" ? archived.trim().toLowerCase() : archived) ||
           [true, 1, "true", "1", "yes"].includes(typeof hidden === "string" ? hidden.trim().toLowerCase() : hidden);
       };
+      // When the header names a Location / Cycle type, only that cycle may be
+      // shown. If that location has no such cycle (for example no Exceptional
+      // cycle yet), show nothing instead of falling back to another cycle such
+      // as the location's Annual cycle.
+      const displayRequestParams = req.queryParams || req.query || {};
+      const displayRequestUrl = new URL(String(req.url || "/"), "http://local");
+      const displayScopeRequested = Boolean(
+        String(displayRequestParams.cycleType || displayRequestUrl.searchParams.get("cycleType") || "").trim() ||
+        String(displayRequestParams.location || displayRequestUrl.searchParams.get("location") || "").trim(),
+      );
       const displayCycle = sourceRows.cycleRows.find(
         (cycle) => cycleIdOf(cycle) === String(calculatedBundle.active_appraisal_cycle_id || ""),
-      ) || sourceRows.cycleRows
+      ) || (displayScopeRequested ? null : sourceRows.cycleRows
         .filter((cycle) =>
           !isArchivedCycle(cycle) &&
           budgetCycleRefs.has(cycleIdOf(cycle).toLowerCase()),
         )
-        .sort((left, right) => cycleRank(right) - cycleRank(left))[0] || null;
+        .sort((left, right) => cycleRank(right) - cycleRank(left))[0] || null);
       const displayCycleId = displayCycle ? cycleIdOf(displayCycle) : "";
       logBudgetStage("response ready", {
         returnedTechEdRows: bundle.techEd.length,

@@ -23,11 +23,11 @@ export function CycleTypeSwitcher({ isVertical }) {
           isVertical && "flex-col items-stretch gap-1",
         )}
       >
-        <span>Cycle type</span>
+        <span>Cycle Type</span>
         <select
           value={selectedType}
           onChange={(event) => setSelectedType(event.target.value)}
-          aria-label="Cycle type shown on every screen"
+          aria-label="Cycle Type shown on every screen"
           className={cn(
             "h-7 rounded-md font-sans border border-white/30 bg-white px-1.5 text-[11px] font-medium text-[#102a43] outline-none focus:ring-2 focus:ring-white/40",
             isVertical ? "w-full" : "min-w-[104px]",

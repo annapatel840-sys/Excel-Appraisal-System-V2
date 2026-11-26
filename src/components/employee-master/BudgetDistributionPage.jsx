@@ -11,6 +11,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { fetchAllEmployeeMasterEmployees } from "@/lib/employee-master-data";
 import { readTechEdOriginalCount } from "@/lib/distribution-budget";
 import { matchesCycleLocation } from "@/lib/location-store";
+import { matchesCycleType, useSelectedCycleType } from "@/lib/cycle-type-store";
 import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
  
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
@@ -373,6 +374,7 @@ export function BudgetDistributionPage() {
   }, [anyOpen, needNames, masterEmployees]);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
+  const [selectedCycleType] = useSelectedCycleType();
   const [cycleLabel, setCycleLabel] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
   useEffect(() => {
@@ -393,11 +395,18 @@ export function BudgetDistributionPage() {
           );
           return status === "active" && !archived && !hidden;
         });
+        // Only the Active cycle of the selected Location AND Cycle type (for
+        // example India - Exceptional), never that location's Annual cycle.
+        const scopedCycles = activeCycles.filter(
+          (cycle) =>
+            matchesCycleLocation(cycle, selectedLocation) &&
+            matchesCycleType(cycle, selectedCycleType),
+        );
         const active =
-          activeCycles.find((cycle) =>
+          scopedCycles.find((cycle) =>
             String(cycle.id || cycle.appraisal_cycle_id || cycle.cycle_id || cycle.ROWID || "") === String(activeBudgetCycleId || ""),
           ) ||
-          activeCycles.find((cycle) => matchesCycleLocation(cycle, selectedLocation)) ||
+          scopedCycles[0] ||
           null;
         const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
         setActiveCycleId(activeId);
@@ -426,7 +435,7 @@ export function BudgetDistributionPage() {
   // Cycle refresh is event-driven; budget row changes must not clear the active
   // cycle label or trigger redundant cycle requests.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocation, activeBudgetCycleId]);
+  }, [selectedLocation, selectedCycleType, activeBudgetCycleId]);
   // Resolving a Tech-ED id means searching every Tech-ED and every employee, and the
   // live counts below resolve one value per appraisal row (~3,000). Remember each
   // answer until the Tech-ED or employee lists change, so a value is looked up once.
