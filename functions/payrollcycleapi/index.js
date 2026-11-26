@@ -4212,11 +4212,6 @@ async function generateAppraisalSheet(
     const masterId = referenceText(
       directMaster?.ROWID ?? directMaster?.rowid ?? directMaster?.id ?? rawEmployee,
     ).toLowerCase();
-    const sourceMasterId = directMaster
-      ? referenceText(directMaster.ROWID ?? directMaster.rowid ?? directMaster.id)
-      : /^\d+$/.test(rawEmployee)
-        ? rawEmployee
-        : "";
     const empId =
       masterIdToEmpId.get(masterId) ||
       String(
@@ -4303,6 +4298,12 @@ async function generateAppraisalSheet(
         ),
       );
     }
+    // This loop is grouped by the business employee ID, so resolve its
+    // Employee_Master ROWID here (the earlier payroll-row callback has ended).
+    const sourceMaster = employeeMasterByBusinessId.get(empId);
+    const sourceMasterId = referenceText(
+      sourceMaster?.ROWID ?? sourceMaster?.rowid ?? sourceMaster?.id,
+    );
     if (sourceMasterId) {
       payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
       // If this employee has no row in the active/shared cycle, use the
