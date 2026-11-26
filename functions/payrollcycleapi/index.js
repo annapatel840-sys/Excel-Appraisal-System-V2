@@ -192,14 +192,19 @@ function sheetBelongsToCycle(sheet, cycle) {
   return values.some((value) => expected.includes(value));
 }
 function sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId) {
+  // Appraisal_Sheet stores the Employee_Master lookup in emp_master_row_id.
+  // Include that canonical field first; older rows may use the legacy aliases
+  // or the business Employee ID in emp_id.
   const values = [
+    ...lookupReferenceValues(sheet.emp_master_row_id),
+    ...lookupReferenceValues(sheet.employee_master_row_id),
+    ...lookupReferenceValues(sheet.employee_master_id),
     ...lookupReferenceValues(sheet.emp_id),
     ...lookupReferenceValues(sheet.employee_id),
-    ...lookupReferenceValues(sheet.employee_master_id),
   ];
   for (const value of values) {
     const master =
-      masterByEmpId.get(value.toLowerCase()) || masterByRowId.get(value);
+      masterByRowId.get(value) || masterByEmpId.get(value.toLowerCase());
     if (master) return master;
   }
   return null;
