@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useScreenFields } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
 import { useAppraisal, useAppraisalRefresh } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
@@ -70,6 +71,23 @@ const HR_COLS = [
   { key: "origCount", label: "Original Count", kind: "number", get: (i) => i.originalCount },
   { key: "curCount", label: "Current Count", kind: "number", get: (i) => i.liveCount },
 ];
+
+// Access -> Fields -> Budget Distribution: column key -> field name. A field set to Hidden is not
+// shown anywhere on this screen (grid, summary tiles, row details). The screen itself is read-only,
+// so "Read" and "Edit" look the same here.
+const HR_COL_LABEL = {
+  level: "Level",
+  owner: "Tech-ED",
+  pct: "Budget %",
+  original: "Original Budget",
+  additional: "Additional Budget",
+  updated: "Updated Budget",
+  utilised: "Utilised",
+  remaining: "Remaining",
+  util: "Utilisation %",
+  origCount: "Original Count",
+  curCount: "Current Count",
+};
 
 const CSS = `
 .bd-root {
@@ -603,9 +621,12 @@ export function BudgetDistributionPage() {
       liveCount: countForTechOwner(row.tech_ed_id),
     };
   });
-  const tf = useTableFilters(tableItems, HR_COLS);
+  const fieldAccess = useScreenFields("budgetDistribution");
+  const shown = (key) => !fieldAccess.hidden(HR_COL_LABEL[key]);
+  const visibleCols = useMemo(() => HR_COLS.filter((c) => !fieldAccess.hidden(HR_COL_LABEL[c.key])), [fieldAccess]);
+  const tf = useTableFilters(tableItems, visibleCols);
   const rz = useColumnResize(HR_W);
-  const hrKeys = HR_COLS.map((c) => c.key);
+  const hrKeys = visibleCols.map((c) => c.key);
 
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
@@ -680,35 +701,37 @@ export function BudgetDistributionPage() {
               <div className="value">{rows.length}</div>
               <div className="sub muted">Active Budget Records</div>
             </div>
-            <div>
+            {shown("original") && <div>
               <div className="label">Total Original Budget</div>
               <div className="value">{money(totals.base)}</div>
               <div className="sub muted">Before Additional Budget</div>
-            </div>
-            <div>
+            </div>}
+            {shown("additional") && <div>
               <div className="label">Additional Budget</div>
               <div className="value">{money(totals.additional)}</div>
               <div className="sub muted">Added to Original</div>
-            </div>
-            <div>
+            </div>}
+            {shown("updated") && <div>
               <div className="label">Total Updated Budget</div>
               <div className="value">{money(totals.updated)}</div>
               <div className="sub muted">Current Allocation</div>
-            </div>
-            <div>
+            </div>}
+            {shown("utilised") && <div>
               <div className="label">Total Utilised</div>
               <div className="value">{money(utilised)}</div>
               <div className="sub muted">
-                {totals.updated
-                  ? ((utilised / totals.updated) * 100).toFixed(0) + "% Utilised"
-                  : "—"}
+                {!shown("util") || !shown("updated")
+                  ? "—"
+                  : totals.updated
+                    ? ((utilised / totals.updated) * 100).toFixed(0) + "% Utilised"
+                    : "—"}
               </div>
-            </div>
-            <div>
+            </div>}
+            {shown("remaining") && <div>
               <div className="label">Total Remaining</div>
               <div className="value">{money(remaining)}</div>
               <div className="sub muted">Updated Budget − Utilised</div>
-            </div>
+            </div>}
           </div>
         )}
       </section>
@@ -745,7 +768,7 @@ export function BudgetDistributionPage() {
                 <ResizableCols rz={rz} keys={hrKeys} />
                 <thead>
                   <tr>
-                    {HR_COLS.map((c) => (
+                    {visibleCols.map((c) => (
                       <FilterTh key={c.key} tf={tf} rz={rz} col={c} className={c.num ? "num" : ""} />
                     ))}
                   </tr>
@@ -753,7 +776,7 @@ export function BudgetDistributionPage() {
                 <tbody>
                   {tf.rows.length === 0 && (
                     <tr className="ft-empty">
-                      <td colSpan={HR_COLS.length}>No Tech-ED records match the filters.</td>
+                      <td colSpan={visibleCols.length || 1}>No Tech-ED records match the filters.</td>
                     </tr>
                   )}
                   {tf.rows.map(({ row, owner, originalCount, liveCount }) => {
@@ -763,8 +786,8 @@ export function BudgetDistributionPage() {
                     return (
                       <Fragment key={key}>
                         <tr className="tech">
-                          <td><b>Tech-ED</b></td>
-                          <td>
+                          {shown("level") && <td><b>Tech-ED</b></td>}
+                          {shown("owner") && <td>
                             <div
                               className="owner"
                               title="Right-click or double-click to view Comp Manager details"
@@ -779,30 +802,30 @@ export function BudgetDistributionPage() {
                               {owner || row.tech_ed_id || "—"}
                             </div>
                             {owner && owner !== row.tech_ed_id ? <div className="muted-small">{row.tech_ed_id}</div> : null}
-                          </td>
-                          <td className="num">{pct(row.budget_percentage)}</td>
-                          <td className="num">{money(row.budget_amount)}</td>
-                          <td className="num">{money(row.additional_budget)}</td>
-                          <td className="num">{money(row.updated_budget)}</td>
-                          <td className="num">{money(row.budget_utilized)}</td>
-                          <td className="num">{money(row.budget_remaining)}</td>
-                          <td className="num">{pct(row.utilization_percentage)}</td>
-                          <td>{originalCount}</td>
-                          <td>{liveCount}</td>
+                          </td>}
+                          {shown("pct") && <td className="num">{pct(row.budget_percentage)}</td>}
+                          {shown("original") && <td className="num">{money(row.budget_amount)}</td>}
+                          {shown("additional") && <td className="num">{money(row.additional_budget)}</td>}
+                          {shown("updated") && <td className="num">{money(row.updated_budget)}</td>}
+                          {shown("utilised") && <td className="num">{money(row.budget_utilized)}</td>}
+                          {shown("remaining") && <td className="num">{money(row.budget_remaining)}</td>}
+                          {shown("util") && <td className="num">{pct(row.utilization_percentage)}</td>}
+                          {shown("origCount") && <td>{originalCount}</td>}
+                          {shown("curCount") && <td>{liveCount}</td>}
 
                         </tr>
                         {expanded ? (
                           <tr className="tech-detail-row">
-                            <td colSpan={HR_COLS.length}>
+                            <td colSpan={visibleCols.length || 1}>
                               <div className="detail">
                                 <div className="detail-grid">
-                                  <div className="detail-item"><div className="label">Tech-ED</div><b>{owner || row.tech_ed_id || "—"}</b></div>
-                                  <div className="detail-item"><div className="label">Budget percentage</div><b>{pct(row.budget_percentage)}</b></div>
-                                  <div className="detail-item"><div className="label">Original team count</div><b>{originalCount}</b></div>
-                                  <div className="detail-item"><div className="label">Current team count</div><b>{liveCount}</b></div>
-                                  <div className="detail-item"><div className="label">Updated budget</div><b>{money(row.updated_budget)}</b></div>
-                                  <div className="detail-item"><div className="label">Utilised</div><b>{money(row.budget_utilized)}</b></div>
-                                  <div className="detail-item"><div className="label">Remaining</div><b>{money(row.budget_remaining)}</b></div>
+                                  {shown("owner") && <div className="detail-item"><div className="label">Tech-ED</div><b>{owner || row.tech_ed_id || "—"}</b></div>}
+                                  {shown("pct") && <div className="detail-item"><div className="label">Budget percentage</div><b>{pct(row.budget_percentage)}</b></div>}
+                                  {shown("origCount") && <div className="detail-item"><div className="label">Original team count</div><b>{originalCount}</b></div>}
+                                  {shown("curCount") && <div className="detail-item"><div className="label">Current team count</div><b>{liveCount}</b></div>}
+                                  {shown("updated") && <div className="detail-item"><div className="label">Updated budget</div><b>{money(row.updated_budget)}</b></div>}
+                                  {shown("utilised") && <div className="detail-item"><div className="label">Utilised</div><b>{money(row.budget_utilized)}</b></div>}
+                                  {shown("remaining") && <div className="detail-item"><div className="label">Remaining</div><b>{money(row.budget_remaining)}</b></div>}
                                   <div className="detail-item"><div className="label">Last updated</div><b>{dateText(lastUpdatedFor(row))}</b></div>
                                 </div>
                                 {(() => {
@@ -865,19 +888,19 @@ export function BudgetDistributionPage() {
                                       <div className="label" style={{ marginTop: 12, marginBottom: 6 }}>Comp Manager allocations ({managerRows.length})</div>
                                       {managerRows.length ? (
                                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                                          <thead><tr><th align="left">Comp Manager</th><th align="right">Budget %</th><th align="right">Budget Base</th><th align="right">Calculated Budget</th><th align="right">Applied Budget</th><th align="right">Utilisation %</th></tr></thead>
+                                          <thead><tr><th align="left">Comp Manager</th>{shown("pct") && <th align="right">Budget %</th>}{shown("original") && <th align="right">Budget Base</th>}{shown("updated") && <th align="right">Calculated Budget</th>}{shown("updated") && <th align="right">Applied Budget</th>}{shown("util") && <th align="right">Utilisation %</th>}</tr></thead>
                                           <tbody>{managerRows.map((manager) => (
                                             <tr key={manager.id || manager.comp_manager}>
                                               <td>{manager._label}</td>
-                                              <td align="right">{pct(manager.percentage)}</td>
-                                              <td align="right">{money(manager.budget_base)}</td>
-                                              <td align="right">{money(manager.calculated_budget)}</td>
-                                              <td align="right">{money(manager.applied_budget)}</td>
-                                              <td align="right">{pct(
+                                              {shown("pct") && <td align="right">{pct(manager.percentage)}</td>}
+                                              {shown("original") && <td align="right">{money(manager.budget_base)}</td>}
+                                              {shown("updated") && <td align="right">{money(manager.calculated_budget)}</td>}
+                                              {shown("updated") && <td align="right">{money(manager.applied_budget)}</td>}
+                                              {shown("util") && <td align="right">{pct(
                                                 Number(manager.applied_budget) > 0
                                                   ? (Number(manager.total_utilization) / Number(manager.applied_budget)) * 100
                                                   : 0
-                                              )}</td>
+                                              )}</td>}
                                             </tr>
                                           ))}</tbody>
                                         </table>

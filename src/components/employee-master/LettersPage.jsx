@@ -24,6 +24,7 @@ import {
 import * as store from "@/lib/letters-store";
 import { isAllLocations, useSelectedLocation } from "@/lib/location-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useScreenFields } from "@/lib/access-store";
 import "./employee-master-ui.css";
 import "./letters-page.css";
 
@@ -87,6 +88,25 @@ function useDismiss(open, onClose, ref) {
   }, [open, onClose, ref]);
 }
 
+/* Access -> Fields -> Letters: grid column key -> the field name used on that screen.
+   A field set to Hidden is not shown; a field set to Read cannot be changed. */
+const LETTER_FIELD_LABEL = {
+  emp: "Employee",
+  cycle: "Appraisal Cycle",
+  ctype: "Cycle Type",
+  promo: "Promotion",
+  type: "Letter Type",
+  tpl: "Template",
+  status: "Status",
+  alert: "Alert",
+  sentOn: "Sent On",
+  sentBy: "Sent By",
+  sentTo: "Sent To",
+  resends: "Resend Count",
+  lastResent: "Last Resent On",
+  remarks: "Remarks",
+};
+
 /* the editable Remarks cell: saved (and audited) when the user leaves it */
 function RemarkInput({ letter, actor }) {
   const [val, setVal] = useState(letter.remarks || "");
@@ -111,6 +131,7 @@ function RemarkInput({ letter, actor }) {
 export function LettersPage({ canEdit = true, onNavigate }) {
   const user = useCatalystUser();
   const actor = user?.name || "HR";
+  const fieldAccess = useScreenFields("letters");
   const { S, version, sync, config } = store.useLetters();
   const ui = useLtBar();
   const { toast, el: toastEl } = useToast();
@@ -257,7 +278,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   /* ---------------- grid columns ---------------- */
 
-  const defs = [
+  const allDefs = [
     {
       key: "emp",
       label: "Employee",
@@ -335,12 +356,14 @@ export function LettersPage({ canEdit = true, onNavigate }) {
       label: "Remarks",
       w: 180,
       get: (l) => l.remarks,
-      render: (l) => (canEdit ? <RemarkInput letter={l} actor={actor} /> : l.remarks),
+      render: (l) => (canEdit && fieldAccess.canEdit("Remarks") ? <RemarkInput letter={l} actor={actor} /> : l.remarks),
     },
   ];
+  // Hidden fields are removed from the grid, the column chooser, the sums and the export.
+  const defs = allDefs.filter((d) => !LETTER_FIELD_LABEL[d.key] || !fieldAccess.hidden(LETTER_FIELD_LABEL[d.key]));
   const grid = useLtGrid(defs, VIS_KEY);
   const term = q.trim().toLowerCase();
-  const pre = term
+  const pre = term && !fieldAccess.hidden("Employee")
     ? (l) => `${empOf(S, l).name} ${empOf(S, l).id}`.toLowerCase().includes(term)
     : null;
   const view = useGridView(secRows, defs, grid, pre);
