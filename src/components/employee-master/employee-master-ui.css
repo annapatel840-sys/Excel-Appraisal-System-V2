@@ -257,10 +257,11 @@
 }
 /* Header Location switcher (beside "View as"): same size as the View as select. */
 .app-header-location .em-location-dropdown { position: relative; }
-.app-header-location .em-location-select.app-header-location-trigger { height: 22px; width: 134px; min-width: 96px; max-width: 184px; padding: 0 6px; gap: 6px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
-.app-header-location .em-location-menu { z-index: 2000; }
-.em-location-menu.em-location-submenu { right: auto; left: calc(100% - 4px); min-width: 150px; }
-.em-location-submenu-title { padding: 4px 10px 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: #102a43; }
+.app-header-location .em-location-select.app-header-location-trigger { height: 28px; min-width: 120px; max-width: 230px; padding: 0 8px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
+.app-header-location .em-location-menu { z-index: 2000; min-width: 168px; max-height: 256px; padding: 4px; border-radius: 8px; }
+.app-header-location .em-location-menu button { padding: 6px 8px; gap: 6px; font-size: 11px; border-radius: 5px; }
+.em-location-menu.em-location-submenu { right: auto; left: calc(100% - 10px); min-width: 120px; }
+.em-location-submenu-title { padding: 3px 8px 5px; font-size: 10px; font-weight: 700; letter-spacing: .02em; color: #102a43; }
 
 /* ---- Criteria panel: header with close, folded tab, no dead space ---- */
 .employee-master-page .em-eligibility-layout > .em-criteria-pane{border-radius:12px;padding:12px;gap:0}
