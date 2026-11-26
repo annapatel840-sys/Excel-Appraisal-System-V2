@@ -125,7 +125,19 @@ export function CatalystAuthGate({
             "User",
           email,
           email_id: email,
-          role: access.roleLabel || access.role || profile.role_details?.role_name || profile.role_name || "",
+          role:
+            String(access.role || "").toLowerCase() === "hr"
+              ? "HR"
+              : String(access.role || "").toLowerCase() === "teched"
+                ? "Tech-ED"
+                : ["compmgr", "compmanager"].includes(
+                      String(access.role || "").toLowerCase(),
+                    )
+                  ? "Comp Manager"
+                  : access.roleLabel ||
+                    profile.role_details?.role_name ||
+                    profile.role_name ||
+                    "",
           role_details: profile.role_details || {},
           empId: accessUser.empId || profile.empId || profile.emp_id || "",
           location: profile.location || "",
