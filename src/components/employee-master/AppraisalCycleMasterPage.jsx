@@ -1288,6 +1288,7 @@ export function AppraisalCycleMasterPage({
             : undefined;
 
     if (id === "go-ap") {
+      if (onNavigate) return onNavigate("appraisal-sheet", undefined, cycle);
       window.location.assign("/sheet");
       return;
     }
@@ -1363,7 +1364,7 @@ export function AppraisalCycleMasterPage({
     // The Appraisal Sheet rows already loaded in the browser are proof too:
     // the roster only holds rows of the Active cycle's generated sheet.
     const loadedSheet =
-      c.status === "Active" && !c.archived && Array.isArray(sheetRows) && sheetRows.length > 0;
+      c.process !== "Exceptional" && c.status === "Active" && !c.archived && Array.isArray(sheetRows) && sheetRows.length > 0;
     const gen = !!w?.sheetGenerated || !!generatedResult || !!setup?.sheet?.generated || loadedSheet;
     const generatedRowCount =
       w?.sheetRows ??
