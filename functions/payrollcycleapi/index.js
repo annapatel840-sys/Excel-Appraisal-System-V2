@@ -3687,29 +3687,49 @@ async function generateAppraisalSheet(
     }
   });
 
-  // Exceptional generation reuses the already-resolved same-year/location
-  // Annual Appraisal_Sheet row. Annual has already selected the correct source
-  // (prior Annual for existing employees, New Joiner for current-year joiners)
-  // and stored payroll + feedback/rating values on that sheet.
-  const annualSheetByMasterId = new Map();
-  const annualSheetByEmpId = new Map();
-  if (exceptionalCycle && sourceCycle) {
-    const masterByEmpId = new Map();
-    const masterByRowId = new Map();
-    employeeMasterRows.forEach((master) => {
-      const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
-      const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
-      if (masterId) masterByRowId.set(masterId, master);
-      if (empId) masterByEmpId.set(empId, master);
-    });
+  // Exceptional first reuses the same-year Annual sheet row. If that
+  // employee has no Annual row (for example, they were not part of Annual
+  // eligibility), fall back to the exact upstream Appraisal_Sheet row that
+  // Annual's source-selection rules use: same-year New Joiner, then latest
+  // earlier Annual. Never borrow another employee or another location's row.
+  const exceptionalSourceCycles = exceptionalCycle
+    ? normalizedCycles
+        .filter((item) => {
+          if (!item || String(item.id) === String(cycle.id) || isCancelledPayrollCycle(item)) return false;
+          const locationKey = cycleLocationKey(item);
+          if (locationKey && locationKey !== cycleLocationKey(cycle)) return false;
+          if (isAnnualCycle(item)) {
+            return item.id === sourceCycle?.id || isBeforeCurrentCycle(item) && cycleYear(item) <= currentYear;
+          }
+          return /new[\\s_-]*joiners?/i.test(String(item.name || "")) && cycleYear(item) === currentYear;
+        })
+        .sort((a, b) => {
+          const rank = (item) => {
+            if (String(item.id) === String(sourceCycle?.id)) return 0;
+            if (/new[\\s_-]*joiners?/i.test(String(item.name || ""))) return 1;
+            return 2;
+          };
+          const byRank = rank(a) - rank(b);
+          if (byRank) return byRank;
+          return Number(cycleYear(b)) - Number(cycleYear(a));
+        })
+    : [];
+  const masterByEmpId = new Map();
+  const masterByRowId = new Map();
+  employeeMasterRows.forEach((master) => {
+    const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
+    const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+    if (masterId) masterByRowId.set(masterId, master);
+    if (empId) masterByEmpId.set(empId, master);
+  });
+  const exceptionalSourceRowsByMasterId = new Map();
+  const exceptionalSourceRowsByEmpId = new Map();
+  if (exceptionalCycle) {
+    const candidateIds = new Set(exceptionalSourceCycles.map((item) => String(item.id)));
     sheetRows.forEach((sheet) => {
-      if (!sheetBelongsToCycle(sheet, sourceCycle)) return;
+      const matchedCycle = exceptionalSourceCycles.find((item) => sheetBelongsToCycle(sheet, item));
+      if (!matchedCycle || !candidateIds.has(String(matchedCycle.id))) return;
       const master = sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId);
-      // The Annual source cycle has already been selected for this location,
-      // and Exceptional's eligible roster is location-scoped independently.
-      // Do not re-apply Employee_Master location matching here: legacy location
-      // lookups can have different representations and incorrectly discard all
-      // otherwise valid Annual Appraisal_Sheet rows.
       const masterIdValues = sheetFieldValues(
         sheet,
         "emp_master_row_id",
@@ -3717,34 +3737,63 @@ async function generateAppraisalSheet(
         "employee_master_id",
         "emp_master_id",
       );
-      const employeeIdValues = sheetFieldValues(
-        sheet,
-        "emp_id",
-        "employee_id",
-        "emp_code",
-      );
+      const employeeIdValues = sheetFieldValues(sheet, "emp_id", "employee_id", "emp_code");
       const masterId = (
         master
           ? [referenceText(master.ROWID ?? master.rowid ?? master.id), ...masterIdValues]
           : masterIdValues
-      )
-        .map((value) => String(value || "").trim().toLowerCase())
-        .find(Boolean) || "";
+      ).map((value) => String(value || "").trim().toLowerCase()).find(Boolean) || "";
       const empId = (
         master
           ? [fieldValue(master, "emp_id", "employee_id", "emp_code"), ...employeeIdValues]
           : employeeIdValues
-      )
-        .map((value) => String(value || "").trim().toLowerCase())
-        .find(Boolean) || "";
-      if (masterId) annualSheetByMasterId.set(masterId, sheet);
-      if (empId) annualSheetByEmpId.set(empId, sheet);
+      ).map((value) => String(value || "").trim().toLowerCase()).find(Boolean) || "";
+      const entry = { row: sheet, cycle: matchedCycle };
+      if (masterId) {
+        const list = exceptionalSourceRowsByMasterId.get(masterId) || [];
+        list.push(entry);
+        exceptionalSourceRowsByMasterId.set(masterId, list);
+      }
+      if (empId) {
+        const list = exceptionalSourceRowsByEmpId.get(empId) || [];
+        list.push(entry);
+        exceptionalSourceRowsByEmpId.set(empId, list);
+      }
     });
   }
+  const hasPositiveBasePay = (row) =>
+    [
+      "current_annual_base_pay",
+      "current_base_pay",
+      "base_pay",
+      "new_base_pay",
+    ].some((field) => {
+      const value = fieldValue(row, field);
+      const amount = Number(String(value ?? "").replace(/[,₹\\s]/g, "").trim());
+      return Number.isFinite(amount) && amount > 0;
+    });
+  const selectExceptionalSourceRow = (entries) => {
+    if (!entries?.length) return null;
+    const ordered = entries.slice().sort((a, b) => {
+      const rank = (item) => {
+        if (String(item.cycle.id) === String(sourceCycle?.id)) return 0;
+        if (/new[\\s_-]*joiners?/i.test(String(item.cycle.name || ""))) return 1;
+        return 2;
+      };
+      const byRank = rank(a) - rank(b);
+      if (byRank) return byRank;
+      return Number(cycleYear(b.cycle)) - Number(cycleYear(a.cycle));
+    });
+    return ordered.find((item) => hasPositiveBasePay(item.row))?.row || ordered[0].row;
+  };
   const annualSheetForEmployee = (employee) => {
     const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
     const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
-    return annualSheetByMasterId.get(masterId) || annualSheetByEmpId.get(empId) || null;
+    return (
+      selectExceptionalSourceRow(exceptionalSourceRowsByMasterId.get(masterId)) ||
+      selectExceptionalSourceRow(exceptionalSourceRowsByEmpId.get(empId)) ||
+      null
+    );
   };
   const isCancelledPayrollCycle = (item) =>
     ["cancelled", "canceled"].includes(
