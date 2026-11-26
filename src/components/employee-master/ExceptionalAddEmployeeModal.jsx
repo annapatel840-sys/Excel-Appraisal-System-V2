@@ -103,7 +103,7 @@ export function ExceptionalAddEmployeeModal({ masterEmployees = [], listedIds, o
         </div>
         <div className="em-modal-footer">
           <button type="button" className="em-btn em-btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || employeesLoading || !selectedId}>{busy ? "Adding..." : `Add Selected Employees (${selectedIds.length})`}</button>
+          <button type="button" className="em-btn em-btn-primary" onClick={submit} disabled={busy || employeesLoading || !selectedIds.length}>{busy ? "Adding..." : `Add Selected Employees (${selectedIds.length})`}</button>
         </div>
       </div>
     </div>
