@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { isEmptyFilter, matchesValue, NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { useRowSelection } from "@/lib/table-export";
+import { useScreenFields } from "@/lib/access-store";
 
 /*
  * Feedback & Rating Master — HR Operations › Master.
@@ -60,7 +61,7 @@ const esc = (s) =>
   String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 /* ============================== columns ============================== */
-const COLS = [
+const ALL_COLS = [
   { k: "emp", h: "Employee", t: "text", w: 220, fz: 1 },
   { k: "dept", h: "Department", t: "text", w: 110 },
   { k: "cyc", h: "Cycle", t: "text", w: 120 },
@@ -279,6 +280,11 @@ export function FeedbackRatingMasterPage({
   const CYCLES = cyclesProp || DEMO_CYCLES;
   const ROWS = useMemo(() => rowsProp || buildDemoRows(), [rowsProp]);
   const BATCHES = batchesProp || DEMO_BATCHES;
+  // Fields tab (Access screen) limits for this screen: a field set to Hidden is not shown anywhere.
+  // Employee is the frozen identity column and stays on.
+  const fieldAccess = useScreenFields("feedbackRating");
+  const fh = (label) => fieldAccess.hidden(label);
+  const COLS = useMemo(() => ALL_COLS.filter((c) => c.fz || !fieldAccess.hidden(c.h)), [fieldAccess]);
   const activeCycle = CYCLES.find((cycle) => {
     const status = String(cycle?.status || "").trim().toLowerCase();
     const archived = [true, 1, "true", "1", "yes"].includes(
@@ -435,9 +441,9 @@ export function FeedbackRatingMasterPage({
   const selectedCycle = cid === "all" ? null : CYCLES.find((cycle) => String(cycle.id) === String(cid)) || null;
   const sameCycle = (r) => cid === "all" || (Boolean(selectedCycle) && String(r.cid) === String(cid));
   const scope = useMemo(
-    () => ROWS.filter((r) => sameCycle(r) && (!eff || dayOf(r.eff) === eff)),
+    () => ROWS.filter((r) => sameCycle(r) && (!eff || fh("Effective Date") || dayOf(r.eff) === eff)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ROWS, cid, eff],
+    [ROWS, cid, eff, fieldAccess],
   );
   const effList = useMemo(() => {
     const m = {};
@@ -452,10 +458,17 @@ export function FeedbackRatingMasterPage({
 
   const tbPass = (r) => {
     const s = q.toLowerCase();
-    if (te && r.te !== te) return false;
-    if (ccm && r.ccm !== ccm) return false;
-    if (risk && r.risk !== risk) return false;
-    if (s && [r.id, r.name, r.desig, r.client, r.cm, r.mf, r.cf].join(" ").toLowerCase().indexOf(s) < 0) return false;
+    if (te && !fh("Tech-ED") && r.te !== te) return false;
+    if (ccm && !fh("Comp Manager") && r.ccm !== ccm) return false;
+    if (risk && !fh("At Risk") && r.risk !== risk) return false;
+    const searchable = [
+      r.id, r.name, r.desig,
+      fh("Cost Center/Client") ? "" : r.client,
+      fh("Client Manager") ? "" : r.cm,
+      fh("Manager Feedback") ? "" : r.mf,
+      fh("Client Feedback") ? "" : r.cf,
+    ];
+    if (s && searchable.join(" ").toLowerCase().indexOf(s) < 0) return false;
     return true;
   };
   const colPass = (r, except) => {
@@ -522,9 +535,9 @@ export function FeedbackRatingMasterPage({
   // One removable tag per applied filter, shown above the table (like the Appraisal Sheet).
   const filterTags = [
     ...(q ? [{ id: "q", text: `Search: "${q}"`, clear: () => { setQ(""); setPage(1); } }] : []),
-    ...(te ? [{ id: "te", text: `Tech-ED: ${te}`, clear: () => { setTe(""); setPage(1); } }] : []),
-    ...(ccm ? [{ id: "ccm", text: `Comp Manager: ${ccm}`, clear: () => { setCcm(""); setPage(1); } }] : []),
-    ...(risk ? [{ id: "risk", text: `At Risk: ${risk}`, clear: () => { setRisk(""); setPage(1); } }] : []),
+    ...(te && !fh("Tech-ED") ? [{ id: "te", text: `Tech-ED: ${te}`, clear: () => { setTe(""); setPage(1); } }] : []),
+    ...(ccm && !fh("Comp Manager") ? [{ id: "ccm", text: `Comp Manager: ${ccm}`, clear: () => { setCcm(""); setPage(1); } }] : []),
+    ...(risk && !fh("At Risk") ? [{ id: "risk", text: `At Risk: ${risk}`, clear: () => { setRisk(""); setPage(1); } }] : []),
     ...Object.entries(cf).flatMap(([k, f]) => {
       const c = colOf(k);
       return c ? [{ id: "c:" + k, text: describeColFilter(c, f), clear: () => setColFilter(k, null) }] : [];
@@ -643,6 +656,7 @@ export function FeedbackRatingMasterPage({
               ))}
             </select>
           </span>
+          {!fh("Effective Date") && (
           <span className="flt">
             <span className="lbl">Effective date</span>
             <select
@@ -662,6 +676,7 @@ export function FeedbackRatingMasterPage({
               ))}
             </select>
           </span>
+          )}
           <div className="menuwrap">
             <button
               className="btn"
@@ -746,23 +761,29 @@ export function FeedbackRatingMasterPage({
                 setPage(1);
               }}
             />
+            {!fh("Tech-ED") && (
             <select className="sel" aria-label="Tech-ED" value={te} onChange={(e) => { setTe(e.target.value); setPage(1); }}>
               <option value="">Tech-ED: All</option>
               {teList.map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>
+            )}
+            {!fh("Comp Manager") && (
             <select className="sel" aria-label="Comp Manager" value={ccm} onChange={(e) => { setCcm(e.target.value); setPage(1); }}>
               <option value="">Comp Manager: All</option>
               {ccmList.map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>
+            )}
+            {!fh("At Risk") && (
             <select className="sel" aria-label="At Risk" value={risk} onChange={(e) => { setRisk(e.target.value); setPage(1); }}>
               <option value="">At Risk: All</option>
               <option value="Yes">At Risk: Yes</option>
               <option value="No">At Risk: No</option>
             </select>
+            )}
             <span className="sp mut">
               {filtered.length} of {scope.length} employees
             </span>
@@ -788,18 +809,24 @@ export function FeedbackRatingMasterPage({
               <b>{filtered.length}</b>
               <em className="mut">of {scope.length}</em>
             </div>
+            {!fh("Manager Rating") && (
             <div className="tile">
               <small>Avg Manager Rating</small>
               <b>{filtered.length ? avg(filtered, "mr").toFixed(2) : "—"}</b>
             </div>
+            )}
+            {!fh("Client Rating") && (
             <div className="tile">
               <small>Avg Client Rating</small>
               <b>{filtered.length ? avg(filtered, "cr").toFixed(2) : "—"}</b>
             </div>
+            )}
+            {!fh("At Risk") && (
             <div className="tile">
               <small>At Risk</small>
               <b>{atRisk}</b>
             </div>
+            )}
           </div>
 
           {!scope.length ? (
