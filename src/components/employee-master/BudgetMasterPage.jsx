@@ -2765,7 +2765,7 @@ const EMPTY_BUDGET_CYCLE_SNAPSHOT = Object.freeze({});
 import { money as formatMoney } from "@/lib/currency-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useAccess } from "@/lib/access-store";
+import { useAccess, useScreenFields } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
@@ -3608,6 +3608,12 @@ function HRApplyBudget() {
   const { rows: dashboardRows = [], readOnlyCycle = false } = useAppraisal();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
+  // Fields tab (Access screen) limits for this screen. Tech-ED (the row name) always stays on.
+  const fieldAccess = useScreenFields("budgetMaster");
+  const pctHidden = fieldAccess.hidden("Budget %");
+  const reasonHidden = fieldAccess.hidden("Reason for Change");
+  const updatedHidden = fieldAccess.hidden("Updated");
+  const teamHidden = fieldAccess.hidden("Team Size");
   const isHRBudgetUser =
     ["hr", "humanresources", "hroperation"].includes(
       String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, ""),
@@ -3616,6 +3622,9 @@ function HRApplyBudget() {
     (isHRBudgetUser || !readOnlyCycle) &&
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("changeBudgetConfig");
+  // Budget % / Reason for Change can only be typed when the field is Edit (and the action allows it).
+  const canEditPct = canConfig && fieldAccess.canEdit("Budget %");
+  const canEditReason = canConfig && fieldAccess.canEdit("Reason for Change");
   const canAudit = access.canAction("viewAudit");
   const [rows, setRows] = useState([]);
   // Remembers "EMP001 - Name" labels so a later refresh can never downgrade a
@@ -5013,7 +5022,7 @@ function HRApplyBudget() {
     v === "" || v === null || v === undefined || !Number.isFinite(Number(v))
       ? ""
       : Number(v);
-  const hrCols = [
+  const hrColsAll = [
     { key: "name", label: "Tech-ED", kind: "text", get: (r) => String(r.name || "") },
     { key: "base", label: "Budget Base", kind: "number", num: true, get: (r) => blankable(r.base) },
     { key: "pct", label: "% Applied", kind: "number", get: (r) => blankable(previewPct(r)) },
@@ -5022,9 +5031,16 @@ function HRApplyBudget() {
     { key: "origCount", label: "Original Count", kind: "number", num: true, get: (r) => blankable(r.team0) },
     { key: "curCount", label: "Current Count", kind: "number", num: true, get: (r) => blankable(r.team) },
   ];
+  const hrCols = hrColsAll.filter(
+    (c) =>
+      !(c.key === "pct" && pctHidden) &&
+      !(c.key === "updated" && updatedHidden) &&
+      !((c.key === "origCount" || c.key === "curCount") && teamHidden),
+  );
+  const visibleColCount = hrCols.length + (reasonHidden ? 0 : 1) + 2;
   const tf = useTableFilters(rows, hrCols);
   const rz = useColumnResize(HR_W);
-  const hrKeys = [...hrCols.map((c) => c.key), "reason", "update", "last"];
+  const hrKeys = [...hrCols.map((c) => c.key), ...(reasonHidden ? [] : ["reason"]), "update", "last"];
   const visibleRows = tf.rows;
   const visibleTotal = visibleRows.reduce(
     (s2, r) => ({
@@ -5102,6 +5118,7 @@ function HRApplyBudget() {
               </span>
             </div>
             <div className="bm-pan-row">
+              {!pctHidden && (
               <label>
                 <small>Org %</small>
                 <input
@@ -5112,12 +5129,14 @@ function HRApplyBudget() {
                   step="0.1"
                   placeholder="0.00"
                   value={orgPct}
-                  disabled={!canConfig || savingOrg}
+                  disabled={!canEditPct || savingOrg}
                   onFocus={selectOnFocus}
                   onChange={(e) => setOrgPct(e.target.value)}
                   aria-label="Organization budget percentage"
                 />
               </label>
+              )}
+              {!reasonHidden && (
               <label className="bm-grow">
                 <small>Reason</small>
                 <input
@@ -5125,16 +5144,17 @@ function HRApplyBudget() {
                   type="text"
                   placeholder="Reason"
                   value={orgReason}
-                  disabled={!canConfig || savingOrg}
+                  disabled={!canEditReason || savingOrg}
                   onChange={(e) => setOrgReason(e.target.value)}
                   aria-label="Reason for organization percentage"
                 />
               </label>
+              )}
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
                 disabled={
-                  !canConfig || savingOrg || cycleLoading || !activeCycle
+                  !canEditPct || savingOrg || cycleLoading || !activeCycle
                 }
                 onClick={applyOrgPercentage}
               >
@@ -5143,6 +5163,7 @@ function HRApplyBudget() {
             </div>
           </div>
 
+          {!pctHidden && (
           <div className="bm-pan">
             <div className="bm-pan-head">
               <b>Tech-ED Budget</b>
@@ -5159,7 +5180,7 @@ function HRApplyBudget() {
                   step="0.1"
                   placeholder="%"
                   value={allPct}
-                  disabled={!canConfig || !orgApplied || savingOrg}
+                  disabled={!canEditPct || !orgApplied || savingOrg}
                   onFocus={selectOnFocus}
                   onChange={(e) => applyPctToAll(e.target.value)}
                   aria-label="Percentage for all Tech-EDs"
@@ -5169,7 +5190,7 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn"
-                disabled={!canConfig || (!pendingCount && !stagedCount)}
+                disabled={!canEditPct || (!pendingCount && !stagedCount)}
                 onClick={discard}
               >
                 Discard
@@ -5177,7 +5198,7 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
-                disabled={!canConfig || !orgApplied || !draftCount || savingOrg}
+                disabled={!canEditPct || !orgApplied || !draftCount || savingOrg}
                 onClick={() => apply()}
               >
                 Apply all
@@ -5186,7 +5207,7 @@ function HRApplyBudget() {
                 type="button"
                 className="bm-btn bm-btn-main"
                 disabled={
-                  !canConfig ||
+                  !canEditPct ||
                   !orgApplied ||
                   !stagedCount ||
                   draftCount > 0 ||
@@ -5198,6 +5219,7 @@ function HRApplyBudget() {
               </button>
             </div>
           </div>
+          )}
         </div>
 
         <div className="bm-tiles" aria-label="Organization budget summary">
@@ -5209,6 +5231,7 @@ function HRApplyBudget() {
             <small>Original budget</small>
             <b>{orgApplied ? money(originalOrgBudget) : "—"}</b>
           </div>
+          {!updatedHidden && (
           <div className="bm-tile bm-tile-hl">
             <small>Updated budget</small>
             <b>{orgApplied ? money(displayedOrgUpdated) : "—"}</b>
@@ -5223,6 +5246,7 @@ function HRApplyBudget() {
               </em>
             ) : null}
           </div>
+          )}
           <div className="bm-tile">
             <small>Allotted to Tech-EDs</small>
             <b>
@@ -5257,6 +5281,7 @@ function HRApplyBudget() {
               </em>
             ) : null}
           </div>
+          {!teamHidden && (
           <div className="bm-tile">
             <small>Team count</small>
             <b>
@@ -5269,6 +5294,7 @@ function HRApplyBudget() {
               )}
             </b>
           </div>
+          )}
         </div>
 
         <span className="bm-chip">Tech-EDs</span>
@@ -5288,7 +5314,7 @@ function HRApplyBudget() {
                     className={c.num ? "bm-n" : ""}
                   />
                 ))}
-                <FilterTh tf={tf} rz={rz} noFilter col={{ key: "reason", label: "Reason" }} />
+                {!reasonHidden && <FilterTh tf={tf} rz={rz} noFilter col={{ key: "reason", label: "Reason" }} />}
                 <FilterTh tf={tf} rz={rz} noFilter col={{ key: "update", label: "Update" }} />
                 <FilterTh tf={tf} rz={rz} noFilter col={{ key: "last", label: "Last Changed" }} />
               </tr>
@@ -5342,6 +5368,7 @@ function HRApplyBudget() {
                         <td className="bm-n">
                           {money(r.base)}
                         </td>
+                        {!pctHidden && (
                         <td className="bm-in">
                           <div className="bm-pin-cell">
                             <input
@@ -5352,7 +5379,7 @@ function HRApplyBudget() {
                               step="0.1"
                               placeholder="Enter %"
                               value={p}
-                              disabled={!canConfig}
+                              disabled={!canEditPct}
                               onFocus={selectOnFocus}
                               title={
                                 changing
@@ -5376,6 +5403,7 @@ function HRApplyBudget() {
                               <button
                                 type="button"
                                 className="bm-text-action"
+                                disabled={!canEditPct}
                                 onClick={() => resetRow(r.name)}
                               >
                                 Reset to org %
@@ -5383,18 +5411,26 @@ function HRApplyBudget() {
                             </div>
                           ) : null}
                         </td>
+                        )}
                         <td className="bm-n">
                           {money(rowOriginal(r))}
                         </td>
-                        <td className="bm-n bm-calc">
-                          {money(r.updated)}
-                        </td>
-                        <td className="bm-n">
-                          {r.team0}
-                        </td>
-                        <td className="bm-n">
-                          {r.team}
-                        </td>
+                        {!updatedHidden && (
+                          <td className="bm-n bm-calc">
+                            {money(r.updated)}
+                          </td>
+                        )}
+                        {!teamHidden && (
+                          <>
+                            <td className="bm-n">
+                              {r.team0}
+                            </td>
+                            <td className="bm-n">
+                              {r.team}
+                            </td>
+                          </>
+                        )}
+                        {!reasonHidden && (
                         <td>
                           <input
                             type="text"
@@ -5403,7 +5439,7 @@ function HRApplyBudget() {
                             value={
                               rowReasons[r.name] ?? stagedReasons[r.name] ?? ""
                             }
-                            disabled={!canConfig || (!hasPending && !hasStaged)}
+                            disabled={!canEditReason || (!hasPending && !hasStaged)}
                             readOnly={!hasPending && hasStaged}
                             onChange={(e) =>
                               setRowReasons((x) => ({
@@ -5414,11 +5450,12 @@ function HRApplyBudget() {
                             aria-label={"Reason for " + r.name}
                           />
                         </td>
+                        )}
                         <td className="bm-ract">
                           <button
                             type="button"
                             className="bm-hbtn bm-hbtn-apply"
-                            disabled={!canConfig || !hasPending || savingOrg}
+                            disabled={!canEditPct || !hasPending || savingOrg}
                             onClick={() => apply(r.name)}
                           >
                             Apply
@@ -5427,7 +5464,7 @@ function HRApplyBudget() {
                             type="button"
                             className="bm-hbtn bm-hbtn-pub"
                             disabled={
-                              !canConfig ||
+                              !canEditPct ||
                               !hasStaged ||
                               hasPending ||
                               savingOrg
@@ -5459,7 +5496,7 @@ function HRApplyBudget() {
                       </tr>
                       {open && canAudit ? (
                         <tr className="bm-sub">
-                          <td colSpan={HR_COLS.length}>
+                          <td colSpan={visibleColCount}>
                             <div className="bm-hist">
                               <AuditTable rows={rowAudit} />
                             </div>
@@ -5471,7 +5508,7 @@ function HRApplyBudget() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={HR_COLS.length} className="bm-empty">
+                  <td colSpan={visibleColCount} className="bm-empty">
                     {!orgApplied
                       ? "Press Apply org % to load the Tech-ED list from the Appraisal Sheet."
                       : budgetLoading
@@ -5484,12 +5521,16 @@ function HRApplyBudget() {
                 <tr className="bm-tot">
                   <td>Total</td>
                   <td className="bm-n">{money(visibleTotal.base)}</td>
-                  <td></td>
+                  {!pctHidden && <td></td>}
                   <td className="bm-n">{money(visibleTotal.original)}</td>
-                  <td className="bm-n">{money(visibleTotal.updated)}</td>
-                  <td className="bm-n">{visibleTotal.team0}</td>
-                  <td className="bm-n">{visibleTotal.team}</td>
-                  <td></td>
+                  {!updatedHidden && <td className="bm-n">{money(visibleTotal.updated)}</td>}
+                  {!teamHidden && (
+                    <>
+                      <td className="bm-n">{visibleTotal.team0}</td>
+                      <td className="bm-n">{visibleTotal.team}</td>
+                    </>
+                  )}
+                  {!reasonHidden && <td></td>}
                   <td></td>
                   <td></td>
                 </tr>
