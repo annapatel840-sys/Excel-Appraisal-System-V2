@@ -1803,7 +1803,8 @@ async function readEligibilityCriteriaMeta(tables, cycle, auditRows = null) {
 // Appraisal Sheet generation. Payroll_Data.appraisal_cycle_name stores the
 // source cycle ROWID, not an arbitrary historical cycle label.
 async function validatePayrollBeforeEligibility(tables, cycle, criteria = {}) {
-  if (cycleProcessOf(cycle) !== "Annual") return;
+  // Payroll history is optional for Annual cycles; do not block eligibility.
+  return;
   const [masters, payrollRows, cycleRows, locations] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
@@ -4002,46 +4003,9 @@ async function generateAppraisalSheet(
     return !(currentYear && joiningYear === currentYear);
   });
 
-  if (missingPayrollEmployees.length) {
-    const missingNames = missingPayrollEmployees
-      .map((employee) => {
-        const masterId = referenceText(
-          employee.employeeMasterRowId || "",
-        ).toLowerCase();
-        const empId = String(employee.empId || employee.emp_id || "")
-          .trim()
-          .toLowerCase();
-        const master =
-          eligibleMasterByAnyKey.get(masterId) ||
-          eligibleMasterByAnyKey.get(empId) ||
-          {};
-        const id = String(
-          fieldValue(master, "emp_id", "employee_id", "emp_code") ||
-            employee.empId ||
-            employee.emp_id ||
-            "",
-        ).trim();
-        const name = String(
-          fieldValue(master, "emp_name", "name") || employee.name || "",
-        ).trim();
-        return name ? `${id} - ${name}` : id;
-      })
-      .filter(Boolean);
-    const employeeList = missingNames.length
-      ? ` Missing employees: ${missingNames.join(", ")}.`
-      : "";
-    if (!reuseExistingCycleData && sourceHasPayroll) {
-      throw new ApiError(
-        `Payroll data already exists for ${sourceCycle.name}. Confirm to reuse those existing records for ${cycle.name}; no payroll rows will be copied or inserted.${employeeList}`,
-        409,
-        "EXISTING_CYCLE_DATA_AVAILABLE",
-      );
-    }
-    throw new ApiError(
-      `Payroll history is missing for ${missingPayrollEmployees.length} eligible employee(s) in ${cycle.name}.${employeeList} The system checked this cycle, its shared Annual source, same-year New Joiner payroll and earlier Archived Annual payroll. Upload the missing payroll through Payroll Data / Historical Import before generating the Appraisal Sheet. Current-year new joiners are not required to have prior-cycle history.`,
-      409,
-    );
-  }
+  // Payroll history is optional. When present, the source-selection logic below
+  // uses the best matching shared, New Joiner, or previous Annual record.
+  // Missing payroll rows must not block Appraisal Sheet generation.
 
   // Archived payroll/feedback uploads are shared history. Match feedback to
   // eligible employees through Employee_Master and accept only the selected
@@ -4134,23 +4098,8 @@ async function generateAppraisalSheet(
     if (!state.feedback) missingFeedbackEmployees.push(label);
     if (!state.rating) missingRatingEmployees.push(label);
   });
-  if (!exceptionalCycle && (missingFeedbackEmployees.length || missingRatingEmployees.length)) {
-    const details = [];
-    if (missingFeedbackEmployees.length) {
-      details.push(
-        `feedback values missing for: ${missingFeedbackEmployees.slice(0, 30).join(", ")}${missingFeedbackEmployees.length > 30 ? ", ..." : ""}`,
-      );
-    }
-    if (missingRatingEmployees.length) {
-      details.push(
-        `rating values missing for: ${missingRatingEmployees.slice(0, 30).join(", ")}${missingRatingEmployees.length > 30 ? ", ..." : ""}`,
-      );
-    }
-    throw new ApiError(
-      `Feedback and Rating are required for every eligible employee of ${cycle.name}. ${details.join(". ")}. The system checked this cycle and matching archived/shared history for employees in the selected location.`,
-      409,
-    );
-  }
+  // Feedback and Rating are optional inputs. Matching records are indexed below
+  // and applied when present; missing records leave the corresponding fields blank.
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
     const rawEmployee = referenceText(
       fieldValue(
