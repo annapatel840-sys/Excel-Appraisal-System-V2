@@ -58,10 +58,12 @@ export const LOGIC_NEXT = [["and", "and"], ["or", "or"], ["not", "and not"]];
 /* What a condition compares with. */
 export const CMP_KINDS = [
   ["v", "is (a value)"],
+  ["cf", "is (compared with another field)"],
+  ["cavg", "is (compared with company average of)"],
   ["f", "differs from another field"],
   ["avg", "differs from company average of"],
-  ["p", "is a % more / less than another field"],
-  ["pavg", "is a % more / less than company average of"],
+  ["p", "is a % (compared with another field)"],
+  ["pavg", "is a % (compared with company average of)"],
 ];
 export const PCT_DIRS = [["more", "more than"], ["less", "less than"], ["of", "of"]];
 export const FLAG_TYPES = [
@@ -160,6 +162,8 @@ export const condText = (c) => {
     const needsValue = c.op !== "filled" && c.op !== "empty";
     return `${fieldLabel(c.f)} ${textOpText(c.op)}${needsValue ? ` "${c.s ?? ""}"` : ""}`;
   }
+  if (c.rt === "cf") return `${fieldLabel(c.f)} is ${o} ${fieldLabel(c.f2)}`;
+  if (c.rt === "cavg") return `${fieldLabel(c.f)} is ${o} the company average ${fieldLabel(c.f2)}`;
   if (c.rt === "f") {
     return c.abs
       ? `${fieldLabel(c.f)} and ${fieldLabel(c.f2)} differ by ${c.v}${c.op === ">=" || c.op === ">" ? " or more" : " or less"}`
@@ -252,6 +256,8 @@ export const buildFlagContext = (rows, flags, ctx) => {
   const testCond = (c, r) => {
     if (c.rt === "t" || isTextField(c.f)) return cmpText(fieldText(r, c.f), c.op, c.s);
     const a = fieldNum(r, c.f);
+    if (c.rt === "cf") return cmpOp(a, c.op, fieldNum(r, c.f2));
+    if (c.rt === "cavg") return cmpOp(a, c.op, x.av(c.f2));
     if (c.rt === "f") {
       let l = a - fieldNum(r, c.f2);
       if (c.abs) l = Math.abs(l);
@@ -301,6 +307,8 @@ export const flagWhy = (flag, r, x, dimName) => {
     return `${flag.cd
       .map((c) => {
         const base = `${fieldLabel(c.f)} ${fieldShow(r, c.f)}`;
+        if (c.rt === "cf") return `${base} against ${fieldLabel(c.f2)} ${fieldShow(r, c.f2)}`;
+        if (c.rt === "cavg") return `${base} against company average ${x.av(c.f2).toFixed(2)}`;
         if (c.rt === "f") return `${base} against ${fieldLabel(c.f2)} ${fieldShow(r, c.f2)}`;
         if (c.rt === "avg") return `${base} against company average ${x.av(c.f2).toFixed(2)}`;
         if (c.rt === "p" || c.rt === "pavg") {

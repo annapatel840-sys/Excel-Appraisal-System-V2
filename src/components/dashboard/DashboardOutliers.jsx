@@ -195,12 +195,22 @@ function FlagSetup({ api, onBack }) {
                       ) : (
                         <>
                           <Sel value={c.rt || "v"} options={CMP_KINDS} onChange={(v) => row((x) => condSetKind(x.cd[i], v))} />
+                          {c.rt === "cf" || c.rt === "cavg" ? (
+                            <>
+                              <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
+                              <Sel value={c.f2} options={numFields} onChange={(v) => row((x) => { x.cd[i].f2 = v; })} />
+                            </>
+                          ) : null}
                           {c.rt === "f" || c.rt === "avg" ? <Sel value={c.f2} options={numFields} onChange={(v) => row((x) => { x.cd[i].f2 = v; })} /> : null}
                           {c.rt === "f" ? (
                             <label className="chk"><input type="checkbox" checked={!!c.abs} onChange={(e) => row((x) => { x.cd[i].abs = e.target.checked; })} />ignore sign</label>
                           ) : null}
-                          <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
-                          <NumIn value={c.v} onCommit={(v) => row((x) => { x.cd[i].v = v; })} />
+                          {c.rt === "cf" || c.rt === "cavg" ? null : (
+                            <>
+                              <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
+                              <NumIn value={c.v} onCommit={(v) => row((x) => { x.cd[i].v = v; })} />
+                            </>
+                          )}
                           {c.rt === "p" || c.rt === "pavg" ? (
                             <>
                               <span className="mut">%</span>
@@ -348,7 +358,7 @@ export function DashboardOutliers({ rows, dims, effectiveId, api, compareCycles,
   keys.forEach((r) => {
     if (r.ty === "cmp") {
       r.cd.forEach((c, i) => {
-        if (c.f === "promo" || c.rt === "t" || isTextField(c.f)) return;
+        if (c.f === "promo" || c.rt === "t" || c.rt === "cf" || c.rt === "cavg" || isTextField(c.f)) return;
         const pc = c.rt === "p" || c.rt === "pavg" ? ` is a % ${c.dir === "of" ? "of" : c.dir === "less" ? "less than" : "more than"} ${c.rt === "pavg" ? "company average " : ""}${fieldLabel(c.f2)},` : "";
         limits.push(limit(r, `${r.id}|${i}`, `${fieldLabel(c.f)}${c.rt === "avg" ? " vs company average" : c.rt === "f" ? ` vs ${fieldLabel(c.f2)}` : ""}${pc} ${opText(c.op)}`, c.v, (v) => editFlag(r.id, (x) => { x.cd[i].v = v; })));
       });
