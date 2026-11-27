@@ -3776,7 +3776,17 @@ async function generateAppraisalSheet(
   const exceptionalSourceRowsByEmpId = new Map();
   if (exceptionalCycle) {
     const candidateIds = new Set(exceptionalSourceCycles.map((item) => String(item.id)));
-    sheetRows.forEach((sheet) => {
+    // Archiving moves Appraisal_Sheet rows into Payroll_Data and deletes
+    // the live sheet rows. Include those archived payroll records in the
+    // Exceptional source lookup; archive stores Employee_Master ROWID in
+    // Payroll_Data.emp_id and appraisal cycle ROWID in appraisal_cycle_name.
+    const archivedAnnualRows = payrollRowsWithCycle
+      .filter(({ cycle: rowCycle }) =>
+        rowCycle && candidateIds.has(String(rowCycle.id)),
+      )
+      .map(({ row }) => row);
+    const annualSourceRows = [...sheetRows, ...archivedAnnualRows];
+    annualSourceRows.forEach((sheet) => {
       const matchedCycle = exceptionalSourceCycles.find((item) => sheetBelongsToCycle(sheet, item));
       if (!matchedCycle || !candidateIds.has(String(matchedCycle.id))) return;
       const master = sheetEmployeeMaster(sheet, annualMasterByEmpId, masterByRowId);
