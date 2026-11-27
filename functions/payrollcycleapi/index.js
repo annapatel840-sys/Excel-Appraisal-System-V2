@@ -5002,10 +5002,10 @@ async function generateAppraisalSheet(
         "total_ctc_with_rewards",
         "total_rewards_hike_amount",
         "total_bonus",
-        "new_base_pay",
-        "current_annual_base_pay",
-        "current_base_pay",
-        "base_pay",
+        // Do not copy Annual's old current/base-pay aliases here.
+        // Exceptional current_annual_base_pay was explicitly set from
+        // Annual new_base_pay above. Keep Annual new_base_pay as historical
+        // context, but never let these aliases overwrite the opening base.
         "new_base_pay",
         "target_pb_allocated_for_may",
         "target_performance_bonus_for_next_year",
