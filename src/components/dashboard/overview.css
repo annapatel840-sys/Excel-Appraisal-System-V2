@@ -219,6 +219,8 @@
 .ovw .pill { border: 1px solid #d5dbe2; background: #fff; color: #334155; border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap; transition: border-color .15s, color .15s, background .15s, box-shadow .15s; }
 .ovw .pill:hover { border-color: #27548a; color: #27548a; }
 .ovw .pill.on { background: #1d3b5e; border-color: #1d3b5e; color: #fff; box-shadow: 0 1px 3px rgba(29, 59, 94, .28); }
+.ovw .pill .pill-n { display: inline-block; margin-left: 7px; padding: 0 7px; border-radius: 999px; background: #fbf3e0; color: #8a5a00; font-size: 11px; font-weight: 700; line-height: 17px; }
+.ovw .pill.on .pill-n { background: rgba(255, 255, 255, .2); color: #fff; }
 .ovw .pill .x { margin-left: 8px; opacity: .5; font-size: 13px; font-weight: 700; }
 .ovw .pill .x:hover { opacity: 1; }
 .ovw .pill.add { border: 1px dashed #9aa6b8; color: #475569; background: transparent; }

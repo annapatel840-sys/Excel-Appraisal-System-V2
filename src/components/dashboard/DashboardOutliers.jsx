@@ -371,10 +371,18 @@ export function DashboardOutliers({ rows, dims, effectiveId, api, catSlot, compa
   const peerOptions = ["cm", "te", "dg", "tx", "wx", "mr", "cr", "rr", "gm"].filter((k) => dimBy[k] && !peers.includes(k));
   const pastOf = (r, f) => ctx.x.past(r, f);
 
+  // People flagged by at least one switched-on flag of each category (same people as the cards below).
+  const catCount = (id) => {
+    const ids = setup.flags.filter((f) => f.c === id && f.on).map((f) => f.id);
+    return ids.length ? C.filter((r) => hitsOf(r).some((k) => ids.includes(k))).length : 0;
+  };
   const catPills = (
     <div className="pills">
       {setup.cats.map((c) => (
-        <button key={c.id} className={`pill${catId === c.id ? " on" : ""}`} type="button" onClick={() => { setCat(c.id); setSel([]); setDet(null); setShow(25); }}>{c.n}</button>
+        <button key={c.id} className={`pill${catId === c.id ? " on" : ""}`} type="button" onClick={() => { setCat(c.id); setSel([]); setDet(null); setShow(25); }}>
+          {c.n}
+          <span className="pill-n">{inr(catCount(c.id))}</span>
+        </button>
       ))}
     </div>
   );
