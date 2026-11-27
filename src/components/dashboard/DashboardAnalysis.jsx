@@ -736,21 +736,19 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
     <div className="ovw" onMouseMove={onMove} onMouseLeave={() => { if (tipRef.current) tipRef.current.style.display = "none"; }}>
       <div className="ovw-tip" ref={tipRef} />
 
-      <div className="ttl">
-        <h2>Dashboard</h2>
+      <div className="ttl ttl-tabs">
+        <div className="stabs">
+          {OUT_TABS.map(([k, label]) => (
+            <button key={k} type="button" className={`stab${out === k ? " on" : ""}`} onClick={() => pickOut(k)}>
+              {label}
+              {k === "o" ? <span className="dax-badge">{inr(flagBadge)}</span> : null}
+            </button>
+          ))}
+        </div>
         <span className="meta">
           {cycleName ? <>Appraisal Cycle <b>{cycleName}</b> · </> : null}
           {inr(rows.length)} employees in scope · groups under {MIN_GROUP} people are not shown
         </span>
-      </div>
-
-      <div className="stabs">
-        {OUT_TABS.map(([k, label]) => (
-          <button key={k} type="button" className={`stab${out === k ? " on" : ""}`} onClick={() => pickOut(k)}>
-            {label}
-            {k === "o" ? <span className="dax-badge">{inr(flagBadge)}</span> : null}
-          </button>
-        ))}
       </div>
 
       {out === "o" ? (
