@@ -4124,8 +4124,9 @@ async function generateAppraisalSheet(
       payrollByMasterId.set(masterId, row);
     }
   });
-  // Current Annual Base Pay comes from the matching shared source's NEW base
-  // pay when available; otherwise use the same-year New Joiner or prior Annual.
+  // Current Annual Base Pay comes from the matching shared source when
+  // present; otherwise prefer previous-year Annual, then New Joiner, then
+  // the newest older Annual record. Exceptional is intentionally excluded.
   const masterIdToEmpId = new Map(
     employeeMasterRows
       .map((row) => [
@@ -4200,25 +4201,27 @@ async function generateAppraisalSheet(
     if (!empId) return;
     const matchingSharedSource =
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
+    // New Joiner payroll may be Active or Closed; it need not be archived.
+    // Exceptional cycles are never considered as an Annual payroll source.
     const sameYearNewJoiner =
       isNewJoinerCycle(candidateCycle) &&
       sourceYear &&
-      sourceYear === currentYear;
+      (sourceYear === currentYear ||
+        Number(sourceYear) === Number(currentYear) - 1);
     const priorAnnual =
-      isAnnualCycle(candidateCycle) && isBeforeCurrentCycle(candidateCycle);
-    const usableNewJoiner =
-      sameYearNewJoiner &&
-      (exceptionalCycle ||
-        Boolean(candidateCycle.archived) ||
-        String(candidateCycle.status || "").trim().toLowerCase() === "archived");
+      isAnnualCycle(candidateCycle) &&
+      Number(sourceYear) < Number(currentYear) &&
+      !isCancelledPayrollCycle(candidateCycle);
+    const matchingCurrentCycle =
+      String(candidateCycle.id) === String(cycle.id);
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
-      (!usableNewJoiner &&
-        !matchingSharedSource &&
-        !(priorAnnual && !isCancelledPayrollCycle(candidateCycle)))
+      (!matchingSharedSource &&
+        !matchingCurrentCycle &&
+        !sameYearNewJoiner &&
+        !priorAnnual)
     )
       return;
-    if (!matchingSharedSource && !sameYearNewJoiner && !priorAnnual) return;
     const candidate = {
       row,
       cycle: candidateCycle,
@@ -4251,15 +4254,37 @@ async function generateAppraisalSheet(
       .sort((a, b) =>
         b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
       )[0];
-    const sameYearNewJoiner = candidates
-      .filter((item) => item.sameYearNewJoiner)
-      .sort(compareNewest)[0];
-    const latestAnnual = candidates
+    const previousAnnual = candidates
       .filter(
-        (item) => isAnnualCycle(item.cycle) && isBeforeCurrentCycle(item.cycle),
+        (item) =>
+          isAnnualCycle(item.cycle) &&
+          Number(cycleYear(item.cycle)) === Number(currentYear) - 1,
       )
       .sort(compareNewest)[0];
-    const selected = sharedSource || sameYearNewJoiner || latestAnnual;
+    const newJoiner = candidates
+      .filter((item) => item.sameYearNewJoiner)
+      .sort((a, b) => {
+        const previousYear = Number(currentYear) - 1;
+        const aPrevious = Number(cycleYear(a.cycle)) === previousYear ? 0 : 1;
+        const bPrevious = Number(cycleYear(b.cycle)) === previousYear ? 0 : 1;
+        return aPrevious - bPrevious || compareNewest(a, b);
+      })[0];
+    const olderAnnual = candidates
+      .filter(
+        (item) =>
+          isAnnualCycle(item.cycle) &&
+          Number(cycleYear(item.cycle)) < Number(currentYear) - 1,
+      )
+      .sort(compareNewest)[0];
+    const currentCyclePayroll = candidates.find(
+      (item) => String(item.cycle.id) === String(cycle.id),
+    );
+    const selected =
+      sharedSource ||
+      previousAnnual ||
+      newJoiner ||
+      olderAnnual ||
+      currentCyclePayroll;
     if (!selected) return;
     if (selected.sameYearNewJoiner) {
       newJoinerCycleKeysByEmployee.set(
