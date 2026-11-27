@@ -4780,6 +4780,35 @@ async function generateAppraisalSheet(
     const previousPayrollBaseSource =
       payrollBaseSourceByMasterId.get(masterId) ||
       payrollBaseSourceByMasterId.get(String(employee.empId || "").trim());
+    // Hike Amount / Hike % are decisions for the new appraisal cycle,
+    // never carry-forward payroll inputs. If an existing generated row still
+    // contains exactly the historical payroll value, clear that stale default.
+    // A different value is treated as a deliberate current-cycle edit.
+    if (existing && previousPayrollBaseSource) {
+      [
+        ["hike_amount", ["hike_amount", "hikeAmt"]],
+        ["hike_pct", ["hike_pct", "hike", "hikePct"]],
+      ].forEach(([field, aliases]) => {
+        const destination = appraisalSheetColumnByLower
+          ? appraisalSheetColumnByLower.get(field)
+          : field;
+        if (appraisalSheetColumns && !destination) return;
+        const oldValue = fieldValue(existing, ...aliases);
+        const historicalValue = fieldValue(previousPayrollBaseSource, ...aliases);
+        if (
+          oldValue !== undefined &&
+          oldValue !== null &&
+          historicalValue !== undefined &&
+          historicalValue !== null &&
+          String(oldValue).trim() !== "" &&
+          String(historicalValue).trim() !== "" &&
+          Number(String(oldValue).replace(/[,₹%\\s]/g, "")) ===
+            Number(String(historicalValue).replace(/[,₹%\\s]/g, ""))
+        ) {
+          payload[destination || field] = null;
+        }
+      });
+    }
     const previousNewBasePay = previousPayrollBaseSource
       ? fieldValue(previousPayrollBaseSource, "new_base_pay", "newBasePay")
       : undefined;
