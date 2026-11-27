@@ -386,7 +386,7 @@ export function DashboardOutliers({ rows, dims, effectiveId, api, catSlot, compa
         {catSlot ? null : catPills}
 
         {!keys.length ? (
-          <div className="mut" style={{ marginTop: 12 }}>No flags are switched on in this category.{isHr ? " Open Flag Setup to add one." : ""}</div>
+          <div className="mut" style={{ marginTop: catSlot ? 0 : 12 }}>No flags are switched on in this category.{isHr ? " Open Flag Setup to add one." : ""}</div>
         ) : (
           <>
             <div className="dpx-cards">

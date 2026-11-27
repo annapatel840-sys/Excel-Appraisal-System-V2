@@ -314,6 +314,7 @@
 .ovw .dpx-out { display: flex; gap: 14px; align-items: flex-start; }
 .ovw .dpx-outmain { flex: 1; min-width: 0; }
 .ovw .dpx-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ovw .dpx-outmain > .dpx-cards:first-child { margin-top: 0; } /* pills sit in the header, so the cards start level with the side panel */
 .ovw .hrc { flex: 1; min-width: 150px; padding: 10px 12px; }
 .ovw .hrc.on { outline: 2px solid var(--pill); background: #f2f7fd; }
 .ovw .dpx-det { margin-top: 12px; }
