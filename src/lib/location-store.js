@@ -12,6 +12,7 @@
 import { useSyncExternalStore } from "react";
 import { cycleNameLocation } from "./cycle-name";
 import { setActiveCurrency } from "./currency-format";
+import { forgetCycleTypeUser, restoreCycleTypeForUser } from "./cycle-type-store";
 
 export const ALL_LOCATIONS = "All";
 const STORAGE_KEY_PREFIX = "appraisal.selectedLocation.v2:";
@@ -117,6 +118,8 @@ export function applyHomeLocationOnSignIn(userKey, homeLocation) {
   } catch (_) {
     /* storage is optional */
   }
+  // Same account, same home location: keep the Cycle Type chosen before the refresh.
+  restoreCycleTypeForUser(who, homeChanged);
   emit();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: selected }));
@@ -126,6 +129,7 @@ export function applyHomeLocationOnSignIn(userKey, homeLocation) {
 // The next authenticated session selects its own saved location namespace.
 export function forgetHomeLocationApplied() {
   activeUserKey = "";
+  forgetCycleTypeUser();
 }
 
 // Called with the rows from Location Master (any casing of the field names).

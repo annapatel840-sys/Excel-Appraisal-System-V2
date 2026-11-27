@@ -1183,7 +1183,10 @@ export function LocationMasterControl({
                       }
                     }}
                   >
-                    <span>{loc.location_name}</span>
+                    <span>
+                      {loc.location_name}
+                      {cycleTypeMenu && isSelected(loc) ? ` · ${cycleTypeMenu.value}` : ""}
+                    </span>
                     {isSelected(loc) && (cycleTypeMenu ? <ChevronRight size={14} /> : <Check size={14} />)}
                   </button>
                 ))}

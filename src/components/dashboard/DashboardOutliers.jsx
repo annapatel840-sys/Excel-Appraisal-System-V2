@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { prefetchDetailHistory } from "@/components/appraisal/DetailScreenPage";
 import { MIN_GROUP, calcHikePct, inr, isPromoted, pctOfBase, ratingOf, recordHikePct } from "@/lib/dashboard-overview";
@@ -271,7 +272,7 @@ function FlagSetup({ api, onBack }) {
 
 /* ---------------- the Outliers view ---------------- */
 
-export function DashboardOutliers({ rows, dims, effectiveId, api, compareCycles, cmp, onCmpChange, prev, canOpenSheet }) {
+export function DashboardOutliers({ rows, dims, effectiveId, api, catSlot, compareCycles, cmp, onCmpChange, prev, canOpenSheet }) {
   const { setup, setSetup, peers, setPeers, dimBy, bucketIndex, ctx, cutsFor } = api;
   const isHr = effectiveId === "hr";
   const [cat, setCat] = useState("");
@@ -370,17 +371,30 @@ export function DashboardOutliers({ rows, dims, effectiveId, api, compareCycles,
   const peerOptions = ["cm", "te", "dg", "tx", "wx", "mr", "cr", "rr", "gm"].filter((k) => dimBy[k] && !peers.includes(k));
   const pastOf = (r, f) => ctx.x.past(r, f);
 
+  // People flagged by at least one switched-on flag of each category (same people as the cards below).
+  const catCount = (id) => {
+    const ids = setup.flags.filter((f) => f.c === id && f.on).map((f) => f.id);
+    return ids.length ? C.filter((r) => hitsOf(r).some((k) => ids.includes(k))).length : 0;
+  };
+  const catPills = (
+    <div className="pills">
+      {setup.cats.map((c) => (
+        <button key={c.id} className={`pill${catId === c.id ? " on" : ""}`} type="button" onClick={() => { setCat(c.id); setSel([]); setDet(null); setShow(25); }}>
+          {c.n}
+          <span className="pill-n">{inr(catCount(c.id))}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="dpx-out">
+      {catSlot ? createPortal(catPills, catSlot) : null}
       <div className="dpx-outmain">
-        <div className="pills">
-          {setup.cats.map((c) => (
-            <button key={c.id} className={`pill${catId === c.id ? " on" : ""}`} type="button" onClick={() => { setCat(c.id); setSel([]); setDet(null); setShow(25); }}>{c.n}</button>
-          ))}
-        </div>
+        {catSlot ? null : catPills}
 
         {!keys.length ? (
-          <div className="mut" style={{ marginTop: 12 }}>No flags are switched on in this category.{isHr ? " Open Flag Setup to add one." : ""}</div>
+          <div className="mut" style={{ marginTop: catSlot ? 0 : 12 }}>No flags are switched on in this category.{isHr ? " Open Flag Setup to add one." : ""}</div>
         ) : (
           <>
             <div className="dpx-cards">

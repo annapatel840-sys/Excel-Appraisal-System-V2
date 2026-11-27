@@ -731,6 +731,8 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
   );
 
   const flagBadge = flagsApi.flaggedCount;
+  // Where the Outliers category pills are shown: in the header, beside the tabs.
+  const [catSlot, setCatSlot] = useState(null);
 
   return (
     <div className="ovw" onMouseMove={onMove} onMouseLeave={() => { if (tipRef.current) tipRef.current.style.display = "none"; }}>
@@ -745,8 +747,8 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
             </button>
           ))}
         </div>
+        <div className="ttl-slot" ref={setCatSlot} />
         <span className="meta">
-          {cycleName ? <>Appraisal Cycle <b>{cycleName}</b> · </> : null}
           {inr(rows.length)} employees in scope · groups under {MIN_GROUP} people are not shown
         </span>
       </div>
@@ -757,6 +759,7 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
           dims={dims}
           effectiveId={effectiveId}
           api={flagsApi}
+          catSlot={catSlot}
           compareCycles={compareCycles}
           cmp={cmp}
           onCmpChange={onCmpChange}
