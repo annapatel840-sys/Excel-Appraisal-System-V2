@@ -4900,62 +4900,9 @@ async function generateAppraisalSheet(
       payload[currentBasePayColumn || "current_annual_base_pay"] =
         previousNewBasePay;
     }
-    // Previous Total Rewards is sourced from the same selected historical
-    // payroll row as Current Annual Base Pay. Resolve the live Appraisal_Sheet
-    // column name because deployments may use either legacy column alias.
-    const previousTotalRewards = previousPayrollBaseSource
-      ? fieldValue(
-          previousPayrollBaseSource,
-          "total_CTC_with_rewards",
-          "total_ctc_with_rewards",
-          "total_ctc",
-        )
-      : undefined;
-    const previousTotalRewardsColumn = appraisalSheetColumnByLower
-      ? [
-          "previous_year_CTC_with_rewards",
-          "previous_appraisal_total_ctc_with_rewards",
-        ]
-          .map((name) => appraisalSheetColumnByLower.get(name.toLowerCase()))
-          .find(Boolean)
-      : "previous_appraisal_total_ctc_with_rewards";
-    if (
-      previousTotalRewards !== undefined &&
-      previousTotalRewards !== null &&
-      String(previousTotalRewards).trim() !== "" &&
-      (!appraisalSheetColumns || previousTotalRewardsColumn)
-    ) {
-      const existingPreviousTotal = fieldValue(
-        existing || {},
-        "previous_year_CTC_with_rewards",
-        "previous_appraisal_total_ctc_with_rewards",
-      );
-      const existingPreviousNumber = Number(
-        String(existingPreviousTotal ?? "")
-          .replace(/[,₹\\s]/g, "")
-          .trim(),
-      );
-      const sourcePreviousNumber = Number(
-        String(previousTotalRewards)
-          .replace(/[,₹\\s]/g, "")
-          .trim(),
-      );
-      if (
-        !existing ||
-        existingPreviousTotal === undefined ||
-        existingPreviousTotal === null ||
-        String(existingPreviousTotal).trim() === "" ||
-        (Number.isFinite(existingPreviousNumber) &&
-          existingPreviousNumber === 0 &&
-          Number.isFinite(sourcePreviousNumber) &&
-          sourcePreviousNumber !== 0)
-      ) {
-        payload[
-          previousTotalRewardsColumn ||
-            "previous_appraisal_total_ctc_with_rewards"
-        ] = previousTotalRewards;
-      }
-    }
+    // Prior-cycle carry-forward is intentionally limited to
+    // current_annual_base_pay; previous-cycle total rewards are not copied.
+
     if (payroll && !payrollIsCarryForwardSource) {
       const payrollFieldMap = {
         current_annual_base_pay: ["current_annual_base_pay", "base_pay"],
