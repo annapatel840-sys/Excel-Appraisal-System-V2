@@ -176,9 +176,13 @@ function lookupReferenceValues(value) {
     "appraisal_year",
   ];
   const values = Object.entries(value)
-    .filter(([key]) => keys.some((candidate) => candidate.toLowerCase() === key.toLowerCase()))
+    .filter(([key]) =>
+      keys.some((candidate) => candidate.toLowerCase() === key.toLowerCase()),
+    )
     .map(([, item]) => item)
-    .filter((item) => item !== null && item !== undefined && typeof item !== "object")
+    .filter(
+      (item) => item !== null && item !== undefined && typeof item !== "object",
+    )
     .map((item) => String(item).trim())
     .filter(Boolean);
   return [...new Set(values)];
@@ -186,7 +190,9 @@ function lookupReferenceValues(value) {
 function sheetFieldValues(sheet, ...names) {
   const keys = Object.keys(sheet || {});
   return names.flatMap((name) => {
-    const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
+    const actual = keys.find(
+      (key) => key.toLowerCase() === String(name).toLowerCase(),
+    );
     return actual === undefined ? [] : lookupReferenceValues(sheet[actual]);
   });
 }
@@ -201,7 +207,11 @@ function sheetBelongsToCycle(sheet, cycle) {
     "appraisal_year",
   ).map((value) => value.toLowerCase());
   const expected = [cycle?.id, cycle?.sourceRowId, cycle?.name]
-    .map((value) => String(value || "").trim().toLowerCase())
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean);
   return values.some((value) => expected.includes(value));
 }
@@ -1391,8 +1401,7 @@ async function requireIdentity(req, { includeEmployeeProfile = true } = {}) {
   if (email && includeEmployeeProfile) {
     try {
       const adminApp = catalyst.initialize(req, { scope: "admin" });
-      const zcql =
-        typeof adminApp.zcql === "function" ? adminApp.zcql() : null;
+      const zcql = typeof adminApp.zcql === "function" ? adminApp.zcql() : null;
       if (zcql && typeof zcql.executeZCQLQuery === "function") {
         const escapedEmail = email.replace(/'/g, "''");
         let matches = [];
@@ -1423,10 +1432,7 @@ async function requireIdentity(req, { includeEmployeeProfile = true } = {}) {
                 .toLowerCase() === "active",
           ) || matches[0];
         employeeEmpId = String(
-          selected?.emp_id ||
-            selected?.employee_id ||
-            selected?.emp_code ||
-            "",
+          selected?.emp_id || selected?.employee_id || selected?.emp_code || "",
         ).trim();
         employeeLocation = employeeLocationName(selected, []);
       }
@@ -3210,8 +3216,7 @@ async function validateGenerationDesignations(
           !candidate.hidden,
       )
       .sort(
-        (a, b) =>
-          Number(b.status === "Active") - Number(a.status === "Active"),
+        (a, b) => Number(b.status === "Active") - Number(a.status === "Active"),
       )[0];
     if (annualSource?.id) designationCycleId = String(annualSource.id);
   }
@@ -3614,18 +3619,19 @@ async function generateAppraisalSheet(
           isAvailableSourceCycle(item),
       )
     : [];
-  const matchingSharedSourceCycles = !exceptionalCycle && cycleLocationKey(cycle)
-    ? normalizedCycles.filter(
-        (item) =>
-          String(item.id) !== String(cycle.id) &&
-          !cycleLocationKey(item) &&
-          isAvailableSourceCycle(item) &&
-          cycleNameWithoutLocation(item.name).trim().toLowerCase() ===
-            canonicalCycleName &&
-          cycleYear(item) === currentYear &&
-          cycleTypeOf(item.name) === cycleTypeOf(cycle.name),
-      )
-    : [];
+  const matchingSharedSourceCycles =
+    !exceptionalCycle && cycleLocationKey(cycle)
+      ? normalizedCycles.filter(
+          (item) =>
+            String(item.id) !== String(cycle.id) &&
+            !cycleLocationKey(item) &&
+            isAvailableSourceCycle(item) &&
+            cycleNameWithoutLocation(item.name).trim().toLowerCase() ===
+              canonicalCycleName &&
+            cycleYear(item) === currentYear &&
+            cycleTypeOf(item.name) === cycleTypeOf(cycle.name),
+        )
+      : [];
   // Payroll uploads are table history, not lifecycle-owned data. Exceptional
   // selects the newest Archived Annual cycle at or before its own year for
   // the same location. Active Annual cycles are deliberately never sources.
@@ -3635,8 +3641,7 @@ async function generateAppraisalSheet(
       .slice()
       .sort((a, b) => {
         if (exceptionalCycle) {
-          const yearDifference =
-            Number(cycleYear(b)) - Number(cycleYear(a));
+          const yearDifference = Number(cycleYear(b)) - Number(cycleYear(a));
           if (yearDifference) return yearDifference;
           const aDate = String(a.effective || a.end || a.start || "");
           const bDate = String(b.effective || b.end || b.start || "");
@@ -3647,7 +3652,9 @@ async function generateAppraisalSheet(
             ? 3
             : isClosedSharedSourceCycle(item)
               ? 2
-              : String(item.status || "").trim().toLowerCase() === "active"
+              : String(item.status || "")
+                    .trim()
+                    .toLowerCase() === "active"
                 ? 1
                 : 0;
         return statusRank(b) - statusRank(a);
@@ -3722,7 +3729,15 @@ async function generateAppraisalSheet(
   employeeMasterRows.forEach((master) => {
     const keys = [
       referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase(),
-      String(fieldValue(master, "emp_id", "employee_id", "emp_code", "employee_code") || "")
+      String(
+        fieldValue(
+          master,
+          "emp_id",
+          "employee_id",
+          "emp_code",
+          "employee_code",
+        ) || "",
+      )
         .trim()
         .toLowerCase(),
     ].filter(Boolean);
@@ -3748,18 +3763,26 @@ async function generateAppraisalSheet(
   const exceptionalSourceCycles = exceptionalCycle
     ? normalizedCycles
         .filter((item) => {
-          if (!item || String(item.id) === String(cycle.id) || isCancelledPayrollCycle(item)) return false;
+          if (
+            !item ||
+            String(item.id) === String(cycle.id) ||
+            isCancelledPayrollCycle(item)
+          )
+            return false;
           const locationKey = cycleLocationKey(item);
-          if (locationKey && locationKey !== cycleLocationKey(cycle)) return false;
+          if (locationKey && locationKey !== cycleLocationKey(cycle))
+            return false;
           if (String(item.id) === String(sourceCycle?.id || "")) return true;
           const itemYear = Number(cycleYear(item));
           const targetYear = Number(currentYear);
           if (!itemYear || !targetYear || itemYear > targetYear) return false;
           // For the same year, only use a cycle that precedes this Exceptional
           // cycle, except New Joiner data which is an allowed same-year source.
-          return itemYear < targetYear ||
+          return (
+            itemYear < targetYear ||
             isBeforeCurrentCycle(item) ||
-            (isNewJoinerCycle(item) && itemYear === targetYear);
+            (isNewJoinerCycle(item) && itemYear === targetYear)
+          );
         })
         .sort((a, b) => {
           const aIsSelected = String(a.id) === String(sourceCycle?.id);
@@ -3776,14 +3799,26 @@ async function generateAppraisalSheet(
   const masterByRowId = new Map();
   employeeMasterRows.forEach((master) => {
     const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
-    const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code", "employee_code") || "").trim().toLowerCase();
+    const empId = String(
+      fieldValue(
+        master,
+        "emp_id",
+        "employee_id",
+        "emp_code",
+        "employee_code",
+      ) || "",
+    )
+      .trim()
+      .toLowerCase();
     if (masterId) masterByRowId.set(masterId, master);
     if (empId) annualMasterByEmpId.set(empId, master);
   });
   const exceptionalSourceRowsByMasterId = new Map();
   const exceptionalSourceRowsByEmpId = new Map();
   if (exceptionalCycle) {
-    const candidateIds = new Set(exceptionalSourceCycles.map((item) => String(item.id)));
+    const candidateIds = new Set(
+      exceptionalSourceCycles.map((item) => String(item.id)),
+    );
     // Keep the resolved cycle alongside each source row. Live Appraisal_Sheet
     // rows identify their cycle through sheetBelongsToCycle; archived rows have
     // already been resolved reliably by payrollRowsWithCycle above. Rechecking
@@ -3798,17 +3833,23 @@ async function generateAppraisalSheet(
             sheetBelongsToCycle(row, item),
           ),
         }))
-        .filter(({ cycle: rowCycle }) =>
-          rowCycle && candidateIds.has(String(rowCycle.id)),
+        .filter(
+          ({ cycle: rowCycle }) =>
+            rowCycle && candidateIds.has(String(rowCycle.id)),
         ),
       ...payrollRowsWithCycle
-        .filter(({ cycle: rowCycle }) =>
-          rowCycle && candidateIds.has(String(rowCycle.id)),
+        .filter(
+          ({ cycle: rowCycle }) =>
+            rowCycle && candidateIds.has(String(rowCycle.id)),
         )
         .map(({ row, cycle: rowCycle }) => ({ row, cycle: rowCycle })),
     ];
     annualSourceEntries.forEach(({ row: sheet, cycle: matchedCycle }) => {
-      const master = sheetEmployeeMaster(sheet, annualMasterByEmpId, masterByRowId);
+      const master = sheetEmployeeMaster(
+        sheet,
+        annualMasterByEmpId,
+        masterByRowId,
+      );
       const masterIdValues = sheetFieldValues(
         sheet,
         "emp_master_row_id",
@@ -3824,16 +3865,34 @@ async function generateAppraisalSheet(
         "emp_code",
         "employee_code",
       );
-      const masterId = (
-        master
-          ? [referenceText(master.ROWID ?? master.rowid ?? master.id), ...masterIdValues]
+      const masterId =
+        (master
+          ? [
+              referenceText(master.ROWID ?? master.rowid ?? master.id),
+              ...masterIdValues,
+            ]
           : masterIdValues
-      ).map((value) => String(value || "").trim().toLowerCase()).find(Boolean) || "";
-      const empId = (
-        master
-          ? [fieldValue(master, "emp_id", "employee_id", "emp_code"), ...employeeIdValues]
+        )
+          .map((value) =>
+            String(value || "")
+              .trim()
+              .toLowerCase(),
+          )
+          .find(Boolean) || "";
+      const empId =
+        (master
+          ? [
+              fieldValue(master, "emp_id", "employee_id", "emp_code"),
+              ...employeeIdValues,
+            ]
           : employeeIdValues
-      ).map((value) => String(value || "").trim().toLowerCase()).find(Boolean) || "";
+        )
+          .map((value) =>
+            String(value || "")
+              .trim()
+              .toLowerCase(),
+          )
+          .find(Boolean) || "";
       const entry = { row: sheet, cycle: matchedCycle };
       if (masterId) {
         const list = exceptionalSourceRowsByMasterId.get(masterId) || [];
@@ -3855,7 +3914,11 @@ async function generateAppraisalSheet(
       "new_base_pay",
     ].some((field) => {
       const value = fieldValue(row, field);
-      const amount = Number(String(value ?? "").replace(/[,₹\\s]/g, "").trim());
+      const amount = Number(
+        String(value ?? "")
+          .replace(/[,₹\\s]/g, "")
+          .trim(),
+      );
       return Number.isFinite(amount) && amount > 0;
     });
   const selectExceptionalSourceRow = (entries) => {
@@ -3864,19 +3927,33 @@ async function generateAppraisalSheet(
       const aIsSelected = String(a.cycle.id) === String(sourceCycle?.id);
       const bIsSelected = String(b.cycle.id) === String(sourceCycle?.id);
       if (aIsSelected !== bIsSelected) return aIsSelected ? -1 : 1;
-      const yearDifference = Number(cycleYear(b.cycle)) - Number(cycleYear(a.cycle));
+      const yearDifference =
+        Number(cycleYear(b.cycle)) - Number(cycleYear(a.cycle));
       if (yearDifference) return yearDifference;
-      const aDate = String(a.cycle.effective || a.cycle.end || a.cycle.start || "");
-      const bDate = String(b.cycle.effective || b.cycle.end || b.cycle.start || "");
+      const aDate = String(
+        a.cycle.effective || a.cycle.end || a.cycle.start || "",
+      );
+      const bDate = String(
+        b.cycle.effective || b.cycle.end || b.cycle.start || "",
+      );
       return bDate.localeCompare(aDate);
     });
-    return ordered.find((item) => hasPositiveBasePay(item.row))?.row || ordered[0].row;
+    return (
+      ordered.find((item) => hasPositiveBasePay(item.row))?.row ||
+      ordered[0].row
+    );
   };
   const annualSheetForEmployee = (employee) => {
-    const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
-    const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
+    const masterId = referenceText(
+      employee.employeeMasterRowId || "",
+    ).toLowerCase();
+    const empId = String(employee.empId || employee.emp_id || "")
+      .trim()
+      .toLowerCase();
     return (
-      selectExceptionalSourceRow(exceptionalSourceRowsByMasterId.get(masterId)) ||
+      selectExceptionalSourceRow(
+        exceptionalSourceRowsByMasterId.get(masterId),
+      ) ||
       selectExceptionalSourceRow(exceptionalSourceRowsByEmpId.get(empId)) ||
       null
     );
@@ -3898,7 +3975,9 @@ async function generateAppraisalSheet(
       return (
         cycleYear(item) === currentYear &&
         (Boolean(item.archived) ||
-          String(item.status || "").trim().toLowerCase() === "archived")
+          String(item.status || "")
+            .trim()
+            .toLowerCase() === "archived")
       );
     return isAnnualCycle(item) && isBeforeCurrentCycle(item);
   };
@@ -3951,11 +4030,23 @@ async function generateAppraisalSheet(
   // validation when that row is incomplete.
   const missingExceptionalAnnualSourceEmployees = exceptionalCycle
     ? eligibleRows.filter((employee) => {
-        const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
-        const empId = String(employee.empId || employee.emp_id || "").trim().toLowerCase();
-        const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId);
-        const canonicalMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id).toLowerCase();
-        const canonicalEmpId = String(fieldValue(master || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+        const masterId = referenceText(
+          employee.employeeMasterRowId || "",
+        ).toLowerCase();
+        const empId = String(employee.empId || employee.emp_id || "")
+          .trim()
+          .toLowerCase();
+        const master =
+          eligibleMasterByAnyKey.get(masterId) ||
+          eligibleMasterByAnyKey.get(empId);
+        const canonicalMasterId = referenceText(
+          master?.ROWID ?? master?.rowid ?? master?.id,
+        ).toLowerCase();
+        const canonicalEmpId = String(
+          fieldValue(master || {}, "emp_id", "employee_id", "emp_code") || "",
+        )
+          .trim()
+          .toLowerCase();
         const hasSameYearNewJoinerPayroll = [
           masterId,
           empId,
@@ -3980,7 +4071,9 @@ async function generateAppraisalSheet(
           .map((field) => fieldValue(annualRow, field))
           .find((value) => {
             const amount = Number(
-              String(value ?? "").replace(/[,₹\s]/g, "").trim(),
+              String(value ?? "")
+                .replace(/[,₹\s]/g, "")
+                .trim(),
             );
             return Number.isFinite(amount) && amount > 0;
           });
@@ -3989,11 +4082,20 @@ async function generateAppraisalSheet(
     : [];
   if (missingExceptionalAnnualSourceEmployees.length) {
     const labels = missingExceptionalAnnualSourceEmployees.map((employee) => {
-      const masterId = referenceText(employee.employeeMasterRowId || "").toLowerCase();
+      const masterId = referenceText(
+        employee.employeeMasterRowId || "",
+      ).toLowerCase();
       const empId = String(employee.empId || employee.emp_id || "").trim();
-      const master = eligibleMasterByAnyKey.get(masterId) || eligibleMasterByAnyKey.get(empId.toLowerCase()) || {};
-      const id = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || empId);
-      const name = String(fieldValue(master, "emp_name", "name") || employee.name || "").trim();
+      const master =
+        eligibleMasterByAnyKey.get(masterId) ||
+        eligibleMasterByAnyKey.get(empId.toLowerCase()) ||
+        {};
+      const id = String(
+        fieldValue(master, "emp_id", "employee_id", "emp_code") || empId,
+      );
+      const name = String(
+        fieldValue(master, "emp_name", "name") || employee.name || "",
+      ).trim();
       const annualRow = annualSheetForEmployee(employee);
       if (!annualRow) {
         return `${id} - ${name || "Unknown"} [NO_MATCHING_ANNUAL_SHEET_ROW]`;
@@ -4151,9 +4253,7 @@ async function generateAppraisalSheet(
     if (!rawEmployee) return;
     const master = eligibleMasterByAnyKey.get(rawEmployee);
     if (!master) return;
-    const masterId = referenceText(
-      master.ROWID ?? master.rowid ?? master.id,
-    );
+    const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
     if (
       masterId &&
       (cycleKeys.has(rawCycle.toLowerCase()) ||
@@ -4222,7 +4322,10 @@ async function generateAppraisalSheet(
       employeeMasterByBusinessId.get(rawEmployee) ||
       employeeMasterByRowId.get(rawEmployee);
     const masterId = referenceText(
-      directMaster?.ROWID ?? directMaster?.rowid ?? directMaster?.id ?? rawEmployee,
+      directMaster?.ROWID ??
+        directMaster?.rowid ??
+        directMaster?.id ??
+        rawEmployee,
     ).toLowerCase();
     const empId =
       masterIdToEmpId.get(masterId) ||
@@ -4260,18 +4363,25 @@ async function generateAppraisalSheet(
       sourceYear &&
       (sourceYear === currentYear ||
         Number(sourceYear) === Number(currentYear) - 1);
+    // A New Joiner cycle older than last year is still the only payroll record
+    // for someone who joined then; keep it as a last-resort base-pay source.
+    const earlierNewJoiner =
+      isNewJoinerCycle(candidateCycle) &&
+      Number(sourceYear) > 0 &&
+      Number(sourceYear) < Number(currentYear) - 1 &&
+      !isCancelledPayrollCycle(candidateCycle);
     const priorAnnual =
       isAnnualCycle(candidateCycle) &&
       Number(sourceYear) < Number(currentYear) &&
       !isCancelledPayrollCycle(candidateCycle);
-    const matchingCurrentCycle =
-      String(candidateCycle.id) === String(cycle.id);
+    const matchingCurrentCycle = String(candidateCycle.id) === String(cycle.id);
     if (
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
       (!matchingSharedSource &&
         !matchingCurrentCycle &&
         !priorExceptional &&
         !sameYearNewJoiner &&
+        !earlierNewJoiner &&
         !priorAnnual &&
         !exceptionalHistoricalFallback)
     )
@@ -4282,6 +4392,7 @@ async function generateAppraisalSheet(
       matchingSharedSource,
       priorExceptional,
       sameYearNewJoiner,
+      earlierNewJoiner,
       exceptionalHistoricalFallback,
       rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
     };
@@ -4343,14 +4454,35 @@ async function generateAppraisalSheet(
           .filter((item) => item.exceptionalHistoricalFallback)
           .sort(compareNewest)[0]
       : null;
-    const selected = exceptionalCycle
-      ? sharedSource || exceptionalHistory || currentCyclePayroll
-      : previousExceptional ||
-        sharedSource ||
-        previousAnnual ||
-        newJoiner ||
-        olderAnnual ||
-        currentCyclePayroll;
+    const earlierNewJoiner = candidates
+      .filter((item) => item.earlierNewJoiner)
+      .sort(compareNewest)[0];
+    const orderedSources = exceptionalCycle
+      ? [sharedSource, exceptionalHistory, currentCyclePayroll]
+      : [
+          previousExceptional,
+          sharedSource,
+          previousAnnual,
+          newJoiner,
+          olderAnnual,
+          earlierNewJoiner,
+          currentCyclePayroll,
+        ];
+    // A higher-priority row that has no usable New Base Pay (for example a
+    // placeholder row in another cycle) must not hide a valid row further down
+    // the order, such as the employee's New Joiner payroll. Keep the original
+    // first-match choice only when no candidate carries a usable base pay.
+    const hasUsableNewBasePay = (item) => {
+      const raw = fieldValue(item.row, "new_base_pay", "newBasePay");
+      const amount = Number(
+        String(raw ?? "")
+          .replace(/[,₹\\s]/g, "")
+          .trim(),
+      );
+      return Number.isFinite(amount) && amount > 0;
+    };
+    const present = orderedSources.filter(Boolean);
+    const selected = present.find(hasUsableNewBasePay) || present[0];
     if (!selected) return;
     if (selected.sameYearNewJoiner) {
       newJoinerCycleKeysByEmployee.set(
@@ -4409,7 +4541,9 @@ async function generateAppraisalSheet(
         ? fieldValue(source, "new_base_pay", "newBasePay")
         : undefined;
       const amount = Number(
-        String(value ?? "").replace(/[,₹\\s]/g, "").trim(),
+        String(value ?? "")
+          .replace(/[,₹\\s]/g, "")
+          .trim(),
       );
       return !Number.isFinite(amount) || amount <= 0;
     });
@@ -4700,7 +4834,9 @@ async function generateAppraisalSheet(
       payload.location = generatedLocation;
     // Feedback_And_Rating is the source of the three client columns. Refresh
     // them from the current cycle's uploaded data whenever the sheet is generated.
-    const exceptionalAnnualSheet = exceptionalCycle ? annualSheetForEmployee(employee) : null;
+    const exceptionalAnnualSheet = exceptionalCycle
+      ? annualSheetForEmployee(employee)
+      : null;
     const feedback =
       exceptionalAnnualSheet ||
       feedbackByMasterId.get(masterId) ||
@@ -4848,11 +4984,10 @@ async function generateAppraisalSheet(
       previousPayrollBaseSource &&
       payroll === previousPayrollBaseSource &&
       previousPayrollBaseSourceCycle &&
-      (
-        exceptionalCycle ||
-        Number(cycleYear(previousPayrollBaseSourceCycle)) < Number(currentYear) ||
-        cycleTypeOf(previousPayrollBaseSourceCycle.name) === "Exceptional"
-      )
+      (exceptionalCycle ||
+        Number(cycleYear(previousPayrollBaseSourceCycle)) <
+          Number(currentYear) ||
+        cycleTypeOf(previousPayrollBaseSourceCycle.name) === "Exceptional"),
     );
     // Hike Amount / Hike % are decisions for the new appraisal cycle,
     // never carry-forward payroll inputs. If an existing generated row still
@@ -4868,7 +5003,10 @@ async function generateAppraisalSheet(
           : field;
         if (appraisalSheetColumns && !destination) return;
         const oldValue = fieldValue(existing, ...aliases);
-        const historicalValue = fieldValue(previousPayrollBaseSource, ...aliases);
+        const historicalValue = fieldValue(
+          previousPayrollBaseSource,
+          ...aliases,
+        );
         if (
           oldValue !== undefined &&
           oldValue !== null &&
@@ -5171,10 +5309,22 @@ const PAYROLL_FIELD_KEYS = {
   payrollMaster_retention_bonus: ["retentionBonus", "retention_bonus"],
   payrollMaster_hike: ["hikePct", "hike_pct"],
   payrollMaster_hike_amount: ["hikeAmt", "hike_amount"],
-  payrollMaster_total_ctc_with_rewards: ["totalCtcRewards", "total_CTC_with_rewards"],
-  payrollMaster_total_reward_hike_amount: ["totalRewardHikeAmt", "total_rewards_hike_amount"],
-  payrollMaster_total_reward_hike: ["totalRewardHikePct", "total_reward_hike_pct"],
-  payrollMaster_target_performance_bonus_for_next_year: ["targetPbNextYear", "target_performance_bonus_for_next_year"],
+  payrollMaster_total_ctc_with_rewards: [
+    "totalCtcRewards",
+    "total_CTC_with_rewards",
+  ],
+  payrollMaster_total_reward_hike_amount: [
+    "totalRewardHikeAmt",
+    "total_rewards_hike_amount",
+  ],
+  payrollMaster_total_reward_hike: [
+    "totalRewardHikePct",
+    "total_reward_hike_pct",
+  ],
+  payrollMaster_target_performance_bonus_for_next_year: [
+    "targetPbNextYear",
+    "target_performance_bonus_for_next_year",
+  ],
   payrollMaster_target_pb_criteria: ["targetPbCriteria", "target_pb_criteria"],
   payrollMaster_total_bonus: ["totalBonus", "total_bonus"],
   payrollMaster_new_base_pay: ["newBasePay", "new_base_pay"],
@@ -5188,7 +5338,8 @@ const PAYROLL_FIELD_KEYS = {
 function stripHiddenPayrollFields(a, record) {
   const out = { ...record };
   Object.entries(PAYROLL_FIELD_KEYS).forEach(([fieldKey, keys]) => {
-    if (a && a.fields && a.fields[fieldKey] === "hidden") keys.forEach((k) => delete out[k]);
+    if (a && a.fields && a.fields[fieldKey] === "hidden")
+      keys.forEach((k) => delete out[k]);
   });
   return out;
 }
@@ -5359,8 +5510,7 @@ async function validateUpload(tables, body) {
   };
   const cycleKey = (value) => {
     const raw = referenceValue(value);
-    const matched =
-      cycleById.get(raw) || cycleByName.get(raw.toLowerCase());
+    const matched = cycleById.get(raw) || cycleByName.get(raw.toLowerCase());
     return matched?.id || raw;
   };
   payrollRows.forEach((row) => {
@@ -6004,7 +6154,8 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
   );
   const canonicalEmployeeRef = (value) => {
     const raw = storedReference(value);
-    const master = masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
+    const master =
+      masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
     return master ? storedReference(master.ROWID ?? master.rowid) : raw;
   };
   const canonicalCycleRef = (value) => {
@@ -6012,7 +6163,9 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
     const match = normalizedCycles.find(
       (item) =>
         item.id === raw ||
-        String(item.name || "").trim().toLowerCase() === raw.toLowerCase(),
+        String(item.name || "")
+          .trim()
+          .toLowerCase() === raw.toLowerCase(),
     );
     return match?.id || raw;
   };
@@ -6095,7 +6248,9 @@ async function importRows(tables, body, actor = "", writeDeadline = 0) {
           // invalid last-appraisal value instead of rejecting the whole row.
           if (
             screen === "fb" &&
-            (["lastAppraisal", "lastAppraisalDate", "effectiveDate"].includes(key)) &&
+            ["lastAppraisal", "lastAppraisalDate", "effectiveDate"].includes(
+              key,
+            ) &&
             (typeof input[key] === "number" ||
               !/^\d{4}-\d{2}-\d{2}$/.test(String(input[key]).trim()))
           ) {
@@ -7299,7 +7454,6 @@ async function handleBulkState(req, res, identity, tables) {
   });
 }
 
-
 async function routeRequest(req, res, identity, resource, a) {
   const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
@@ -7470,7 +7624,9 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
-    const queryCycleType = String(query.cycleType || query.cycle_type || "").trim().toLowerCase();
+    const queryCycleType = String(query.cycleType || query.cycle_type || "")
+      .trim()
+      .toLowerCase();
     const requestedLocation = String(query.location || "")
       .trim()
       .toLowerCase();
@@ -7537,7 +7693,10 @@ async function routeRequest(req, res, identity, resource, a) {
     // A supplied cycle ID is authoritative. All Locations selects its own
     // Active global cycle; it is not a roll-up of the location-specific cycles.
     const typedCycles = queryCycleType
-      ? cycles.filter((item) => cycleProcessOf(item).trim().toLowerCase() === queryCycleType)
+      ? cycles.filter(
+          (item) =>
+            cycleProcessOf(item).trim().toLowerCase() === queryCycleType,
+        )
       : cycles;
     let targetCycles = [];
     if (queryCycleId) {
@@ -8135,7 +8294,13 @@ async function routeRequest(req, res, identity, resource, a) {
       {
         success: true,
         data: visibleRows.map((row) => {
-          const mapped = mapPayroll(row, cycleByName, cycleById, employeeById, locationRows);
+          const mapped = mapPayroll(
+            row,
+            cycleByName,
+            cycleById,
+            employeeById,
+            locationRows,
+          );
           return enforced ? stripHiddenPayrollFields(a, mapped) : mapped;
         }),
       },
@@ -8179,7 +8344,9 @@ async function routeRequest(req, res, identity, resource, a) {
     );
     const cycleIdByName = new Map(
       result.rows.map((item) => [
-        String(item.cycleName || "").trim().toLowerCase(),
+        String(item.cycleName || "")
+          .trim()
+          .toLowerCase(),
         String(item.cycleId || "").trim(),
       ]),
     );
@@ -8202,7 +8369,8 @@ async function routeRequest(req, res, identity, resource, a) {
     };
     const canonicalEmployeeRef = (value) => {
       const raw = referenceValue(value);
-      const master = masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
+      const master =
+        masterByRowId.get(raw) || masterByEmpId.get(raw.toLowerCase());
       return master ? String(master.ROWID ?? master.rowid ?? "").trim() : raw;
     };
     const canonicalCycleRef = (value) => {
@@ -9339,7 +9507,9 @@ module.exports = async function payrollCycleApi(req, res) {
         ? { dryRun: true, enforced: false, scope: { all: false } }
         : await checkAccess(req);
 
-    const identity = await requireIdentity(req, { includeEmployeeProfile: resource !== "session" });
+    const identity = await requireIdentity(req, {
+      includeEmployeeProfile: resource !== "session",
+    });
     if (!identity)
       return sendJson(res, 401, {
         success: false,
