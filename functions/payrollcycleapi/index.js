@@ -3077,6 +3077,9 @@ async function moveSheetToPayroll(tables, cycle, actor, beforeWrite = null) {
     seen.add(masterId);
     const values = {
       ...payrollValuesFromSheet(row),
+      // Keep the cycle label/year on the archived history row. The History panel
+      // reads appraisal_year (with fy_year as a legacy fallback).
+      appraisal_year: String(cycle.name || "").slice(0, 30),
       emp_id: masterId,
       appraisal_cycle_name: String(cycle.id),
     };
