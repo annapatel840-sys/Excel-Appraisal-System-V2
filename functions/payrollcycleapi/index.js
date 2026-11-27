@@ -4966,10 +4966,12 @@ async function generateAppraisalSheet(
       // Keep Exceptional's Current Annual Base Pay aligned with the valid
       // resolved Annual value even when an old alias on that row is zero.
       const resolvedAnnualBasePay = [
+        // Exceptional's opening base pay is the Annual cycle's finalized
+        // new_base_pay, not the old current_annual_base_pay.
+        "new_base_pay",
         "current_annual_base_pay",
         "current_base_pay",
         "base_pay",
-        "new_base_pay",
       ]
         .map((field) => fieldValue(exceptionalAnnualSheet, field))
         .find((value) => {
@@ -4989,7 +4991,8 @@ async function generateAppraisalSheet(
           resolvedAnnualBasePay;
       }
       const annualCarryForwardFields = [
-        "current_annual_base_pay",
+        // current_annual_base_pay is set separately from Annual new_base_pay
+        // above; copying Annual's old current base here would overwrite it.
         "joining_bonus",
         "performance_bonus",
         "retention_bonus",
