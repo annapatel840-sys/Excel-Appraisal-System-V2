@@ -4518,12 +4518,8 @@ async function generateAppraisalSheet(
       409,
     );
   }
-  await validateGenerationDesignations(
-    tables,
-    cycle,
-    eligibleRows,
-    employeeMasterById,
-  );
+  // Designation progression is not required to generate the Appraisal Sheet.
+  // It is validated later when HR selects/saves a New Title for an employee.
 
   const byKey = new Map();
   sheetRows.forEach((row) => {
