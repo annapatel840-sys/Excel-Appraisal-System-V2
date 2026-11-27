@@ -4298,6 +4298,48 @@ async function generateAppraisalSheet(
     }
   });
 
+  // Annual Appraisal Sheet generation requires a usable current base-pay
+  // value for every eligible employee. Historical payroll is optional, but
+  // the selected source row must contain the new base pay used to seed the
+  // current_annual_base_pay field. New Joiners can satisfy this from their
+  // same-year New Joiner payroll row; employees without it must be corrected
+  // in Payroll Data before generation.
+  if (isAnnualCycle(cycle) && !exceptionalCycle) {
+    const missingCurrentBasePay = eligibleRows.filter((employee) => {
+      const masterId = referenceText(employee.employeeMasterRowId || "");
+      const empId = String(employee.empId || employee.emp_id || "").trim();
+      const source =
+        payrollBaseSourceByMasterId.get(masterId) ||
+        payrollBaseSourceByMasterId.get(empId) ||
+        null;
+      const value = source
+        ? fieldValue(source, "new_base_pay", "newBasePay")
+        : undefined;
+      const amount = Number(
+        String(value ?? "").replace(/[,₹\\s]/g, "").trim(),
+      );
+      return !Number.isFinite(amount) || amount <= 0;
+    });
+    if (missingCurrentBasePay.length) {
+      const labels = missingCurrentBasePay.map((employee) => {
+        const empId = String(employee.empId || employee.emp_id || "").trim();
+        const masterId = referenceText(employee.employeeMasterRowId || "");
+        const master =
+          eligibleMasterByAnyKey.get(masterId.toLowerCase()) ||
+          eligibleMasterByAnyKey.get(empId.toLowerCase()) ||
+          {};
+        const name = String(
+          fieldValue(master, "emp_name", "name") || employee.name || "",
+        ).trim();
+        return name ? `${empId} - ${name}` : empId || "Unknown employee";
+      });
+      throw new ApiError(
+        `Current payroll/base pay is missing or invalid for ${labels.length} eligible employee(s): ${labels.slice(0, 30).join(", ")}${labels.length > 30 ? ", ..." : ""}. Upload or correct the current Payroll Data (New Base Pay) for these employees before generating the Appraisal Sheet.`,
+        409,
+      );
+    }
+  }
+
   // Feedback_And_Rating stores emp_ID and appraisal_cycle_name as Employee_Master
   // and Appraisal_Cycle_Master ROWIDs. Resolve both keys so generation reads only
   // the feedback uploaded for this exact cycle, not a previous/closed cycle.
