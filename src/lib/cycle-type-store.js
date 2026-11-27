@@ -6,9 +6,10 @@
    Dashboard, Appraisal Sheet, Bulk Edit and Budget Distribution show: the
    cycle of that location AND that type. It only filters what is shown.
 
-   Every mounted component is notified when it changes. The choice is not
-   remembered: every fresh load / sign-in starts at the default, Annual (like
-   the home location), and picking another location also resets it to Annual.
+   Every mounted component is notified when it changes. The choice is kept per
+   signed-in account in localStorage, so a refresh lands on the same cycle type
+   until it is changed by hand. Picking another location resets it to Annual, and
+   so does a change of the employee's home location (see location-store).
    ============================================================ */
 import { useSyncExternalStore } from "react";
 import { cycleNameWithoutLocation } from "./cycle-name";
@@ -24,6 +25,18 @@ const norm = (value) => String(value ?? "").trim().toLowerCase();
 export const canonicalCycleType = (value) =>
   CYCLE_TYPES.find((type) => norm(type) === norm(value)) || "";
 
+const STORAGE_KEY_PREFIX = "appraisal.selectedCycleType.v1:";
+let activeUserKey = "";
+const storageKeyForUser = (userKey) => STORAGE_KEY_PREFIX + encodeURIComponent(norm(userKey) || "anonymous");
+const persist = (value) => {
+  if (!activeUserKey) return;
+  try {
+    window.localStorage.setItem(storageKeyForUser(activeUserKey), value);
+  } catch (_) {
+    /* storage is optional */
+  }
+};
+
 let selected = DEFAULT_CYCLE_TYPE;
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
@@ -34,12 +47,39 @@ export function getSelectedCycleType() {
 
 export function setSelectedCycleType(value) {
   const next = canonicalCycleType(value) || DEFAULT_CYCLE_TYPE;
+  persist(next);
   if (next === selected) return;
   selected = next;
   emit();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: next }));
   }
+}
+
+// On sign-in: pick up this account's saved Cycle Type (or start at Annual when `reset` is true).
+export function restoreCycleTypeForUser(userKey, reset = false) {
+  const who = norm(userKey);
+  if (!who) return;
+  activeUserKey = who;
+  let saved = "";
+  try {
+    saved = reset ? "" : canonicalCycleType(window.localStorage.getItem(storageKeyForUser(who)));
+  } catch (_) {
+    /* storage is optional */
+  }
+  const next = saved || DEFAULT_CYCLE_TYPE;
+  persist(next);
+  if (next === selected) return;
+  selected = next;
+  emit();
+}
+
+// Signed out: stop saving, and the next account starts from the default.
+export function forgetCycleTypeUser() {
+  activeUserKey = "";
+  if (selected === DEFAULT_CYCLE_TYPE) return;
+  selected = DEFAULT_CYCLE_TYPE;
+  emit();
 }
 
 // The type of one Appraisal_Cycle_Master row: its Cycle Type column, else the
