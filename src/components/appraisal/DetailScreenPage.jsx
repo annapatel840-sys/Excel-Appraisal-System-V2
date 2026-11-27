@@ -1,4 +1,8 @@
-import { money as formatMoney, plainNumberText, moneyLakhs } from "@/lib/currency-format";
+import {
+  money as formatMoney,
+  plainNumberText,
+  moneyLakhs,
+} from "@/lib/currency-format";
 import {
   EXCEPTION_NAME,
   EXCEPTION_ROW_BG,
@@ -7,7 +11,11 @@ import {
   isExceptionRecord,
   olderNormal,
 } from "@/lib/history-exceptions";
-import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
+import {
+  hikeAmountFromPct,
+  hikePctFromAmount,
+  roundPct,
+} from "@/lib/hike-math";
 import {
   Fragment,
   useCallback,
@@ -282,13 +290,18 @@ function NotesPopover({ contextLabel, floating = false }) {
 
       <div className="mt-2 max-h-[260px] overflow-auto">
         {saveProblem ? (
-          <div className="py-1 text-[12px] font-semibold" style={{ color: RED }}>
+          <div
+            className="py-1 text-[12px] font-semibold"
+            style={{ color: RED }}
+          >
             {saveProblem}
           </div>
         ) : null}
         {notes.length === 0 ? (
           <div className="py-2 text-[12px]" style={{ color: MUTED }}>
-            {remote && remote.status === "loading" ? "Loading…" : "No saved notes yet."}
+            {remote && remote.status === "loading"
+              ? "Loading…"
+              : "No saved notes yet."}
           </div>
         ) : (
           notes.map((note) => (
@@ -420,7 +433,9 @@ const normalizeHistoryRecord = (record) => {
     getCycleName(record?.cycle_name);
   return {
     cycleName: cycleName || textOrDash(year),
-    cycleType: String(record?.appraisal_cycle_type ?? record?.cycle_type ?? "").trim(),
+    cycleType: String(
+      record?.appraisal_cycle_type ?? record?.cycle_type ?? "",
+    ).trim(),
     year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
@@ -437,7 +452,9 @@ const normalizeHistoryRecord = (record) => {
       ) || 0,
     newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
     newBasePay: Number(record?.new_base_pay) || basePay + hike,
-    criteria: record?.target_pb_criteria ? String(record.target_pb_criteria) : "",
+    criteria: record?.target_pb_criteria
+      ? String(record.target_pb_criteria)
+      : "",
     remarks: record?.comp_manager_remarks
       ? String(record.comp_manager_remarks)
       : record?.remarks
@@ -464,8 +481,16 @@ const historyYearOrder = (value) => {
   return 0;
 };
 
+// Sort position of a history row. An Exceptional cycle often has no usable
+// year value (shown as a dash), which used to rank it 0 and push it to the
+// bottom of the panel. Every cycle name carries its year ("India - Exceptional
+// 2028"), so rank all rows by the name's year and use the year column only as
+// a fallback; that keeps Exceptional rows on the same scale as Annual rows.
+const historyRecordOrder = (record) =>
+  historyYearOrder(record?.cycleName) || historyYearOrder(record?.year);
+
 const sortHistoryDesc = (a, b) =>
-  historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  historyRecordOrder(b) - historyRecordOrder(a) ||
   // Same year: an exception happens after that year's annual cycle (newer).
   Number(isExceptionRecord(b)) - Number(isExceptionRecord(a)) ||
   String(b.year).localeCompare(String(a.year));
@@ -510,7 +535,8 @@ export function prefetchDetailHistory(
 
   detailHistoryPromises.set(key, promise);
   promise.catch(() => {
-    if (detailHistoryPromises.get(key) === promise) detailHistoryPromises.delete(key);
+    if (detailHistoryPromises.get(key) === promise)
+      detailHistoryPromises.delete(key);
   });
   return promise;
 }
@@ -581,11 +607,30 @@ const EDIT_FIELD_LABEL = {
 };
 // Fields the side panel / header read; a hidden one is blanked before it is passed on.
 const PANEL_FIELDS = [
-  "name", "designation", "reportingManager", "compManager", "wissenExperience",
-  "totalExperience", "managerRating", "interviewCount", "rrPercent", "grossMargin",
-  "currentAnnualBasePay", "targetPBAllocatedForMay", "pbToBePaid", "rbToBePaid",
-  "allocatedPBAmount", "newRB", "hikeAmount", "hikePct", "targetPBNextYear",
-  "targetPBCriteria", "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
+  "name",
+  "designation",
+  "reportingManager",
+  "compManager",
+  "wissenExperience",
+  "totalExperience",
+  "managerRating",
+  "interviewCount",
+  "rrPercent",
+  "grossMargin",
+  "currentAnnualBasePay",
+  "targetPBAllocatedForMay",
+  "pbToBePaid",
+  "rbToBePaid",
+  "allocatedPBAmount",
+  "newRB",
+  "hikeAmount",
+  "hikePct",
+  "targetPBNextYear",
+  "targetPBCriteria",
+  "compManagerRemarks",
+  "eligibleForPromotion",
+  "newTitle",
+  "atRisk",
 ];
 // Same grey as ReadOnlyInput: a field you may view but not change.
 const lockedStyle = {
@@ -805,11 +850,15 @@ function BudgetBanner({ notices, onGotIt, onViewBudget }) {
         {/* Speed follows the text length (about 30px a second), so a long list is no faster than a short one. */}
         <span
           className="ds-marquee"
-          style={{ animationDuration: `${Math.max(28, Math.ceil(noticeText.length * 0.2))}s` }}
+          style={{
+            animationDuration: `${Math.max(28, Math.ceil(noticeText.length * 0.2))}s`,
+          }}
         >
           {notices.map((n, i) => (
             <span key={i} className="ds-mq-item">
-              <b className="ds-mq-dot" aria-hidden="true">●</b>
+              <b className="ds-mq-dot" aria-hidden="true">
+                ●
+              </b>
               {n.sub ? `${n.text} (${n.sub})` : n.text}
             </span>
           ))}
@@ -1032,13 +1081,13 @@ function EditInput({
         locked
           ? lockedStyle
           : invalid
-          ? {
-              ...fieldStyle(edited),
-              borderColor: "#C0392B",
-              background: "#FDECEA",
-              color: "#7A1F14",
-            }
-          : fieldStyle(edited)
+            ? {
+                ...fieldStyle(edited),
+                borderColor: "#C0392B",
+                background: "#FDECEA",
+                color: "#7A1F14",
+              }
+            : fieldStyle(edited)
       }
       aria-invalid={invalid || undefined}
     />
@@ -1170,7 +1219,8 @@ function HikeDiffInputs({
 }
 
 /* ---- Detail-screen field table: Description | Previous year | This year | Diff ---- */
-const FIELD_COLS = "minmax(150px,0.9fr) minmax(200px,1.2fr) minmax(280px,1.9fr) minmax(100px,0.6fr)";
+const FIELD_COLS =
+  "minmax(150px,0.9fr) minmax(200px,1.2fr) minmax(280px,1.9fr) minmax(100px,0.6fr)";
 // One extra column per exception cycle, between Current and Proposed.
 const fieldCols = (excCount) =>
   [
@@ -1314,10 +1364,14 @@ const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 /* ------------------------------------------------------------------
    PAGE
    ------------------------------------------------------------------ */
-export function DetailScreenPage({
-  onViewBudget,
-} = {}) {
-  const { rows: liveRows, audit, updateCell, updateLinkedCells, readOnlyCycle } = useAppraisal();
+export function DetailScreenPage({ onViewBudget } = {}) {
+  const {
+    rows: liveRows,
+    audit,
+    updateCell,
+    updateLinkedCells,
+    readOnlyCycle,
+  } = useAppraisal();
   const cachedAudit = useDeferredValue(audit);
   const budgetContext = useBudget();
 
@@ -1339,14 +1393,17 @@ export function DetailScreenPage({
   // Access rules (permissive when accessapi is unavailable): Access -> Fields tab,
   // "Detailed Screen". Hidden = not drawn, Read = grey and not editable.
   const access = useAccess();
-  const detailEditable = access.canScreen("detailScreen", "edit") && !readOnlyCycle;
+  const detailEditable =
+    access.canScreen("detailScreen", "edit") && !readOnlyCycle;
   const hid = (key) => access.isHidden(key);
   const canEditF = (key) => detailEditable && access.canEditField(key);
   const hikeEditable = canEditF("hikeAmount") && canEditF("hikePct");
-  const titleEditable = canEditF("newTitle") && canEditF("eligibleForPromotion");
+  const titleEditable =
+    canEditF("newTitle") && canEditF("eligibleForPromotion");
   const [blockedMsg, setBlockedMsg] = useState("");
- 
-  const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
+
+  const isCompManagerPreview =
+    effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "")
     .trim()
     .toLowerCase()
@@ -1366,8 +1423,12 @@ export function DetailScreenPage({
           [
             row.id,
             row.empId,
-            String(row.status || "").trim().toLowerCase(),
-            String(row.eligibility || "").trim().toLowerCase(),
+            String(row.status || "")
+              .trim()
+              .toLowerCase(),
+            String(row.eligibility || "")
+              .trim()
+              .toLowerCase(),
             row.compManagerDisplay || row.compManager || "",
           ].join(":"),
         )
@@ -1380,8 +1441,12 @@ export function DetailScreenPage({
       (cachedLiveRows || [])
         .filter(
           (row) =>
-            String(row.status || "").trim().toLowerCase() === "active" &&
-            String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
+            String(row.status || "")
+              .trim()
+              .toLowerCase() === "active" &&
+            String(row.eligibility || "")
+              .trim()
+              .toLowerCase() === "eligible" &&
             (!isCompManagerPreview ||
               currentUserMatchesManager(
                 row.compManagerDisplay || row.compManager,
@@ -1427,7 +1492,8 @@ export function DetailScreenPage({
   const historyPromiseRef = useRef(new Map());
 
   // Layout-only state (no effect on data)
-  const { notices: sharedNotices, dismissAll: dismissLiveNotices } = useNotices();
+  const { notices: sharedNotices, dismissAll: dismissLiveNotices } =
+    useNotices();
   // Tech-Ed viewing as Comp Manager: add the "Budget changed" notice (see notices.js).
   const liveNotices = useMemo(
     () => withPreviewBudgetNotice(sharedNotices, distributionBudget),
@@ -1442,7 +1508,9 @@ export function DetailScreenPage({
   const mainRef = useRef(null);
   const allocatedRef = useRef(null);
   const [panelMax, setPanelMax] = useState(720);
-  const hasEmployee = Boolean(rows[Math.min(index, Math.max(rows.length - 1, 0))]);
+  const hasEmployee = Boolean(
+    rows[Math.min(index, Math.max(rows.length - 1, 0))],
+  );
   useLayoutEffect(() => {
     const main = mainRef.current;
     const cell = allocatedRef.current;
@@ -1488,7 +1556,10 @@ export function DetailScreenPage({
   const sharedSelectedEmpId = getSelectedEmpId().toLowerCase();
   const preferredIndex = sharedSelectedEmpId
     ? rows.findIndex(
-        (row) => String(row.empId || "").trim().toLowerCase() === sharedSelectedEmpId,
+        (row) =>
+          String(row.empId || "")
+            .trim()
+            .toLowerCase() === sharedSelectedEmpId,
       )
     : -1;
 
@@ -1547,8 +1618,6 @@ export function DetailScreenPage({
   } = useColumnResize(histDefaults, histSig);
   const histGridRef = useRef(null);
 
-
-
   // Measure + scale the compensation table so it fits one screen.
   const { boxRef, fitRef, scale, scrolls } = useFitScale(Boolean(employee));
 
@@ -1568,48 +1637,51 @@ export function DetailScreenPage({
     return blankStr(base[field]) !== blankStr(employee[field]);
   };
 
-  const loadHistory = useCallback((empId) => {
-    const employeeKey = String(empId || "").trim();
-    if (!employeeKey) return Promise.resolve([]);
-    const requestKey = `${employeeKey}::${normalizeYearKey(currentCycleName)}`;
+  const loadHistory = useCallback(
+    (empId) => {
+      const employeeKey = String(empId || "").trim();
+      if (!employeeKey) return Promise.resolve([]);
+      const requestKey = `${employeeKey}::${normalizeYearKey(currentCycleName)}`;
 
-    const existing = historyPromiseRef.current.get(requestKey);
-    if (existing) return existing;
+      const existing = historyPromiseRef.current.get(requestKey);
+      if (existing) return existing;
 
-    setHistoryByEmpId((prev) => ({
-      ...prev,
-      [employeeKey]: { loading: true, data: [], error: "" },
-    }));
+      setHistoryByEmpId((prev) => ({
+        ...prev,
+        [employeeKey]: { loading: true, data: [], error: "" },
+      }));
 
-    const promise = prefetchDetailHistory(employeeKey, {
-      cycleName: currentCycleName,
-    });
-    historyPromiseRef.current.set(requestKey, promise);
-    promise
-      .then((data) => {
-        // Never keep an empty answer; ask the server again next time.
-        if (!data.length) {
-          historyPromiseRef.current.delete(requestKey);
-          detailHistoryPromises.delete(requestKey);
-        }
-        setHistoryByEmpId((prev) => ({
-          ...prev,
-          [employeeKey]: { loading: false, data, error: "" },
-        }));
-      })
-      .catch((error) => {
-        historyPromiseRef.current.delete(requestKey);
-        setHistoryByEmpId((prev) => ({
-          ...prev,
-          [employeeKey]: {
-            loading: false,
-            data: [],
-            error: error?.message || "Unable to load history.",
-          },
-        }));
+      const promise = prefetchDetailHistory(employeeKey, {
+        cycleName: currentCycleName,
       });
-    return promise;
-  }, [currentCycleName]);
+      historyPromiseRef.current.set(requestKey, promise);
+      promise
+        .then((data) => {
+          // Never keep an empty answer; ask the server again next time.
+          if (!data.length) {
+            historyPromiseRef.current.delete(requestKey);
+            detailHistoryPromises.delete(requestKey);
+          }
+          setHistoryByEmpId((prev) => ({
+            ...prev,
+            [employeeKey]: { loading: false, data, error: "" },
+          }));
+        })
+        .catch((error) => {
+          historyPromiseRef.current.delete(requestKey);
+          setHistoryByEmpId((prev) => ({
+            ...prev,
+            [employeeKey]: {
+              loading: false,
+              data: [],
+              error: error?.message || "Unable to load history.",
+            },
+          }));
+        });
+      return promise;
+    },
+    [currentCycleName],
+  );
 
   const employeeAt = (offset) => {
     const at = Math.min(activeIndex, rows.length - 1) + offset;
@@ -1674,14 +1746,17 @@ export function DetailScreenPage({
     const last = normalPrior[0];
     const at = last ? priorCycles.indexOf(last) : priorCycles.length;
     const newer = priorCycles.slice(0, at).filter(isExceptionRecord);
-    return Number(newer[0]?.newBasePay) > 0 ? Number(newer[0].newBasePay) : null;
+    return Number(newer[0]?.newBasePay) > 0
+      ? Number(newer[0].newBasePay)
+      : null;
   }, [priorCycles, normalPrior]);
 
   // The employee as the calculations should see it.
   const calcEmployee = useMemo(() => {
     if (!employee) return employee;
     if (exceptionBase === null) return employee;
-    if (Number(employee.currentAnnualBasePay) === exceptionBase) return employee;
+    if (Number(employee.currentAnnualBasePay) === exceptionBase)
+      return employee;
     return { ...employee, currentAnnualBasePay: exceptionBase };
   }, [employee, exceptionBase]);
 
@@ -1734,7 +1809,8 @@ export function DetailScreenPage({
     setBlockedMsg("");
   }, [employee?.id]);
   const HIKE_MAX_MSG = "Hike % cannot exceed 100%.";
-  const HIKE_EMPTY_MSG = "The hike cannot be empty. Enter 0 if you want no hike. Not saved.";
+  const HIKE_EMPTY_MSG =
+    "The hike cannot be empty. Enter 0 if you want no hike. Not saved.";
   const [payErr, setPayErr] = useState({ pb: "", rb: "" });
   const [payReset, setPayReset] = useState({ pb: 0, rb: 0 });
   useEffect(() => {
@@ -1809,7 +1885,9 @@ export function DetailScreenPage({
     return {
       pbFloor,
       pbMonth: hid("monthPB") ? "" : employee.monthPB || employee.pbMonth || "", // sheet: Month (PB)
-      pbTarget: hid("targetPBAllocatedForMay") ? 0 : Number(employee.targetPBAllocatedForMay) || 0, // sheet: Target PB Set Last Year
+      pbTarget: hid("targetPBAllocatedForMay")
+        ? 0
+        : Number(employee.targetPBAllocatedForMay) || 0, // sheet: Target PB Set Last Year
       rbFloor,
       rbMonth: hid("monthRB") ? "" : employee.monthRB || employee.rbMonth || "", // sheet: Month (RB)
       pbDiff: (Number(proposedPB) || 0) - pbFloor,
@@ -1829,7 +1907,8 @@ export function DetailScreenPage({
       : 0;
     const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
     // Current column: the last cycle's CTC, or (no earlier cycle) the sheet's current base pay.
-    const currentCtc = lastCtc || Number(calcEmployee?.currentAnnualBasePay) || 0;
+    const currentCtc =
+      lastCtc || Number(calcEmployee?.currentAnnualBasePay) || 0;
     return { lastCtc, currentCtc, pct };
   }, [employee, derived, normalPrior, liveCtc, calcEmployee]);
 
@@ -1967,7 +2046,10 @@ export function DetailScreenPage({
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   }, [onViewBudget]);
-  const panelLive = useMemo(() => ({ pb: livePB, rb: liveRB }), [livePB, liveRB]);
+  const panelLive = useMemo(
+    () => ({ pb: livePB, rb: liveRB }),
+    [livePB, liveRB],
+  );
   const panelBudget = useMemo(
     () => ({ allocated: budgetAllocated, used: budgetConsumed }),
     [budgetAllocated, budgetConsumed],
@@ -2086,13 +2168,19 @@ export function DetailScreenPage({
                     <span className="font-bold" style={{ color: "#7CE0C3" }}>
                       {employee.empId ?? "—"}
                     </span>
-                    {hid("designation") ? "" : ` · ${dash(employee.designation)}`}
+                    {hid("designation")
+                      ? ""
+                      : ` · ${dash(employee.designation)}`}
                     {employee.band ? ` · ${employee.band}` : ""}
                   </div>
                   <div className="truncate" style={{ color: "#BCCCDC" }}>
                     {[
-                      hid("totalExperience") ? null : yrs(employee.totalExperience),
-                      hid("wissenExperience") ? null : `${yrs(employee.wissenExperience)} here`,
+                      hid("totalExperience")
+                        ? null
+                        : yrs(employee.totalExperience),
+                      hid("wissenExperience")
+                        ? null
+                        : `${yrs(employee.wissenExperience)} here`,
                       hid("reportingManager")
                         ? null
                         : `Reports to ${dash(employee.reportingManager)}`,
@@ -2119,7 +2207,10 @@ export function DetailScreenPage({
                         );
                         if (first) {
                           first.focus();
-                          if (typeof first.select === "function" && first.tagName !== "SELECT")
+                          if (
+                            typeof first.select === "function" &&
+                            first.tagName !== "SELECT"
+                          )
                             first.select();
                         }
                       }, 60);
@@ -2158,7 +2249,8 @@ export function DetailScreenPage({
                 className="ds-panel-scroll"
                 ref={boxRef}
                 style={{
-                  overflow: scrolls || scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
+                  overflow:
+                    scrolls || scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
                 }}
               >
                 <div
@@ -2175,7 +2267,9 @@ export function DetailScreenPage({
                     // cycle, oldest first: each gets its own column between
                     // Current and Proposed. Older exceptions (before the last
                     // normal cycle) are already baked into it: no column.
-                    const lastAt = last ? priorCycles.indexOf(last) : priorCycles.length;
+                    const lastAt = last
+                      ? priorCycles.indexOf(last)
+                      : priorCycles.length;
                     const excRecs = priorCycles
                       .slice(0, lastAt)
                       .filter(isExceptionRecord)
@@ -2240,7 +2334,9 @@ export function DetailScreenPage({
                     return (
                       <div
                         className="grid text-[15px]"
-                        style={{ gridTemplateColumns: fieldCols(excRecs.length) }}
+                        style={{
+                          gridTemplateColumns: fieldCols(excRecs.length),
+                        }}
                       >
                         <FieldHead>Description</FieldHead>
                         <FieldHead>Current</FieldHead>
@@ -2253,106 +2349,135 @@ export function DetailScreenPage({
                         <FieldHead right>Diff</FieldHead>
 
                         {/* New Base Pay + hike inputs */}
-                        {!(hid("hikeAmount") && hid("hikePct") && hid("newBaseSalary")) && (
+                        {!(
+                          hid("hikeAmount") &&
+                          hid("hikePct") &&
+                          hid("newBaseSalary")
+                        ) && (
                           <FieldRow
-                          label="Base Pay"
-                          hidePrev={hid("newBaseSalary")}
-                          exc={excEach((rec) => (
-                            <>
-                              <div style={{ width: "100%" }}>
-                                <ReadOnlyInput value={fmt(rec.newBasePay)} />
-                              </div>
-                              <span style={subNote}>
-                                Exceptional {rec.hikeAmount >= 0 ? "+" : "−"}
-                                {fmt(Math.abs(rec.hikeAmount))}
-                              </span>
-                            </>
-                          ))}
-                          prev={
-                            <>
-                              <div style={{ width: "100%" }}>
-                                <ReadOnlyInput value={fmt(last ? last.newBasePay : calcEmployee?.currentAnnualBasePay)} />
-                              </div>
-                              {last && (
+                            label="Base Pay"
+                            hidePrev={hid("newBaseSalary")}
+                            exc={excEach((rec) => (
+                              <>
+                                <div style={{ width: "100%" }}>
+                                  <ReadOnlyInput value={fmt(rec.newBasePay)} />
+                                </div>
                                 <span style={subNote}>
-                                  Cycle hike {fmt(last.hikeAmount)}
-                                  {lastHikePct !== null ? ` · ${lastHikePct}%` : ""}
+                                  Exceptional {rec.hikeAmount >= 0 ? "+" : "−"}
+                                  {fmt(Math.abs(rec.hikeAmount))}
                                 </span>
-                              )}
-                            </>
-                          }
-                        >
-                          <div
-                            className="flex items-start gap-2"
-                            key={`${employee.id}-hike`}
+                              </>
+                            ))}
+                            prev={
+                              <>
+                                <div style={{ width: "100%" }}>
+                                  <ReadOnlyInput
+                                    value={fmt(
+                                      last
+                                        ? last.newBasePay
+                                        : calcEmployee?.currentAnnualBasePay,
+                                    )}
+                                  />
+                                </div>
+                                {last && (
+                                  <span style={subNote}>
+                                    Cycle hike {fmt(last.hikeAmount)}
+                                    {lastHikePct !== null
+                                      ? ` · ${lastHikePct}%`
+                                      : ""}
+                                  </span>
+                                )}
+                              </>
+                            }
                           >
-                            {!hid("newBaseSalary") && (
-                              <div style={{ width: "36%", minWidth: 100 }}>
-                                <ReadOnlyInput
-                                  key={`${employee.id}-newBase`}
-                                  value={draft.baseStr ?? fmt(derived.newBase)}
-                                  bold
-                                />
-                              </div>
-                            )}
-                            {!hid("hikeAmount") && (
-                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              <EditInput
-                                value={draft.hikeStr ?? fmt(employee.hikeAmount)}
-                                onLive={liveHikeAmount}
-                                onCommit={(v) => {
-                                  handleHikeAmountChange(v);
-                                  clearDraft(HIKE_DRAFT_KEYS);
-                                }}
-                                edited={isEdited("hikeAmount")}
-                                invalid={!!hikeErr}
-                                locked={!hikeEditable}
-                              />
-                              <span style={lab}>Hike Amount</span>
-                            </div>
-                            )}
-                            {!hid("hikePct") && (
-                            <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
-                              <EditInput
-                                value={
-                                  draft.pctStr ??
-                                  (exceptionBase !== null && baseNow
-                                    ? (
-                                        ((Number(employee.hikeAmount) || 0) /
-                                          baseNow) *
-                                        100
-                                      ).toFixed(2)
-                                    : (Number(employee.hikePct) || 0).toFixed(2))
-                                }
-                                onLive={liveHikePct}
-                                onCommit={(v) => {
-                                  handleHikePctChange(v);
-                                  clearDraft(HIKE_DRAFT_KEYS);
-                                }}
-                                edited={isEdited("hikeAmount")}
-                                invalid={!!hikeErr}
-                                locked={!hikeEditable}
-                              />
-                              <span style={lab}>Hike%</span>
-                            </div>
-                            )}
-                          </div>
-                          {hikeErr && (
-                            <span
-                              role="alert"
-                              style={{ ...subNote, color: RED, fontWeight: 700 }}
+                            <div
+                              className="flex items-start gap-2"
+                              key={`${employee.id}-hike`}
                             >
-                              {hikeErr}
-                            </span>
-                          )}
-                        </FieldRow>
+                              {!hid("newBaseSalary") && (
+                                <div style={{ width: "36%", minWidth: 100 }}>
+                                  <ReadOnlyInput
+                                    key={`${employee.id}-newBase`}
+                                    value={
+                                      draft.baseStr ?? fmt(derived.newBase)
+                                    }
+                                    bold
+                                  />
+                                </div>
+                              )}
+                              {!hid("hikeAmount") && (
+                                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                  <EditInput
+                                    value={
+                                      draft.hikeStr ?? fmt(employee.hikeAmount)
+                                    }
+                                    onLive={liveHikeAmount}
+                                    onCommit={(v) => {
+                                      handleHikeAmountChange(v);
+                                      clearDraft(HIKE_DRAFT_KEYS);
+                                    }}
+                                    edited={isEdited("hikeAmount")}
+                                    invalid={!!hikeErr}
+                                    locked={!hikeEditable}
+                                  />
+                                  <span style={lab}>Hike Amount</span>
+                                </div>
+                              )}
+                              {!hid("hikePct") && (
+                                <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
+                                  <EditInput
+                                    value={
+                                      draft.pctStr ??
+                                      (exceptionBase !== null && baseNow
+                                        ? (
+                                            ((Number(employee.hikeAmount) ||
+                                              0) /
+                                              baseNow) *
+                                            100
+                                          ).toFixed(2)
+                                        : (
+                                            Number(employee.hikePct) || 0
+                                          ).toFixed(2))
+                                    }
+                                    onLive={liveHikePct}
+                                    onCommit={(v) => {
+                                      handleHikePctChange(v);
+                                      clearDraft(HIKE_DRAFT_KEYS);
+                                    }}
+                                    edited={isEdited("hikeAmount")}
+                                    invalid={!!hikeErr}
+                                    locked={!hikeEditable}
+                                  />
+                                  <span style={lab}>Hike%</span>
+                                </div>
+                              )}
+                            </div>
+                            {hikeErr && (
+                              <span
+                                role="alert"
+                                style={{
+                                  ...subNote,
+                                  color: RED,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {hikeErr}
+                              </span>
+                            )}
+                          </FieldRow>
                         )}
 
                         {/* Joining Bonus */}
                         <FieldRow
                           label="Joining Bonus"
-                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.joiningBonus)} />)}
-                          prev={<ReadOnlyInput value={dashPrev(last?.joiningBonus)} />}
+                          exc={excEach((rec) => (
+                            <ReadOnlyInput value={excVal(rec.joiningBonus)} />
+                          ))}
+                          prev={
+                            <ReadOnlyInput
+                              value={dashPrev(last?.joiningBonus)}
+                            />
+                          }
                         >
                           {naBox}
                         </FieldRow>
@@ -2360,303 +2485,397 @@ export function DetailScreenPage({
                         {/* Performance Bonus / Instalment */}
                         {!hid("allocatedPBAmount") && (
                           <FieldRow
-                          label="Performance Bonus (PB) / Instalment"
-                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.performanceBonus)} />)}
-                          prev={
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "minmax(0,1fr) 70px",
-                                gap: 6,
-                              }}
-                            >
-                              <ReadOnlyInput value={dashPrev(last?.performanceBonus)} />
-                              <ReadOnlyInput value={payFloors.pbMonth || "—"} />
-                            </div>
-                          }
-                          diff={
-                            <DiffValue
-                              value={vsLast(livePB, last?.performanceBonus || 0)}
-                              caption="vs last year"
-                            />
-                          }
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <EditInput
-                              key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
-                              className="flex-1"
-                              defaultValue={fmt(proposedPB ?? 0)}
-                              edited={isEdited("allocatedPBAmount")}
-                              locked={!canEditF("allocatedPBAmount")}
-                              invalid={pbLow}
-                              onLive={(v) => {
-                                setDraft({ pbStr: v });
-                                if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
-                              }}
-                              onCommit={(v) => {
-                                // Same as the Appraisal Sheet: a value below
-                                // "PB to be Paid" is flagged (red) but kept.
-                                const n = parseAmount(v);
-                                setPayErr((e) => ({ ...e, pb: "" }));
-                                if (
-                                  !((Number(n) || 0) > 0) &&
-                                  !isBlank(employee.pbInstallment) &&
-                                  canEditF("pbInstallment")
-                                ) {
-                                  // PB 0 / cleared: Instalment resets to empty.
-                                  commitLinked({
-                                    allocatedPBAmount: n,
-                                    pbInstallment: "",
-                                  });
-                                } else {
-                                  commit("allocatedPBAmount", n);
-                                }
-                                clearDraft(["pbStr"]);
-                              }}
-                            />
-                            {!hid("pbInstallment") && (
-                            <select
-                              key={`${employee.id}-pbInstallment`}
-                              title={canEditF("pbInstallment") ? undefined : LOCKED_TITLE}
-                              disabled={
-                                !canEditF("pbInstallment") ||
-                                !((Number(employee.allocatedPBAmount) || 0) > 0)
-                              }
-                              value={
-                                !((Number(employee.allocatedPBAmount) || 0) > 0)
-                                  ? ""
-                                  : isBlank(employee.pbInstallment)
-                                    ? defaultInstallment(employee)
-                                    : String(employee.pbInstallment)
-                              }
-                              onChange={(e) => commit("pbInstallment", e.target.value)}
-                              className="h-[42px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
-                              style={
-                                canEditF("pbInstallment")
-                                  ? fieldStyle(isEdited("pbInstallment"))
-                                  : lockedStyle
-                              }
-                            >
-                              <option value="">—</option>
-                              {INSTALLMENT_OPTIONS.map((o) => (
-                                <option key={o}>{o}</option>
-                              ))}
-                            </select>
-                            )}
-                          </div>
-                          <span
-                            role={payErr.pb || pbLow ? "alert" : undefined}
-                            style={{
-                              ...subNote,
-                              color:
-                                payErr.pb || pbLow ? RED : MUTED,
-                              fontWeight:
-                                payErr.pb || pbLow ? 700 : 400,
-                            }}
+                            label="Performance Bonus (PB) / Instalment"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput
+                                value={excVal(rec.performanceBonus)}
+                              />
+                            ))}
+                            prev={
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "minmax(0,1fr) 70px",
+                                  gap: 6,
+                                }}
+                              >
+                                <ReadOnlyInput
+                                  value={dashPrev(last?.performanceBonus)}
+                                />
+                                <ReadOnlyInput
+                                  value={payFloors.pbMonth || "—"}
+                                />
+                              </div>
+                            }
+                            diff={
+                              <DiffValue
+                                value={vsLast(
+                                  livePB,
+                                  last?.performanceBonus || 0,
+                                )}
+                                caption="vs last year"
+                              />
+                            }
                           >
-                            {payErr.pb ||
-                              (pbLow ? pbLowMsg : pbNote)}
-                          </span>
-                        </FieldRow>
+                            <div className="flex items-center gap-1.5">
+                              <EditInput
+                                key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
+                                className="flex-1"
+                                defaultValue={fmt(proposedPB ?? 0)}
+                                edited={isEdited("allocatedPBAmount")}
+                                locked={!canEditF("allocatedPBAmount")}
+                                invalid={pbLow}
+                                onLive={(v) => {
+                                  setDraft({ pbStr: v });
+                                  if (payErr.pb)
+                                    setPayErr((e) => ({ ...e, pb: "" }));
+                                }}
+                                onCommit={(v) => {
+                                  // Same as the Appraisal Sheet: a value below
+                                  // "PB to be Paid" is flagged (red) but kept.
+                                  const n = parseAmount(v);
+                                  setPayErr((e) => ({ ...e, pb: "" }));
+                                  if (
+                                    !((Number(n) || 0) > 0) &&
+                                    !isBlank(employee.pbInstallment) &&
+                                    canEditF("pbInstallment")
+                                  ) {
+                                    // PB 0 / cleared: Instalment resets to empty.
+                                    commitLinked({
+                                      allocatedPBAmount: n,
+                                      pbInstallment: "",
+                                    });
+                                  } else {
+                                    commit("allocatedPBAmount", n);
+                                  }
+                                  clearDraft(["pbStr"]);
+                                }}
+                              />
+                              {!hid("pbInstallment") && (
+                                <select
+                                  key={`${employee.id}-pbInstallment`}
+                                  title={
+                                    canEditF("pbInstallment")
+                                      ? undefined
+                                      : LOCKED_TITLE
+                                  }
+                                  disabled={
+                                    !canEditF("pbInstallment") ||
+                                    !(
+                                      (Number(employee.allocatedPBAmount) ||
+                                        0) > 0
+                                    )
+                                  }
+                                  value={
+                                    !(
+                                      (Number(employee.allocatedPBAmount) ||
+                                        0) > 0
+                                    )
+                                      ? ""
+                                      : isBlank(employee.pbInstallment)
+                                        ? defaultInstallment(employee)
+                                        : String(employee.pbInstallment)
+                                  }
+                                  onChange={(e) =>
+                                    commit("pbInstallment", e.target.value)
+                                  }
+                                  className="h-[42px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
+                                  style={
+                                    canEditF("pbInstallment")
+                                      ? fieldStyle(isEdited("pbInstallment"))
+                                      : lockedStyle
+                                  }
+                                >
+                                  <option value="">—</option>
+                                  {INSTALLMENT_OPTIONS.map((o) => (
+                                    <option key={o}>{o}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                            <span
+                              role={payErr.pb || pbLow ? "alert" : undefined}
+                              style={{
+                                ...subNote,
+                                color: payErr.pb || pbLow ? RED : MUTED,
+                                fontWeight: payErr.pb || pbLow ? 700 : 400,
+                              }}
+                            >
+                              {payErr.pb || (pbLow ? pbLowMsg : pbNote)}
+                            </span>
+                          </FieldRow>
                         )}
 
                         {/* Retention Bonus */}
                         {!hid("newRB") && (
                           <FieldRow
-                          label="Retention Bonus (RB)"
-                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.retentionBonus)} />)}
-                          prev={<ReadOnlyInput value={dashPrev(last?.retentionBonus)} />}
-                          diff={
-                            <DiffValue
-                              value={vsLast(liveRB, last?.retentionBonus || 0)}
-                              caption="vs last year"
-                            />
-                          }
-                        >
-                          <EditInput
-                            key={`${employee.id}-newRB-${payReset.rb}`}
-                            defaultValue={fmt(proposedRB ?? 0)}
-                            edited={isEdited("newRB")}
-                            locked={!canEditF("newRB")}
-                            invalid={rbLow}
-                            className="w-[75%]"
-                            onLive={(v) => {
-                              setDraft({ rbStr: v });
-                              if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
-                            }}
-                            onCommit={(v) => {
-                              // Same as the Appraisal Sheet: a value below
-                              // "RB to be Paid" is flagged (red) but kept.
-                              const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
-                              setPayErr((e) => ({ ...e, rb: "" }));
-                              commit("newRB", n);
-                              clearDraft(["rbStr"]);
-                            }}
-                          />
-                          <span
-                            role={payErr.rb || rbLow ? "alert" : undefined}
-                            style={{
-                              ...subNote,
-                              color:
-                                payErr.rb || rbLow ? RED : MUTED,
-                              fontWeight:
-                                payErr.rb || rbLow ? 700 : 400,
-                            }}
+                            label="Retention Bonus (RB)"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput
+                                value={excVal(rec.retentionBonus)}
+                              />
+                            ))}
+                            prev={
+                              <ReadOnlyInput
+                                value={dashPrev(last?.retentionBonus)}
+                              />
+                            }
+                            diff={
+                              <DiffValue
+                                value={vsLast(
+                                  liveRB,
+                                  last?.retentionBonus || 0,
+                                )}
+                                caption="vs last year"
+                              />
+                            }
                           >
-                            {payErr.rb ||
-                              (rbLow ? rbLowMsg : rbNote)}
-                          </span>
-                        </FieldRow>
+                            <EditInput
+                              key={`${employee.id}-newRB-${payReset.rb}`}
+                              defaultValue={fmt(proposedRB ?? 0)}
+                              edited={isEdited("newRB")}
+                              locked={!canEditF("newRB")}
+                              invalid={rbLow}
+                              className="w-[75%]"
+                              onLive={(v) => {
+                                setDraft({ rbStr: v });
+                                if (payErr.rb)
+                                  setPayErr((e) => ({ ...e, rb: "" }));
+                              }}
+                              onCommit={(v) => {
+                                // Same as the Appraisal Sheet: a value below
+                                // "RB to be Paid" is flagged (red) but kept.
+                                const n =
+                                  Number(String(v).replace(/[^0-9.]/g, "")) ||
+                                  0;
+                                setPayErr((e) => ({ ...e, rb: "" }));
+                                commit("newRB", n);
+                                clearDraft(["rbStr"]);
+                              }}
+                            />
+                            <span
+                              role={payErr.rb || rbLow ? "alert" : undefined}
+                              style={{
+                                ...subNote,
+                                color: payErr.rb || rbLow ? RED : MUTED,
+                                fontWeight: payErr.rb || rbLow ? 700 : 400,
+                              }}
+                            >
+                              {payErr.rb || (rbLow ? rbLowMsg : rbNote)}
+                            </span>
+                          </FieldRow>
                         )}
 
                         {/* Total CTC with Rewards */}
                         {!hid("totalCTCWithRewards") && (
                           <FieldRow
-                          label="Total CTC with Rewards"
-                          exc={excEach((rec) => <ReadOnlyInput value={rec.newCTC ? inr(rec.newCTC) : "—"} />)}
-                          prev={<ReadOnlyInput value={ctcCompare.currentCtc ? inr(ctcCompare.currentCtc) : "0"} />}
-                          diff={
-                            ctcCompare.lastCtc ? (
-                              <DiffValue
-                                value={liveCtc - ctcCompare.lastCtc}
-                                caption={`${Math.abs(ctcCompare.pct).toFixed(1)}%`}
+                            label="Total CTC with Rewards"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput
+                                value={rec.newCTC ? inr(rec.newCTC) : "—"}
                               />
-                            ) : null
-                          }
-                        >
-                          <ReadOnlyInput value={inr(liveCtc)} bold />
-                        </FieldRow>
+                            ))}
+                            prev={
+                              <ReadOnlyInput
+                                value={
+                                  ctcCompare.currentCtc
+                                    ? inr(ctcCompare.currentCtc)
+                                    : "0"
+                                }
+                              />
+                            }
+                            diff={
+                              ctcCompare.lastCtc ? (
+                                <DiffValue
+                                  value={liveCtc - ctcCompare.lastCtc}
+                                  caption={`${Math.abs(ctcCompare.pct).toFixed(1)}%`}
+                                />
+                              ) : null
+                            }
+                          >
+                            <ReadOnlyInput value={inr(liveCtc)} bold />
+                          </FieldRow>
                         )}
 
                         {/* Target PB for Next Year */}
                         {!hid("targetPBNextYear") && (
                           <FieldRow
-                          label="Target PB for Next Year"
-                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.targetPB)} />)}
-                          prev={<ReadOnlyInput value={fmt(prevTPB)} />}
-                          diff={
-                            <DiffValue
-                              value={
-                                (liveHist?.tpb ?? Number(employee.targetPBNextYear) ?? 0) -
-                                prevTPB
-                              }
-                              caption="vs last year"
+                            label="Target PB for Next Year"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput value={excVal(rec.targetPB)} />
+                            ))}
+                            prev={<ReadOnlyInput value={fmt(prevTPB)} />}
+                            diff={
+                              <DiffValue
+                                value={
+                                  (liveHist?.tpb ??
+                                    Number(employee.targetPBNextYear) ??
+                                    0) - prevTPB
+                                }
+                                caption="vs last year"
+                              />
+                            }
+                          >
+                            <EditInput
+                              key={`${employee.id}-targetPBNextYear`}
+                              defaultValue={fmt(employee.targetPBNextYear ?? 0)}
+                              edited={isEdited("targetPBNextYear")}
+                              locked={!canEditF("targetPBNextYear")}
+                              onLive={(v) => setDraft({ tpbStr: v })}
+                              onCommit={(v) => {
+                                commit("targetPBNextYear", parseAmount(v));
+                                clearDraft(["tpbStr"]);
+                              }}
                             />
-                          }
-                        >
-                          <EditInput
-                            key={`${employee.id}-targetPBNextYear`}
-                            defaultValue={fmt(employee.targetPBNextYear ?? 0)}
-                            edited={isEdited("targetPBNextYear")}
-                            locked={!canEditF("targetPBNextYear")}
-                            onLive={(v) => setDraft({ tpbStr: v })}
-                            onCommit={(v) => {
-                              commit("targetPBNextYear", parseAmount(v));
-                              clearDraft(["tpbStr"]);
-                            }}
-                          />
-                        </FieldRow>
+                          </FieldRow>
                         )}
 
                         {/* Target PB Criteria */}
                         {!hid("targetPBCriteria") && (
                           <FieldRow
-                          label="Target PB Criteria"
-                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.criteria)} />)}
-                          prev={
-                            <ReadOnlyInput
-                              value={dash(
-                                employee.currentTargetPBCriteria ??
-                                  employee.targetPBCriteria,
-                              )}
-                            />
-                          }
-                        >
-                          <textarea
-                            key={`${employee.id}-targetPBCriteria`}
-                            defaultValue={blankStr(employee.targetPBCriteria)}
-                            onBlur={(e) => commit("targetPBCriteria", e.target.value)}
-                            rows={2}
-                            disabled={!canEditF("targetPBCriteria")}
-                            title={canEditF("targetPBCriteria") ? undefined : LOCKED_TITLE}
-                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={
-                              canEditF("targetPBCriteria")
-                                ? fieldStyle(isEdited("targetPBCriteria"))
-                                : lockedStyle
+                            label="Target PB Criteria"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput value={dash(rec.criteria)} />
+                            ))}
+                            prev={
+                              <ReadOnlyInput
+                                value={dash(
+                                  employee.currentTargetPBCriteria ??
+                                    employee.targetPBCriteria,
+                                )}
+                              />
                             }
-                          />
-                        </FieldRow>
+                          >
+                            <textarea
+                              key={`${employee.id}-targetPBCriteria`}
+                              defaultValue={blankStr(employee.targetPBCriteria)}
+                              onBlur={(e) =>
+                                commit("targetPBCriteria", e.target.value)
+                              }
+                              rows={2}
+                              disabled={!canEditF("targetPBCriteria")}
+                              title={
+                                canEditF("targetPBCriteria")
+                                  ? undefined
+                                  : LOCKED_TITLE
+                              }
+                              className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                              style={
+                                canEditF("targetPBCriteria")
+                                  ? fieldStyle(isEdited("targetPBCriteria"))
+                                  : lockedStyle
+                              }
+                            />
+                          </FieldRow>
                         )}
 
                         {/* Designation / New Title */}
                         {!(hid("designation") && hid("newTitle")) && (
                           <FieldRow
-                          label="Designation / New Title"
-                          hidePrev={hid("designation")}
-                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.designation === "—" ? "" : rec.designation)} />)}
-                          prev={<ReadOnlyInput value={dash(employee.designation)} />}
-                          diff={
-                            <span style={{ ...subNote, fontWeight: 600 }}>
-                              {hid("eligibleForPromotion")
-                                ? null
-                                : `Eligible: ${dash(employee.eligibleForPromotion)}`}
-                            </span>
-                          }
-                        >
-                          {!hid("newTitle") && (
-                          <select
-                            key={`${employee.id}-newTitle`}
-                            value={employee.newTitle || employee.designation || ""}
-                            onChange={(e) => handleNewTitleChange(e.target.value)}
-                            disabled={!titleEditable}
-                            title={titleEditable ? undefined : LOCKED_TITLE}
-                            className="h-[42px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={titleEditable ? fieldStyle(isEdited("newTitle")) : lockedStyle}
+                            label="Designation / New Title"
+                            hidePrev={hid("designation")}
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput
+                                value={dash(
+                                  rec.designation === "—"
+                                    ? ""
+                                    : rec.designation,
+                                )}
+                              />
+                            ))}
+                            prev={
+                              <ReadOnlyInput
+                                value={dash(employee.designation)}
+                              />
+                            }
+                            diff={
+                              <span style={{ ...subNote, fontWeight: 600 }}>
+                                {hid("eligibleForPromotion")
+                                  ? null
+                                  : `Eligible: ${dash(employee.eligibleForPromotion)}`}
+                              </span>
+                            }
                           >
-                            {titleOptions.map((t) => {
-                              const v = typeof t === "string" ? t : (t?.value ?? t?.label);
-                              const l = typeof t === "string" ? t : (t?.label ?? t?.value);
-                              return (
-                                <option key={v} value={v}>
-                                  {l}
-                                </option>
-                              );
-                            })}
-                          </select>
-                          )}
-                        </FieldRow>
+                            {!hid("newTitle") && (
+                              <select
+                                key={`${employee.id}-newTitle`}
+                                value={
+                                  employee.newTitle ||
+                                  employee.designation ||
+                                  ""
+                                }
+                                onChange={(e) =>
+                                  handleNewTitleChange(e.target.value)
+                                }
+                                disabled={!titleEditable}
+                                title={titleEditable ? undefined : LOCKED_TITLE}
+                                className="h-[42px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                                style={
+                                  titleEditable
+                                    ? fieldStyle(isEdited("newTitle"))
+                                    : lockedStyle
+                                }
+                              >
+                                {titleOptions.map((t) => {
+                                  const v =
+                                    typeof t === "string"
+                                      ? t
+                                      : (t?.value ?? t?.label);
+                                  const l =
+                                    typeof t === "string"
+                                      ? t
+                                      : (t?.label ?? t?.value);
+                                  return (
+                                    <option key={v} value={v}>
+                                      {l}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            )}
+                          </FieldRow>
                         )}
 
                         {/* Comp Manager Remarks */}
                         {!hid("compManagerRemarks") && (
                           <FieldRow
-                          label="Comp Manager Remarks"
-                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.remarks)} />)}
-                          prev={
-                            <ReadOnlyInput
-                              value={dash(
-                                baselineRef.current[employee.id]?.compManagerRemarks,
-                              )}
-                            />
-                          }
-                        >
-                          <textarea
-                            key={`${employee.id}-compManagerRemarks`}
-                            defaultValue={blankStr(employee.compManagerRemarks)}
-                            onBlur={(e) => commit("compManagerRemarks", e.target.value)}
-                            rows={2}
-                            placeholder="Add remarks for this cycle"
-                            disabled={!canEditF("compManagerRemarks")}
-                            title={canEditF("compManagerRemarks") ? undefined : LOCKED_TITLE}
-                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
-                            style={
-                              canEditF("compManagerRemarks")
-                                ? fieldStyle(isEdited("compManagerRemarks"))
-                                : lockedStyle
+                            label="Comp Manager Remarks"
+                            exc={excEach((rec) => (
+                              <ReadOnlyInput value={dash(rec.remarks)} />
+                            ))}
+                            prev={
+                              <ReadOnlyInput
+                                value={dash(
+                                  baselineRef.current[employee.id]
+                                    ?.compManagerRemarks,
+                                )}
+                              />
                             }
-                          />
-                        </FieldRow>
+                          >
+                            <textarea
+                              key={`${employee.id}-compManagerRemarks`}
+                              defaultValue={blankStr(
+                                employee.compManagerRemarks,
+                              )}
+                              onBlur={(e) =>
+                                commit("compManagerRemarks", e.target.value)
+                              }
+                              rows={2}
+                              placeholder="Add remarks for this cycle"
+                              disabled={!canEditF("compManagerRemarks")}
+                              title={
+                                canEditF("compManagerRemarks")
+                                  ? undefined
+                                  : LOCKED_TITLE
+                              }
+                              className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                              style={
+                                canEditF("compManagerRemarks")
+                                  ? fieldStyle(isEdited("compManagerRemarks"))
+                                  : lockedStyle
+                              }
+                            />
+                          </FieldRow>
                         )}
                       </div>
                     );
@@ -2665,35 +2884,39 @@ export function DetailScreenPage({
               </div>
 
               {/* Counter + Previous / Save & next: normal flow, always visible */}
-              <div className="ds-foot" style={{ borderTop: `1px solid ${LINE}` }}>
+              <div
+                className="ds-foot"
+                style={{ borderTop: `1px solid ${LINE}` }}
+              >
                 <div className="flex w-full items-center justify-between gap-3">
                   <span className="text-[14px]" style={{ color: MUTED }}>
-                    <b style={{ color: INK }}>{safeIndex + 1}</b> of {rows.length} · {scopeLabel}
+                    <b style={{ color: INK }}>{safeIndex + 1}</b> of{" "}
+                    {rows.length} · {scopeLabel}
                   </span>
                   <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => goTo(safeIndex - 1)}
-                    disabled={safeIndex <= 0}
-                    className="rounded border px-3 py-1.5 text-[13.5px] font-semibold"
-                    style={{
-                      borderColor: LINE,
-                      background: "#fff",
-                      color: safeIndex <= 0 ? "#9AA7B4" : INK,
-                    }}
-                  >
-                    ‹ Previous
-                  </button>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => goTo(safeIndex + 1)}
-                    className="rounded px-4 py-1.5 text-[13.5px] font-bold"
-                    style={{ background: NAVY, color: "#fff" }}
-                  >
-                    Save &amp; next ›
-                  </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => goTo(safeIndex - 1)}
+                      disabled={safeIndex <= 0}
+                      className="rounded border px-3 py-1.5 text-[13.5px] font-semibold"
+                      style={{
+                        borderColor: LINE,
+                        background: "#fff",
+                        color: safeIndex <= 0 ? "#9AA7B4" : INK,
+                      }}
+                    >
+                      ‹ Previous
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => goTo(safeIndex + 1)}
+                      className="rounded px-4 py-1.5 text-[13.5px] font-bold"
+                      style={{ background: NAVY, color: "#fff" }}
+                    >
+                      Save &amp; next ›
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2701,24 +2924,24 @@ export function DetailScreenPage({
 
             {/* EMPLOYEE INFO panel (was "Feedback") */}
             {cardOpen && (
-            <aside className="ds-side" aria-label="Employee Info">
-              <DetailSidePanel
-                employee={panelEmployee}
-                rows={rows}
-                priorCycles={normalPrior}
-                feedbackItems={feedbackData.items}
-                currentCycleName={currentCycleName}
-                live={panelLive}
-                budget={panelBudget}
-                audit={cachedAudit}
-                budgetCtx={budgetContext}
-                onViewBudget={handleViewBudget}
-                width={panelWidth}
-                maxWidth={panelMax}
-                onWidthChange={setFeedbackWidth}
-                onClose={closePanel}
-              />
-            </aside>
+              <aside className="ds-side" aria-label="Employee Info">
+                <DetailSidePanel
+                  employee={panelEmployee}
+                  rows={rows}
+                  priorCycles={normalPrior}
+                  feedbackItems={feedbackData.items}
+                  currentCycleName={currentCycleName}
+                  live={panelLive}
+                  budget={panelBudget}
+                  audit={cachedAudit}
+                  budgetCtx={budgetContext}
+                  onViewBudget={handleViewBudget}
+                  width={panelWidth}
+                  maxWidth={panelMax}
+                  onWidthChange={setFeedbackWidth}
+                  onClose={closePanel}
+                />
+              </aside>
             )}
 
             {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
@@ -2751,192 +2974,202 @@ export function DetailScreenPage({
 
           <div className="ds-scroll">
             <div ref={histGridRef}>
-            <div
-              className="grid text-[11.5px] font-bold"
-              style={{
-                gridTemplateColumns: histGrid(histWidths),
-                background: SOFT,
-                color: INK,
-                borderBottom: `1px solid ${LINE}`,
-              }}
-            >
-              {[
-                { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
-                ...(histShowDesignation
-                  ? [{ key: "designation", label: "Designation", formula: "" }]
-                  : []),
-                ...histShown.map(({ col }) => col),
-              ].map((c, i, all) => (
-                <div
-                  key={c.key}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    textAlign: "center",
-                    padding: "6px 6px",
-                    lineHeight: 1.2,
-                    overflowWrap: "anywhere",
-                    borderRight: `1px solid ${LINE}`,
-                    minWidth: 0,
-                  }}
-                >
-                  <div>{c.label}</div>
-                  {c.note ? (
-                    <div style={{ fontSize: 10, fontWeight: 400 }}>{c.note}</div>
-                  ) : null}
+              <div
+                className="grid text-[11.5px] font-bold"
+                style={{
+                  gridTemplateColumns: histGrid(histWidths),
+                  background: SOFT,
+                  color: INK,
+                  borderBottom: `1px solid ${LINE}`,
+                }}
+              >
+                {[
+                  { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
+                  ...(histShowDesignation
+                    ? [
+                        {
+                          key: "designation",
+                          label: "Designation",
+                          formula: "",
+                        },
+                      ]
+                    : []),
+                  ...histShown.map(({ col }) => col),
+                ].map((c, i, all) => (
                   <div
+                    key={c.key}
                     style={{
-                      minHeight: 14,
-                      color: "#1d4ed8",
-                      fontWeight: 700,
-                      fontSize: 11,
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "flex-start",
+                      textAlign: "center",
+                      padding: "6px 6px",
+                      lineHeight: 1.2,
+                      overflowWrap: "anywhere",
+                      borderRight: `1px solid ${LINE}`,
+                      minWidth: 0,
                     }}
                   >
-                    {c.formula}
-                  </div>
-                  {i < all.length - 1 ? (
-                    <span
-                      role="separator"
-                      aria-orientation="vertical"
-                      title="Drag to resize · double-click to reset"
-                      onMouseDown={(e) =>
-                        startHistResize(i, e, histGridRef.current)
-                      }
-                      onDoubleClick={resetHistWidths}
-                      style={{
-                        position: "absolute",
-                        right: -3,
-                        top: 0,
-                        height: "100%",
-                        width: 6,
-                        cursor: "col-resize",
-                        zIndex: 2,
-                      }}
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-
-            {/* current cycle row */}
-            {liveHist
-              ? (() => {
-                  const last = normalPrior[0] ? priorVals(normalPrior[0]) : null;
-                  const cur = [
-                    baseNow,
-                    0,
-                    liveHist.pbTotal,
-                    liveHist.rb,
-                    liveHist.bonus,
-                    liveHist.hike,
-                    liveCtc,
-                    liveHist.tpb,
-                    liveBase,
-                  ];
-                  return (
+                    <div>{c.label}</div>
+                    {c.note ? (
+                      <div style={{ fontSize: 10, fontWeight: 400 }}>
+                        {c.note}
+                      </div>
+                    ) : null}
                     <div
-                      className="grid items-stretch text-[12px]"
                       style={{
-                        gridTemplateColumns: histGrid(histWidths),
-                        background: "#FFF8D6",
-                        borderBottom: `1px solid ${LINE}`,
+                        minHeight: 14,
+                        color: "#1d4ed8",
+                        fontWeight: 700,
+                        fontSize: 11,
                       }}
                     >
+                      {c.formula}
+                    </div>
+                    {i < all.length - 1 ? (
+                      <span
+                        role="separator"
+                        aria-orientation="vertical"
+                        title="Drag to resize · double-click to reset"
+                        onMouseDown={(e) =>
+                          startHistResize(i, e, histGridRef.current)
+                        }
+                        onDoubleClick={resetHistWidths}
+                        style={{
+                          position: "absolute",
+                          right: -3,
+                          top: 0,
+                          height: "100%",
+                          width: 6,
+                          cursor: "col-resize",
+                          zIndex: 2,
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              {/* current cycle row */}
+              {liveHist
+                ? (() => {
+                    const last = normalPrior[0]
+                      ? priorVals(normalPrior[0])
+                      : null;
+                    const cur = [
+                      baseNow,
+                      0,
+                      liveHist.pbTotal,
+                      liveHist.rb,
+                      liveHist.bonus,
+                      liveHist.hike,
+                      liveCtc,
+                      liveHist.tpb,
+                      liveBase,
+                    ];
+                    return (
                       <div
-                        style={histTextCell({
-                          padding: "4px 10px",
-                          color: LTEAL,
-                          fontWeight: 800,
-                        })}
+                        className="grid items-stretch text-[12px]"
+                        style={{
+                          gridTemplateColumns: histGrid(histWidths),
+                          background: "#FFF8D6",
+                          borderBottom: `1px solid ${LINE}`,
+                        }}
                       >
-                        {currentCycleName} ★
-                      </div>
-                      {histShowDesignation && (
                         <div
                           style={histTextCell({
-                            textAlign: "center",
-                            color: INK,
+                            padding: "4px 10px",
+                            color: LTEAL,
+                            fontWeight: 800,
                           })}
                         >
-                          {feedbackDesignation(
-                            feedbackData.items,
-                            currentCycleName,
-                          ) ||
-                            employee.designation ||
-                            "—"}
+                          {currentCycleName} ★
                         </div>
-                      )}
-                      {histShown.map(({ slot: i }) => (
-                        <HistCell
-                          key={i}
-                          value={cur[i]}
-                          prev={last ? last[i] : null}
-                        />
-                      ))}
-                    </div>
-                  );
-                })()
-              : null}
+                        {histShowDesignation && (
+                          <div
+                            style={histTextCell({
+                              textAlign: "center",
+                              color: INK,
+                            })}
+                          >
+                            {feedbackDesignation(
+                              feedbackData.items,
+                              currentCycleName,
+                            ) ||
+                              employee.designation ||
+                              "—"}
+                          </div>
+                        )}
+                        {histShown.map(({ slot: i }) => (
+                          <HistCell
+                            key={i}
+                            value={cur[i]}
+                            prev={last ? last[i] : null}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()
+                : null}
 
-            {/* prior cycles */}
-            {priorCycles.map((h, i) => {
-              const vals = priorVals(h);
-              const exc = isExceptionRecord(h);
-              // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
-              const olderRec = exc ? null : olderNormal(priorCycles, i);
-              const older = olderRec ? priorVals(olderRec) : null;
-              return (
-                <div
-                  key={`${normalizeYearKey(h.cycleName || h.year)}-${i}`}
-                  className="grid items-stretch text-[12px]"
-                  style={{
-                    gridTemplateColumns: histGrid(histWidths),
-                    background: exc ? EXCEPTION_ROW_BG : "#fff",
-                    fontStyle: exc ? "italic" : undefined,
-                    borderBottom: `1px solid ${LINE}`,
-                  }}
-                >
+              {/* prior cycles */}
+              {priorCycles.map((h, i) => {
+                const vals = priorVals(h);
+                const exc = isExceptionRecord(h);
+                // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
+                const olderRec = exc ? null : olderNormal(priorCycles, i);
+                const older = olderRec ? priorVals(olderRec) : null;
+                return (
                   <div
-                    style={histTextCell({
-                      padding: "4px 10px",
-                      fontWeight: exc ? 600 : 700,
-                      color: exc ? EXCEPTION_NAME : INK,
-                    })}
+                    key={`${normalizeYearKey(h.cycleName || h.year)}-${i}`}
+                    className="grid items-stretch text-[12px]"
+                    style={{
+                      gridTemplateColumns: histGrid(histWidths),
+                      background: exc ? EXCEPTION_ROW_BG : "#fff",
+                      fontStyle: exc ? "italic" : undefined,
+                      borderBottom: `1px solid ${LINE}`,
+                    }}
                   >
-                    {h.cycleName || h.year}
-                  </div>
-                  {histShowDesignation && (
                     <div
                       style={histTextCell({
-                        textAlign: "center",
-                        color: exc ? EXCEPTION_TEXT : INK,
+                        padding: "4px 10px",
+                        fontWeight: exc ? 600 : 700,
+                        color: exc ? EXCEPTION_NAME : INK,
                       })}
                     >
-                      {feedbackDesignation(
-                        feedbackData.items,
-                        h.cycleName,
-                        h.year,
-                      ) ||
-                        (h.designation && h.designation !== "—"
-                          ? h.designation
-                          : "") ||
-                        "—"}
+                      {h.cycleName || h.year}
                     </div>
-                  )}
-                  {histShown.map(({ slot: c }) => (
-                    <HistCell
-                      key={c}
-                      value={vals[c]}
-                      prev={older ? older[c] : null}
-                      exc={exc}
-                    />
-                  ))}
-                </div>
-              );
-            })}
+                    {histShowDesignation && (
+                      <div
+                        style={histTextCell({
+                          textAlign: "center",
+                          color: exc ? EXCEPTION_TEXT : INK,
+                        })}
+                      >
+                        {feedbackDesignation(
+                          feedbackData.items,
+                          h.cycleName,
+                          h.year,
+                        ) ||
+                          (h.designation && h.designation !== "—"
+                            ? h.designation
+                            : "") ||
+                          "—"}
+                      </div>
+                    )}
+                    {histShown.map(({ slot: c }) => (
+                      <HistCell
+                        key={c}
+                        value={vals[c]}
+                        prev={older ? older[c] : null}
+                        exc={exc}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
 
             {historyState?.loading ? (
@@ -2987,7 +3220,10 @@ export function DetailScreenPage({
               <span className="inline-flex items-center gap-1.5">
                 <i
                   className="inline-block h-[12px] w-[12px] rounded-[3px] border"
-                  style={{ background: EXCEPTION_ROW_BG, borderColor: "#D4DBE5" }}
+                  style={{
+                    background: EXCEPTION_ROW_BG,
+                    borderColor: "#D4DBE5",
+                  }}
                 />
                 Exception (between cycles)
               </span>

@@ -835,8 +835,16 @@ const historyYearOrder = (value) => {
   return 0;
 };
 
+// Sort position of a history row. An Exceptional cycle often has no usable
+// year value (shown as a dash), which used to rank it 0 and push it to the
+// bottom of the panel. Every cycle name carries its year ("India - Exceptional
+// 2028"), so rank all rows by the name's year and use the year column only as
+// a fallback; that keeps Exceptional rows on the same scale as Annual rows.
+const historyRecordOrder = (record) =>
+  historyYearOrder(record?.cycleName) || historyYearOrder(record?.year);
+
 const sortHistoryDesc = (a, b) =>
-  historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  historyRecordOrder(b) - historyRecordOrder(a) ||
   // Same year: an exception happens after that year's annual cycle (newer).
   Number(isExceptionRecord(b)) - Number(isExceptionRecord(a)) ||
   String(b.year).localeCompare(String(a.year));
