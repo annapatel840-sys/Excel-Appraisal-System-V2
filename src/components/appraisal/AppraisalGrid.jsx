@@ -1,5 +1,13 @@
-import { cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
-import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
+import {
+  cycleCountText,
+  isExceptionRecord,
+  olderNormal,
+} from "@/lib/history-exceptions";
+import {
+  hikeAmountFromPct,
+  hikePctFromAmount,
+  roundPct,
+} from "@/lib/hike-math";
 import {
   Fragment,
   useCallback,
@@ -9,7 +17,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { Check, ChevronLeft, ChevronRight, History, Info, Pencil, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Info,
+  Pencil,
+  X,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,11 +35,20 @@ import { PANEL_CSS } from "./detailPanelCss";
 import { loadRules } from "@/lib/detail-highlight-rules";
 import { ColumnFilter } from "./ColumnFilter";
 import { ColumnOrderMenu } from "./ColumnOrderMenu";
-import { mergeColumnOrder, moveColumn, useSharedColumnOrder } from "@/lib/sheet-column-order";
+import {
+  mergeColumnOrder,
+  moveColumn,
+  useSharedColumnOrder,
+} from "@/lib/sheet-column-order";
 import { useViewAs } from "@/lib/view-as-store";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
-import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
+import {
+  COLUMNS,
+  MANAGER_RATING_LABELS,
+  formatValue,
+  defaultInstallment,
+} from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { fetchAppraisalRoster } from "@/lib/employee-roster";
 import { fetchDelegationAssigneeOptions } from "@/lib/employee-master-data";
@@ -31,7 +56,11 @@ import { useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
-import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
+import {
+  buildFeedbackEntries,
+  cycleKey,
+  useEmployeeFeedback,
+} from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
 import { money as formatMoney, plainNumberText } from "@/lib/currency-format";
 import {
@@ -211,14 +240,23 @@ const DEFAULT_COLUMN_ORDER = (() => {
   // second to last and "Source of Hire" is followed by "Location" as the last columns.
   const rest = order.filter(
     (key) =>
-      !["clientRating", "lastAppraisalDate", "sourceOfHire", "location", "prevAppraisalCycle"].includes(
-        key,
-      ),
+      ![
+        "clientRating",
+        "lastAppraisalDate",
+        "sourceOfHire",
+        "location",
+        "prevAppraisalCycle",
+      ].includes(key),
   );
   const ratingAt = rest.indexOf("managerRating");
   rest.splice(ratingAt >= 0 ? ratingAt + 1 : rest.length, 0, "clientRating");
   // "Previous Appraisal Cycle" is always the very last column.
-  rest.push("lastAppraisalDate", "sourceOfHire", "location", "prevAppraisalCycle");
+  rest.push(
+    "lastAppraisalDate",
+    "sourceOfHire",
+    "location",
+    "prevAppraisalCycle",
+  );
   return rest;
 })();
 
@@ -362,8 +400,7 @@ const numericValue = (value) => {
     return "";
   }
 
-  const normalized =
-    typeof value === "string" ? plainNumberText(value) : value;
+  const normalized = typeof value === "string" ? plainNumberText(value) : value;
   const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
@@ -401,14 +438,10 @@ const cellBackground = ({ kind, rowIndex, flash }) => {
   // Row hover colour removed on purpose (was group-hover:bg-[#dde8f6] / #c4e7d2).
   // Selected row has no fill colour any more (only the outline border).
   if (kind === "input") {
-    return rowIndex % 2 === 0
-      ? "bg-[#e1f4e9]"
-      : "bg-[#cfebda]";
+    return rowIndex % 2 === 0 ? "bg-[#e1f4e9]" : "bg-[#cfebda]";
   }
 
-  return rowIndex % 2 === 0
-    ? "bg-white"
-    : "bg-[#e8edf4]";
+  return rowIndex % 2 === 0 ? "bg-white" : "bg-[#e8edf4]";
 };
 
 // ============================================================
@@ -647,7 +680,9 @@ const normalizeHistoryRecord = (record) => {
 
   return {
     cycleName: cycleName || textOrDash(year),
-    cycleType: String(record?.appraisal_cycle_type ?? record?.cycle_type ?? "").trim(),
+    cycleType: String(
+      record?.appraisal_cycle_type ?? record?.cycle_type ?? "",
+    ).trim(),
     year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
@@ -1016,7 +1051,11 @@ function NotesPopover({ contextLabel }) {
             justSaved ? "text-[#166534]" : "text-[#6b7280]",
           )}
         >
-          {justSaved ? "✓ Note saved" : canSave ? "Draft kept · Ctrl+Enter to save" : ""}
+          {justSaved
+            ? "✓ Note saved"
+            : canSave
+              ? "Draft kept · Ctrl+Enter to save"
+              : ""}
         </span>
 
         <button
@@ -1108,7 +1147,10 @@ function EmployeePanel({
   const [reqReason, setReqReason] = useState("");
   const [screenNote, setScreenNote] = useState("");
   const [reqSent, setReqSent] = useState("");
-  const [delegationRoster, setDelegationRoster] = useState({ techEd: [], compManagers: [] });
+  const [delegationRoster, setDelegationRoster] = useState({
+    techEd: [],
+    compManagers: [],
+  });
   useEffect(() => {
     let cancelled = false;
     fetchDelegationAssigneeOptions()
@@ -1119,7 +1161,9 @@ function EmployeePanel({
         console.error("Failed to load delegation assignee options:", error);
         if (!cancelled) setDelegationRoster({ techEd: [], compManagers: [] });
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // new employee selected -> clear the form
@@ -1144,13 +1188,22 @@ function EmployeePanel({
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    const options = reqField === "appraiserTechED"
-      ? delegationRoster.techEd
-      : delegationRoster.compManagers;
-    const current = String(currentAssignee ?? "").trim().toLowerCase().split(" - ")[0];
+    const options =
+      reqField === "appraiserTechED"
+        ? delegationRoster.techEd
+        : delegationRoster.compManagers;
+    const current = String(currentAssignee ?? "")
+      .trim()
+      .toLowerCase()
+      .split(" - ")[0];
 
     return (Array.isArray(options) ? options : [])
-      .filter((person) => String(person.empId ?? "").trim().toLowerCase() !== current)
+      .filter(
+        (person) =>
+          String(person.empId ?? "")
+            .trim()
+            .toLowerCase() !== current,
+      )
       .filter((person) => person.empId && person.label);
   }, [delegationRoster, reqField, currentAssignee]);
   const sendDelegation = () => {
@@ -1275,7 +1328,9 @@ function EmployeePanel({
 
   const renderInfo = () => {
     const order = { red: 0, amber: 1, green: 2 };
-    const flags = [...info.flags].sort((a, b) => order[a.level] - order[b.level]);
+    const flags = [...info.flags].sort(
+      (a, b) => order[a.level] - order[b.level],
+    );
 
     return (
       <div className="pt-1">
@@ -1297,7 +1352,9 @@ function EmployeePanel({
                   item.lv ? INFO_TILE_VALUE[item.lv] : "text-[#102a43]",
                 )}
               >
-                {item.value === undefined || item.value === null || item.value === ""
+                {item.value === undefined ||
+                item.value === null ||
+                item.value === ""
                   ? "—"
                   : String(item.value)}
               </b>
@@ -1321,7 +1378,9 @@ function EmployeePanel({
                 )}
               >
                 <b className="text-[#111827]">{flag.title}</b>
-                {flag.text && <span className="ml-1.5 text-[#4a5868]">{flag.text}</span>}
+                {flag.text && (
+                  <span className="ml-1.5 text-[#4a5868]">{flag.text}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -1383,7 +1442,9 @@ function EmployeePanel({
 
             {entry.current && <PanelChip tone="now">This cycle</PanelChip>}
 
-            {entry.title ? <div className="text-[#6b7280]">{entry.title}</div> : null}
+            {entry.title ? (
+              <div className="text-[#6b7280]">{entry.title}</div>
+            ) : null}
 
             {entry.sub ? (
               <div className="text-[11.5px] text-[#6b7280]">{entry.sub}</div>
@@ -1402,7 +1463,9 @@ function EmployeePanel({
             ) : null}
 
             {entry.text ? (
-              <div className="mt-1 leading-[1.45] text-[#1f2937]">{entry.text}</div>
+              <div className="mt-1 leading-[1.45] text-[#1f2937]">
+                {entry.text}
+              </div>
             ) : null}
           </li>
         );
@@ -1423,7 +1486,9 @@ function EmployeePanel({
         title: item.designation !== "—" ? item.designation : "",
         sub: "",
         chips:
-          item.rating && String(item.rating).trim() !== "" && item.rating !== "—"
+          item.rating &&
+          String(item.rating).trim() !== "" &&
+          item.rating !== "—"
             ? [{ label: "Manager rating", value: `${item.rating} / 5` }]
             : [],
         text: item.feedback && item.feedback !== "—" ? item.feedback : "",
@@ -1443,7 +1508,9 @@ function EmployeePanel({
       if (entries.length) {
         return renderFeedbackEntries(
           entries,
-          sub === "manager" ? (entry) => promotionByCycle.get(entry.cycleKey) || "" : undefined,
+          sub === "manager"
+            ? (entry) => promotionByCycle.get(entry.cycleKey) || ""
+            : undefined,
         );
       }
     }
@@ -1936,25 +2003,38 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {activeTab === "info"
-          ? renderInfo()
-          : activeTab === "feedback"
-          ? (
-            <div className="rp" style={{ width: "100%", minWidth: 0, maxWidth: "none", border: 0, boxShadow: "none", background: "transparent", height: "auto" }}>
-              <style>{PANEL_CSS}</style>
-              <div style={{ overflowX: "auto", maxWidth: "100%" }}>
+        {activeTab === "info" ? (
+          renderInfo()
+        ) : activeTab === "feedback" ? (
+          <div
+            className="rp"
+            style={{
+              width: "100%",
+              minWidth: 0,
+              maxWidth: "none",
+              border: 0,
+              boxShadow: "none",
+              background: "transparent",
+              height: "auto",
+            }}
+          >
+            <style>{PANEL_CSS}</style>
+            <div style={{ overflowX: "auto", maxWidth: "100%" }}>
               <FeedbackTab
                 employee={employee}
-                history={(history.rows || []).slice(1).filter((record) => !isExceptionRecord(record))}
+                history={(history.rows || [])
+                  .slice(1)
+                  .filter((record) => !isExceptionRecord(record))}
                 items={feedbackData.items}
                 currentCycleName={currentCycleName}
               />
-              </div>
             </div>
-          )
-          : activeTab === "request"
-            ? renderRequest()
-            : renderMore()}
+          </div>
+        ) : activeTab === "request" ? (
+          renderRequest()
+        ) : (
+          renderMore()
+        )}
       </div>
     </aside>
   );
@@ -2159,7 +2239,7 @@ export function AppraisalGrid({
       : currentCycleName;
   };
 
-//  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
+  //  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
   const [designationRules, setDesignationRules] = useState(null);
   const [designationRulesLoading, setDesignationRulesLoading] = useState(true);
   const [designationRulesError, setDesignationRulesError] = useState("");
@@ -2175,65 +2255,67 @@ export function AppraisalGrid({
   }, [designationPopupMessage]);
 
   useEffect(() => {
-  let cancelled = false;
+    let cancelled = false;
 
-  async function fetchDesignationRules() {
-    setDesignationRulesLoading(true);
-    setDesignationRulesError("");
+    async function fetchDesignationRules() {
+      setDesignationRulesLoading(true);
+      setDesignationRulesError("");
 
-    try {
-      const rules = await loadDesignationRules(selectedLocation);
+      try {
+        const rules = await loadDesignationRules(selectedLocation);
 
-      if (!cancelled) {
-        setDesignationRules(rules);
-      }
-    } catch (error) {
-      if (!cancelled) {
-        setDesignationRulesError(
-          error?.message || "Unable to load Designation Master rules."
-        );
-      }
-    } finally {
-      if (!cancelled) {
-        setDesignationRulesLoading(false);
+        if (!cancelled) {
+          setDesignationRules(rules);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDesignationRulesError(
+            error?.message || "Unable to load Designation Master rules.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setDesignationRulesLoading(false);
+        }
       }
     }
-  }
 
-  fetchDesignationRules();
+    fetchDesignationRules();
 
-  return () => {
-    cancelled = true;
-  };
-  // The rules are per location, so they are read again when the location changes.
-}, [selectedLocation]);
-// This uses the employee's existing row.designation as the current designation. The API then determines whether Single, Multiple, Group, or Free Select applies.
+    return () => {
+      cancelled = true;
+    };
+    // The rules are per location, so they are read again when the location changes.
+  }, [selectedLocation]);
+  // This uses the employee's existing row.designation as the current designation. The API then determines whether Single, Multiple, Group, or Free Select applies.
 
   const getNewTitleRule = (row) => {
-  if (designationRulesLoading) {
-    return {
-      ok: false,
-      options: [],
-      prefill: "",
-      message: "Designation Master rules are still loading. Please try again.",
-    };
-  }
+    if (designationRulesLoading) {
+      return {
+        ok: false,
+        options: [],
+        prefill: "",
+        message:
+          "Designation Master rules are still loading. Please try again.",
+      };
+    }
 
-  if (designationRulesError) {
-    return {
-      ok: false,
-      options: [],
-      prefill: "",
-      message: `Unable to load Designation Master rules: ${designationRulesError}`,
-    };
-  }
+    if (designationRulesError) {
+      return {
+        ok: false,
+        options: [],
+        prefill: "",
+        message: `Unable to load Designation Master rules: ${designationRulesError}`,
+      };
+    }
 
-  return newTitleChoices(designationRules, row.designation);
-};
+    return newTitleChoices(designationRules, row.designation);
+  };
 
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
-  const sheetEditable = access.canScreen("appraisalSheet", "edit") && !readOnlyCycle;
+  const sheetEditable =
+    access.canScreen("appraisalSheet", "edit") && !readOnlyCycle;
   const canColumnBulkEdit = sheetEditable && access.canAction("bulkEdit");
   const canDelegate = access.canAction("delegateRequest") && !readOnlyCycle;
   const historyMetricColumns = HISTORY_METRIC_COLUMNS.filter(
@@ -2390,7 +2472,11 @@ export function AppraisalGrid({
   // a fresh login keeps the widths the person dragged.
   const widthUser = useCatalystUser();
   const widthStoreKey = `${WIDTH_KEY}:${String(
-    widthUser?.email || widthUser?.email_id || widthUser?.user_id || widthUser?.name || "me",
+    widthUser?.email ||
+      widthUser?.email_id ||
+      widthUser?.user_id ||
+      widthUser?.name ||
+      "me",
   ).toLowerCase()}`;
 
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -2430,7 +2516,9 @@ export function AppraisalGrid({
   // Column order is set by HR per location (saved by accessapi); until it loads,
   // or when HR never changed it, the default order is used.
   const { order: sharedColumnOrder, save: saveSharedColumnOrder } =
-    useSharedColumnOrder(isAllLocations(selectedLocation) ? "All" : selectedLocation);
+    useSharedColumnOrder(
+      isAllLocations(selectedLocation) ? "All" : selectedLocation,
+    );
   const columnOrder = useMemo(
     () => mergeColumnOrder(sharedColumnOrder, DEFAULT_COLUMN_ORDER),
     [sharedColumnOrder],
@@ -2476,7 +2564,8 @@ export function AppraisalGrid({
   );
   const tagValueOf = (row, column) => {
     const raw = row[column.key];
-    if (raw === null || raw === undefined || String(raw).trim() === "") return "";
+    if (raw === null || raw === undefined || String(raw).trim() === "")
+      return "";
     const text = String(formatValue(row, column) ?? "")
       .replace(/^₹\s?/, "")
       .trim();
@@ -2568,10 +2657,10 @@ export function AppraisalGrid({
 
   const addSort = useCallback((key, dir, label) => {
     setSortList((previous) =>
-      [{ key, dir, label }, ...previous.filter((item) => item.key !== key)].slice(
-        0,
-        MAX_SORT_LEVELS,
-      ),
+      [
+        { key, dir, label },
+        ...previous.filter((item) => item.key !== key),
+      ].slice(0, MAX_SORT_LEVELS),
     );
     setCurrentPage(1);
   }, []);
@@ -2893,7 +2982,10 @@ export function AppraisalGrid({
       const shared = getSelectedEmpId().toLowerCase();
       const match = shared
         ? rows.find(
-            (row) => String(row.empId || "").trim().toLowerCase() === shared,
+            (row) =>
+              String(row.empId || "")
+                .trim()
+                .toLowerCase() === shared,
           )
         : null;
 
@@ -2917,80 +3009,85 @@ export function AppraisalGrid({
 
   const [historyByEmpId, setHistoryByEmpId] = useState({});
 
-  const loadHistory = useCallback((empId) => {
-    const key = String(empId || "").trim();
-    const requestKey = `${key}::${normalizeCycleKey(currentCycleName)}`;
+  const loadHistory = useCallback(
+    (empId) => {
+      const key = String(empId || "").trim();
+      const requestKey = `${key}::${normalizeCycleKey(currentCycleName)}`;
 
-    if (!key) {
-      return Promise.resolve([]);
-    }
-
-    const existing = historyPromiseRef.current.get(requestKey);
-
-    if (existing) {
-      return existing;
-    }
-
-    setHistoryByEmpId((previous) => ({
-      ...previous,
-      [key]: { loading: true, data: [], error: "" },
-    }));
-
-    const promise = (async () => {
-      const params = new URLSearchParams({ emp_id: key });
-      if (currentCycleName) params.set("cycle_name", currentCycleName);
-      const url = `${APPRAISAL_HISTORY_API_URL}?${params.toString()}`;
-
-      const response = await catalystFetch(url);
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to load appraisal history (${response.status}).`,
-        );
+      if (!key) {
+        return Promise.resolve([]);
       }
 
-      const result = await response.json();
+      const existing = historyPromiseRef.current.get(requestKey);
 
-      if (!result?.success) {
-        throw new Error(result?.message || "Failed to load appraisal history.");
+      if (existing) {
+        return existing;
       }
 
-      const records = Array.isArray(result?.data) ? result.data : [];
+      setHistoryByEmpId((previous) => ({
+        ...previous,
+        [key]: { loading: true, data: [], error: "" },
+      }));
 
-      return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
-    })();
+      const promise = (async () => {
+        const params = new URLSearchParams({ emp_id: key });
+        if (currentCycleName) params.set("cycle_name", currentCycleName);
+        const url = `${APPRAISAL_HISTORY_API_URL}?${params.toString()}`;
 
-    historyPromiseRef.current.set(requestKey, promise);
+        const response = await catalystFetch(url);
 
-    promise
-      .then((data) => {
-        // Do not remember an empty answer: the next time the panel opens for
-        // this employee it asks the server again instead of showing "nothing"
-        // for the rest of the session.
-        if (!data.length) historyPromiseRef.current.delete(requestKey);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load appraisal history (${response.status}).`,
+          );
+        }
 
-        setHistoryByEmpId((previous) => ({
-          ...previous,
-          [key]: { loading: false, data, error: "" },
-        }));
-      })
-      .catch((error) => {
-        console.error("Appraisal history fetch error:", error);
+        const result = await response.json();
 
-        historyPromiseRef.current.delete(requestKey);
+        if (!result?.success) {
+          throw new Error(
+            result?.message || "Failed to load appraisal history.",
+          );
+        }
 
-        setHistoryByEmpId((previous) => ({
-          ...previous,
-          [key]: {
-            loading: false,
-            data: [],
-            error: error?.message || "Unable to load appraisal history.",
-          },
-        }));
-      });
+        const records = Array.isArray(result?.data) ? result.data : [];
 
-    return promise;
-  }, [currentCycleName]);
+        return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
+      })();
+
+      historyPromiseRef.current.set(requestKey, promise);
+
+      promise
+        .then((data) => {
+          // Do not remember an empty answer: the next time the panel opens for
+          // this employee it asks the server again instead of showing "nothing"
+          // for the rest of the session.
+          if (!data.length) historyPromiseRef.current.delete(requestKey);
+
+          setHistoryByEmpId((previous) => ({
+            ...previous,
+            [key]: { loading: false, data, error: "" },
+          }));
+        })
+        .catch((error) => {
+          console.error("Appraisal history fetch error:", error);
+
+          historyPromiseRef.current.delete(requestKey);
+
+          setHistoryByEmpId((previous) => ({
+            ...previous,
+            [key]: {
+              loading: false,
+              data: [],
+              error: error?.message || "Unable to load appraisal history.",
+            },
+          }));
+        });
+
+      return promise;
+    },
+    [currentCycleName],
+  );
 
   // Load history for the selected employee while a panel that needs it is open.
   useEffect(() => {
@@ -3502,8 +3599,7 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const amount =
-        Number((Number(plainNumberText(raw)) || 0).toFixed(2));
+      const amount = Number((Number(plainNumberText(raw)) || 0).toFixed(2));
       const pct = hikePctFromAmount(basePay, amount);
 
       const changed =
@@ -3753,7 +3849,15 @@ export function AppraisalGrid({
         bulkUpdate(ids, "newTitle", "set", null);
       }
     },
-    [rows, bulkUpdate, updateHikePct, updateHikeAmount, designationRules, designationRulesLoading, designationRulesError],
+    [
+      rows,
+      bulkUpdate,
+      updateHikePct,
+      updateHikeAmount,
+      designationRules,
+      designationRulesLoading,
+      designationRulesError,
+    ],
   );
 
   // ============================================================
@@ -4128,7 +4232,8 @@ export function AppraisalGrid({
 
     if (!isEditable) {
       const rawText =
-        col.key === "pbInstallment" && !((Number(row.allocatedPBAmount) || 0) > 0)
+        col.key === "pbInstallment" &&
+        !((Number(row.allocatedPBAmount) || 0) > 0)
           ? ""
           : row[col.key] !== null && row[col.key] !== undefined
             ? String(row[col.key])
@@ -4148,7 +4253,8 @@ export function AppraisalGrid({
       // Manager / Client Manager Feedback: one line only, except on the active
       // (selected / highlighted) row, where up to 3 lines are shown and longer
       // text scrolls up / down inside the cell.
-      const isFeedback = col.key === "clientManager" || col.key === "managerFeedback";
+      const isFeedback =
+        col.key === "clientManager" || col.key === "managerFeedback";
       const feedbackOpen = isFeedback && historyRow?.id === row.id;
       const showWrapped = isFeedback ? feedbackOpen : wraps;
 
@@ -4358,19 +4464,18 @@ export function AppraisalGrid({
               <option value="">Select... *</option>
             )}
 
-            {(
-              col.key === "newTitle"
-                ? (() => {
-                    const list = getNewTitleRule(row).options || [];
-                    const cur = String(row.newTitle || "");
-                    return cur && !list.includes(cur) ? [cur, ...list] : list;
-                  })()
-                : col.options || []
-              ).map((option) => (
-               <option key={option} value={option}>
-             {option}
-            </option>
-          ))}
+            {(col.key === "newTitle"
+              ? (() => {
+                  const list = getNewTitleRule(row).options || [];
+                  const cur = String(row.newTitle || "");
+                  return cur && !list.includes(cur) ? [cur, ...list] : list;
+                })()
+              : col.options || []
+            ).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
 
             {/* {(col.options || []).map((option) => (
               <option key={option} value={option}>
@@ -4405,7 +4510,11 @@ export function AppraisalGrid({
       const otherRaw = row[otherKey];
       const other = Number(plainNumberText(otherRaw ?? ""));
 
-      if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
+      if (
+        basePay &&
+        String(otherRaw ?? "").trim() !== "" &&
+        Number.isFinite(other)
+      ) {
         if (col.key === "hikePct") {
           storedValue = String(hikePctFromAmount(basePay, other));
         }
@@ -4749,19 +4858,24 @@ export function AppraisalGrid({
           {collapsedGroups[section.key]
             ? null
             : section.children
-            ? renderGroupedSections(section.children)
-            : section.rows.map((row) =>
-                renderDataRow(
-                  row,
-                  flattenedGroupOrder.get(row.id) !== undefined
-                    ? flattenedGroupOrder.get(row.id)
-                    : 0,
-                ),
-              )}
+              ? renderGroupedSections(section.children)
+              : section.rows.map((row) =>
+                  renderDataRow(
+                    row,
+                    flattenedGroupOrder.get(row.id) !== undefined
+                      ? flattenedGroupOrder.get(row.id)
+                      : 0,
+                  ),
+                )}
         </Fragment>
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderDataRow, flattenedGroupOrder, orderedColumns.length, collapsedGroups],
+    [
+      renderDataRow,
+      flattenedGroupOrder,
+      orderedColumns.length,
+      collapsedGroups,
+    ],
   );
 
   // ============================================================
@@ -4987,7 +5101,10 @@ export function AppraisalGrid({
     const measure = () => {
       frame = 0;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      const next = Math.max(360, Math.floor(window.innerHeight - top - BOTTOM_GAP));
+      const next = Math.max(
+        360,
+        Math.floor(window.innerHeight - top - BOTTOM_GAP),
+      );
       setFitHeight((previous) =>
         previous !== null && Math.abs(previous - next) < 2 ? previous : next,
       );
@@ -5010,8 +5127,16 @@ export function AppraisalGrid({
 
     const watchAbove = () => {
       if (!resizeObserver) return;
-      for (let node = el; node && node !== document.body; node = node.parentElement) {
-        for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+      for (
+        let node = el;
+        node && node !== document.body;
+        node = node.parentElement
+      ) {
+        for (
+          let sib = node.previousElementSibling;
+          sib;
+          sib = sib.previousElementSibling
+        ) {
           if (!watched.has(sib)) {
             watched.add(sib);
             resizeObserver.observe(sib);
@@ -5100,8 +5225,6 @@ export function AppraisalGrid({
       {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-
-
         {notesSlot &&
           createPortal(
             <div ref={notesWrapRef} className="relative">
@@ -5131,7 +5254,11 @@ export function AppraisalGrid({
                 key={item.key}
                 type="button"
                 title="Remove this sort"
-                onClick={() => setSortList((previous) => previous.filter((x) => x.key !== item.key))}
+                onClick={() =>
+                  setSortList((previous) =>
+                    previous.filter((x) => x.key !== item.key),
+                  )
+                }
                 className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
               >
                 Sort: {item.label || item.key} {item.dir === "desc" ? "↓" : "↑"}
@@ -5199,7 +5326,9 @@ export function AppraisalGrid({
                   const isFrozen = isName;
                   const width = widthOf(col);
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
-                  const headerLabel = isName ? "Employee" : MERGED_LABELS[col.key] || col.label;
+                  const headerLabel = isName
+                    ? "Employee"
+                    : MERGED_LABELS[col.key] || col.label;
                   const headerWraps = wrapOf(col.key);
                   const headerEditable = !!col.editable && !col.computed;
 
@@ -5434,14 +5563,19 @@ export function AppraisalGrid({
           <ColumnOrderMenu
             target={orderMenu}
             columns={orderedColumns
-              .filter((column) => column.key !== orderMenu.key && !FROZEN_KEYS.has(column.key))
+              .filter(
+                (column) =>
+                  column.key !== orderMenu.key && !FROZEN_KEYS.has(column.key),
+              )
               .map((column) => ({
                 key: column.key,
                 label: MERGED_LABELS[column.key] || column.label,
               }))}
             onClose={() => setOrderMenu(null)}
             onConfirm={(targetKey, side) =>
-              saveSharedColumnOrder(moveColumn(columnOrder, orderMenu.key, targetKey, side))
+              saveSharedColumnOrder(
+                moveColumn(columnOrder, orderMenu.key, targetKey, side),
+              )
             }
           />
         )}
@@ -5601,8 +5735,16 @@ export function AppraisalGrid({
                   <thead>
                     <tr className="bg-[#eef2f7]">
                       {[
-                        { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
-                        { key: "designation", label: "Designation", formula: "" },
+                        {
+                          key: "cycle",
+                          label: "Appraisal Cycle Name",
+                          formula: "",
+                        },
+                        {
+                          key: "designation",
+                          label: "Designation",
+                          formula: "",
+                        },
                         ...historyPanelColumns,
                       ].map((col, i, all) => (
                         <th
@@ -5648,7 +5790,12 @@ export function AppraisalGrid({
                     {historyData.map((item, index) => {
                       // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
                       const exc = isExceptionRecord(item);
-                      const previous = exc ? undefined : olderNormal(historyData, index);
+                      // A normal cycle is compared with the previous NORMAL cycle (skips
+                      // exceptions). An exception is compared with the cycle right before
+                      // it, so it shows its own up / down change like every other row.
+                      const previous = exc
+                        ? historyData[index + 1]
+                        : olderNormal(historyData, index);
                       const isLatest = index === 0;
 
                       return (
@@ -5656,13 +5803,19 @@ export function AppraisalGrid({
                           key={`${item.year}-${index}`}
                           className={cn(
                             "h-[46px]",
-                            isLatest ? "bg-[#fff9dc]" : exc ? "bg-[#fbfcfd] italic" : "bg-white",
+                            isLatest
+                              ? "bg-[#fff9dc]"
+                              : exc
+                                ? "bg-[#fbfcfd] italic"
+                                : "bg-white",
                           )}
                         >
                           <td
                             className={cn(
                               "border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px]",
-                              exc ? "font-semibold text-[#8a4b00]" : "font-bold text-[#1859a8]",
+                              exc
+                                ? "font-semibold text-[#8a4b00]"
+                                : "font-bold text-[#1859a8]",
                             )}
                           >
                             {item.cycleName || item.year}
@@ -5704,19 +5857,17 @@ export function AppraisalGrid({
                               >
                                 <div>{formatHistoryNumber(item[col.key])}</div>
 
-                                {!exc && (
-                                  <div
-                                    className={cn(
-                                      "text-[10px]",
-                                      change.tone === "up" && "text-[#13804a]",
-                                      change.tone === "down" && "text-[#a5432f]",
-                                      change.tone === "neutral" &&
-                                        "text-[#d97706]",
-                                    )}
-                                  >
-                                    {change.label}
-                                  </div>
-                                )}
+                                <div
+                                  className={cn(
+                                    "text-[10px] not-italic",
+                                    change.tone === "up" && "text-[#13804a]",
+                                    change.tone === "down" && "text-[#a5432f]",
+                                    change.tone === "neutral" &&
+                                      "text-[#d97706]",
+                                  )}
+                                >
+                                  {change.label}
+                                </div>
                               </td>
                             );
                           })}

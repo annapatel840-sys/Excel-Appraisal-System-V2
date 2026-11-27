@@ -1311,7 +1311,7 @@ function FieldRow({ label, prev, children, diff, exc = [], hidePrev = false }) {
 }
 
 function HistCell({ value, prev, exc = false }) {
-  const hasPrev = !exc && prev !== undefined && prev !== null;
+  const hasPrev = prev !== undefined && prev !== null;
   const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
   const color = pct === null ? MUTED : pct > 0 ? GREEN : pct < 0 ? RED : MUTED;
   return (
@@ -3119,7 +3119,11 @@ export function DetailScreenPage({ onViewBudget } = {}) {
                 const vals = priorVals(h);
                 const exc = isExceptionRecord(h);
                 // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
-                const olderRec = exc ? null : olderNormal(priorCycles, i);
+                // An exception is compared with the cycle right before it, so it
+                // shows its own change line like every other row.
+                const olderRec = exc
+                  ? priorCycles[i + 1] || null
+                  : olderNormal(priorCycles, i);
                 const older = olderRec ? priorVals(olderRec) : null;
                 return (
                   <div
