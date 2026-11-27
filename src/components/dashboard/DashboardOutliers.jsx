@@ -4,16 +4,26 @@ import { prefetchDetailHistory } from "@/components/appraisal/DetailScreenPage";
 import { MIN_GROUP, calcHikePct, inr, isPromoted, pctOfBase, ratingOf, recordHikePct } from "@/lib/dashboard-overview";
 import { bucketsOf } from "@/lib/dashboard-analysis";
 import {
+  CMP_KINDS,
   FLAG_FIELDS,
+  FLAG_NUM_FIELDS,
   FLAG_OPS,
   FLAG_TYPES,
+  LOGIC_FIRST,
+  LOGIC_NEXT,
   PAST_FIELDS,
+  PCT_DIRS,
   PEER_KEYS,
+  TEXT_OPS,
   buildFlagContext,
+  condSetField,
+  condSetKind,
   fieldLabel,
+  fieldOptions,
   flagDesc,
   flagSetType,
   flagWhy,
+  isTextField,
   loadFlagSetup,
   opText,
   saveFlagSetup,
@@ -115,7 +125,8 @@ function Sel({ value, options, onChange }) {
 function FlagSetup({ api, onBack }) {
   const { setup, setSetup, dimBy } = api;
   const edit = (fn) => setSetup((s) => { const n = JSON.parse(JSON.stringify(s)); fn(n); return n; });
-  const flagFields = FLAG_FIELDS.map(([k, l]) => [k, l]);
+  const flagFields = FLAG_FIELDS.map(([k, l]) => [k, l]); // every Appraisal Sheet column
+  const numFields = FLAG_NUM_FIELDS; // number columns only (for averages and percentages)
   const shareOf = PEER_KEYS.filter((k) => dimBy[k]).map((k) => [k, dimBy[k].label]);
   const newId = (n) => { const id = `${n.nid}`; n.nid += 1; return id; };
 
@@ -168,25 +179,42 @@ function FlagSetup({ api, onBack }) {
                 <>
                   {r.cd.map((c, i) => (
                     <div className="cond" key={i}>
-                      <span className="mut" style={{ width: 34 }}>{i ? "and" : "If"}</span>
-                      <Sel value={c.f} options={flagFields} onChange={(v) => row((x) => { const cc = x.cd[i]; cc.f = v; if (v === "promo") { cc.op = "="; cc.rt = "v"; cc.v = 1; } })} />
+                      <Sel value={c.lg || (i ? "and" : "if")} options={i ? LOGIC_NEXT : LOGIC_FIRST} onChange={(v) => row((x) => { x.cd[i].lg = v; })} />
+                      <Sel value={c.f} options={flagFields} onChange={(v) => row((x) => condSetField(x.cd[i], v))} />
                       {c.f === "promo" ? (
                         <Sel value={String(c.v)} options={[["1", "Yes"], ["0", "No"]]} onChange={(v) => row((x) => { x.cd[i].v = Number(v); })} />
+                      ) : isTextField(c.f) ? (
+                        <>
+                          <Sel value={c.op} options={TEXT_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
+                          {c.op === "filled" || c.op === "empty" ? null : fieldOptions(c.f) ? (
+                            <Sel value={c.s ?? ""} options={[["", "(pick)"], ...fieldOptions(c.f).map((o) => [o, o])]} onChange={(v) => row((x) => { x.cd[i].s = v; })} />
+                          ) : (
+                            <input key={c.s} className="txt" style={{ width: 150 }} defaultValue={c.s ?? ""} placeholder="text" onBlur={(e) => { if (e.target.value !== (c.s ?? "")) row((x) => { x.cd[i].s = e.target.value; }); }} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} />
+                          )}
+                        </>
                       ) : (
                         <>
-                          <Sel value={c.rt || "v"} options={[["v", "is (a value)"], ["f", "differs from another field"], ["avg", "differs from company average of"]]} onChange={(v) => row((x) => { const cc = x.cd[i]; cc.rt = v; if (v !== "v" && !cc.f2) cc.f2 = "hk"; })} />
-                          {c.rt === "f" || c.rt === "avg" ? <Sel value={c.f2} options={flagFields} onChange={(v) => row((x) => { x.cd[i].f2 = v; })} /> : null}
+                          <Sel value={c.rt || "v"} options={CMP_KINDS} onChange={(v) => row((x) => condSetKind(x.cd[i], v))} />
+                          {c.rt === "f" || c.rt === "avg" ? <Sel value={c.f2} options={numFields} onChange={(v) => row((x) => { x.cd[i].f2 = v; })} /> : null}
                           {c.rt === "f" ? (
                             <label className="chk"><input type="checkbox" checked={!!c.abs} onChange={(e) => row((x) => { x.cd[i].abs = e.target.checked; })} />ignore sign</label>
                           ) : null}
                           <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
                           <NumIn value={c.v} onCommit={(v) => row((x) => { x.cd[i].v = v; })} />
+                          {c.rt === "p" || c.rt === "pavg" ? (
+                            <>
+                              <span className="mut">%</span>
+                              <Sel value={c.dir || "more"} options={PCT_DIRS} onChange={(v) => row((x) => { x.cd[i].dir = v; })} />
+                              <Sel value={c.f2} options={numFields} onChange={(v) => row((x) => { x.cd[i].f2 = v; })} />
+                            </>
+                          ) : null}
                         </>
                       )}
-                      <button className="btn" type="button" title="Remove condition" onClick={() => row((x) => { x.cd.splice(i, 1); })}>✕</button>
+                      <button className="btn" type="button" title="Remove condition" onClick={() => row((x) => { x.cd.splice(i, 1); if (x.cd[0] && x.cd[0].lg !== "not") x.cd[0].lg = "if"; })}>✕</button>
                     </div>
                   ))}
-                  <button className="btn" type="button" onClick={() => row((x) => { x.cd.push({ f: "hk", op: "<=", rt: "v", v: 1 }); })}>+ Condition</button>
+                  <button className="btn" type="button" onClick={() => row((x) => { x.cd.push({ lg: "and", f: "hk", op: "<=", rt: "v", v: 1 }); })}>+ Condition</button>
+                  {r.cd.length > 1 ? <div className="mut" style={{ fontSize: 11.5, marginTop: 4 }}>“and” and “and not” are checked together first; “or” then starts a new set. A person is flagged if any set fully holds.</div> : null}
                 </>
               ) : null}
               {r.ty === "past" ? (
@@ -202,7 +230,7 @@ function FlagSetup({ api, onBack }) {
               {r.ty === "peer" ? (
                 <div className="cond">
                   <span className="mut">If</span>
-                  <Sel value={r.f} options={flagFields} onChange={(v) => row((x) => { x.f = v; })} />
+                  <Sel value={r.f} options={numFields} onChange={(v) => row((x) => { x.f = v; })} />
                   <span className="mut">is more than</span>
                   <NumIn value={r.v} onCommit={(v) => row((x) => { x.v = v; })} />
                   <span className="mut">standard deviations from the peer group average</span>
@@ -211,7 +239,7 @@ function FlagSetup({ api, onBack }) {
               {r.ty === "share" ? (
                 <div className="cond">
                   <span className="mut">If one person's</span>
-                  <Sel value={r.f} options={flagFields} onChange={(v) => row((x) => { x.f = v; })} />
+                  <Sel value={r.f} options={numFields} onChange={(v) => row((x) => { x.f = v; })} />
                   <span className="mut">is</span>
                   <NumIn value={r.v} onCommit={(v) => row((x) => { x.v = v; })} />
                   <span className="mut">% or more of the total of their</span>
@@ -225,7 +253,7 @@ function FlagSetup({ api, onBack }) {
       })}
       <button className="btn pri" type="button" onClick={() => edit((n) => { if (!n.cats.length) n.cats.push({ id: `k${newId(n)}`, n: "General" }); n.flags.push({ id: `f${newId(n)}`, n: "New Flag", c: n.cats[0].id, on: true, ty: "cmp", cd: [{ f: "hk", op: "<=", rt: "v", v: 1 }] }); })}>+ Add Flag</button>
       <div className="mut" style={{ fontSize: 11.5, marginTop: 10 }}>
-        Fields come from the Dashboard parameter list. These rows are kept in this browser for the selected location.
+        Fields come from the Appraisal Sheet columns. These rows are kept in this browser for the selected location.
       </div>
     </div>
   );
@@ -320,8 +348,9 @@ export function DashboardOutliers({ rows, dims, effectiveId, api, compareCycles,
   keys.forEach((r) => {
     if (r.ty === "cmp") {
       r.cd.forEach((c, i) => {
-        if (c.f === "promo") return;
-        limits.push(limit(r, `${r.id}|${i}`, `${fieldLabel(c.f)}${c.rt === "avg" ? " vs company average" : c.rt === "f" ? ` vs ${fieldLabel(c.f2)}` : ""} ${opText(c.op)}`, c.v, (v) => editFlag(r.id, (x) => { x.cd[i].v = v; })));
+        if (c.f === "promo" || c.rt === "t" || isTextField(c.f)) return;
+        const pc = c.rt === "p" || c.rt === "pavg" ? ` is a % ${c.dir === "of" ? "of" : c.dir === "less" ? "less than" : "more than"} ${c.rt === "pavg" ? "company average " : ""}${fieldLabel(c.f2)},` : "";
+        limits.push(limit(r, `${r.id}|${i}`, `${fieldLabel(c.f)}${c.rt === "avg" ? " vs company average" : c.rt === "f" ? ` vs ${fieldLabel(c.f2)}` : ""}${pc} ${opText(c.op)}`, c.v, (v) => editFlag(r.id, (x) => { x.cd[i].v = v; })));
       });
     } else {
       limits.push(limit(r, `${r.id}|`, r.ty === "past" ? `${fieldLabel(r.f)} ${r.dir} own past by more than` : r.ty === "peer" ? `${fieldLabel(r.f)} standard deviations from peers` : `Share of ${fieldLabel(r.f)} (%)`, r.v, (v) => editFlag(r.id, (x) => { x.v = v; })));
