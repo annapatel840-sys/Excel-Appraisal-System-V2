@@ -3543,6 +3543,7 @@ async function generateAppraisalSheet(
   };
   const payrollByMasterId = new Map();
   const payrollBaseSourceByMasterId = new Map();
+  const payrollBaseSourceCycleByMasterId = new Map();
   const normalizedCycles = allCycles;
   const cycleByReference = new Map();
   normalizedCycles.forEach((item) => {
@@ -4369,6 +4370,7 @@ async function generateAppraisalSheet(
     );
     if (sourceMasterId) {
       payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
+      payrollBaseSourceCycleByMasterId.set(sourceMasterId, selected.cycle);
       // If this employee has no row in the active/shared cycle, use the
       // selected archived Annual or same-year New Joiner row as the payroll
       // source for generation too (not merely as a prerequisite check).
@@ -4383,6 +4385,7 @@ async function generateAppraisalSheet(
     );
     if (actualMasterId) {
       payrollBaseSourceByMasterId.set(actualMasterId, selected.row);
+      payrollBaseSourceCycleByMasterId.set(actualMasterId, selected.cycle);
       if (!payrollByMasterId.has(actualMasterId))
         payrollByMasterId.set(actualMasterId, selected.row);
     }
@@ -4833,6 +4836,24 @@ async function generateAppraisalSheet(
     const previousPayrollBaseSource =
       payrollBaseSourceByMasterId.get(masterId) ||
       payrollBaseSourceByMasterId.get(String(employee.empId || "").trim());
+    const previousPayrollBaseSourceCycle =
+      payrollBaseSourceCycleByMasterId.get(masterId) ||
+      payrollBaseSourceCycleByMasterId.get(String(employee.empId || "").trim());
+    // A prior cycle contributes only its finalized new_base_pay to the next
+    // cycle. Do not seed editable/decision fields from an archived payroll row.
+    // Same-cycle payroll uploads and same-year shared Annual uploads retain
+    // their existing mapping behaviour.
+    const payrollIsCarryForwardSource = Boolean(
+      payroll &&
+      previousPayrollBaseSource &&
+      payroll === previousPayrollBaseSource &&
+      previousPayrollBaseSourceCycle &&
+      (
+        exceptionalCycle ||
+        Number(cycleYear(previousPayrollBaseSourceCycle)) < Number(currentYear) ||
+        cycleTypeOf(previousPayrollBaseSourceCycle.name) === "Exceptional"
+      )
+    );
     // Hike Amount / Hike % are decisions for the new appraisal cycle,
     // never carry-forward payroll inputs. If an existing generated row still
     // contains exactly the historical payroll value, clear that stale default.
@@ -4935,7 +4956,7 @@ async function generateAppraisalSheet(
         ] = previousTotalRewards;
       }
     }
-    if (payroll) {
+    if (payroll && !payrollIsCarryForwardSource) {
       const payrollFieldMap = {
         current_annual_base_pay: ["current_annual_base_pay", "base_pay"],
         joining_bonus: ["joining_bonus"],
