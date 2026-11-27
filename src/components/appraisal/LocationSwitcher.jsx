@@ -27,7 +27,7 @@ export function LocationSwitcher({ isVertical }) {
           isVertical && "flex-col items-stretch gap-1",
         )}
       >
-        <span>Location</span>
+        <span>Location · Cycle</span>
         <LocationMasterControl
           value={selectedLocation}
           onChange={(next) => {

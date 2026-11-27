@@ -854,10 +854,10 @@ export function AppShell({ children, headerActions, notifications }) {
             {!isVertical && headerActions}
             {isVertical && headerActions}
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
-              <ViewAsSwitcher isVertical={isVertical} />
+              <LocationSwitcher isVertical={isVertical} />
             </div>
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
-              <LocationSwitcher isVertical={isVertical} />
+              <ViewAsSwitcher isVertical={isVertical} />
             </div>
             {notifications ?? <GlobalNotificationBell />}
             <ProfileMenu

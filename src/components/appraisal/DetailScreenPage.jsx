@@ -360,7 +360,10 @@ const DS_CSS = `
 .ds-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:10px;min-width:0;min-height:0}
 .ds-tab{writing-mode:vertical-rl;background:${NAVY};color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .ds-tab:hover{background:#0c2740}
-.ds-marquee{display:inline-block;min-width:max-content;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
+.ds-marquee{display:inline-block;min-width:max-content;white-space:nowrap;animation:dsBudgetMarquee 28s linear infinite}
+.ds-mq-item{display:inline-block}
+.ds-mq-item+.ds-mq-item{margin-left:30px}
+.ds-mq-dot{font-weight:900;font-size:15px;line-height:1;color:#b42318;margin-right:8px;vertical-align:middle}
 .ds-marquee:hover{animation-play-state:paused}
 @keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .ds-root button{cursor:pointer}
@@ -799,7 +802,18 @@ function BudgetBanner({ notices, onGotIt, onViewBudget }) {
         className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
         aria-label={noticeText}
       >
-        <span className="ds-marquee">{noticeText}</span>
+        {/* Speed follows the text length (about 30px a second), so a long list is no faster than a short one. */}
+        <span
+          className="ds-marquee"
+          style={{ animationDuration: `${Math.max(28, Math.ceil(noticeText.length * 0.2))}s` }}
+        >
+          {notices.map((n, i) => (
+            <span key={i} className="ds-mq-item">
+              <b className="ds-mq-dot" aria-hidden="true">●</b>
+              {n.sub ? `${n.text} (${n.sub})` : n.text}
+            </span>
+          ))}
+        </span>
       </span>
       {hasBudget && (
         <button type="button" onClick={onViewBudget} className={BANNER_BTN}>

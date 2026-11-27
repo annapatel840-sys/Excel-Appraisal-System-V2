@@ -145,8 +145,8 @@ export function TeamChangesPage() {
             ["all", "All"],
             ["left", "Resigned"],
             ["added", "Added"],
-            ["in", "Transferred in"],
-            ["out", "Transferred out"],
+            ["in", "Transferred In"],
+            ["out", "Transferred Out"],
           ].map(([t, label]) => (
             <button
               key={t}

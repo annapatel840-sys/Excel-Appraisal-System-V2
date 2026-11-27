@@ -45,16 +45,16 @@ const writeDismissed = (list) => {
 
 const money = (n) => formatMoney(Math.round(Number(n) || 0));
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "11 Aug 2026 - 06:56 PM" (the viewer's local time)
 const when = (iso) => {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "";
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  return `${days} d ago`;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  const hour = d.getHours() % 12 || 12;
+  const ampm = d.getHours() >= 12 ? "PM" : "AM";
+  return `${pad(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()} - ${pad(hour)}:${pad(d.getMinutes())} ${ampm}`;
 };
 
 const atOf = (entry) => {
