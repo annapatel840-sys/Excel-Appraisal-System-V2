@@ -749,7 +749,6 @@ export function DashboardAnalysis({ cmp, onCmpChange }) {
         </div>
         <div className="ttl-slot" ref={setCatSlot} />
         <span className="meta">
-          {cycleName ? <>Appraisal Cycle <b>{cycleName}</b> · </> : null}
           {inr(rows.length)} employees in scope · groups under {MIN_GROUP} people are not shown
         </span>
       </div>
