@@ -1989,16 +1989,18 @@ async function calculateBudgetBases(
     const explicit = String(firstValue(cycle, ["cycle_type", "type", "cycleType"]) || "")
       .trim()
       .toLowerCase();
-    if (explicit) return explicit;
     const name = cycleNameOf(cycle)
       .replace(/^.+?\s+-\s+(?=(annual|mid-year|exceptional|new joiner)\b)/i, "")
+      .trim()
       .toLowerCase();
-    const match = name.match(/^(annual|mid-year|exceptional|new joiner)\b/);
+    const source = explicit || name;
+    const match = source.match(/\b(annual|mid-year|exceptional|new joiner)\b/);
     return match ? match[1] : "annual";
   };
   const matchesBudgetLocation = (cycle) => {
-    if (!hasBudgetMaster(cycle)) return false;
-    if (requestedCycleType && cycleTypeOfBudgetCycle(cycle) !== requestedCycleType) return false;
+    // Resolve the selected active cycle independently of Budget_Master. A newly
+    // created cycle must still be discoverable before its first budget row exists.
+    if (requestedCycleType && cycleTypeOfBudgetCycle(cycle) !== requestedCycleType.toLowerCase()) return false;
     const cycleLocation = String(
       firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "All",
     ).trim().toLowerCase();
@@ -2054,6 +2056,31 @@ async function calculateBudgetBases(
   const activeSheetCycleName = activeSheetCycle
     ? cycleNameOf(activeSheetCycle)
     : "";
+
+  // Every active location/cycle needs its own Budget_Master parent row. Older
+  // code required that row before it could discover the active cycle, leaving
+  // new cycles with an empty roster and a zero Org Budget Base. Create only the
+  // missing parent; never reset an existing budget percentage or allocation.
+  if (
+    activeSheetCycle &&
+    !bundle.master.some((master) =>
+      cycleAliasesFor(activeSheetCycle).includes(
+        cycleReference(master.appraisal_cycle_id).trim().toLowerCase(),
+      ),
+    )
+  ) {
+    const createdMaster = await app.datastore().table(TABLES.master).insertRow({
+      appraisal_cycle_id: activeSheetCycleId,
+      budget_percentage: 0,
+      budget_utilized: 0,
+      org_budget_base: 0,
+      calculated_budget: 0,
+      applied_budget: 0,
+    });
+    const mappedMaster = mapMaster(createdMaster);
+    bundle.master.push(mappedMaster);
+    if (bundle.raw?.master) bundle.raw.master.set(mappedMaster.id, createdMaster);
+  }
   const sheetCycleFields = [
     "cycle_id",
     "appraisal_cycle_id",
@@ -2410,11 +2437,11 @@ async function calculateBudgetBases(
     const previousCycleId = previousCycle
       ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
       : "";
-    const rawTechEd = String(
+    const rawTechEd = referenceText(
       firstValue(row, techEdFields) || firstValue(masterRow, techEdFields) || "",
-    ).trim();
+    );
     const techEd = resolvePersonId(rawTechEd);
-    const rawCompManager = String(
+    const rawCompManager = referenceText(
       firstValue(row, [
         "delegation_comp_manager",
         "delegation_comp_manager_id",
@@ -2432,7 +2459,7 @@ async function calculateBudgetBases(
           "director",
         ]) ||
         "",
-    ).trim();
+    );
     // Budget_Distribution_Comp stores the stable Employee ID. Appraisal
     // Sheet may hold a lookup ROWID or a display label, so resolve it before
     // building Tech-Ed + Comp Manager allocation keys.
