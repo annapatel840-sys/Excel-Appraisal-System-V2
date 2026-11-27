@@ -165,8 +165,10 @@ function lookupReferenceValues(value) {
     "emp_id",
     "employee_id",
     "emp_code",
+    "employee_code",
     "emp_master_row_id",
     "employee_master_row_id",
+    "employee_master_rowid",
     "cycle_id",
     "appraisal_cycle_id",
     "cycle_name",
@@ -210,11 +212,13 @@ function sheetEmployeeMaster(sheet, masterByEmpId, masterByRowId) {
     sheet,
     "emp_master_row_id",
     "employee_master_row_id",
+    "employee_master_rowid",
     "employee_master_id",
     "emp_master_id",
     "emp_id",
     "employee_id",
     "emp_code",
+    "employee_code",
   );
   for (const value of values) {
     const master =
@@ -3717,7 +3721,7 @@ async function generateAppraisalSheet(
   employeeMasterRows.forEach((master) => {
     const keys = [
       referenceText(master.ROWID ?? master.rowid ?? master.id).toLowerCase(),
-      String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "")
+      String(fieldValue(master, "emp_id", "employee_id", "emp_code", "employee_code") || "")
         .trim()
         .toLowerCase(),
     ].filter(Boolean);
@@ -3768,7 +3772,7 @@ async function generateAppraisalSheet(
   const masterByRowId = new Map();
   employeeMasterRows.forEach((master) => {
     const masterId = referenceText(master.ROWID ?? master.rowid ?? master.id);
-    const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase();
+    const empId = String(fieldValue(master, "emp_id", "employee_id", "emp_code", "employee_code") || "").trim().toLowerCase();
     if (masterId) masterByRowId.set(masterId, master);
     if (empId) annualMasterByEmpId.set(empId, master);
   });
@@ -3805,10 +3809,17 @@ async function generateAppraisalSheet(
         sheet,
         "emp_master_row_id",
         "employee_master_row_id",
+        "employee_master_rowid",
         "employee_master_id",
         "emp_master_id",
       );
-      const employeeIdValues = sheetFieldValues(sheet, "emp_id", "employee_id", "emp_code");
+      const employeeIdValues = sheetFieldValues(
+        sheet,
+        "emp_id",
+        "employee_id",
+        "emp_code",
+        "employee_code",
+      );
       const masterId = (
         master
           ? [referenceText(master.ROWID ?? master.rowid ?? master.id), ...masterIdValues]
