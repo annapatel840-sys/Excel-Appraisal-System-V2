@@ -36,6 +36,8 @@
 /* Dashboard tab: the four tabs sit where the heading was, the scope note goes to the right. */
 .ovw .ttl.ttl-tabs { align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
 .ovw .ttl.ttl-tabs .stabs { margin: 0; }
+.ovw .ttl.ttl-tabs .ttl-slot { display: flex; align-items: center; }
+.ovw .ttl.ttl-tabs .ttl-slot:empty { display: none; }
 .ovw .ttl.ttl-tabs .meta { margin-left: auto; text-align: right; }
 .ovw .ttl h2 { margin: 0; font-size: 17px; font-weight: 800; color: var(--navy); }
 .ovw .badge { background: #ecfdf3; color: #15803d; border-radius: 12px; padding: 3px 10px; font-weight: 700; font-size: 11px; }
