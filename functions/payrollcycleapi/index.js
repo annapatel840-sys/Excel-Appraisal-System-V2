@@ -4201,8 +4201,14 @@ async function generateAppraisalSheet(
     if (!empId) return;
     const matchingSharedSource =
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
-    // New Joiner payroll may be Active or Closed; it need not be archived.
-    // Exceptional cycles are never considered as an Annual payroll source.
+    // For Annual cycles, an employee's previous-year Exceptional payroll
+    // takes priority when that employee has one. Otherwise use previous-year
+    // Annual, then New Joiner, then older Annual history. Exceptional records
+    // from other years are not used as an Annual source.
+    const priorExceptional =
+      cycleTypeOf(candidateCycle.name) === "Exceptional" &&
+      Number(sourceYear) === Number(currentYear) - 1 &&
+      !isCancelledPayrollCycle(candidateCycle);
     const sameYearNewJoiner =
       isNewJoinerCycle(candidateCycle) &&
       sourceYear &&
@@ -4218,6 +4224,7 @@ async function generateAppraisalSheet(
       !inCycleLocation(candidateCycle, directMaster, locationRows) ||
       (!matchingSharedSource &&
         !matchingCurrentCycle &&
+        !priorExceptional &&
         !sameYearNewJoiner &&
         !priorAnnual)
     )
@@ -4226,6 +4233,7 @@ async function generateAppraisalSheet(
       row,
       cycle: candidateCycle,
       matchingSharedSource,
+      priorExceptional,
       sameYearNewJoiner,
       rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
     };
@@ -4279,7 +4287,11 @@ async function generateAppraisalSheet(
     const currentCyclePayroll = candidates.find(
       (item) => String(item.cycle.id) === String(cycle.id),
     );
+    const previousExceptional = candidates
+      .filter((item) => item.priorExceptional)
+      .sort(compareNewest)[0];
     const selected =
+      previousExceptional ||
       sharedSource ||
       previousAnnual ||
       newJoiner ||
@@ -4847,8 +4859,6 @@ async function generateAppraisalSheet(
         joining_bonus: ["joining_bonus"],
         performance_bonus: ["performance_bonus"],
         retention_bonus: ["retention_bonus"],
-        hike_pct: ["hike_pct"],
-        hike_amount: ["hike_amount"],
         total_ctc_with_rewards: [
           "total_CTC_with_rewards",
           "total_ctc_with_rewards",
