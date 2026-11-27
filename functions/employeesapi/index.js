@@ -525,18 +525,26 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
 // (Taking the first match let an old location-less cycle with the same start
 // date open instead of "<Location> - Annual 2027".)
 function pickCycleForLocation(cycles, location, locationOf) {
-  const isAll = function (v) { return !v || ["all", "all locations", "alllocations"].includes(v); };
+  const isAll = function (v) {
+    return !v || ["all", "all locations", "alllocations"].includes(v);
+  };
   const rank = function (cycle) {
     const loc = locationOf(cycle);
-    const process = String(cycle?.process ?? cycle?.cycle_process ?? "").trim().toLowerCase();
-    const type = String(cycle?.type ?? cycle?.cycle_type ?? "").trim().toLowerCase();
+    const process = String(cycle?.process ?? cycle?.cycle_process ?? "")
+      .trim()
+      .toLowerCase();
+    const type = String(cycle?.type ?? cycle?.cycle_type ?? "")
+      .trim()
+      .toLowerCase();
     return [
       location && loc === location ? 0 : 1,
       process === "annual" || type === "annual" ? 0 : 1,
     ];
   };
   const startOf = function (cycle) {
-    const t = Date.parse(cycle?.start_date ?? cycle?.startDate ?? cycle?.start ?? "");
+    const t = Date.parse(
+      cycle?.start_date ?? cycle?.startDate ?? cycle?.start ?? "",
+    );
     return Number.isFinite(t) ? t : 0;
   };
   return cycles
@@ -545,51 +553,112 @@ function pickCycleForLocation(cycles, location, locationOf) {
       return !location || isAll(loc) || loc === location;
     })
     .sort(function (a, b) {
-      const ra = rank(a), rb = rank(b);
+      const ra = rank(a),
+        rb = rank(b);
       return ra[0] - rb[0] || ra[1] - rb[1] || startOf(b) - startOf(a);
     })[0];
 }
 
-async function activeCycleRecord(datastore, requestedCycleId = "", requestedLocation = "") {
+async function activeCycleRecord(
+  datastore,
+  requestedCycleId = "",
+  requestedLocation = "",
+) {
   const cycles = await readAllDataStoreRows(
     datastore.table(APPRAISAL_CYCLE_TABLE_ID),
   );
-  const requested = String(requestedCycleId || "").trim().toLowerCase();
-  const location = String(requestedLocation || "").trim().toLowerCase();
+  const requested = String(requestedCycleId || "")
+    .trim()
+    .toLowerCase();
+  const location = String(requestedLocation || "")
+    .trim()
+    .toLowerCase();
   const available = cycles.filter(function (cycle) {
-    const status = String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "")
+    const status = String(
+      cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
+    )
       .trim()
       .toLowerCase();
-    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
-    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
+    const archived = ["true", "1", "yes"].includes(
+      String(cycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
+    );
+    const hidden = ["true", "1", "yes"].includes(
+      String(cycle?.hidden ?? "")
+        .trim()
+        .toLowerCase(),
+    );
     return ["active", "closed"].includes(status) && !archived && !hidden;
   });
   const aliasesFor = function (cycle) {
-    const name = String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? "").trim();
-    const cycleLocation = String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "").trim();
+    const name = String(
+      cycle?.cycle_name ??
+        cycle?.cycleName ??
+        cycle?.name ??
+        cycle?.appraisal_year ??
+        "",
+    ).trim();
+    const cycleLocation = String(
+      cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+    ).trim();
     return [
-      cycle?.ROWID, cycle?.rowid, cycle?.id, cycle?.ID,
-      cycle?.cycle_id, cycle?.appraisal_cycle_id,
-      cycle?.cycleId, cycle?.appraisalCycleId,
-      name, cycle?.appraisal_year, cycle?.appraisalYear,
+      cycle?.ROWID,
+      cycle?.rowid,
+      cycle?.id,
+      cycle?.ID,
+      cycle?.cycle_id,
+      cycle?.appraisal_cycle_id,
+      cycle?.cycleId,
+      cycle?.appraisalCycleId,
+      name,
+      cycle?.appraisal_year,
+      cycle?.appraisalYear,
       cycleLocation && name ? cycleLocation + " - " + name : "",
-    ].map(historyReference).filter(Boolean).map(function (value) { return value.toLowerCase(); });
+    ]
+      .map(historyReference)
+      .filter(Boolean)
+      .map(function (value) {
+        return value.toLowerCase();
+      });
   };
   const locationOf = function (cycle) {
-    return String(cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "")
-      .trim().toLowerCase();
+    return String(
+      cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
+    )
+      .trim()
+      .toLowerCase();
   };
   const active = requested
-    ? available.find(function (cycle) { return aliasesFor(cycle).includes(requested); })
+    ? available.find(function (cycle) {
+        return aliasesFor(cycle).includes(requested);
+      })
     : pickCycleForLocation(
-        available.filter((cycle) =>
-          String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase() === "active"
+        available.filter(
+          (cycle) =>
+            String(
+              cycle?.status ??
+                cycle?.cycle_status ??
+                cycle?.appraisal_status ??
+                "",
+            )
+              .trim()
+              .toLowerCase() === "active",
         ),
         location,
         locationOf,
-      ) || pickCycleForLocation(
-        available.filter((cycle) =>
-          String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase() === "closed"
+      ) ||
+      pickCycleForLocation(
+        available.filter(
+          (cycle) =>
+            String(
+              cycle?.status ??
+                cycle?.cycle_status ??
+                cycle?.appraisal_status ??
+                "",
+            )
+              .trim()
+              .toLowerCase() === "closed",
         ),
         location,
         locationOf,
@@ -599,14 +668,29 @@ async function activeCycleRecord(datastore, requestedCycleId = "", requestedLoca
 
 // ROWIDs of every Active cycle (one per location).
 async function activeCycleRowIds(datastore) {
-  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID));
+  const cycles = await readAllDataStoreRows(
+    datastore.table(APPRAISAL_CYCLE_TABLE_ID),
+  );
   const ids = new Set();
   cycles.forEach(function (cycle) {
-    const status = String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "")
-      .trim().toLowerCase();
-    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
-    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
-    const id = String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
+    const status = String(
+      cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
+    )
+      .trim()
+      .toLowerCase();
+    const archived = ["true", "1", "yes"].includes(
+      String(cycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
+    );
+    const hidden = ["true", "1", "yes"].includes(
+      String(cycle?.hidden ?? "")
+        .trim()
+        .toLowerCase(),
+    );
+    const id = String(
+      cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "",
+    ).trim();
     if (status === "active" && !archived && !hidden && id) ids.add(id);
   });
   return ids;
@@ -614,7 +698,11 @@ async function activeCycleRowIds(datastore) {
 
 async function activeCycleRowId(datastore, requestedCycleId = "") {
   const active = await activeCycleRecord(datastore, requestedCycleId);
-  return active ? String(active.ROWID ?? active.rowid ?? active.id ?? active.ID ?? "").trim() : "";
+  return active
+    ? String(
+        active.ROWID ?? active.rowid ?? active.id ?? active.ID ?? "",
+      ).trim()
+    : "";
 }
 
 // Employee_Master ROWID for a Delegation value: a ROWID, an employee ID, or
@@ -873,7 +961,8 @@ const NUMERIC_EDIT_FIELDS = new Set([
 
 function normalizeNumericEditValue(field, value) {
   if (!NUMERIC_EDIT_FIELDS.has(field)) return value;
-  if (value === null || value === undefined || String(value).trim() === "") return 0;
+  if (value === null || value === undefined || String(value).trim() === "")
+    return 0;
   const numericValue = Number(String(value).replace(/[₹,\\s]/g, ""));
   if (!Number.isFinite(numericValue)) {
     throw new access.HttpError(400, field + " must be a valid number.");
@@ -1049,7 +1138,10 @@ function buildEmployeeMasterMap(masterRows) {
 //   - "EMP002 - Ashok Kumar": the ID exists and the name is that employee's;
 //   - a bare name that belongs to exactly one employee.
 // It returns "ID - Name" for a match and "" otherwise (never free text).
-const personNameKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const personNameKey = (v) =>
+  String(v || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 const masterNameIndexCache = new WeakMap();
 function masterNameIndex(employeeMasterMap) {
   let index = masterNameIndexCache.get(employeeMasterMap);
@@ -1057,7 +1149,9 @@ function masterNameIndex(employeeMasterMap) {
   index = new Map();
   const seen = new Set();
   employeeMasterMap.forEach((row) => {
-    const id = String(row?.emp_id || "").trim().toLowerCase();
+    const id = String(row?.emp_id || "")
+      .trim()
+      .toLowerCase();
     if (!id || seen.has(id)) return;
     seen.add(id);
     const key = personNameKey(row.emp_name || row.name);
@@ -1069,7 +1163,8 @@ function masterNameIndex(employeeMasterMap) {
 function matchMasterPerson(value, employeeMasterMap) {
   const raw = historyReference(value);
   if (!raw) return null;
-  const direct = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
+  const direct =
+    employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
   if (direct) return direct;
   const pair = raw.match(/^\s*(.+?)\s+-\s+(.+?)\s*$/);
   if (pair) {
@@ -1780,7 +1875,11 @@ async function enrichPreviousAppraisalValues(
   addReader("feedbackRows", FEEDBACK_RATING_TABLE_ID, true);
   addReader("appraisalHistoryRows", EMPLOYEES_TABLE_ID, true);
   // COMP_MANAGER_TRANSFER START
-  addReader("compManagerTransferRows", COMP_MANAGER_TRANSFER_HISTORY_TABLE_ID, true);
+  addReader(
+    "compManagerTransferRows",
+    COMP_MANAGER_TRANSFER_HISTORY_TABLE_ID,
+    true,
+  );
   // COMP_MANAGER_TRANSFER END
   // Saved current-cycle Delegation snapshots are only consumed by the
   // Delegation view. The normal Appraisal Sheet gets current assignments from
@@ -1846,7 +1945,9 @@ async function enrichPreviousAppraisalValues(
   const isArchivedCycle = (cycle) =>
     cycle?.archived === true ||
     ["true", "1", "yes", "archived"].includes(
-      String(cycle?.archived ?? "").trim().toLowerCase(),
+      String(cycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
     ) ||
     cycleStatusOf(cycle) === "archived";
   const cycleById = new Map(
@@ -1934,13 +2035,26 @@ async function enrichPreviousAppraisalValues(
       master.location_name,
       master.location_code,
       master.work_location,
-    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+    ]
+      .map((value) =>
+        String(value || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean);
     const previousCycleLocation = String(
       cycle.location || cycle.cycle_location || cycle.cycleLocation || "",
-    ).trim().toLowerCase();
+    )
+      .trim()
+      .toLowerCase();
     const currentCycleLocation = String(
-      currentCycle?.location || currentCycle?.cycle_location || currentCycle?.cycleLocation || "",
-    ).trim().toLowerCase();
+      currentCycle?.location ||
+        currentCycle?.cycle_location ||
+        currentCycle?.cycleLocation ||
+        "",
+    )
+      .trim()
+      .toLowerCase();
     const expectedLocations = employeeLocations.length
       ? employeeLocations
       : currentCycleLocation
@@ -1948,7 +2062,9 @@ async function enrichPreviousAppraisalValues(
         : [];
     if (
       previousCycleLocation &&
-      !["all", "all locations", "alllocations"].includes(previousCycleLocation) &&
+      !["all", "all locations", "alllocations"].includes(
+        previousCycleLocation,
+      ) &&
       expectedLocations.length &&
       !expectedLocations.includes(previousCycleLocation)
     )
@@ -2010,7 +2126,10 @@ async function enrichPreviousAppraisalValues(
     const prefix = location ? location + " - " : "";
     if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase()))
       return name.slice(prefix.length).trim().toLowerCase();
-    return name.replace(/^All Locations\s+-\s+/i, "").trim().toLowerCase();
+    return name
+      .replace(/^All Locations\s+-\s+/i, "")
+      .trim()
+      .toLowerCase();
   };
   const currentLocation = String(
     currentCycle?.location ??
@@ -2021,14 +2140,19 @@ async function enrichPreviousAppraisalValues(
   // Resolve a historical location against Employee_Master first. Only
   // legacy global cycles (All Locations) are shared by every employee.
   const employeeLocationAliasesFor = (employeeKey) => {
-    const master = employeeMasterMap.get(String(employeeKey || "").trim()) || {};
+    const master =
+      employeeMasterMap.get(String(employeeKey || "").trim()) || {};
     const aliases = [
       master.location,
       master.location_name,
       master.location_code,
       master.work_location,
     ]
-      .map((value) => String(value || "").trim().toLowerCase())
+      .map((value) =>
+        String(value || "")
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean);
     return aliases.length
       ? aliases
@@ -2039,8 +2163,13 @@ async function enrichPreviousAppraisalValues(
   const cycleLocationMatchesEmployee = (cycle, employeeKey) => {
     const location = String(
       cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
-    ).trim().toLowerCase();
-    if (!location || ["all", "all locations", "alllocations"].includes(location))
+    )
+      .trim()
+      .toLowerCase();
+    if (
+      !location ||
+      ["all", "all locations", "alllocations"].includes(location)
+    )
       return true;
     return employeeLocationAliasesFor(employeeKey).includes(location);
   };
@@ -2096,13 +2225,14 @@ async function enrichPreviousAppraisalValues(
     const isCurrentCycleFeedback = feedbackCycleId === currentCycleId;
     const feedbackCycleLocation = String(
       cycle?.location ?? cycle?.cycle_location ?? cycle?.cycleLocation ?? "",
-    ).trim().toLowerCase();
+    )
+      .trim()
+      .toLowerCase();
     const feedbackCycleIsUnscoped =
       !feedbackCycleLocation ||
       ["all", "all locations", "alllocations"].includes(feedbackCycleLocation);
     const feedbackLocationMatches =
-      feedbackCycleIsUnscoped ||
-      cycleLocationMatchesEmployee(cycle, empKey);
+      feedbackCycleIsUnscoped || cycleLocationMatchesEmployee(cycle, empKey);
     const feedbackRank = cycle ? historyCycleRank(cycle) : 0;
     const isArchivedHistoryFeedback =
       Boolean(cycle) &&
@@ -2111,10 +2241,7 @@ async function enrichPreviousAppraisalValues(
       currentRank > 0 &&
       feedbackRank > 0 &&
       (feedbackRank < currentRank || feedbackCycleId === sharedSourceCycleId);
-    if (
-      !empKey ||
-      (!isCurrentCycleFeedback && !isArchivedHistoryFeedback)
-    )
+    if (!empKey || (!isCurrentCycleFeedback && !isArchivedHistoryFeedback))
       return;
     const rowTime = String(
       record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
@@ -2126,7 +2253,9 @@ async function enrichPreviousAppraisalValues(
       (isCurrentCycleFeedback === existing.isCurrentCycle &&
         (feedbackRank > (existing.rank || 0) ||
           (feedbackRank === (existing.rank || 0) &&
-            rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0)))
+            rowTime.localeCompare(existing.rowTime, undefined, {
+              numeric: true,
+            }) > 0)))
     ) {
       currentFeedbackByEmployee.set(empKey, {
         row: record,
@@ -2167,6 +2296,24 @@ async function enrichPreviousAppraisalValues(
   const isNewJoinerCycle = (cycle) =>
     /new[\s_-]*joiners?/i.test(historyCycleName(cycle));
   const isAnnualCycle = (cycle) => /\bannual\b/i.test(historyCycleName(cycle));
+  // Is `cycle` a PREVIOUS cycle of the one being loaded? Normally that means
+  // its start date ranks before the current cycle's. An Exceptional cycle is
+  // different: it runs after the Annual cycle of its own year, but its own
+  // start/effective date can be earlier than that Annual cycle's. Comparing
+  // dates alone then skips the just-archived Annual cycle and falls back to an
+  // older one (Current Annual Base Pay showed Annual 2027's New Base Pay
+  // instead of Annual 2028's). For Exceptional, every Annual cycle of the same
+  // or an earlier year (other than the cycle itself) is a previous cycle.
+  const currentIsExceptional = Boolean(
+    currentCycle && /\bexceptional\b/i.test(historyCycleName(currentCycle)),
+  );
+  const isPreviousCycle = (cycle, rank = historyCycleRank(cycle)) => {
+    if (currentRank <= 0 || rank < currentRank) return true;
+    if (!currentIsExceptional || !cycle) return false;
+    if (cycleIdOf(cycle) === currentCycleId) return false;
+    const year = Number(cycleYearOf(cycle));
+    return isAnnualCycle(cycle) && year > 0 && year <= Number(currentYear);
+  };
   payrollRows.forEach((record) => {
     const empRaw = firstNonEmpty(record, [
       "emp_id",
@@ -2231,7 +2378,7 @@ async function enrichPreviousAppraisalValues(
       cycleYearOf(cycle) === currentYear;
     // Only archived payroll cycles are eligible history sources:
     // same-year archived New Joiner wins; otherwise latest archived Annual.
-    if (currentRank <= 0 || rank < currentRank || sameYearNewJoinerCycle) {
+    if (isPreviousCycle(cycle, rank) || sameYearNewJoinerCycle) {
       const candidates = bonusHistoryCandidatesByEmployee.get(empKey) || [];
       candidates.push({
         cycle,
@@ -2244,7 +2391,7 @@ async function enrichPreviousAppraisalValues(
     }
     // General previous-appraisal/CTC data remains strictly before the active
     // cycle. Same-year New Joiner payroll is used only for PB/RB mapping.
-    if (currentRank > 0 && rank >= currentRank) return;
+    if (!isPreviousCycle(cycle, rank)) return;
     const storedValue = firstNonEmpty(record, [
       "total_ctc_with_rewards",
       "total_CTC_with_rewards",
@@ -2283,8 +2430,8 @@ async function enrichPreviousAppraisalValues(
       bonusPayrollByEmployee.set(empKey, sameYearNewJoiner);
       return;
     }
-    const priorCycles = candidates.filter(
-      (item) => currentRank <= 0 || item.rank < currentRank,
+    const priorCycles = candidates.filter((item) =>
+      isPreviousCycle(item.cycle, item.rank),
     );
     const annual = priorCycles
       .filter((item) => isAnnualCycle(item.cycle))
@@ -2340,7 +2487,9 @@ async function enrichPreviousAppraisalValues(
         return aliases.includes(rawCycle.toLowerCase());
       });
     if (!cycle) return;
-    const exceptionalCurrent = /\bexceptional\b/i.test(historyCycleName(currentCycle));
+    const exceptionalCurrent = /\bexceptional\b/i.test(
+      historyCycleName(currentCycle),
+    );
     const sameYearAnnualSource =
       exceptionalCurrent &&
       /\bannual\b/i.test(historyCycleName(cycle)) &&
@@ -2391,15 +2540,27 @@ async function enrichPreviousAppraisalValues(
   // itself remains untouched so the existing Delegation workflow is preserved.
   const transferredCompManagerByEmployee = new Map();
   compManagerTransferRows
-    .filter((row) => historyReference(row?.appraisal_cycle_id).toLowerCase() === String(currentCycleId).toLowerCase())
-    .sort((a, b) => String(a.transferred_at || a.ROWID || "").localeCompare(String(b.transferred_at || b.ROWID || "")))
+    .filter(
+      (row) =>
+        historyReference(row?.appraisal_cycle_id).toLowerCase() ===
+        String(currentCycleId).toLowerCase(),
+    )
+    .sort((a, b) =>
+      String(a.transferred_at || a.ROWID || "").localeCompare(
+        String(b.transferred_at || b.ROWID || ""),
+      ),
+    )
     .forEach((row) => {
       let ids = [];
-      try { ids = JSON.parse(String(row.employee_ids || "[]")); } catch (_) {}
+      try {
+        ids = JSON.parse(String(row.employee_ids || "[]"));
+      } catch (_) {}
       const destination = String(row.destination_comp_manager_id || "").trim();
       if (!destination) return;
       (Array.isArray(ids) ? ids : []).forEach((id) => {
-        const key = String(id || "").trim().toLowerCase();
+        const key = String(id || "")
+          .trim()
+          .toLowerCase();
         if (key) transferredCompManagerByEmployee.set(key, destination);
       });
     });
@@ -2432,16 +2593,13 @@ async function enrichPreviousAppraisalValues(
     const employeePayrollRows = empKey
       ? payrollItemsByEmployee.get(empKey) || []
       : [];
-    const sharedSourcePayroll =
-      sharedSourceCycleId
-        ? employeePayrollRows
-            .filter(
-              (item) => cycleIdOf(item.cycle) === sharedSourceCycleId,
-            )
-            .sort((a, b) =>
-              b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
-            )[0] || null
-        : null;
+    const sharedSourcePayroll = sharedSourceCycleId
+      ? employeePayrollRows
+          .filter((item) => cycleIdOf(item.cycle) === sharedSourceCycleId)
+          .sort((a, b) =>
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+          )[0] || null
+      : null;
     const bonusPayroll =
       sharedSourcePayroll?.row ||
       (empKey ? bonusPayrollByEmployee.get(empKey)?.row : null);
@@ -2469,7 +2627,7 @@ async function enrichPreviousAppraisalValues(
           (item) =>
             item.locationMatches &&
             isAnnualCycle(item.cycle) &&
-            (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
+            isPreviousCycle(item.cycle) &&
             isArchivedCycle(item.cycle),
         )
         .sort(
@@ -2477,6 +2635,27 @@ async function enrichPreviousAppraisalValues(
             historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
             b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
         )[0] || null;
+    // A normal (non-Exceptional) cycle starts from the previous year's
+    // archived Exceptional cycle when the employee has one, exactly like
+    // payrollcycleapi's Generate does. Only Current Annual Base Pay uses this
+    // source; everything else keeps the Annual / New Joiner selection.
+    const priorExceptionalPayroll = currentIsExceptional
+      ? null
+      : employeePayrollRows
+          .filter(
+            (item) =>
+              item.locationMatches &&
+              /\bexceptional\b/i.test(historyCycleName(item.cycle)) &&
+              cycleYearOf(item.cycle) !== "" &&
+              Number(cycleYearOf(item.cycle)) === Number(currentYear) - 1 &&
+              isArchivedCycle(item.cycle) &&
+              !["cancelled", "canceled"].includes(cycleStatusOf(item.cycle)),
+          )
+          .sort(
+            (a, b) =>
+              historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+              b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+          )[0] || null;
     // Location cycles reuse matching shared-cycle payroll first, then apply
     // the existing New Joiner / prior Annual fallback for remaining employees.
     const selectedPayrollSource =
@@ -2553,9 +2732,7 @@ async function enrichPreviousAppraisalValues(
     const annualAssignmentHistory =
       historicalAssignmentRows
         .filter(
-          (item) =>
-            isAnnualCycle(item.cycle) &&
-            (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank),
+          (item) => isAnnualCycle(item.cycle) && isPreviousCycle(item.cycle),
         )
         .sort(
           (a, b) =>
@@ -2691,15 +2868,17 @@ async function enrichPreviousAppraisalValues(
     // Prefer a matching shared-cycle value, then a complete New Joiner row;
     // incomplete payroll totals must not override valid Annual history.
     const previousCtc =
-      sharedSourcePayroll && Number.isFinite(payrollCtcParsed) && payrollCtcParsed > 0
+      sharedSourcePayroll &&
+      Number.isFinite(payrollCtcParsed) &&
+      payrollCtcParsed > 0
         ? payrollCtcParsed
         : sameYearNewJoinerPayroll &&
             Number.isFinite(payrollCtcParsed) &&
             payrollCtcParsed > 0
-        ? payrollCtcParsed
-        : prior && Number.isFinite(prior.value) && prior.value > 0
-          ? prior.value
-          : currentTotalCtc(employee);
+          ? payrollCtcParsed
+          : prior && Number.isFinite(prior.value) && prior.value > 0
+            ? prior.value
+            : currentTotalCtc(employee);
     const previousCycleName = selectedPayrollCycle
       ? historyCycleName(selectedPayrollCycle)
       : prior
@@ -2903,8 +3082,16 @@ async function enrichPreviousAppraisalValues(
     // from the selected prior closed payroll cycle. Same-year New Joiner
     // payroll wins for that employee; otherwise selectedPayroll is the latest
     // closed Annual cycle. Do not use the old current/base-pay field first.
-    const payrollAnnualBasePayRaw = selectedPayroll
-      ? firstNonEmpty(selectedPayroll, [
+    const basePayPayroll =
+      priorExceptionalPayroll &&
+      firstNonEmpty(priorExceptionalPayroll.row, [
+        "new_base_pay",
+        "newBasePay",
+      ]) !== ""
+        ? priorExceptionalPayroll.row
+        : selectedPayroll;
+    const payrollAnnualBasePayRaw = basePayPayroll
+      ? firstNonEmpty(basePayPayroll, [
           "new_base_pay",
           "newBasePay",
           "current_annual_base_pay",
@@ -2965,10 +3152,18 @@ async function enrichPreviousAppraisalValues(
       // generation validation can stop and HR can correct the source data.
       // COMP_MANAGER_TRANSFER START
       delegation_comp_manager:
-        strictPersonLabel(transferredCompManagerByEmployee.get(String(empKey || "").toLowerCase()), employeeMasterMap) ||
+        strictPersonLabel(
+          transferredCompManagerByEmployee.get(
+            String(empKey || "").toLowerCase(),
+          ),
+          employeeMasterMap,
+        ) ||
         strictPersonLabel(savedDelegation?.comp_manager, employeeMasterMap) ||
         strictPersonLabel(previousCompManager, employeeMasterMap) ||
-        strictPersonLabel(master.director || employee.director, employeeMasterMap),
+        strictPersonLabel(
+          master.director || employee.director,
+          employeeMasterMap,
+        ),
       current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
@@ -3611,8 +3806,14 @@ function filterEmployees(
 
   // "All" / "All Locations" (what the header sends by default) means no
   // location filter; treating it as a location name returned 0 employees.
-  const locationValue = String(location || "").trim().toLowerCase();
-  if (locationValue && locationValue !== "all" && locationValue !== "all locations") {
+  const locationValue = String(location || "")
+    .trim()
+    .toLowerCase();
+  if (
+    locationValue &&
+    locationValue !== "all" &&
+    locationValue !== "all locations"
+  ) {
     filtered = filtered.filter(function (employee) {
       return (
         String(employee.location || employee.work_location || "")
@@ -3773,11 +3974,15 @@ async function getEmployees(req, res) {
     // currently selected location's appraisal roster.
     const employees = masterRows
       .map((row) => {
-        const status = String(row.emp_status ?? row.status ?? "").trim().toLowerCase();
+        const status = String(row.emp_status ?? row.status ?? "")
+          .trim()
+          .toLowerCase();
         if (status !== "active") return null;
         const empId = String(row.emp_id || row.employee_id || "").trim();
         const name = String(row.emp_name || row.name || "").trim();
-        return empId && name ? { empId, name, label: empId + " - " + name } : null;
+        return empId && name
+          ? { empId, name, label: empId + " - " + name }
+          : null;
       })
       .filter(Boolean)
       .sort((left, right) => left.label.localeCompare(right.label));
@@ -4045,28 +4250,59 @@ async function getEmployees(req, res) {
     const isAvailableCycle = (cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
-      ).trim().toLowerCase();
+      )
+        .trim()
+        .toLowerCase();
       const archived = ["true", "1", "yes", "archived"].includes(
-        String(cycle?.archived ?? "").trim().toLowerCase(),
+        String(cycle?.archived ?? "")
+          .trim()
+          .toLowerCase(),
       );
       const hidden = ["true", "1", "yes"].includes(
-        String(cycle?.hidden ?? "").trim().toLowerCase(),
+        String(cycle?.hidden ?? "")
+          .trim()
+          .toLowerCase(),
       );
       return ["active", "closed"].includes(status) && !archived && !hidden;
     };
     const cycleLocationMatches = (cycle) => {
-      const cycleLocation = String(cycle?.location || "").trim().toLowerCase();
+      const cycleLocation = String(cycle?.location || "")
+        .trim()
+        .toLowerCase();
       return allLocationsSelected
-        ? (!cycleLocation || ["all", "all locations"].includes(cycleLocation))
+        ? !cycleLocation || ["all", "all locations"].includes(cycleLocation)
         : cycleLocation === selectedLocation.toLowerCase();
     };
     const latestClosedCycle = (items) =>
       items
-        .filter((cycle) => isAvailableCycle(cycle) &&
-          String(cycle.status ?? cycle.cycle_status ?? cycle.appraisal_status ?? "").trim().toLowerCase() === "closed")
+        .filter(
+          (cycle) =>
+            isAvailableCycle(cycle) &&
+            String(
+              cycle.status ??
+                cycle.cycle_status ??
+                cycle.appraisal_status ??
+                "",
+            )
+              .trim()
+              .toLowerCase() === "closed",
+        )
         .sort((a, b) =>
-          String(b.end_date || b.close_date || b.effective_date || b.start_date || "")
-            .localeCompare(String(a.end_date || a.close_date || a.effective_date || a.start_date || "")),
+          String(
+            b.end_date ||
+              b.close_date ||
+              b.effective_date ||
+              b.start_date ||
+              "",
+          ).localeCompare(
+            String(
+              a.end_date ||
+                a.close_date ||
+                a.effective_date ||
+                a.start_date ||
+                "",
+            ),
+          ),
         )[0] || null;
     // Keep the Active cycle as the normal choice. When it is Closed, show
     // that same cycle and its saved Appraisal_Sheet rows until HR archives it.
@@ -4078,29 +4314,45 @@ async function getEmployees(req, res) {
     // Cycle type chosen in the header (Annual, Mid-Year, Exceptional, New
     // Joiner). Only when the request names one are the cycles narrowed to it;
     // other screens send none and keep the old choice.
-    const requestedCycleType = String(params.cycleType || params.cycle_type || "")
+    const requestedCycleType = String(
+      params.cycleType || params.cycle_type || "",
+    )
       .trim()
       .toLowerCase();
     const cycleTypeOfCycleRow = (cycle) => {
-      const explicit = String(cycle?.cycle_type ?? cycle?.type ?? "").trim().toLowerCase();
+      const explicit = String(cycle?.cycle_type ?? cycle?.type ?? "")
+        .trim()
+        .toLowerCase();
       if (explicit) return explicit;
       const name = historyCycleName(cycle)
-        .replace(/^.+?\s+-\s+(?=(annual|mid-year|exceptional|new joiner)\b)/i, "")
+        .replace(
+          /^.+?\s+-\s+(?=(annual|mid-year|exceptional|new joiner)\b)/i,
+          "",
+        )
         .toLowerCase();
       const match = name.match(/^(annual|mid-year|exceptional|new joiner)\b/);
       return match ? match[1] : "annual";
     };
     const typedCycles = requestedCycleType
-      ? selectedCycles.filter((cycle) => cycleTypeOfCycleRow(cycle) === requestedCycleType)
+      ? selectedCycles.filter(
+          (cycle) => cycleTypeOfCycleRow(cycle) === requestedCycleType,
+        )
       : selectedCycles;
     const activeCycle =
       (requestedCycleId &&
-        selectedCycles.find((cycle) =>
-          String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim() === requestedCycleId
+        selectedCycles.find(
+          (cycle) =>
+            String(
+              cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "",
+            ).trim() === requestedCycleId,
         )) ||
-      typedCycles.find((cycle) =>
-        String(cycle.status ?? cycle.cycle_status ?? cycle.appraisal_status ?? "").trim().toLowerCase() === "active" &&
-        cycleLocationMatches(cycle)
+      typedCycles.find(
+        (cycle) =>
+          String(
+            cycle.status ?? cycle.cycle_status ?? cycle.appraisal_status ?? "",
+          )
+            .trim()
+            .toLowerCase() === "active" && cycleLocationMatches(cycle),
       ) ||
       latestClosedCycle(typedCycles.filter(cycleLocationMatches));
     if (activeCycle) {
@@ -4279,7 +4531,10 @@ async function getEmployees(req, res) {
           return {
             ...row,
             eligible_status:
-              decision?.status || row.eligible_status || row.eligibility_status || "Eligible",
+              decision?.status ||
+              row.eligible_status ||
+              row.eligibility_status ||
+              "Eligible",
           };
         });
 
@@ -4453,7 +4708,11 @@ async function getEmployees(req, res) {
       view: requestedView,
       // Keep Delegation enrichment aligned with the cycle selected above,
       // rather than whichever Active cycle happens to be first in Data Store.
-      cycleId: responseActiveCycle?.id || params.cycleId || params.appraisal_cycle_id || "",
+      cycleId:
+        responseActiveCycle?.id ||
+        params.cycleId ||
+        params.appraisal_cycle_id ||
+        "",
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
@@ -4614,23 +4873,37 @@ async function getEmployees(req, res) {
 
   // Header location applies to the whole Employee Master/Eligibility roster,
   // including the summary counts, not only to the visible page rows.
-  const locationValue = String(location || "").trim().toLowerCase();
+  const locationValue = String(location || "")
+    .trim()
+    .toLowerCase();
   const locationScopedEmployees =
     locationValue && !["all", "all locations"].includes(locationValue)
       ? scopedEmployees.filter(function (employee) {
-          return String(employee.location || employee.work_location || "")
-            .trim()
-            .toLowerCase() === locationValue;
+          return (
+            String(employee.location || employee.work_location || "")
+              .trim()
+              .toLowerCase() === locationValue
+          );
         })
       : scopedEmployees;
 
   const scopedTotalCount = locationScopedEmployees.length;
   const scopedActiveCount = locationScopedEmployees.filter(function (employee) {
-    return String(employee.status || "").trim().toLowerCase() === "active";
+    return (
+      String(employee.status || "")
+        .trim()
+        .toLowerCase() === "active"
+    );
   }).length;
-  const scopedInactiveCount = locationScopedEmployees.filter(function (employee) {
-    return String(employee.status || "").trim().toLowerCase() === "inactive";
-  }).length;
+  const scopedInactiveCount = locationScopedEmployees.filter(
+    function (employee) {
+      return (
+        String(employee.status || "")
+          .trim()
+          .toLowerCase() === "inactive"
+      );
+    },
+  ).length;
 
   const filteredEmployees = filterEmployees(
     locationScopedEmployees,
@@ -4998,35 +5271,76 @@ async function updateEmployee(req, res) {
     ),
   ]);
   const selectedCycleStatus = String(
-    currentCycle?.status ?? currentCycle?.cycle_status ?? currentCycle?.appraisal_status ?? "",
-  ).trim().toLowerCase();
+    currentCycle?.status ??
+      currentCycle?.cycle_status ??
+      currentCycle?.appraisal_status ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
   // Closed cycle: read-only for everyone, HR included (HR reopens it in Appraisal Cycle Master).
   if (selectedCycleStatus === "closed") {
-    throw new access.HttpError(403, "This appraisal cycle is Closed and read-only. Reopen it in Appraisal Cycle Master to make changes.");
+    throw new access.HttpError(
+      403,
+      "This appraisal cycle is Closed and read-only. Reopen it in Appraisal Cycle Master to make changes.",
+    );
   }
   // "Close For Tech-ED" (latest mark in the cycle remarks): Tech-ED and Comp Manager are read-only; HR can still edit.
   if (selectedCycleStatus === "active" && a?.role !== "hr") {
     const cycleRemarks = String(currentCycle?.remarks ?? "");
-    if (cycleRemarks.lastIndexOf("Tech-ED close:") > cycleRemarks.lastIndexOf("Tech-ED reopen:")) {
-      throw new access.HttpError(403, "This cycle is closed for Tech-ED and Comp Manager. Only HR can edit until it is reopened for correction.");
+    if (
+      cycleRemarks.lastIndexOf("Tech-ED close:") >
+      cycleRemarks.lastIndexOf("Tech-ED reopen:")
+    ) {
+      throw new access.HttpError(
+        403,
+        "This cycle is closed for Tech-ED and Comp Manager. Only HR can edit until it is reopened for correction.",
+      );
     }
   }
   if (
     selectedCycleStatus === "archived" ||
-    ["true", "1", "yes"].includes(String(currentCycle?.archived ?? "").trim().toLowerCase()) ||
-    ["true", "1", "yes"].includes(String(currentCycle?.hidden ?? "").trim().toLowerCase())
+    ["true", "1", "yes"].includes(
+      String(currentCycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
+    ) ||
+    ["true", "1", "yes"].includes(
+      String(currentCycle?.hidden ?? "")
+        .trim()
+        .toLowerCase(),
+    )
   ) {
-    throw new access.HttpError(409, "Archived appraisal cycles cannot be edited.");
+    throw new access.HttpError(
+      409,
+      "Archived appraisal cycles cannot be edited.",
+    );
   }
   const currentCycleId = currentCycle
-    ? String(currentCycle.ROWID ?? currentCycle.rowid ?? currentCycle.id ?? currentCycle.ID ?? "").trim()
+    ? String(
+        currentCycle.ROWID ??
+          currentCycle.rowid ??
+          currentCycle.id ??
+          currentCycle.ID ??
+          "",
+      ).trim()
     : "";
   const currentCycleName = String(
-    currentCycle?.cycle_name ?? currentCycle?.cycleName ?? currentCycle?.name ?? currentCycle?.appraisal_year ?? "",
+    currentCycle?.cycle_name ??
+      currentCycle?.cycleName ??
+      currentCycle?.name ??
+      currentCycle?.appraisal_year ??
+      "",
   ).trim();
   const currentCycleLocation = String(
-    currentCycle?.location ?? currentCycle?.cycle_location ?? currentCycle?.cycleLocation ?? body.location ?? "",
-  ).trim().toLowerCase();
+    currentCycle?.location ??
+      currentCycle?.cycle_location ??
+      currentCycle?.cycleLocation ??
+      body.location ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
   // Generated Appraisal_Sheet rows have existed with more than one
   // cycle identifier shape: Catalyst ROWID, the cycle's logical id, or a
   // cycle-name alias. Match every identifier exposed by the selected cycle,
@@ -5053,14 +5367,21 @@ async function updateEmployee(req, res) {
     ]
       .map(historyReference)
       .filter(Boolean)
-      .map(function (value) { return value.trim().toLowerCase(); }),
+      .map(function (value) {
+        return value.trim().toLowerCase();
+      }),
   );
   if (currentCycleLocation && currentCycleName) {
-    cycleAliases.add((currentCycleLocation + " - " + currentCycleName).toLowerCase());
+    cycleAliases.add(
+      (currentCycleLocation + " - " + currentCycleName).toLowerCase(),
+    );
   }
   const employeeSheetRows = (appraisalRows || []).filter(function (row) {
-    return String(row.emp_id || row.employee_id || row.empId || "")
-      .trim().toLowerCase() === empId.toLowerCase();
+    return (
+      String(row.emp_id || row.employee_id || row.empId || "")
+        .trim()
+        .toLowerCase() === empId.toLowerCase()
+    );
   });
   // A generated row can carry more than one legacy/current cycle reference.
   // Do not stop at the first non-empty field: it may be an obsolete alias while
@@ -5082,18 +5403,27 @@ async function updateEmployee(req, res) {
     ]
       .map(historyReference)
       .filter(Boolean)
-      .map(function (value) { return value.toLowerCase(); });
+      .map(function (value) {
+        return value.toLowerCase();
+      });
   };
-  const requestedAppraisalRowId = String(body.appraisal_row_id || body.appraisalRowId || "").trim();
-  const rowIdOf = (row) => String(row?.ROWID ?? row?.rowid ?? row?.id ?? "").trim();
+  const requestedAppraisalRowId = String(
+    body.appraisal_row_id || body.appraisalRowId || "",
+  ).trim();
+  const rowIdOf = (row) =>
+    String(row?.ROWID ?? row?.rowid ?? row?.id ?? "").trim();
   const requestedRow = requestedAppraisalRowId
-    ? employeeSheetRows.find((row) => rowIdOf(row) === requestedAppraisalRowId) || null
+    ? employeeSheetRows.find(
+        (row) => rowIdOf(row) === requestedAppraisalRowId,
+      ) || null
     : null;
-  const requestedRowReferences = requestedRow ? rowCycleReferences(requestedRow) : [];
-  const requestedRowMatchesCycle = !!requestedRow && (
-    requestedRowReferences.length === 0 ||
-    requestedRowReferences.some((reference) => cycleAliases.has(reference))
-  );
+  const requestedRowReferences = requestedRow
+    ? rowCycleReferences(requestedRow)
+    : [];
+  const requestedRowMatchesCycle =
+    !!requestedRow &&
+    (requestedRowReferences.length === 0 ||
+      requestedRowReferences.some((reference) => cycleAliases.has(reference)));
 
   // When the grid supplies a ROWID, never silently fall back to another row
   // for the same employee. A stale/mismatched ID must fail safely so an edit
@@ -5101,8 +5431,12 @@ async function updateEmployee(req, res) {
   if (requestedAppraisalRowId && !requestedRow) {
     return sendJson(res, 404, {
       success: false,
-      message: "Appraisal Sheet row " + requestedAppraisalRowId +
-        " for " + empId + " was not found. Reload the Appraisal Sheet and try again.",
+      message:
+        "Appraisal Sheet row " +
+        requestedAppraisalRowId +
+        " for " +
+        empId +
+        " was not found. Reload the Appraisal Sheet and try again.",
     });
   }
   if (
@@ -5112,7 +5446,9 @@ async function updateEmployee(req, res) {
   ) {
     return sendJson(res, 409, {
       success: false,
-      message: "Appraisal Sheet row " + requestedAppraisalRowId +
+      message:
+        "Appraisal Sheet row " +
+        requestedAppraisalRowId +
         " does not belong to the Active appraisal cycle. Reload the Appraisal Sheet and try again.",
     });
   }
@@ -5125,24 +5461,38 @@ async function updateEmployee(req, res) {
   // The budget roster also keeps the last Appraisal_Sheet row per employee
   // when duplicate rows exist. Use the latest matching row here as well.
   const latestRow = function (rows) {
-    return rows.slice().sort(function (left, right) {
-      const leftTime = Date.parse(String(left.MODIFIEDTIME || left.CREATEDTIME || "")) || 0;
-      const rightTime = Date.parse(String(right.MODIFIEDTIME || right.CREATEDTIME || "")) || 0;
-      if (leftTime !== rightTime) return leftTime - rightTime;
-      const leftId = String(left.ROWID || left.rowid || "");
-      const rightId = String(right.ROWID || right.rowid || "");
-      const leftNumber = Number(leftId);
-      const rightNumber = Number(rightId);
-      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
-      return leftId.localeCompare(rightId);
-    }).slice(-1)[0] || null;
+    return (
+      rows
+        .slice()
+        .sort(function (left, right) {
+          const leftTime =
+            Date.parse(String(left.MODIFIEDTIME || left.CREATEDTIME || "")) ||
+            0;
+          const rightTime =
+            Date.parse(String(right.MODIFIEDTIME || right.CREATEDTIME || "")) ||
+            0;
+          if (leftTime !== rightTime) return leftTime - rightTime;
+          const leftId = String(left.ROWID || left.rowid || "");
+          const rightId = String(right.ROWID || right.rowid || "");
+          const leftNumber = Number(leftId);
+          const rightNumber = Number(rightId);
+          if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber))
+            return leftNumber - rightNumber;
+          return leftId.localeCompare(rightId);
+        })
+        .slice(-1)[0] || null
+    );
   };
   // An employee can have two rows in one cycle: the generated Eligible row the
   // sheet shows, and an older blank row moved into the cycle by a data repair.
   // Always write to the Eligible row(s) when there are any.
   const preferEligible = function (rows) {
     const eligible = rows.filter(function (row) {
-      return String(row.eligible_status ?? row.eligibleStatus ?? "").trim().toLowerCase() === "eligible";
+      return (
+        String(row.eligible_status ?? row.eligibleStatus ?? "")
+          .trim()
+          .toLowerCase() === "eligible"
+      );
     });
     return eligible.length ? eligible : rows;
   };
@@ -5173,11 +5523,21 @@ async function updateEmployee(req, res) {
     }
     // If there is no location on the cycle row, retain the original strict
     // single-row fallback. Never guess between multiple untagged records.
-    if (!appraisalRow && untaggedRows.length === 1 && employeeSheetRows.length === 1) {
+    if (
+      !appraisalRow &&
+      untaggedRows.length === 1 &&
+      employeeSheetRows.length === 1
+    ) {
       const rowLocation = String(
         untaggedRows[0].location ?? untaggedRows[0].work_location ?? "",
-      ).trim().toLowerCase();
-      if (!currentCycleLocation || !rowLocation || rowLocation === currentCycleLocation) {
+      )
+        .trim()
+        .toLowerCase();
+      if (
+        !currentCycleLocation ||
+        !rowLocation ||
+        rowLocation === currentCycleLocation
+      ) {
         appraisalRow = untaggedRows[0];
       }
     }
@@ -5284,7 +5644,11 @@ async function updateEmployee(req, res) {
   // Backfill the active cycle reference on legacy rows during the first
   // successful edit. This keeps subsequent saves deterministic and avoids
   // requiring a separate migration or adding a Data Store column.
-  if (appraisalRow && rowCycleReferences(appraisalRow).length === 0 && currentCycleId) {
+  if (
+    appraisalRow &&
+    rowCycleReferences(appraisalRow).length === 0 &&
+    currentCycleId
+  ) {
     appraisalUpdate.cycle_id = currentCycleId;
   }
 
@@ -5328,7 +5692,10 @@ async function updateEmployee(req, res) {
 
     const appraisalColumn = appraisalFieldMap[column];
     if (appraisalColumn) {
-      appraisalUpdate[appraisalColumn] = normalizeNumericEditValue(column, value);
+      appraisalUpdate[appraisalColumn] = normalizeNumericEditValue(
+        column,
+        value,
+      );
     }
   });
 
