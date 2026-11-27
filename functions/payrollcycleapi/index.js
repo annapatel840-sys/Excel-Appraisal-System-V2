@@ -3603,9 +3603,10 @@ async function generateAppraisalSheet(
           isAnnualCycle(item) &&
           cycleYear(item) === currentYear &&
           cycleLocationKey(item) === cycleLocationKey(cycle) &&
-          String(item.status || "").trim().toLowerCase() === "active" &&
-          !item.archived &&
-          !item.hidden &&
+          (String(item.status || "").trim().toLowerCase() === "active" ||
+            isArchivedCycle(item) ||
+            isClosedSharedSourceCycle(item)) &&
+          (!item.hidden || isArchivedCycle(item)) &&
           isAvailableSourceCycle(item),
       )
     : [];
@@ -3747,7 +3748,8 @@ async function generateAppraisalSheet(
           const locationKey = cycleLocationKey(item);
           if (locationKey && locationKey !== cycleLocationKey(cycle)) return false;
           if (isAnnualCycle(item)) {
-            return item.id === sourceCycle?.id || isBeforeCurrentCycle(item) && cycleYear(item) <= currentYear;
+            return String(item.id) === String(sourceCycle?.id || "") ||
+              (isBeforeCurrentCycle(item) && cycleYear(item) <= currentYear);
           }
           return /new[\\s_-]*joiners?/i.test(String(item.name || "")) && cycleYear(item) === currentYear;
         })
