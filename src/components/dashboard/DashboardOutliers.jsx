@@ -207,7 +207,7 @@ function FlagSetup({ api, onBack }) {
                           ) : null}
                           {c.rt === "cf" || c.rt === "cavg" ? null : (
                             <>
-                              <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />
+                              {c.rt === "p" || c.rt === "pavg" ? null : <Sel value={c.op} options={FLAG_OPS} onChange={(v) => row((x) => { x.cd[i].op = v; })} />}
                               <NumIn value={c.v} onCommit={(v) => row((x) => { x.cd[i].v = v; })} />
                             </>
                           )}
