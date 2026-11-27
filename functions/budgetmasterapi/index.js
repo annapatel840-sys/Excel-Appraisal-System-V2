@@ -2581,6 +2581,215 @@ async function calculateBudgetBases(
       ? "20" + currentYearShort[1]
       : currentCycleName;
 
+  // ---------------------------------------------------------------------
+  // Appraisal Sheet parity: "Previous Total Rewards".
+  //
+  // Org Budget Base MUST equal the sum of the Previous Total Rewards column
+  // shown on the Appraisal Sheet. The sheet (employeesapi) resolves that
+  // number per employee as:
+  //   1. shared-source-cycle payroll (location cycles), if its CTC > 0
+  //   2. same-year archived New Joiner payroll, if its CTC > 0
+  //   3. the employee's top-ranked archived PREVIOUS cycle payroll of ANY
+  //      type (latest row of that cycle; a blank latest row is NOT skipped)
+  //   4. the sheet row's own current Total CTC with Rewards
+  // Earlier code here used its own chain (Annual-only previous cycle, older
+  // payroll rows skipping blanks, current-cycle payroll, stale stored sheet
+  // value...), which drifted from the sheet and inflated the base.
+  // ---------------------------------------------------------------------
+  const parityCurrentCycle = activeCycleRow || currentCycle || null;
+  const parityCurrentId = String(currentCycleId || "").trim();
+  const parityCurrentRank = parityCurrentCycle
+    ? cycleRank(parityCurrentCycle)
+    : 0;
+  const parityCurrentIsExceptional = Boolean(
+    parityCurrentCycle &&
+    /\bexceptional\b/i.test(cycleNameOf(parityCurrentCycle)),
+  );
+  const parityYearOf = (cycle) =>
+    (cycleNameOf(cycle).match(/(?:19|20)\d{2}/) || [""])[0];
+  const parityLocationOf = (cycle) =>
+    String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    )
+      .trim()
+      .toLowerCase();
+  const parityIsUnscoped = (location) =>
+    !location || ["all", "all locations", "alllocations"].includes(location);
+  const parityCanonicalName = (cycle) => {
+    const name = cycleNameOf(cycle);
+    const location = String(
+      firstValue(cycle, ["location", "cycle_location", "cycleLocation"]) || "",
+    ).trim();
+    const prefix = location ? location + " - " : "";
+    if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase()))
+      return name.slice(prefix.length).trim().toLowerCase();
+    return name
+      .replace(/^All Locations\s+-\s+/i, "")
+      .trim()
+      .toLowerCase();
+  };
+  const parityCurrentLocation = parityLocationOf(parityCurrentCycle);
+  const paritySharedSourceCycle =
+    parityCurrentCycle &&
+    parityCurrentLocation &&
+    !parityIsUnscoped(parityCurrentLocation)
+      ? cycleRows.find(
+          (candidate) =>
+            parityIsUnscoped(parityLocationOf(candidate)) &&
+            isHistoricalCycle(candidate) &&
+            parityYearOf(candidate) === parityYearOf(parityCurrentCycle) &&
+            parityCanonicalName(candidate) ===
+              parityCanonicalName(parityCurrentCycle),
+        ) || null
+      : null;
+  const paritySharedSourceId = paritySharedSourceCycle
+    ? cycleIdOf(paritySharedSourceCycle)
+    : "";
+  const parityIsPreviousCycle = (cycle, rank) => {
+    if (parityCurrentRank <= 0 || rank < parityCurrentRank) return true;
+    if (!parityCurrentIsExceptional || !cycle) return false;
+    if (cycleIdOf(cycle) === parityCurrentId) return false;
+    const year = Number(parityYearOf(cycle));
+    return (
+      /\bannual\b/i.test(cycleNameOf(cycle)) &&
+      year > 0 &&
+      year <= Number(currentYear)
+    );
+  };
+  const parityEmployeeLocations = (masterRow) => {
+    const aliases = [
+      "location",
+      "location_name",
+      "location_code",
+      "work_location",
+    ]
+      .map((field) =>
+        String(firstValue(masterRow, [field]) || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean);
+    if (aliases.length) return aliases;
+    return parityCurrentLocation ? [parityCurrentLocation] : [];
+  };
+  const parityLocationMatches = (cycle, masterRow) => {
+    const location = parityLocationOf(cycle);
+    if (parityIsUnscoped(location)) return true;
+    return parityEmployeeLocations(masterRow).includes(location);
+  };
+  // employee key -> Map(cycle id -> latest payroll row of that cycle)
+  const parityPayrollByEmployee = new Map();
+  payrollRows.forEach((record) => {
+    const employeeKey = employeeKeyFor(
+      firstValue(record, ["emp_id", "employee_id", "emp_code", "empId"]),
+    );
+    const cycleRef = cycleReferenceForRow(record);
+    if (!employeeKey || !cycleRef) return;
+    const cycle =
+      cycleById.get(cycleRef) || cycleByName.get(cycleRef.toLowerCase());
+    if (!cycle) return;
+    const cycleKey = cycleIdOf(cycle) || cycleRef;
+    const rowTime = String(
+      record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
+    );
+    const perCycle = parityPayrollByEmployee.get(employeeKey) || new Map();
+    const existing = perCycle.get(cycleKey);
+    if (
+      !existing ||
+      rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0
+    )
+      perCycle.set(cycleKey, { row: record, rowTime, cycle, cycleKey });
+    parityPayrollByEmployee.set(employeeKey, perCycle);
+  });
+  const parityNewestFirst = (a, b) =>
+    cycleRank(b.cycle) - cycleRank(a.cycle) ||
+    b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true });
+  // Returns { value, source } exactly as the Appraisal Sheet would show it.
+  const sheetParityPreviousCtc = (employeeKey, masterRow, sheetRowCtc) => {
+    const items = Array.from(
+      (parityPayrollByEmployee.get(employeeKey) || new Map()).values(),
+    ).map((item) => ({
+      ...item,
+      locationMatches: parityLocationMatches(item.cycle, masterRow),
+    }));
+    const sharedSource = paritySharedSourceId
+      ? items
+          .filter((item) => item.cycleKey === paritySharedSourceId)
+          .sort((a, b) =>
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+          )[0] || null
+      : null;
+    const sameYearNewJoiner =
+      items
+        .filter(
+          (item) =>
+            item.locationMatches &&
+            /new[\s_-]*joiners?/i.test(cycleNameOf(item.cycle)) &&
+            parityYearOf(item.cycle) !== "" &&
+            parityYearOf(item.cycle) === String(currentYear) &&
+            isHistoricalCycle(item.cycle) &&
+            !["cancelled", "canceled"].includes(
+              String(
+                firstValue(item.cycle, [
+                  "status",
+                  "cycle_status",
+                  "appraisal_status",
+                ]) || "",
+              )
+                .trim()
+                .toLowerCase(),
+            ),
+        )
+        .sort(parityNewestFirst)[0] || null;
+    const priorAnnual =
+      items
+        .filter(
+          (item) =>
+            item.locationMatches &&
+            /\bannual\b/i.test(cycleNameOf(item.cycle)) &&
+            parityIsPreviousCycle(item.cycle, cycleRank(item.cycle)) &&
+            isHistoricalCycle(item.cycle),
+        )
+        .sort(parityNewestFirst)[0] || null;
+    // Top-ranked archived previous cycle of any type (sheet's historyByEmployee).
+    const prior =
+      items
+        .filter(
+          (item) =>
+            item.cycleKey !== parityCurrentId &&
+            item.locationMatches &&
+            isHistoricalCycle(item.cycle) &&
+            parityIsPreviousCycle(item.cycle, cycleRank(item.cycle)),
+        )
+        .sort(parityNewestFirst)[0] || null;
+    const currentPayroll = (
+      parityPayrollByEmployee.get(employeeKey) || new Map()
+    ).get(parityCurrentId);
+    const selectedPayrollRow =
+      sharedSource?.row ||
+      sameYearNewJoiner?.row ||
+      priorAnnual?.row ||
+      currentPayroll?.row ||
+      null;
+    const selectedCtc = selectedPayrollRow
+      ? previousCtc(selectedPayrollRow)
+      : null;
+    if (sharedSource && selectedCtc !== null && selectedCtc > 0)
+      return { value: selectedCtc, source: "shared" };
+    if (sameYearNewJoiner && selectedCtc !== null && selectedCtc > 0)
+      return { value: selectedCtc, source: "new-joiner" };
+    const priorCtc = prior ? previousCtc(prior.row) : null;
+    if (priorCtc !== null && priorCtc > 0)
+      return { value: priorCtc, source: "prior" };
+    // Payroll history exists but its total is blank: the sheet shows the row's
+    // own current CTC and does not reach back to an older payroll row.
+    const hasHistory = Boolean(sharedSource || sameYearNewJoiner || prior);
+    return {
+      value: sheetRowCtc,
+      source: hasHistory ? "current-after-history" : "current",
+    };
+  };
+
   const appraisalByEmployee = new Map();
   currentAppraisalRows.forEach((row) => {
     const rawEmployeeId = String(
@@ -2784,7 +2993,24 @@ async function calculateBudgetBases(
       cycleYearOf(previousCycle) === cycleYearOf(activeCycleRow) &&
       cycleNameOf(previousCycle).toLowerCase() === currentCanonicalName &&
       isReusableSharedSourceCycle(previousCycle);
+    const sheetParity = sheetParityPreviousCtc(
+      employeeId,
+      masterRow,
+      currentCtcValue,
+    );
+    // Use the Appraisal Sheet's own resolution whenever it produced a usable
+    // number; the legacy chain below only fills genuinely empty cases.
+    // Employees with no usable payroll history ("current" source) keep the
+    // stored/current fallback below: the sheet persists its displayed value
+    // for them, so the stored column already equals what the sheet shows.
+    const parityCtc =
+      sheetParity.source !== "current" &&
+      Number.isFinite(sheetParity.value) &&
+      sheetParity.value > 0
+        ? sheetParity.value
+        : null;
     const payrollCtcFallback =
+      parityCtc ??
       (previousCycleIsSharedSource && previousPayrollCtc > 0
         ? previousPayrollCtc
         : null) ??
