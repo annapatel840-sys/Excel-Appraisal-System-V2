@@ -5000,89 +5000,9 @@ async function generateAppraisalSheet(
       });
     }
 
-    // Exceptional carries forward the Annual Appraisal_Sheet's resolved source
-    // values. This includes payroll-derived compensation fields and feedback /
-    // rating values, without reading or requiring duplicate Exceptional uploads.
-    if (exceptionalAnnualSheet) {
-      // Keep Exceptional's Current Annual Base Pay aligned with the valid
-      // resolved Annual value even when an old alias on that row is zero.
-      const resolvedAnnualBasePay = [
-        // Exceptional's opening base pay is the Annual cycle's finalized
-        // new_base_pay, not the old current_annual_base_pay.
-        "new_base_pay",
-        "current_annual_base_pay",
-        "current_base_pay",
-        "base_pay",
-      ]
-        .map((field) => fieldValue(exceptionalAnnualSheet, field))
-        .find((value) => {
-          const amount = Number(
-            String(value ?? "").replace(/[,₹\s]/g, "").trim(),
-          );
-          return Number.isFinite(amount) && amount > 0;
-        });
-      const currentBasePayDestination = appraisalSheetColumnByLower
-        ? appraisalSheetColumnByLower.get("current_annual_base_pay")
-        : "current_annual_base_pay";
-      if (
-        resolvedAnnualBasePay !== undefined &&
-        (!appraisalSheetColumns || currentBasePayDestination)
-      ) {
-        payload[currentBasePayDestination || "current_annual_base_pay"] =
-          resolvedAnnualBasePay;
-      }
-      const annualCarryForwardFields = [
-        // current_annual_base_pay is set separately from Annual new_base_pay
-        // above; copying Annual's old current base here would overwrite it.
-        "joining_bonus",
-        "performance_bonus",
-        "retention_bonus",
-        "hike_pct",
-        "hike_amount",
-        "total_CTC_with_rewards",
-        "total_ctc_with_rewards",
-        "total_rewards_hike_amount",
-        "total_bonus",
-        // Do not copy Annual's old current/base-pay aliases here.
-        // Exceptional current_annual_base_pay was explicitly set from
-        // Annual new_base_pay above. Keep Annual new_base_pay as historical
-        // context, but never let these aliases overwrite the opening base.
-        "new_base_pay",
-        "target_pb_allocated_for_may",
-        "target_performance_bonus_for_next_year",
-        "target_performance_bonus_next_year",
-        "target_pb_criteria",
-        "total_reward_hike_pct",
-        "rb_to_be_paid",
-        "month_rb",
-        "pb_to_be_paid",
-        "month_pb",
-        "tb_to_be_paid",
-        "month_tb",
-        "previous_year_CTC_with_rewards",
-        "previous_appraisal_total_ctc_with_rewards",
-        "manager_feedback",
-        "manager_rating",
-        "rr_percent",
-        "rr",
-        "revenue_released",
-        "gross_margin",
-        "CostCenter_Client",
-        "cost_center_client",
-        "client_manager_feedback",
-        "client_rating",
-        "yoe_ratio",
-      ];
-      annualCarryForwardFields.forEach((field) => {
-        const destination = appraisalSheetColumnByLower
-          ? appraisalSheetColumnByLower.get(field.toLowerCase())
-          : field;
-        if (appraisalSheetColumns && !destination) return;
-        const value = fieldValue(exceptionalAnnualSheet, field);
-        if (value === undefined || value === null || String(value).trim() === "") return;
-        payload[destination || field] = value;
-      });
-    }
+    // Exceptional reuses Annual feedback/rating above, but does not copy
+    // prior-cycle editable appraisal fields. Current Annual Base Pay is set
+    // exclusively from the selected Payroll_Data.new_base_pay source above.
 
     const joiningDate = toCatalystDate(
       employee.joining_date ||
