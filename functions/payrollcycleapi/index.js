@@ -3737,35 +3737,38 @@ async function generateAppraisalSheet(
         .toLowerCase(),
     );
 
-  // Exceptional first reuses the same-year Annual sheet row. If that
-  // employee has no Annual row (for example, they were not part of Annual
-  // eligibility), fall back to the exact upstream Appraisal_Sheet row that
-  // Annual's source-selection rules use: same-year New Joiner, then latest
-  // earlier Annual. Never borrow another employee or another location's row.
+  // Resolve the source per employee, not only from the globally selected
+  // Annual cycle. Prefer the selected Archived Annual source when that
+  // employee has a row; otherwise search their latest earlier cycle history
+  // (Annual, Exceptional, New Joiner, or another appraisal cycle). This
+  // includes earlier-year cycles even when their status is still Active,
+  // because the employee may have a valid generated Appraisal_Sheet/Payroll
+  // row there. Never use another employee or another location's row.
   const exceptionalSourceCycles = exceptionalCycle
     ? normalizedCycles
         .filter((item) => {
           if (!item || String(item.id) === String(cycle.id) || isCancelledPayrollCycle(item)) return false;
           const locationKey = cycleLocationKey(item);
           if (locationKey && locationKey !== cycleLocationKey(cycle)) return false;
-          if (isAnnualCycle(item)) {
-            // Per-employee fallbacks may use an older Archived Annual row,
-            // but must never fall forward to a still-Active Annual cycle.
-            return String(item.id) === String(sourceCycle?.id || "") ||
-              (isArchivedCycle(item) &&
-                Number(cycleYear(item)) <= Number(currentYear));
-          }
-          return /new[\\s_-]*joiners?/i.test(String(item.name || "")) && cycleYear(item) === currentYear;
+          if (String(item.id) === String(sourceCycle?.id || "")) return true;
+          const itemYear = Number(cycleYear(item));
+          const targetYear = Number(currentYear);
+          if (!itemYear || !targetYear || itemYear > targetYear) return false;
+          // For the same year, only use a cycle that precedes this Exceptional
+          // cycle, except New Joiner data which is an allowed same-year source.
+          return itemYear < targetYear ||
+            isBeforeCurrentCycle(item) ||
+            (isNewJoinerCycle(item) && itemYear === targetYear);
         })
         .sort((a, b) => {
-          const rank = (item) => {
-            if (String(item.id) === String(sourceCycle?.id)) return 0;
-            if (/new[\\s_-]*joiners?/i.test(String(item.name || ""))) return 1;
-            return 2;
-          };
-          const byRank = rank(a) - rank(b);
-          if (byRank) return byRank;
-          return Number(cycleYear(b)) - Number(cycleYear(a));
+          const aIsSelected = String(a.id) === String(sourceCycle?.id);
+          const bIsSelected = String(b.id) === String(sourceCycle?.id);
+          if (aIsSelected !== bIsSelected) return aIsSelected ? -1 : 1;
+          const yearDifference = Number(cycleYear(b)) - Number(cycleYear(a));
+          if (yearDifference) return yearDifference;
+          const aDate = String(a.effective || a.end || a.start || "");
+          const bDate = String(b.effective || b.end || b.start || "");
+          return bDate.localeCompare(aDate);
         })
     : [];
   const annualMasterByEmpId = new Map();
@@ -3857,14 +3860,14 @@ async function generateAppraisalSheet(
   const selectExceptionalSourceRow = (entries) => {
     if (!entries?.length) return null;
     const ordered = entries.slice().sort((a, b) => {
-      const rank = (item) => {
-        if (String(item.cycle.id) === String(sourceCycle?.id)) return 0;
-        if (/new[\\s_-]*joiners?/i.test(String(item.cycle.name || ""))) return 1;
-        return 2;
-      };
-      const byRank = rank(a) - rank(b);
-      if (byRank) return byRank;
-      return Number(cycleYear(b.cycle)) - Number(cycleYear(a.cycle));
+      const aIsSelected = String(a.cycle.id) === String(sourceCycle?.id);
+      const bIsSelected = String(b.cycle.id) === String(sourceCycle?.id);
+      if (aIsSelected !== bIsSelected) return aIsSelected ? -1 : 1;
+      const yearDifference = Number(cycleYear(b.cycle)) - Number(cycleYear(a.cycle));
+      if (yearDifference) return yearDifference;
+      const aDate = String(a.cycle.effective || a.cycle.end || a.cycle.start || "");
+      const bDate = String(b.cycle.effective || b.cycle.end || b.cycle.start || "");
+      return bDate.localeCompare(aDate);
     });
     return ordered.find((item) => hasPositiveBasePay(item.row))?.row || ordered[0].row;
   };
@@ -4235,10 +4238,18 @@ async function generateAppraisalSheet(
     if (!empId) return;
     const matchingSharedSource =
       sourceCycle && String(candidateCycle.id) === String(sourceCycle.id);
-    // For Annual cycles, an employee's previous-year Exceptional payroll
-    // takes priority when that employee has one. Otherwise use previous-year
-    // Annual, then New Joiner, then older Annual history. Exceptional records
-    // from other years are not used as an Annual source.
+    // Exceptional can fall back to this employee's latest earlier
+    // cycle record of any process type when no row exists in the selected
+    // same-year Archived Annual source. Include prior-year Active cycles too:
+    // their generated employee records remain valid history for this lookup.
+    const exceptionalHistoricalFallback =
+      exceptionalCycle &&
+      Number(sourceYear) > 0 &&
+      Number(sourceYear) <= Number(currentYear) &&
+      (Number(sourceYear) < Number(currentYear) ||
+        isBeforeCurrentCycle(candidateCycle) ||
+        (isNewJoinerCycle(candidateCycle) && sourceYear === currentYear)) &&
+      !isCancelledPayrollCycle(candidateCycle);
     const priorExceptional =
       cycleTypeOf(candidateCycle.name) === "Exceptional" &&
       Number(sourceYear) === Number(currentYear) - 1 &&
@@ -4260,7 +4271,8 @@ async function generateAppraisalSheet(
         !matchingCurrentCycle &&
         !priorExceptional &&
         !sameYearNewJoiner &&
-        !priorAnnual)
+        !priorAnnual &&
+        !exceptionalHistoricalFallback)
     )
       return;
     const candidate = {
@@ -4269,6 +4281,7 @@ async function generateAppraisalSheet(
       matchingSharedSource,
       priorExceptional,
       sameYearNewJoiner,
+      exceptionalHistoricalFallback,
       rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
     };
     const list = basePayrollCandidatesByEmployee.get(empId) || [];
@@ -4324,13 +4337,19 @@ async function generateAppraisalSheet(
     const previousExceptional = candidates
       .filter((item) => item.priorExceptional)
       .sort(compareNewest)[0];
-    const selected =
-      previousExceptional ||
-      sharedSource ||
-      previousAnnual ||
-      newJoiner ||
-      olderAnnual ||
-      currentCyclePayroll;
+    const exceptionalHistory = exceptionalCycle
+      ? candidates
+          .filter((item) => item.exceptionalHistoricalFallback)
+          .sort(compareNewest)[0]
+      : null;
+    const selected = exceptionalCycle
+      ? sharedSource || exceptionalHistory || currentCyclePayroll
+      : previousExceptional ||
+        sharedSource ||
+        previousAnnual ||
+        newJoiner ||
+        olderAnnual ||
+        currentCyclePayroll;
     if (!selected) return;
     if (selected.sameYearNewJoiner) {
       newJoinerCycleKeysByEmployee.set(
