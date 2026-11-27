@@ -143,7 +143,10 @@ export const condSetField = (c, f) => {
 export const condSetKind = (c, rt) => {
   c.rt = rt;
   if (rt !== "v" && !c.f2) c.f2 = "hk";
-  if ((rt === "p" || rt === "pavg") && !c.dir) c.dir = "more";
+  if (rt === "p" || rt === "pavg") {
+    c.op = ">="; // "at least": the more / less / of choice already carries the direction
+    if (!c.dir) c.dir = "more";
+  }
 };
 
 export const flagSetType = (r, t) => {
@@ -172,7 +175,7 @@ export const condText = (c) => {
   if (c.rt === "avg") return `${fieldLabel(c.f)} minus company average ${fieldLabel(c.f2)} is ${o} ${c.v}`;
   if (c.rt === "p" || c.rt === "pavg") {
     const other = c.rt === "pavg" ? `the company average ${fieldLabel(c.f2)}` : fieldLabel(c.f2);
-    return `${fieldLabel(c.f)} is ${o} ${c.v}% ${c.dir === "of" ? "of" : `${c.dir === "less" ? "less" : "more"} than`} ${other}`;
+    return `${fieldLabel(c.f)} is ${c.op === ">=" ? "at least" : o} ${c.v}% ${c.dir === "of" ? "of" : `${c.dir === "less" ? "less" : "more"} than`} ${other}`;
   }
   if (c.f === "promo") return `Promoted is ${c.v ? "Yes" : "No"}`;
   return `${fieldLabel(c.f)} is ${o} ${c.v}`;
