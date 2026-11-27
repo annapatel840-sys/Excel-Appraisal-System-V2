@@ -3593,20 +3593,19 @@ async function generateAppraisalSheet(
     .trim()
     .toLowerCase();
   const exceptionalCycle = cycleProcessOf(cycle) === "Exceptional";
-  // Exceptional cycles deliberately reuse the Annual source for the same
-  // year and location. They never require or create a separate Payroll or
-  // Feedback upload. Other cycle types retain the existing shared-source rule.
+  // Exceptional cycles reuse the latest finalized (Archived) Annual
+  // cycle for the same location, not an Annual cycle that is still Active.
+  // This means Exceptional 2027 uses Annual 2026 while Annual 2027 is Active,
+  // and Exceptional 2028 uses Annual 2028 once Annual 2028 is Archived.
+  // They never require a separate Payroll or Feedback upload.
   const matchingAnnualSourceCycles = exceptionalCycle
     ? normalizedCycles.filter(
         (item) =>
           String(item.id) !== String(cycle.id) &&
           isAnnualCycle(item) &&
-          cycleYear(item) === currentYear &&
+          Number(cycleYear(item)) <= Number(currentYear) &&
+          isArchivedCycle(item) &&
           cycleLocationKey(item) === cycleLocationKey(cycle) &&
-          (String(item.status || "").trim().toLowerCase() === "active" ||
-            isArchivedCycle(item) ||
-            isClosedSharedSourceCycle(item)) &&
-          (!item.hidden || isArchivedCycle(item)) &&
           isAvailableSourceCycle(item),
       )
     : [];
@@ -3623,33 +3622,31 @@ async function generateAppraisalSheet(
       )
     : [];
   // Payroll uploads are table history, not lifecycle-owned data. Exceptional
-  // selects the same-location same-year Annual cycle; normal cycles preserve
-  // their existing same-type shared-source behavior.
+  // selects the newest Archived Annual cycle at or before its own year for
+  // the same location. Active Annual cycles are deliberately never sources.
+  // Normal cycles preserve their existing same-type shared-source behavior.
   const sourceCycle =
-    (exceptionalCycle ? matchingAnnualSourceCycles : matchingSharedSourceCycles).slice().sort((a, b) => {
-      const statusRank = (item) => {
-        const status = String(item.status || "").trim().toLowerCase();
-        // Exceptional must mirror the active Annual cycle for this year and
-        // location. Prefer it over an archived duplicate if both exist.
+    (exceptionalCycle ? matchingAnnualSourceCycles : matchingSharedSourceCycles)
+      .slice()
+      .sort((a, b) => {
         if (exceptionalCycle) {
-          return status === "active"
+          const yearDifference =
+            Number(cycleYear(b)) - Number(cycleYear(a));
+          if (yearDifference) return yearDifference;
+          const aDate = String(a.effective || a.end || a.start || "");
+          const bDate = String(b.effective || b.end || b.start || "");
+          return bDate.localeCompare(aDate);
+        }
+        const statusRank = (item) =>
+          isArchivedCycle(item)
             ? 3
-            : isArchivedCycle(item)
+            : isClosedSharedSourceCycle(item)
               ? 2
-              : isClosedSharedSourceCycle(item)
+              : String(item.status || "").trim().toLowerCase() === "active"
                 ? 1
                 : 0;
-        }
-        return isArchivedCycle(item)
-          ? 3
-          : isClosedSharedSourceCycle(item)
-            ? 2
-            : status === "active"
-              ? 1
-              : 0;
-      };
-      return statusRank(b) - statusRank(a);
-    })[0] || null;
+        return statusRank(b) - statusRank(a);
+      })[0] || null;
   // Matching location cycles share the legacy source data. Keep the
   // explicit option for older callers, but do not require a separate upload
   // or confirmation for the location cycle.
@@ -3748,8 +3745,11 @@ async function generateAppraisalSheet(
           const locationKey = cycleLocationKey(item);
           if (locationKey && locationKey !== cycleLocationKey(cycle)) return false;
           if (isAnnualCycle(item)) {
+            // Per-employee fallbacks may use an older Archived Annual row,
+            // but must never fall forward to a still-Active Annual cycle.
             return String(item.id) === String(sourceCycle?.id || "") ||
-              (isBeforeCurrentCycle(item) && cycleYear(item) <= currentYear);
+              (isArchivedCycle(item) &&
+                Number(cycleYear(item)) <= Number(currentYear));
           }
           return /new[\\s_-]*joiners?/i.test(String(item.name || "")) && cycleYear(item) === currentYear;
         })
